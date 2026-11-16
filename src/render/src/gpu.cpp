@@ -520,11 +520,12 @@ struct GpuFrame::Impl {
     /// The pre-creation's target in chunks (GpuLimits::prewarm_chunks at the start,
     /// GpuFrame::set_prewarm_chunks later).
     std::atomic<std::size_t> prewarm_target{0};
-    /// ZOOM-SMOOTH-3c item 3: the warm_thread's own most recent texture/view build, steady_clock
-    /// ticks (0 = none yet this run) - begin set before make_texture, end set after the plane is
-    /// pushed, so render() can snapshot both into GpuStats and a caller check them against its
-    /// own finish_ms span without reaching into this Impl directly.
-    std::atomic<std::int64_t> warm_begin_ns{0}, warm_end_ns{0};
+    /// ZOOM-SMOOTH-3c item 3 / 3d item 3: the warm_thread's own last few texture/view builds -
+    /// begin set before make_texture, end set after the plane is pushed, so render() can
+    /// snapshot it into GpuStats and a caller check it against its own finish_ms span without
+    /// reaching into this Impl directly. Impl is never moved, so a plain member (not shared_ptr,
+    /// unlike FluidGpu's own rings) is fine here.
+    SectionRing prewarm_ring;
     std::atomic<std::uint64_t> warm_planes_created_total{0};
     std::uint64_t warm_planes_created_prev = 0;
 
@@ -599,15 +600,15 @@ struct GpuFrame::Impl {
                 // is dropped and the window thread creates textures itself, as
                 // before this thread existed.
                 const std::uint64_t errors_before = ref->errors->load();
-                // ZOOM-SMOOTH-3c item 3: begin/end of this build, so render() can report whether
-                // a slow finish_ms overlapped it (the comment above this struct: texture creation
-                // takes wgpu-hal's shared device allocator lock).
-                warm_begin_ns.store(Clock::now().time_since_epoch().count());
+                // ZOOM-SMOOTH-3c item 3 / 3d item 3: begin/end of this build, so render() can
+                // report whether a slow finish_ms overlapped it (the comment above this struct:
+                // texture creation takes wgpu-hal's shared device allocator lock).
+                const auto warm_slot = prewarm_ring.begin(Clock::now().time_since_epoch().count());
                 p.texture = make_texture(dev(), "upload", p.format, n, n, 1,
                                          WGPUTextureUsage_TextureBinding |
                                              WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
                 p.view = make_view(p.texture.get(), false);
-                warm_end_ns.store(Clock::now().time_since_epoch().count());
+                prewarm_ring.end(warm_slot, Clock::now().time_since_epoch().count());
                 const bool refused = !p.texture || !p.view || ref->errors->load() != errors_before;
                 lock.lock();
                 if (refused) {
@@ -3396,17 +3397,10 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         }
     }
     stats.fluid_setting_up = fluid_on && m.fluid && m.fluid->setting_up();
-    if (m.fluid) {
-        // ZOOM-SMOOTH-3c item 3: snapshotted regardless of measure_cpu_time - these are rare,
-        // already-cheap atomic loads (not a per-frame syscall like finish_cpu_ms/cycles), and the
-        // caller decides whether to do anything with them.
-        stats.fluid_build_begin_ns = m.fluid->build_begin_ns();
-        stats.fluid_build_end_ns = m.fluid->build_end_ns();
-        stats.fluid_release_begin_ns = m.fluid->release_begin_ns();
-        stats.fluid_release_end_ns = m.fluid->release_end_ns();
-    }
-    stats.prewarm_begin_ns = m.warm_begin_ns.load();
-    stats.prewarm_end_ns = m.warm_end_ns.load();
+    // ZOOM-SMOOTH-3d item 1 (3c review F1): the three sections' own snapshot moved to after the
+    // finish() call returns, below - reading it here (roughly 400 lines, and the whole encode/
+    // record/finish sequence, before finish() actually runs) could not see a section that
+    // started during or after this point but before finish() returned.
     {
         const auto created_now = m.warm_planes_created_total.load(std::memory_order_relaxed);
         stats.planes_prewarmed = static_cast<std::size_t>(created_now - m.warm_planes_created_prev);
@@ -3801,6 +3795,14 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     stats.total_ms = ms_since(start);
     stats.draw_calls = draw_calls;
     stats.bind_group_sets = bind_group_sets;
+    // ZOOM-SMOOTH-3d item 1: read after finish() has returned, not before it (3c review F1) - a
+    // section that starts, ends, or both during finish() is now visible to this snapshot.
+    stats.prewarm_sections = m.prewarm_ring.snapshot();
+    if (m.fluid) {
+        stats.fluid_build_sections = m.fluid->build_snapshot();
+        stats.fluid_release_sections = m.fluid->release_snapshot();
+    }
+    stats.sections_read_at_ns = Clock::now().time_since_epoch().count();
     // A frame without uploads or placeholders lets the pre-creation thread make
     // one plane (Impl::warm_mutex); a busy frame leaves the allocator alone.
     if (m.limits.prewarm_chunks > 0) {

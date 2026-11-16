@@ -34,6 +34,7 @@
 #include <anno/render/chunk_reduce.hpp>
 #include <anno/render/fluid.hpp>
 #include <anno/render/frame.hpp>
+#include <anno/render/gpu_fluid.hpp>
 #include <anno/render/resample.hpp>
 #include <anno/render/scene.hpp>
 #include <anno/render/wgpu.hpp>
@@ -112,13 +113,14 @@ struct GpuStats {
     /// read already taken for finish_ms itself) - comparable to the background sections' own
     /// begin/end below (same clock, same process).
     std::int64_t finish_at_ns = 0;
-    /// The three background wgpu sections (3b item 6), their most recent begin/end this run,
-    /// steady_clock ticks (0 = none yet) - ZOOM-SMOOTH-3c item 3. Snapshotted at the end of this
-    /// frame's own render() call: compare against finish_ms's own span (now - finish_ms .. now)
-    /// to see whether any overlapped a slow finish, and by how much.
-    std::int64_t prewarm_begin_ns = 0, prewarm_end_ns = 0;
-    std::int64_t fluid_build_begin_ns = 0, fluid_build_end_ns = 0;
-    std::int64_t fluid_release_begin_ns = 0, fluid_release_end_ns = 0;
+    /// The three background wgpu sections (3b item 6), their last few instances this run
+    /// (SectionRing::Snapshot, ZOOM-SMOOTH-3d item 3 - a single pair, 3c's own shape, could miss
+    /// an instance that started and ended between two reads) - ZOOM-SMOOTH-3c item 3, 3d item 1.
+    /// Snapshotted after finish_ms's own call returns (3c's review F1: reading these before the
+    /// call could not see a section that started during it), paired with sections_read_at_ns
+    /// (steady_clock ticks at the read) for anno::app::overlap_ms's own read_time_ns.
+    SectionRing::Snapshot prewarm_sections, fluid_build_sections, fluid_release_sections;
+    std::int64_t sections_read_at_ns = 0;
     /// Planes the pre-creation thread finished building since the last frame (distinct from
     /// planes_warm above, which counts planes *taken* by this frame's own uploads).
     std::size_t planes_prewarmed = 0;

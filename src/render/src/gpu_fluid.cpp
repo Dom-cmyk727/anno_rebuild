@@ -641,22 +641,23 @@ void FluidGpu::free_job_in_background(std::unique_ptr<Job> job) {
         return;
     }
     const auto count = freeing_;
-    // ZOOM-SMOOTH-3c item 3: captured by value (shared_ptr, like count/freeing_ just above), so
-    // this thread holds its own reference - independent of whether this FluidGpu is later moved
-    // or destroyed, unlike a captured `this` would be.
-    const auto release_begin = release_begin_ns_, release_end = release_end_ns_;
+    // ZOOM-SMOOTH-3c item 3 / 3d item 3: captured by value (shared_ptr, like count/freeing_ just
+    // above), so this thread holds its own reference - independent of whether this FluidGpu is
+    // later moved or destroyed, unlike a captured `this` would be.
+    const auto release_ring = release_ring_;
     count->fetch_add(1);
-    std::thread([j = std::move(job), count, release_begin, release_end]() mutable {
+    std::thread([j = std::move(job), count, release_ring]() mutable {
         // j->grid, if the job was retired before being applied, still holds a whole grid's
         // textures/views/bind groups (make_grid ran to completion regardless of cancel) - j.reset()
         // releases them here, off the window thread.
         const bool had_grid = j->grid.has_value();
+        std::size_t slot = 0;
         if (had_grid) {
-            release_begin->store(std::chrono::steady_clock::now().time_since_epoch().count());
+            slot = release_ring->begin(std::chrono::steady_clock::now().time_since_epoch().count());
         }
         j.reset(); // joins the job's thread, then frees its grid
         if (had_grid) {
-            release_end->store(std::chrono::steady_clock::now().time_since_epoch().count());
+            release_ring->end(slot, std::chrono::steady_clock::now().time_since_epoch().count());
         }
         count->fetch_sub(1);
         count->notify_all();
@@ -747,12 +748,13 @@ void FluidGpu::prepare_window(std::uint32_t cells_per_tile, std::pair<float, flo
     j->thread = std::thread([this, j, workers] {
         lower_thread_priority();
         if (j->whole && !j->grid) {
-            // ZOOM-SMOOTH-3c item 3: this creates textures, views and bind groups
+            // ZOOM-SMOOTH-3c item 3 / 3d item 3: this creates textures, views and bind groups
             // (make_grid), taking wgpu-hal's shared device allocator lock the window
             // thread's own uploads and finish calls also need.
-            build_begin_ns_->store(std::chrono::steady_clock::now().time_since_epoch().count());
+            const auto slot =
+                build_ring_->begin(std::chrono::steady_clock::now().time_since_epoch().count());
             j->grid = make_grid(j->size);
-            build_end_ns_->store(std::chrono::steady_clock::now().time_since_epoch().count());
+            build_ring_->end(slot, std::chrono::steady_clock::now().time_since_epoch().count());
         }
         for (const auto& r : j->rects) {
             auto pieces =

@@ -21,6 +21,7 @@
 #include <anno/app/frame_projection.hpp>
 #include <anno/app/png.hpp>
 #include <anno/app/sdl_input.hpp>
+#include <anno/app/section_overlap.hpp>
 #include <anno/app/selection.hpp>
 #include <anno/app/ship_motion.hpp>
 #include <anno/app/ui_mock.hpp>
@@ -482,13 +483,14 @@ class Viewer {
                     draw_calls = 0, bind_group_sets = 0;
         double finish_ms = 0, finish_cpu_ms = 0;
         /// ZOOM-SMOOTH-3c: cycles (Windows; 0 off it) and the absolute start of the finish call
-        /// (steady_clock ticks), plus the background sections' own most recent begin/end and the
-        /// per-frame fluid/pre-creation counts (item 3).
+        /// (steady_clock ticks), plus the background sections' own last few instances (3d item 3,
+        /// a ring - a single pair could miss one between two reads) and the per-frame fluid/
+        /// pre-creation counts (item 3). sections_read_at_ns is when these were read, after the
+        /// finish call returned (3d item 1) - anno::app::overlap_ms's own read_time_ns.
         std::uint64_t finish_cpu_cycles = 0;
         std::int64_t finish_at_ns = 0;
-        std::int64_t prewarm_begin_ns = 0, prewarm_end_ns = 0;
-        std::int64_t fluid_build_begin_ns = 0, fluid_build_end_ns = 0;
-        std::int64_t fluid_release_begin_ns = 0, fluid_release_end_ns = 0;
+        SectionSnapshot prewarm_sections, fluid_build_sections, fluid_release_sections;
+        std::int64_t sections_read_at_ns = 0;
         std::size_t fluid_windows_new = 0, planes_prewarmed = 0;
     };
     void measure(double chunks_ms, const std::array<double, 4>& stages,
@@ -3218,28 +3220,38 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     chunks_received_ += s.chunks_built; // reported with the periodic line, not per frame
     tex_w_ = out_w;
     tex_h_ = out_h;
-    const FrameCounts counts{s.chunks_built,
-                             s.chunks_missing,
-                             s.chunks_visible,
-                             s.stand_in_parts,
-                             s.open_sea_chunks,
-                             s.chunks_dropped,
-                             s.planes_freed,
-                             s.sprites_new,
-                             s.draw_calls,
-                             s.bind_group_sets,
-                             s.finish_ms,
-                             s.finish_cpu_ms,
-                             s.finish_cpu_cycles,
-                             s.finish_at_ns,
-                             s.prewarm_begin_ns,
-                             s.prewarm_end_ns,
-                             s.fluid_build_begin_ns,
-                             s.fluid_build_end_ns,
-                             s.fluid_release_begin_ns,
-                             s.fluid_release_end_ns,
-                             fluid_windows_new_this_frame,
-                             s.planes_prewarmed};
+    // ZOOM-SMOOTH-3d: GpuStats' own SectionRing::Snapshot (render layer) copied field by field
+    // into FrameCounts' own SectionSnapshot (app layer, section_overlap.hpp) - same shape, kept
+    // as separate types so section_overlap.hpp has no render-layer dependency (its own doc
+    // comment). The sizes must agree; a mismatch here is a build error, not a silent truncation.
+    static_assert(render::gpu::kSectionRingSize == kSectionRingSize);
+    auto to_app_snapshot = [](const render::gpu::SectionRing::Snapshot& r) {
+        SectionSnapshot a;
+        a.begin_ns = r.begin_ns;
+        a.end_ns = r.end_ns;
+        return a;
+    };
+    FrameCounts counts;
+    counts.chunks_built = s.chunks_built;
+    counts.chunks_missing = s.chunks_missing;
+    counts.chunks_drawn = s.chunks_visible;
+    counts.stand_in_parts = s.stand_in_parts;
+    counts.open_sea_chunks = s.open_sea_chunks;
+    counts.chunks_dropped = s.chunks_dropped;
+    counts.planes_freed = s.planes_freed;
+    counts.sprites_decoded = s.sprites_new;
+    counts.draw_calls = s.draw_calls;
+    counts.bind_group_sets = s.bind_group_sets;
+    counts.finish_ms = s.finish_ms;
+    counts.finish_cpu_ms = s.finish_cpu_ms;
+    counts.finish_cpu_cycles = s.finish_cpu_cycles;
+    counts.finish_at_ns = s.finish_at_ns;
+    counts.prewarm_sections = to_app_snapshot(s.prewarm_sections);
+    counts.fluid_build_sections = to_app_snapshot(s.fluid_build_sections);
+    counts.fluid_release_sections = to_app_snapshot(s.fluid_release_sections);
+    counts.sections_read_at_ns = s.sections_read_at_ns;
+    counts.fluid_windows_new = fluid_windows_new_this_frame;
+    counts.planes_prewarmed = s.planes_prewarmed;
     measure(s.chunks_ms, {s.upload_ms, s.sprites_ms, s.encode_ms, present}, &counts);
 }
 #endif
@@ -3527,22 +3539,22 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages,
                       c->planes_prewarmed);
         return std::string(buf);
     };
-    // ZOOM-SMOOTH-3c item 3: whether [begin_ns, end_ns] overlaps the finish call's own span
-    // [at_ns, at_ns + finish_ms], and by how many milliseconds - a benign race against the
-    // background thread's own writes (an in-flight begin with a stale end, say) is possible, so
-    // this is read as "worth a look", not a certainty.
-    auto overlap_ms = [](std::int64_t at_ns, double finish_ms_, std::int64_t begin_ns,
-                         std::int64_t end_ns) -> std::optional<double> {
-        if (begin_ns == 0 && end_ns == 0) {
-            return std::nullopt; // the section has not run yet this process
+    // ZOOM-SMOOTH-3d: a section's own overlap with the finish call's own span, across its ring's
+    // kSectionRingSize instances (any one of which may be in progress - anno::app::overlap_ms's
+    // own read_time_ns, c->sections_read_at_ns here, handles that per 3c's review F1); the
+    // largest single instance's own overlap is what is reported (a benign race against the
+    // background thread's own writes is still possible, so this is "worth a look", not a
+    // certainty).
+    auto section_overlap_ms = [](const FrameCounts& c, const SectionSnapshot& section) {
+        std::optional<double> best;
+        for (std::size_t i = 0; i < kSectionRingSize; ++i) {
+            const auto ms = overlap_ms(c.finish_at_ns, c.finish_ms, section.begin_ns[i],
+                                       section.end_ns[i], c.sections_read_at_ns);
+            if (ms && (!best || *ms > *best)) {
+                best = ms;
+            }
         }
-        const auto finish_end_ns = at_ns + static_cast<std::int64_t>(finish_ms_ * 1.0e6);
-        const auto lo = std::max(at_ns, begin_ns);
-        const auto hi = std::min(finish_end_ns, end_ns);
-        if (hi <= lo) {
-            return std::nullopt;
-        }
-        return static_cast<double>(hi - lo) / 1.0e6;
+        return best;
     };
     // ZOOM-SMOOTH-3b item 4: a slow finish this frame (same 2 ms line as ZOOM-MEASURE-1's
     // control-sweep criterion, not yet classified past 3.1 ms, review F4) prints the sums of
@@ -3614,20 +3626,15 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages,
                                   yardstick > 0 ? 100.0 * this_call / yardstick : 0.0);
                     cycles_line = buf;
                 }
-                // ZOOM-SMOOTH-3c item 3: which of the three background sections overlap this
-                // call's own span, and by how much.
+                // ZOOM-SMOOTH-3d: which of the three background sections overlap this call's own
+                // span (any instance in its ring, in-progress ones included), and by how much.
                 std::string overlaps = "none";
                 {
                     const std::array<std::pair<const char*, std::optional<double>>, 3> sections{
-                        {{"pre-creation",
-                          overlap_ms(counts->finish_at_ns, counts->finish_ms,
-                                     counts->prewarm_begin_ns, counts->prewarm_end_ns)},
-                         {"fluid build",
-                          overlap_ms(counts->finish_at_ns, counts->finish_ms,
-                                     counts->fluid_build_begin_ns, counts->fluid_build_end_ns)},
-                         {"fluid release", overlap_ms(counts->finish_at_ns, counts->finish_ms,
-                                                      counts->fluid_release_begin_ns,
-                                                      counts->fluid_release_end_ns)}}};
+                        {{"pre-creation", section_overlap_ms(*counts, counts->prewarm_sections)},
+                         {"fluid build", section_overlap_ms(*counts, counts->fluid_build_sections)},
+                         {"fluid release",
+                          section_overlap_ms(*counts, counts->fluid_release_sections)}}};
                     std::string joined;
                     for (const auto& [name, ms] : sections) {
                         if (ms) {

@@ -20,6 +20,7 @@
 #include <anno/app/cli.hpp>
 #include <anno/app/loader.hpp>
 #include <anno/app/png.hpp>
+#include <anno/app/section_overlap.hpp>
 #include <anno/app/still.hpp>
 #include <anno/app/zoom.hpp>
 #include <anno/formats/anlagen.hpp>
@@ -1064,4 +1065,63 @@ TEST_CASE("scenery under a building: the shipped scenarios' islands drop exactly
     CHECK(islands_n > 100);
     CHECK(dropped > 0);
     CHECK(kept_by_exception > 0);
+}
+
+// ZOOM-SMOOTH-3d (review of 3c, F1): the overlap decision as a pure function, synthetic
+// timestamps, no window, no real background thread. A 1000 ms call starting at t=10000 (ns
+// units: milliseconds * 1e6 for readability) is the fixture every case below shares.
+TEST_CASE("overlap_ms: a section entirely inside, one that starts during the call, one in "
+          "progress at the read, and one entirely before - anno::app::overlap_ms_old "
+          "(3c's own shape) must fail the second and third (ZOOM-SMOOTH-3d)") {
+    using anno::app::overlap_ms;
+    using anno::app::overlap_ms_old;
+    constexpr std::int64_t call_begin = std::int64_t{10'000} * 1'000'000; // t=10000 ms
+    constexpr double call_ms = 1000.0;                                    // ends at t=11000 ms
+    constexpr std::int64_t ms = 1'000'000;
+
+    // 1. Entirely inside the call (t=10200..10300): both old and new agree, no regression here.
+    {
+        const std::int64_t begin = call_begin + 200 * ms, end = call_begin + 300 * ms;
+        const auto n = overlap_ms(call_begin, call_ms, begin, end, end + 500 * ms);
+        const auto o = overlap_ms_old(call_begin, call_ms, begin, end);
+        REQUIRE(n.has_value());
+        REQUIRE(o.has_value());
+        CHECK(*n == doctest::Approx(100.0));
+        CHECK(*o == doctest::Approx(100.0));
+    }
+    // 2. Starts during the call (t=10600) and has not ended by the read, well after the call
+    // ends (t=11500): new correctly sees it running from 10600 to the call's own end (11000),
+    // 400 ms of overlap; old (no read_time_ns, end_ns == 0 taken literally) sees none.
+    {
+        const std::int64_t begin = call_begin + 600 * ms;
+        const std::int64_t read_time = call_begin + 1500 * ms;
+        const auto n = overlap_ms(call_begin, call_ms, begin, 0, read_time);
+        const auto o = overlap_ms_old(call_begin, call_ms, begin, 0);
+        REQUIRE(n.has_value());
+        CHECK(*n == doctest::Approx(400.0));
+        CHECK_FALSE(o.has_value());
+    }
+    // 3. Started before the call (t=9000) and still has not ended at the read (t=11200): new
+    // sees the whole call overlapped (1000 ms, bounded by the call's own span); old sees none.
+    {
+        const std::int64_t begin = call_begin - 1000 * ms;
+        const std::int64_t read_time = call_begin + 1200 * ms;
+        const auto n = overlap_ms(call_begin, call_ms, begin, 0, read_time);
+        const auto o = overlap_ms_old(call_begin, call_ms, begin, 0);
+        REQUIRE(n.has_value());
+        CHECK(*n == doctest::Approx(1000.0));
+        CHECK_FALSE(o.has_value());
+    }
+    // 4. Entirely before the call (t=8000..8500, long since ended): both agree, no overlap -
+    // the old shape's blind spot is specifically the still-running (end_ns == 0) case, not every
+    // past instance.
+    {
+        const std::int64_t begin = call_begin - 2000 * ms, end = call_begin - 1500 * ms;
+        const auto n = overlap_ms(call_begin, call_ms, begin, end, call_begin + 2000 * ms);
+        const auto o = overlap_ms_old(call_begin, call_ms, begin, end);
+        CHECK_FALSE(n.has_value());
+        CHECK_FALSE(o.has_value());
+    }
+    // An unused slot (begin_ns == 0) is never an overlap, whatever end_ns/read_time_ns are.
+    CHECK_FALSE(overlap_ms(call_begin, call_ms, 0, 0, call_begin + 5000 * ms).has_value());
 }

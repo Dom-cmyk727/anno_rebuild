@@ -27,3 +27,23 @@ close button) and was discarded.
 
 **Verdict: the owner's proof for the drag is MET.** ZOOM-SMOOTH-2 (2, 2b, 2c, 2d, 2e) lands after 2f, with the
 owner's OK. Maximise and restore (121 to 151 ms) were never in this packet and stay open.
+
+## ZOOM-SMOOTH-2f: the orchestrator's review (2026-11-16)
+
+`task/ZOOM-SMOOTH-2` `d33432aa` (code `5b5df274`): `live_resize.hpp`, `viewer.cpp`, `live_resize_test.cpp`.
+
+- **The guard is where it was asked for.** `live_resize_watch` compares the calling thread with the id taken in
+  `run()` before the watch is installed, for both triggers, after the event-type test and before the first read of
+  the watch's state. Another thread's call is counted and returns; the count is printed at exit only when it is not
+  0. The id is written before `SDL_AddEventWatch`, so no watch call can read it earlier.
+- **F1 (note): the test's name contradicts its body.** It says "no second thread, both ids synthetic" and starts a
+  real second thread to get a real id, which is the better test. Correct the name at the next touch of the file.
+- **F2 (accepted): the test covers the decision, not the call site.** Removing the guard from `viewer.cpp` fails no
+  test, because the watch needs a `Viewer`. Accepted for this guard: it is a defensive check whose counter reports
+  at exit, the decision is one comparison, and the owner's fast drag was measured on the code before it (the guard
+  changes nothing for the window thread's own calls: the suite's counts are 2e's).
+- **Gates as reported:** `anno_app_tests`, `anno_app_input_tests` and `viewer_wiring_*` 352 of 352; clang-format
+  clean; the WSL warning check clean on the touched files.
+
+**Verdict: ACCEPTED, once CI is green on `d33432aa`** (run 43946504718, queued at review time). ZOOM-SMOOTH-2 (2 to
+2f) is then ready for a landing candidate; landing needs the owner's OK.

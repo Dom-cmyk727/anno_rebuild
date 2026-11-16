@@ -2,8 +2,10 @@
 // `WELTKARTE` chrome's transparent diamond (docs/re/ui.md section 2.9): the parchment
 // `KARTE_NORDUNG` (view turn 0), the world image (owner colour x shade per cell, from the
 // palette) and the white 1 px view box. Window-independent, no SDL: the window builds the image
-// once from the world, keeps the composed raster, and draws it with the HUD (ui_mock.hpp's
-// MinimapOverlay).
+// from the world, keeps the composed raster, and draws it with the HUD (ui_mock.hpp's
+// MinimapOverlay). Step B2: the owner colours from the published territory (territory_view.hpp,
+// minimap_owner_layers; the image is rebuilt when it changes) and the figure markers
+// (minimap_markers), both read from the snapshot, never from the sim.
 //
 // Every number is data (data/ui/minimap.txt, parse_minimap_config); MinimapConfig's defaults are
 // the original's values, each with its address there and in docs/re/ui.md 2.9, and a test checks
@@ -15,17 +17,21 @@
 // swap is the one the original's wrapper does for the camera ("negated and swapped",
 // 0x10002990); its direction here is chosen so that the minimap shows the world in the main
 // view's handedness (docs/render/iso.md: tile x runs left-down, y right-down), and checked on the
-// History Edition capture (OQ-635). Turn 0 only: the view turn is VIEW-TURN-1's packet.
+// History Edition capture (OQ-635). The markers support it: the original passes a figure's +0x5c
+// (its y) as the first map coordinate (AnnoFrame 0x10002e85..0x10002eae). Turn 0 only: the view
+// turn is VIEW-TURN-1's packet.
 #pragma once
 
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include <anno/app/territory_view.hpp>
 #include <anno/assets/texture.hpp>
 #include <anno/formats/result.hpp>
 
@@ -92,6 +98,37 @@ struct MinimapConfig {
     /// The minimap zoom z at the start (AnnoFrame +0x18 = 1.0: the whole world).
     double zoom_start = 1.0;
 
+    /// The owner rule (UI-MINIMAP-1 B2; AnnoWelt 0x100a3ed7..0x100a40bb, docs/re/ui.md 2.9 Q2):
+    /// a tile's city colours its cell with the city's colour byte (city +0x16, written from the
+    /// owner's colour slot, player property 11 = +0xa8, at 0x1002f42b and by every recolour
+    /// 0x1001cdf0 through city property 0xb, 0x1002f5e7) when the viewing player knows the city
+    /// (bit 1 << viewer of city +0x61c) or the world shows every city (world property 5 = 0).
+    /// `no_colour`: the city colour of an owner without a colour slot (0xff is stored as 0,
+    /// 0x1002f437 and 0x1002f5f5). `all_visible`: world property 5 is 0, i.e. world byte
+    /// +0x69cd is non-zero (getter 0x100a33ce); a world reset leaves it 0 (0x100a3a93), so the
+    /// original's default is false; only AnnoScene's kind-3 instance sets it (0x1000d740).
+    std::uint32_t no_colour = 0;
+    bool all_visible = false;
+    /// The markers (AnnoFrame 0x10002e48..0x100030cd): the viewer's own figures of list 0
+    /// (soldiers) in `marker_list0` unless flags & marker_skip_mask == marker_skip_value, of list
+    /// 1 (ships) in `marker_list1`, either in `marker_flagged` when flags & marker_flag; the other
+    /// players' list-1 figures in `marker_others` only when `marker_others_shown` (the world's
+    /// 16-byte property 0xe, world +0x6938, equals GUID {a2414664-1a42-4f88-aae8-c0b27db939f5},
+    /// 0x10002fb1..0x10003017; the rebuild's world has no such id, OQ-630). Colours stored by
+    /// 0x10002896..0x100028ab. Each marker is a 1 px square outline of half-size `marker_half`
+    /// around its point (draw 0x10003135..0x1000327f: corners (x - 1, y - 1), (x + 1, y + 1); the
+    /// GOG shot `construction_open` shows the 3 x 3 ring in 0x00d000 with its centre empty), at
+    /// most `marker_max` per frame (0x10033b60: 0x5dc).
+    std::uint32_t marker_list0 = 0x00ff00, marker_list1 = 0x00d000, marker_flagged = 0xffffff,
+                  marker_others = 0xff3000;
+    std::uint32_t marker_flag = 0x10, marker_skip_mask = 0xc0, marker_skip_value = 0x80;
+    int marker_half = 1;
+    std::uint32_t marker_max = 1500;
+    bool marker_others_shown = false;
+    /// `MINIMAP_ALERT` slots (AnnoFrame 0x10033bb0: `cmp edi, 8`). Not drawn yet: the snapshot
+    /// carries no alerts (OQ-633).
+    std::uint32_t alert_max = 8;
+
     bool operator==(const MinimapConfig&) const = default;
 };
 
@@ -118,6 +155,37 @@ struct MinimapWorld {
     std::vector<MinimapIsland> islands;
 };
 
+/// UI-MINIMAP-1 B2: whose eyes the owner colours follow and each player's colour slot.
+/// `viewer` is the original's local player (world +0xf8, set by AnnoFrame SetPlayer
+/// 0x10009060..0x10009189; the first human slot of a new single-player game, 0x10029100).
+/// `colour_of_player[p]` is player p's colour slot (player +0xa8, property 11; HEAD +0x4C or the
+/// game start's pool, docs/re/annoscene.md section 9); a player beyond it, or one without a slot,
+/// has MinimapConfig::no_colour.
+struct MinimapOwnerRule {
+    std::uint32_t viewer = 0;
+    std::vector<std::optional<std::uint32_t>> colour_of_player;
+};
+
+/// The owner index (the palette's base colour) the image shows for a tile of `city`:
+/// MinimapConfig::no_owner unless cfg.all_visible or `city.known_by` holds rule.viewer; else the
+/// owner's colour slot (no_colour without one). AnnoWelt 0x100a403f..0x100a406c.
+[[nodiscard]] std::uint32_t minimap_city_owner(const MinimapConfig& cfg, const TerritoryCity& city,
+                                               const MinimapOwnerRule& rule);
+
+/// One island's owner indices per tile (row-major), as build_minimap_image reads them.
+struct MinimapOwnerLayer {
+    std::int64_t x = 0, y = 0;
+    std::uint32_t w = 0, h = 0;
+    std::vector<std::uint32_t> owners;
+};
+
+/// Every island of `territory` as owner indices: a neutral tile, or one whose city number names no
+/// city of its island, is no_owner (the original's 0xf test, 0x100a403a); else
+/// minimap_city_owner.
+[[nodiscard]] std::vector<MinimapOwnerLayer> minimap_owner_layers(const MinimapConfig& cfg,
+                                                                  const TerritoryView& territory,
+                                                                  const MinimapOwnerRule& rule);
+
 /// The world image: image_w x image_h cells, row-major (row = world y), each owner * shades +
 /// shade (the original's byte owner * 16 + shade, AnnoWelt 0x100a3cc0..0x100a40bb):
 /// - shade: the cell's window [x, x + shade_window) cells, i.e. tiles [trunc(x * sx),
@@ -125,10 +193,12 @@ struct MinimapWorld {
 ///   float, as the original stores it); v = trunc(sum of heights / (shade_window^2 * sx * sy));
 ///   shade = (((v & 0xff) + shade_round) >> shade_shift) mod shades. The original sums
 ///   height * 0.04 in float and divides by 0.04 again; that rounding is not modelled (OQ-636).
-/// - owner: the tile at (trunc((x + 0.5) * sx), trunc((y + 0.5) * sy)).
+/// - owner: the tile at (trunc((x + 0.5) * sx), trunc((y + 0.5) * sy)); `owners` (B2: the
+///   published territory, minimap_owner_layers) overrides the islands' own `owners` where given.
 /// Empty when the world or the image has no cells.
-[[nodiscard]] std::vector<std::uint16_t> build_minimap_image(const MinimapConfig& cfg,
-                                                             const MinimapWorld& world);
+[[nodiscard]] std::vector<std::uint16_t>
+build_minimap_image(const MinimapConfig& cfg, const MinimapWorld& world,
+                    const std::vector<MinimapOwnerLayer>* owners = nullptr);
 
 /// The palette, one RGBA entry per image value (colours.size() * shades entries): transparent
 /// (all 0) for the first `transparent` shades, else the original's 1:5:5:5 entry (R and G from
@@ -185,6 +255,42 @@ struct MinimapSegment {
 minimap_view_box(const MinimapConfig& cfg, const MinimapRect& rect, const MinimapWindow& window,
                  double camera_wx, double camera_wy, std::uint32_t world_w, std::uint32_t world_h,
                  double level_factor);
+
+/// The box's level factor for a main view that shows tiles `shown_w` px wide, given the tile widths
+/// of the zoom levels (closest first; 84, 42, 20 for the original's groups 0..2): 2^k exactly at
+/// level k (0x1002ff5b: 1 << level), between two levels 2^(k + t) with t the fraction of the way
+/// from level k to k + 1 in log tile width, and beyond the ends 2^k scaled by the tile width ratio
+/// (the continuous zoom is an extension; the original only has the levels). 1 without levels.
+[[nodiscard]] double minimap_level_factor(const std::vector<double>& level_tile_w, double shown_w);
+
+/// One marker: its integer screen point (the transformed point truncated, as the original's
+/// ftol does, 0x10003193..0x100031cd) and its colour 0xRRGGBB as the 16-bit RGB565 frame shows it
+/// (0x00d000 is (0, 210, 0), as on the GOG shot `construction_open`).
+struct MinimapMarker {
+    int x = 0, y = 0;
+    std::uint32_t rgb = 0;
+    bool operator==(const MinimapMarker&) const = default;
+};
+
+/// The markers of `figures` for `viewer` (MinimapConfig marker rule, turn 0): a figure's point is
+/// u = map_units * y / H, v = map_units * x / W (the original passes the figure's +0x5c then
+/// +0x54 to the transform, 0x10002e85..0x10002eae; minimap.hpp "Axes"); a point outside the
+/// window is left out (0x100306f0 returns 0), and at most marker_max are kept, in the order the
+/// original collects them (own list 1, own list 0, then the others' list 1).
+[[nodiscard]] std::vector<MinimapMarker>
+minimap_markers(const MinimapConfig& cfg, const MinimapRect& rect, const MinimapWindow& window,
+                const std::vector<MapFigure>& figures, std::uint32_t world_w, std::uint32_t world_h,
+                std::uint32_t viewer);
+
+/// The pixels of each marker's outline (max(|dx|, |dy|) == marker_half around its point), in
+/// marker order (a later marker paints over an earlier one).
+struct MinimapPixel {
+    int x = 0, y = 0;
+    std::uint32_t rgb = 0;
+    bool operator==(const MinimapPixel&) const = default;
+};
+[[nodiscard]] std::vector<MinimapPixel> minimap_marker_pixels(const MinimapConfig& cfg,
+                                                              const std::vector<MinimapMarker>& m);
 
 /// The pixels a 1 px line through each segment covers, both ends included: the screen point (x,
 /// y) is pixel (floor(x + 0.5), floor(y + 0.5)) (Direct3D 7's pixel centres at integer

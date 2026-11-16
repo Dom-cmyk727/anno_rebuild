@@ -904,6 +904,11 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
             if (x >= 0 && y >= 0 && x < dst_w && y < dst_h)
                 dst[static_cast<std::size_t>(y) * static_cast<std::size_t>(dst_w) +
                     static_cast<std::size_t>(x)] = box;
+        // B2: the markers over the box.
+        for (const MinimapPixel& m : minimap->marks)
+            if (m.x >= 0 && m.y >= 0 && m.x < dst_w && m.y < dst_h)
+                dst[static_cast<std::size_t>(m.y) * static_cast<std::size_t>(dst_w) +
+                    static_cast<std::size_t>(m.x)] = m.rgb & 0xffffffU;
     }
     blit_el("weltkarte");
     blit_el("mainuntergrund");
@@ -1151,6 +1156,18 @@ std::string draw_live_screen_rgba_into(
             canvas.pixels[d] = minimap->box_rgb[0];
             canvas.pixels[d + 1] = minimap->box_rgb[1];
             canvas.pixels[d + 2] = minimap->box_rgb[2];
+            canvas.pixels[d + 3] = 255;
+        }
+        // B2: the markers over the box.
+        for (const MinimapPixel& m : minimap->marks) {
+            if (m.x < 0 || m.y < 0 || m.x >= w || m.y >= h)
+                continue;
+            const std::size_t d = (static_cast<std::size_t>(m.y) * static_cast<std::size_t>(w) +
+                                   static_cast<std::size_t>(m.x)) *
+                                  4;
+            canvas.pixels[d] = static_cast<std::uint8_t>((m.rgb >> 16) & 0xffU);
+            canvas.pixels[d + 1] = static_cast<std::uint8_t>((m.rgb >> 8) & 0xffU);
+            canvas.pixels[d + 2] = static_cast<std::uint8_t>(m.rgb & 0xffU);
             canvas.pixels[d + 3] = 255;
         }
     }

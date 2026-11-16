@@ -53,3 +53,22 @@ quad_offset 1 1
 view_box 2200 0.3 332.8 ffffff
 # The minimap zoom at the start: the whole world (AnnoFrame +0x18 = 1.0, 0x10033710).
 zoom_start 1.0
+# The owner rule (UI-MINIMAP-1 B2; AnnoWelt 0x100a3ed7..0x100a40bb): a city colours its tiles with
+# its colour byte (city +0x16 = the owner's colour slot, player property 11, 0x1002f42b) when the
+# viewing player knows it (city +0x61c) or the world shows every city (world property 5 = 0).
+# no_colour: the byte of an owner without a slot (0xff is stored as 0, 0x1002f437, 0x1002f5f5);
+# all_visible 0: world byte +0x69cd is 0 after a reset (0x100a3a93), so property 5 is 1.
+owner_rule 0 0
+# The markers (AnnoFrame 0x10002e48..0x100030cd; colours 0x10002896..0x100028ab): own list 0
+# (SOLDAT, 0x1001ddfd), own list 1 (SCHIFF, 0x1001e06f), flagged, the other players' list 1.
+marker_colours 00ff00 00d000 ffffff ff3000
+# Flag 0x10 paints white; list 0 is skipped when flags & 0xc0 == 0x80 (0x10002ec3, 0x10002f54).
+marker_flags 10 c0 80
+# A 1 px square outline of half-size 1 (0x10003135..0x1000327f), at most 1500 per frame
+# (0x10033b60: 0x5dc).
+marker_square 1 1500
+# The other players' ships only when the world's property 0xe is GUID {a2414664-...} (0x10002fb1);
+# the rebuild's world has no such id (OQ-630).
+marker_others 0
+# MINIMAP_ALERT slots (0x10033bb0: at most 8). Not drawn yet: the snapshot carries none (OQ-633).
+alerts 8

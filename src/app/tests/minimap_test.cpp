@@ -1,9 +1,11 @@
 // UI-MINIMAP-1 step B1: the minimap's data, image, palette, geometry and drawing (minimap.hpp),
 // against values computed by hand from docs/re/ui.md section 2.9's formulas (each case shows the
 // arithmetic) and the shipped data/ui/minimap.txt. No original files needed.
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <utility>
 #include <vector>
@@ -317,4 +319,201 @@ TEST_CASE("minimap draw: the HUD draws the raster and the box under the chrome")
     CHECK(xrgb[10 * 1024 + 767] == 0x010203U);
     CHECK(xrgb[10 * 1024 + 768] == 0x123456U); // transparent: left as it was
     CHECK(xrgb[70 * 1024 + 900] == 0xffffffU);
+}
+
+// ---- UI-MINIMAP-1 step B2: owners, markers, the box's level factor ----
+
+namespace {
+
+/// The tutorial's players as the read gives them (docs/re/annoscene.md section 9: HEAD +0x4C of
+/// 02Trade01.sze is 2 for player 0, 0 for player 1 (natives), 4 for player 2 (the human)).
+app::MinimapOwnerRule tutorial_rule() {
+    app::MinimapOwnerRule rule;
+    rule.viewer = 2;
+    rule.colour_of_player = {2U, 0U, 4U};
+    return rule;
+}
+
+} // namespace
+
+TEST_CASE("minimap owners: a city the viewer knows shows its owner's colour slot, others olive") {
+    const app::MinimapConfig cfg;
+    const app::MinimapOwnerRule rule = tutorial_rule();
+    // AnnoWelt 0x100a404e..0x100a406c: known (bit of the viewer in city +0x61c) -> city +0x16, the
+    // owner's colour slot; else 9 (0x100a4001).
+    CHECK(app::minimap_city_owner(cfg, {0, 2, {2}}, rule) == 4);    // the human's own city: teal
+    CHECK(app::minimap_city_owner(cfg, {1, 0, {0}}, rule) == 9);    // the computer's, unknown
+    CHECK(app::minimap_city_owner(cfg, {2, 1, {1}}, rule) == 9);    // the natives', unknown
+    CHECK(app::minimap_city_owner(cfg, {1, 0, {0, 2}}, rule) == 2); // known to the human: red
+    // An owner without a colour slot: 0xff is stored as 0 (0x1002f437); one beyond the table too.
+    app::MinimapOwnerRule no_slot = rule;
+    no_slot.colour_of_player[2].reset();
+    CHECK(app::minimap_city_owner(cfg, {0, 2, {2}}, no_slot) == 0);
+    CHECK(app::minimap_city_owner(cfg, {0, 7, {2}}, rule) == 0);
+    // World property 5 = 0: every city shows (the mask is all ones, 0x100a3f0d).
+    app::MinimapConfig all = cfg;
+    all.all_visible = true;
+    CHECK(app::minimap_city_owner(all, {1, 0, {0}}, rule) == 2);
+}
+
+TEST_CASE("minimap owners: the published territory becomes the image's owner nibble") {
+    app::MinimapConfig cfg;
+    cfg.image_w = 8;
+    cfg.image_h = 8; // one cell per tile of an 8 x 8 world (sx = sy = 1)
+    // One island 4 x 2 at (2, 3), height 64 everywhere: a cell's shade is
+    // ((sum of its 2 x 2 window / 4) + 8) >> 4.
+    app::MinimapIsland heights;
+    heights.x = 2;
+    heights.y = 3;
+    heights.w = 4;
+    heights.h = 2;
+    heights.heights.assign(8, 64);
+    const app::MinimapWorld world = one_island(8, heights);
+    // Tiles: row 0 city 0 (the human's); row 1 neutral (15), city 1 (the computer's), city 5 (no
+    // such city), neutral.
+    app::TerritoryView territory;
+    territory.neutral_owner = 15;
+    app::TerritoryIsland is;
+    is.x0 = 2;
+    is.y0 = 3;
+    is.w = 4;
+    is.h = 2;
+    is.owner = {0, 0, 0, 0, 15, 1, 5, 15};
+    is.cities = {{0, 2, {2}}, {1, 0, {0}}};
+    territory.islands.push_back(is);
+    const auto layers = app::minimap_owner_layers(cfg, territory, tutorial_rule());
+    REQUIRE(layers.size() == 1);
+    CHECK(layers[0].owners == std::vector<std::uint32_t>{4, 4, 4, 4, 9, 9, 9, 9});
+    const auto image = app::build_minimap_image(cfg, world, &layers);
+    REQUIRE(image.size() == 64);
+    // Cell (2, 3): owner 4, window (2..3, 3..4) all island: 4 * 64 / 4 = 64 -> (64 + 8) >> 4 = 4.
+    CHECK(cell(cfg, image, 2, 3) == 4 * 16 + 4);
+    // Cell (5, 3): window (5..6, 3..4) half sea: 2 * 64 / 4 = 32 -> 2.
+    CHECK(cell(cfg, image, 5, 3) == 4 * 16 + 2);
+    // Cell (3, 4): the computer's tile, unknown to the viewer: olive; window (3..4, 4..5) has two
+    // island tiles: 32 -> 2.
+    CHECK(cell(cfg, image, 3, 4) == 9 * 16 + 2);
+    // Without the layers the same cell is olive (B1).
+    const auto plain = app::build_minimap_image(cfg, world);
+    CHECK(cell(cfg, plain, 2, 3) == 9 * 16 + 4);
+}
+
+TEST_CASE("minimap markers: own ships dark green, soldiers green, flags white, others hidden") {
+    const app::MinimapConfig cfg;
+    const app::MinimapRect rect = app::minimap_rect(cfg, 1024); // (767, 10)
+    const app::MinimapWindow whole{};
+    // A 512-tile world. A ship at tile (256, 256): u = v = 64, the window's centre ->
+    // (767 + 128, 10 + 64) = (895, 74). A soldier at (384, 256): u = 64 (du 0), v = 96
+    // (dv 0.5): x = 895 - 88 * cos45 * 0.5 = 863.89, y = 74 + 44 * sin45 * 0.5 = 89.56 ->
+    // (863, 89).
+    const std::vector<app::MapFigure> figures = {
+        {2, 384.0, 256.0, 0, 0},    // own soldier
+        {2, 256.0, 256.0, 1, 0},    // own ship
+        {0, 256.0, 256.0, 1, 0},    // the computer's ship
+        {2, 384.0, 256.0, 0, 0x80}, // own soldier, flags & 0xc0 == 0x80: skipped
+        {2, 384.0, 256.0, 0, 0xc0}, // flags & 0xc0 == 0xc0: drawn
+        {2, 256.0, 256.0, 1, 0x10}, // own ship, flag 0x10: white
+    };
+    const auto m = app::minimap_markers(cfg, rect, whole, figures, 512, 512, 2);
+    // The original's order: own list 1, own list 0. Colours as the RGB565 frame shows them:
+    // 0x00d000 -> green 0xd0 >> 2 = 52, (52 * 255 + 31) / 63 = 210; 0x00ff00 and white stay.
+    const std::vector<app::MinimapMarker> expected = {
+        {895, 74, 0x00d200}, {895, 74, 0xffffff}, {863, 89, 0x00ff00}, {863, 89, 0x00ff00}};
+    CHECK(m == expected);
+    // The others' ships only when the world's id says so: 0xff3000 shows as (255, 49, 0)
+    // (0x30 >> 2 = 12, (12 * 255 + 31) / 63 = 49).
+    app::MinimapConfig others = cfg;
+    others.marker_others_shown = true;
+    const auto m2 = app::minimap_markers(others, rect, whole, figures, 512, 512, 2);
+    REQUIRE(m2.size() == 5);
+    CHECK(m2.back() == app::MinimapMarker{895, 74, 0xff3100});
+    // Outside the window (zoom 0.15 around (0.1, 0.1)): nothing. At most marker_max.
+    CHECK(app::minimap_markers(cfg, rect, app::minimap_window(0.15, 0.1, 0.1), figures, 512, 512, 2)
+              .empty());
+    app::MinimapConfig one = cfg;
+    one.marker_max = 1;
+    CHECK(app::minimap_markers(one, rect, whole, figures, 512, 512, 2).size() == 1);
+    // The outline: the 8 pixels around the point, the centre left (the GOG shot's 3 x 3 ring).
+    const auto px = app::minimap_marker_pixels(cfg, {{895, 74, 0x00d200}});
+    REQUIRE(px.size() == 8);
+    for (const auto& p : px) {
+        CHECK(std::max(std::abs(p.x - 895), std::abs(p.y - 74)) == 1);
+    }
+}
+
+TEST_CASE("minimap view box: the level factor is 2^level at the built levels") {
+    const std::vector<double> levels = {84.0, 42.0, 20.0}; // docs/render/iso.md, groups 0..2
+    CHECK(app::minimap_level_factor(levels, 84.0) == doctest::Approx(1.0));
+    CHECK(app::minimap_level_factor(levels, 42.0) == doctest::Approx(2.0));
+    // Group 2 is 4 (1 << 2, 0x1002ff5b), not 84 / 20 = 4.2.
+    CHECK(app::minimap_level_factor(levels, 20.0) == doctest::Approx(4.0));
+    // Between 42 and 20: 2^(1 + ln(42/30) / ln(42/20)) = 2^1.4535 = 2.739.
+    CHECK(app::minimap_level_factor(levels, 30.0) == doctest::Approx(2.739).epsilon(0.001));
+    CHECK(app::minimap_level_factor(levels, 168.0) == doctest::Approx(0.5));
+    CHECK(app::minimap_level_factor(levels, 10.0) == doctest::Approx(8.0));
+    CHECK(app::minimap_level_factor({}, 10.0) == doctest::Approx(1.0));
+    // The box of the 512-tile tutorial world: e = level * 2200 / 512 = 4.297 map units at level
+    // 0; its corners (minimap_view_box) make an axis-aligned rectangle 1.361 e across and 1.264 e
+    // down (88 * cos45 / 64 = 0.972 px per unit across, half that down): 5.85 x 5.43 px at level
+    // 0, 11.7 x 10.9 at level 1 (History Edition ui_5.mp4: 5.3 x 6.7 and 12.0 x 10.7 px, measured
+    // at 0.75 scale, +-1.3 px; docs/re/ui.md 2.9 B2).
+    const app::MinimapConfig cfg;
+    const app::MinimapRect rect = app::minimap_rect(cfg, 1024);
+    for (const double level : {1.0, 2.0}) {
+        const auto box =
+            app::minimap_view_box(cfg, rect, app::MinimapWindow{}, 256.0, 256.0, 512, 512, level);
+        REQUIRE(box.size() == 4);
+        double x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+        for (const auto& s : box) {
+            x0 = std::min({x0, s.x0, s.x1});
+            x1 = std::max({x1, s.x0, s.x1});
+            y0 = std::min({y0, s.y0, s.y1});
+            y1 = std::max({y1, s.y0, s.y1});
+        }
+        CHECK(x1 - x0 == doctest::Approx(level * 5.849).epsilon(0.002));
+        CHECK(y1 - y0 == doctest::Approx(level * 5.431).epsilon(0.002));
+    }
+}
+
+TEST_CASE("minimap draw: the markers are drawn over the box") {
+    const auto hud = app::parse_hud_layout("anno1503-ui-hud 1\nresolution 1024 768\n");
+    REQUIRE(hud.ok());
+    const app::ConstructionLayout construction;
+    const app::MaskLayout masks;
+    app::UiTexCache cache{fs::path{}};
+    app::MinimapOverlay overlay;
+    overlay.box = {{900, 70}};
+    overlay.marks = {{900, 70, 0x00d200}, {901, 70, 0x00d200}};
+    anno::assets::Rgba canvas;
+    REQUIRE(app::draw_live_screen_rgba_into(canvas, 1024, 768, hud.value(), construction, masks,
+                                            app::UiMockSpec{}, cache, nullptr, {}, false, false,
+                                            false, false, nullptr, nullptr, &overlay)
+                .empty());
+    CHECK(pixel(canvas, 900, 70) == std::array<std::uint8_t, 4>{0, 0xd2, 0, 255});
+    std::vector<std::uint32_t> xrgb(1024 * 768, 0x123456);
+    REQUIRE(app::draw_live_screen_xrgb(xrgb.data(), 1024, 768, hud.value(), construction, masks,
+                                       app::UiMockSpec{}, cache, nullptr, {}, false, false, false,
+                                       false, nullptr, nullptr, &overlay)
+                .empty());
+    CHECK(xrgb[70 * 1024 + 900] == 0x00d200U);
+    CHECK(xrgb[70 * 1024 + 901] == 0x00d200U);
+}
+
+TEST_CASE("minimap config: the B2 keys") {
+    const auto ok = app::parse_minimap_config(
+        "anno1503-ui-minimap 1\nowner_rule 3 1\nmarker_colours 010203 040506 070809 0a0b0c\n"
+        "marker_flags 20 30 10\nmarker_square 2 7\nmarker_others 1\nalerts 12\n");
+    REQUIRE(ok.ok());
+    CHECK(ok.value().no_colour == 3);
+    CHECK(ok.value().all_visible);
+    CHECK(ok.value().marker_list0 == 0x010203);
+    CHECK(ok.value().marker_others == 0x0a0b0c);
+    CHECK(ok.value().marker_flag == 0x20);
+    CHECK(ok.value().marker_skip_value == 0x10);
+    CHECK(ok.value().marker_half == 2);
+    CHECK(ok.value().marker_max == 7);
+    CHECK(ok.value().marker_others_shown);
+    CHECK(ok.value().alert_max == 12);
+    CHECK_FALSE(app::parse_minimap_config("anno1503-ui-minimap 1\nowner_rule 0 2\n").ok());
+    CHECK_FALSE(app::parse_minimap_config("anno1503-ui-minimap 1\nmarker_square -1 5\n").ok());
 }

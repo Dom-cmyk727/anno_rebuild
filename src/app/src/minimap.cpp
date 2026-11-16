@@ -60,6 +60,16 @@ std::uint8_t expand5_as6(std::uint32_t v) {
     return static_cast<std::uint8_t>((g6 * 255U + 31U) / 63U);
 }
 
+/// A 0xRRGGBB colour as the 16-bit RGB565 frame shows it (5, 6, 5 bits, expanded as above): the
+/// GOG shot `construction_open` shows the own-ship marker 0x00d000 as (0, 210, 0).
+std::uint32_t as_shown_565(std::uint32_t rgb) {
+    const std::uint32_t r = expand5(((rgb >> 16) & 0xffU) >> 3U);
+    const std::uint32_t g6 = ((rgb >> 8) & 0xffU) >> 2U;
+    const std::uint32_t g = (g6 * 255U + 31U) / 63U;
+    const std::uint32_t b = expand5((rgb & 0xffU) >> 3U);
+    return (r << 16U) | (g << 8U) | b;
+}
+
 } // namespace
 
 formats::Result<MinimapConfig, std::string> parse_minimap_config(std::string_view text) {
@@ -182,6 +192,29 @@ formats::Result<MinimapConfig, std::string> parse_minimap_config(std::string_vie
                  cfg.box_colour <= 0xffffffU;
         } else if (key == "zoom_start") {
             ok = doubles({&cfg.zoom_start}) && cfg.zoom_start > 0.0 && cfg.zoom_start <= 1.0;
+        } else if (key == "owner_rule") {
+            std::uint32_t all = 0;
+            ok = u32s({&cfg.no_colour, &all}) && all <= 1;
+            cfg.all_visible = all == 1;
+        } else if (key == "marker_colours") {
+            ok = n == 4 && parse_int(w[1], cfg.marker_list0, 16) &&
+                 parse_int(w[2], cfg.marker_list1, 16) && parse_int(w[3], cfg.marker_flagged, 16) &&
+                 parse_int(w[4], cfg.marker_others, 16) && cfg.marker_list0 <= 0xffffffU &&
+                 cfg.marker_list1 <= 0xffffffU && cfg.marker_flagged <= 0xffffffU &&
+                 cfg.marker_others <= 0xffffffU;
+        } else if (key == "marker_flags") {
+            ok = n == 3 && parse_int(w[1], cfg.marker_flag, 16) &&
+                 parse_int(w[2], cfg.marker_skip_mask, 16) &&
+                 parse_int(w[3], cfg.marker_skip_value, 16);
+        } else if (key == "marker_square") {
+            ok = n == 2 && parse_int(w[1], cfg.marker_half) && parse_int(w[2], cfg.marker_max) &&
+                 cfg.marker_half >= 0 && cfg.marker_half <= 64;
+        } else if (key == "marker_others") {
+            std::uint32_t shown = 0;
+            ok = u32s({&shown}) && shown <= 1;
+            cfg.marker_others_shown = shown == 1;
+        } else if (key == "alerts") {
+            ok = u32s({&cfg.alert_max});
         } else {
             return bad("unknown key");
         }
@@ -213,8 +246,61 @@ formats::Result<MinimapConfig, std::string> load_minimap_config(const std::files
     return parse_minimap_config(text.str());
 }
 
-std::vector<std::uint16_t> build_minimap_image(const MinimapConfig& cfg,
-                                               const MinimapWorld& world) {
+std::uint32_t minimap_city_owner(const MinimapConfig& cfg, const TerritoryCity& city,
+                                 const MinimapOwnerRule& rule) {
+    // AnnoWelt 0x100a404e..0x100a405e: the city's +0xc8(0) mask (+0x61c) against 1 << viewer, or
+    // every city when world property 5 is 0 (the mask is then 0xffffffff, 0x100a3f0d).
+    const bool known = cfg.all_visible ||
+                       std::binary_search(city.known_by.begin(), city.known_by.end(), rule.viewer);
+    if (!known) {
+        return cfg.no_owner;
+    }
+    // 0x100a4062..0x100a406c: the city's +0xc8(2), the colour byte +0x16 (0x1002df94), set from
+    // the owner's property 11 with 0xff stored as 0 (0x1002f42b..0x1002f439).
+    if (city.owner < rule.colour_of_player.size() && rule.colour_of_player[city.owner]) {
+        return *rule.colour_of_player[city.owner];
+    }
+    return cfg.no_colour;
+}
+
+std::vector<MinimapOwnerLayer> minimap_owner_layers(const MinimapConfig& cfg,
+                                                    const TerritoryView& territory,
+                                                    const MinimapOwnerRule& rule) {
+    std::vector<MinimapOwnerLayer> out;
+    out.reserve(territory.islands.size());
+    for (const TerritoryIsland& is : territory.islands) {
+        MinimapOwnerLayer layer;
+        layer.x = is.x0;
+        layer.y = is.y0;
+        layer.w = is.w;
+        layer.h = is.h;
+        // One answer per city, then a table lookup per tile (the original asks per pixel).
+        std::vector<std::pair<std::uint32_t, std::uint32_t>> by_number;
+        by_number.reserve(is.cities.size());
+        for (const TerritoryCity& c : is.cities) {
+            by_number.emplace_back(c.number, minimap_city_owner(cfg, c, rule));
+        }
+        std::sort(by_number.begin(), by_number.end());
+        layer.owners.assign(is.owner.size(), cfg.no_owner);
+        for (std::size_t i = 0; i < is.owner.size(); ++i) {
+            const std::uint32_t v = is.owner[i];
+            if (v == territory.neutral_owner) {
+                continue;
+            }
+            const auto it = std::lower_bound(by_number.begin(), by_number.end(), v,
+                                             [](const std::pair<std::uint32_t, std::uint32_t>& e,
+                                                std::uint32_t k) { return e.first < k; });
+            if (it != by_number.end() && it->first == v) {
+                layer.owners[i] = it->second;
+            }
+        }
+        out.push_back(std::move(layer));
+    }
+    return out;
+}
+
+std::vector<std::uint16_t> build_minimap_image(const MinimapConfig& cfg, const MinimapWorld& world,
+                                               const std::vector<MinimapOwnerLayer>* owners) {
     if (world.w == 0 || world.h == 0 || cfg.image_w == 0 || cfg.image_h == 0)
         return {};
     // The world's heights and owners as full grids (islands never overlap; the sea is height 0,
@@ -238,6 +324,28 @@ std::vector<std::uint16_t> build_minimap_image(const MinimapConfig& cfg,
                     height[dst] = is.heights[src];
                 if (src < is.owners.size())
                     owner[dst] = is.owners[src];
+            }
+        }
+    }
+    // B2: the published owners over the islands' own (the same world tiles; a layer may reach
+    // outside the world: those tiles are dropped).
+    if (owners != nullptr) {
+        for (const MinimapOwnerLayer& layer : *owners) {
+            for (std::uint32_t ty = 0; ty < layer.h; ++ty) {
+                const std::int64_t wy = layer.y + ty;
+                if (wy < 0 || wy >= static_cast<std::int64_t>(wh)) {
+                    continue;
+                }
+                for (std::uint32_t tx = 0; tx < layer.w; ++tx) {
+                    const std::int64_t wx = layer.x + tx;
+                    const std::size_t src = std::size_t{ty} * layer.w + tx;
+                    if (wx < 0 || wx >= static_cast<std::int64_t>(ww) ||
+                        src >= layer.owners.size()) {
+                        continue;
+                    }
+                    owner[static_cast<std::size_t>(wy) * ww + static_cast<std::size_t>(wx)] =
+                        layer.owners[src];
+                }
             }
         }
     }
@@ -441,6 +549,89 @@ std::vector<MinimapSegment> minimap_view_box(const MinimapConfig& cfg, const Min
         const auto [x0, y0] = minimap_screen(cfg, rect, window, u0, v0);
         const auto [x1, y1] = minimap_screen(cfg, rect, window, u1, v1);
         out.push_back({x0, y0, x1, y1});
+    }
+    return out;
+}
+
+double minimap_level_factor(const std::vector<double>& level_tile_w, double shown_w) {
+    const std::size_t n = level_tile_w.size();
+    if (n == 0 || !(shown_w > 0.0)) {
+        return 1.0;
+    }
+    if (shown_w >= level_tile_w.front() || n == 1) {
+        return level_tile_w.front() / shown_w;
+    }
+    for (std::size_t k = 0; k + 1 < n; ++k) {
+        const double a = level_tile_w[k], b = level_tile_w[k + 1];
+        if (shown_w <= a && shown_w >= b && a > b) {
+            const double t = std::log(a / shown_w) / std::log(a / b);
+            return std::exp2(static_cast<double>(k) + t);
+        }
+    }
+    return std::exp2(static_cast<double>(n - 1)) * level_tile_w.back() / shown_w;
+}
+
+std::vector<MinimapMarker> minimap_markers(const MinimapConfig& cfg, const MinimapRect& rect,
+                                           const MinimapWindow& window,
+                                           const std::vector<MapFigure>& figures,
+                                           std::uint32_t world_w, std::uint32_t world_h,
+                                           std::uint32_t viewer) {
+    std::vector<MinimapMarker> out;
+    if (world_w == 0 || world_h == 0) {
+        return out;
+    }
+    const double lu = window.u0 * cfg.map_units, hu = window.u1 * cfg.map_units;
+    const double lv = window.v0 * cfg.map_units, hv = window.v1 * cfg.map_units;
+    const auto add = [&](const MapFigure& f, std::uint32_t rgb) {
+        if (out.size() >= cfg.marker_max) {
+            return;
+        }
+        const double u = cfg.map_units * f.y / static_cast<double>(world_h);
+        const double v = cfg.map_units * f.x / static_cast<double>(world_w);
+        if (!(u >= lu && u <= hu && v >= lv && v <= hv)) {
+            return; // 0x100306f0 answers 0 outside the window
+        }
+        const auto [sx, sy] = minimap_screen(cfg, rect, window, u, v);
+        out.push_back({static_cast<int>(std::floor(sx)), static_cast<int>(std::floor(sy)),
+                       as_shown_565(rgb)});
+    };
+    const auto own_colour = [&](const MapFigure& f, std::uint32_t plain) {
+        return (f.flags & cfg.marker_flag) != 0 ? cfg.marker_flagged : plain;
+    };
+    // The original's order (0x10002e48..0x100030cd): own list 1, own list 0, the others' list 1.
+    for (const MapFigure& f : figures) {
+        if (f.owner == viewer && f.list == 1) {
+            add(f, own_colour(f, cfg.marker_list1));
+        }
+    }
+    for (const MapFigure& f : figures) {
+        if (f.owner == viewer && f.list == 0 &&
+            (f.flags & cfg.marker_skip_mask) != cfg.marker_skip_value) {
+            add(f, own_colour(f, cfg.marker_list0));
+        }
+    }
+    if (cfg.marker_others_shown) {
+        for (const MapFigure& f : figures) {
+            if (f.owner != viewer && f.list == 1) {
+                add(f, cfg.marker_others);
+            }
+        }
+    }
+    return out;
+}
+
+std::vector<MinimapPixel> minimap_marker_pixels(const MinimapConfig& cfg,
+                                                const std::vector<MinimapMarker>& markers) {
+    std::vector<MinimapPixel> out;
+    const int h = cfg.marker_half;
+    for (const MinimapMarker& m : markers) {
+        for (int dy = -h; dy <= h; ++dy) {
+            for (int dx = -h; dx <= h; ++dx) {
+                if (std::max(std::abs(dx), std::abs(dy)) == h) {
+                    out.push_back({m.x + dx, m.y + dy, m.rgb});
+                }
+            }
+        }
     }
     return out;
 }

@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include <anno/app/minimap.hpp>
 #include <anno/app/ui_layout.hpp>
 #include <anno/assets/texture.hpp>
 #include <anno/formats/anlagen.hpp>
@@ -124,12 +125,15 @@ struct InfoPanelContent {
 /// (docs/re/ui.md 2.9: AnnoFrame draws it before the HUD, the chrome's diamond hole shows it).
 /// `raster` (minimap.hpp compose_minimap: the parchment and the world image, straight alpha) is
 /// drawn at (x, y), its transparent pixels left out; then every pixel of `box` (the view box,
-/// minimap_line_pixels) in `box_rgb`. The caller keeps `raster` alive for the call.
+/// minimap_line_pixels) in `box_rgb`; then (B2) every pixel of `marks` (the markers,
+/// minimap_marker_pixels) in its own colour, over the box (the original draws the markers after
+/// the renderer's box, AnnoFrame 0x100030f0). The caller keeps `raster` alive for the call.
 struct MinimapOverlay {
     const assets::Rgba* raster = nullptr;
     int x = 0, y = 0;
     std::vector<std::pair<int, int>> box;
     std::array<std::uint8_t, 3> box_rgb{255, 255, 255};
+    std::vector<MinimapPixel> marks;
 };
 
 /// The x at which a centred text box draws a text image `text_w` pixels wide: `box_x +

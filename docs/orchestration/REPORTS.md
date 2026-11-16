@@ -12706,3 +12706,49 @@ READY FOR REVIEW.
   intentionally not read here. Independent review belongs to the orchestrator.
 
 READY FOR REVIEW.
+
+## UI-TABS-1 stage A — READY FOR REVIEW (Windows, 2026-11-16)
+
+- Base origin/main `ac02d4a2`, packet `6d20d16e`, branch `task/UI-TABS-1`. Commits `51733c26` (re),
+  `a11c68e6` (feat), `baa196b3` (test), `334d1935` (fix), this entry. Stage B not started.
+  No `src/sim`, `src/render`, `src/formats` change; no pixels, frames or strings in git.
+- Code read, GOG static ([ui.md 5.4](../re/ui.md#54-the-sub-tabs-ui-tabs-1-2026-11-16)): sub-tab
+  handlers View `0x1007f730`/`0x1006b070`/`0x100786a0` store the column index, show that page, hide
+  the rest, no same-index check. Views persist (`0x100194c0`); a main-tab press (`0x10034ab0` ->
+  `0x100335d0`) re-shows a view's last sub-tab. Keys (AnnoFrame `0x1000bfc4`) d/s/c -> HUD params
+  5/6/7 -> player sub-tabs 1/3/2 (`0x1007ea3c`); o -> options at its last page; Esc on the grid ->
+  param 4 -> overview (`0x100333e3`). Frames fenster.inc 1184/661/1476 + 2k (+1 selected).
+- Evidence: selected tab on 10 GOG shots (exact 1.00 at the selected position) and 9 HE frames of
+  `HE_UI_1.mp4` (one selected tab at our position, margin 12-17 per channel); `f15_key_O` shows the
+  options view kept its speech page.
+- Correction: R2's "the bust from the overview opens the list" does not hold: `r2_tab_military` was
+  taken after key D (runner `actions.jsonl`). The bust now shows the player view's last sub-tab, so
+  from the overview it stays. `ui_tabs`, `ui_menu_close_disarms`, `ui_counters_centred` expected the
+  old rule and were changed: an expectation change the packet asked to avoid, for the orchestrator.
+  The oracle-shot tests are unchanged and pass.
+- Built: hud.txt `view`/`subtab`/`body`, keys D C S on sub-tabs and O on the gears (counts are the
+  elements); `HudTabs`; a sub-tab press selects on the press; CPU and GPU layer draw the selected
+  frame and the body; other pages are named placeholders (column, crest; options background).
+  Facts `hud.view`, `hud.subtab`; `ui.tab` = body. Overview reachable by sub-tab 0 and Esc.
+- OQs: 641 (HE bust showed the ship list after the ship view), 642 ("?" content per selection),
+  643 (Esc with a selection, message 6, key k), 644 (placeholder backgrounds); OQ-621 annotated.
+- Tests: `hud_tabs_test.cpp` 9 cases (fenster-derived frames, every sub-tab, memory, keys, overview,
+  8 malformed layouts + control, screen names); `viewer_wiring_ui_subtabs`; `ui_subtabs_compare`
+  (composer vs 10 GOG shots, worst element 0.0032, control fails exactly on sub-tabs 0 and 3;
+  window CPU path vs composer: 0 px differ in 3 states).
+- Failure proof: sub-tab press reverted -> `viewer_wiring_ui_subtabs` FAIL line 24 (subtab 0, expected
+  1), `ui_subtabs_compare` FAIL (draw script line 17); restored (`cache/ui-tabs-1/failure-proof-*`).
+- Gate `run_selected.py` msvc Release, game dir, GOG shots, HE captures, rotation shots, head
+  `334d1935`, `cache/gates/ui-tabs-1-A-03.log` (sha256 `3e64daa6...c84b`):
+  `COUNTS: selected=79 executed=79 failed=0 empty=0 skipped=0 ... incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`. Earlier: A-01 (head `baa196b3`) FAIL on one skip (rotation shots unset, 78/78
+  executed passed), A-02 the same head PASS 79/79.
+- Test names ok; clang-format 23.1.3 clean; `ui_layout.py validate` ok. WSL warnings: run 1 found
+  `-Wmissing-field-initializers` (UiMockSpec, fixed in `334d1935`); run 2: GCC/Clang without GPU
+  clean, with GPU only the known `extensions_test.cpp` (ANNO_EXTENSION_ORACLE_FILE).
+- NOT_RUN: GPU window live (composer checked instead), Linux/Mac CI, an HE live run.
+- Decisions: the GOG code over the R2 inference; Esc keeps the overview (no selection branch);
+  `ui.tab` keeps R2 names; placeholders draw only measured chrome; the header plank is not drawn on
+  any view (pre-existing since R2, noted in 5.4).
+
+READY FOR REVIEW.

@@ -2546,7 +2546,15 @@ void Viewer::script_tick() {
             st.facts["inspection.prodtype"] = std::to_string(insp->prodtype);
             st.facts["inspection.tile.x"] = std::to_string(insp->tile.x);
             st.facts["inspection.tile.y"] = std::to_string(insp->tile.y);
+            // FISHER-VIEW-1: a Farm's (fisherman's hut's) stock and workers as numbers (8.8).
+            if (insp->farm) {
+                st.facts["inspection.out_88"] = std::to_string(insp->farm->out_88);
+                st.facts["inspection.raw_88"] = std::to_string(insp->farm->raw_88);
+                st.facts["inspection.workers_out"] = std::to_string(insp->farm->workers_out);
+            }
         }
+        // FISHER-VIEW-1: the game time the facts above belong to (the snapshot's clock).
+        st.facts["game.ms"] = std::to_string(st.snapshot->game_ms);
     }
     // Row 18's selection (W4-NEXT-2 F1/G1, finding 1 of the 2026-11-11 fix review): a script that
     // waits on a fixed frame count to know a click's selection resolved races the sim thread's

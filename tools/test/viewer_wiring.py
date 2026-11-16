@@ -21,6 +21,8 @@ window trace (<out>/trace). The original game files are required (ANNO1503_GAME_
 --app-arg ARG (repeatable) replaces the default command line (`--play data/maps/lan5.txt`) with these
 arguments, in order: the ship-start opening cases launch `--ship-start <manifest> --seat 0 ...` (W4-OPENING-1);
 the savefiles go to <out dir>.saves (ANNO_SAVE_DIR). The renderer option is always added by this wrapper.
+An --app-arg's `{game}` is replaced by ANNO1503_GAME_DIR, so a case can name a shipped scenario
+(FISHER-VIEW-1: `--play {game}/Scenes/Tutorial/02Trade01.sze`).
 The script's expectations are the assertions: a failed one ends the window with a non-zero status
 and a `FAIL` line in the session's script.log. The case passes only when the window exits 0, neither its
 stdout nor its stderr holds a sanitizer report, and the session's script.log shows the script run: present,
@@ -146,7 +148,8 @@ def main(argv):
     watchdog = False
     with open(err_path, "wb") as se, open(out_path, "wb") as so:
         try:
-            app_args = flags["app"] or ["--play", str(HERE / "data" / "maps" / "lan5.txt")]
+            app_args = [a.replace("{game}", os.environ["ANNO1503_GAME_DIR"]) for a in flags["app"]] \
+                or ["--play", str(HERE / "data" / "maps" / "lan5.txt")]
             proc = subprocess.run([exe, *app_args, "--renderer", renderer],
                                   env=env, stdout=so, stderr=se, timeout=WATCHDOG_S)
             rc = proc.returncode

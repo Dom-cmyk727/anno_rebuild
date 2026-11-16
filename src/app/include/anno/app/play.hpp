@@ -76,6 +76,9 @@ struct FixedPlayOptions {
     /// Default `{}` is the original behaviour (what every start got before this option
     /// existed); `--rules living` gives `cli::apply_rules_profile({}, Living)`.
     sim::Rules rules;
+    /// FISHER-VIEW-1: the persistent extensions the created world uses (--fisher-rules on sets
+    /// `fisher_rules.enabled`). Default `{}`: every extension off, as before this option.
+    sim::ExtensionContext extensions;
 };
 
 /// Registry, `load_scenario_with_links`, `World::create`. The link list names
@@ -119,6 +122,15 @@ struct BuildingInspection {
     /// One line of the kind-specific fields (output/raw/input stock in tons, activity,
     /// workers/animals/carriers out); empty for Inert.
     std::string status;
+    /// FISHER-VIEW-1: a Farm's (the fisherman's hut's) figures as numbers, for a script's
+    /// comparisons: output and raw stock in the payload's 8.8 fixed-point units, workers out.
+    /// nullopt for every other kind.
+    struct FarmFigures {
+        std::uint32_t out_88 = 0;
+        std::uint32_t raw_88 = 0;
+        std::uint32_t workers_out = 0;
+    };
+    std::optional<FarmFigures> farm;
 };
 
 /// `city`'s building at world tile `tile` (World::building_at), formatted for the developer

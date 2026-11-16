@@ -26,6 +26,19 @@ base, HE behaviour and changes are options; HE sound stays at 0 %.
 3. **Save files:** the original names saves by GUID with the display name inside (spec §2.6). Proposal:
    keep that scheme for the rebuild's own save frame (unique file, alias inside). Needed for S6.
 
+**Owner's answers (2026-11-16, in the UI lane's session):**
+1. F5: **like the original** - F5-F8 speed, F10 quick-save, P pause; the ship opening's quick-save moves
+   from F5 to F10.
+2. Menu fit: **neither of the two proposals** - "find and identify a modern state of the art solution that
+   will adjust to the users resolution". S3 therefore starts with a short design study: how current games
+   and engines fit fixed-size art menus to any resolution and aspect ratio (resolution-independent layout,
+   anchoring, scaling rules, filtering, safe areas, very wide and very tall screens), with a recommendation
+   for this menu and its assets, put to the owner before S3 is built. The original's 800 x 600 art stays
+   the base picture.
+3. Save files: **like the original** - GUID file names, the display name inside the save.
+4. Statistics memory slots (`docs/re/ui-statistics.md`, OQ-675): **in the saved game**, as the original
+   (player state, saved and loaded with the game, synchronised in multiplayer).
+
 ## Stages
 
 Every stage: no sim change unless it says so; layouts are data (`data/ui/`, ACCESS name + index, never a

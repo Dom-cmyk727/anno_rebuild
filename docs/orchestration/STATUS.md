@@ -256,6 +256,12 @@ says who is doing what, where the work is, and what it waits on.
     then FAILED in the evidence preflight: a new doctest name holds a `*`, which `cmake/CheckTestNames.cmake`
     rejects (the code was not reached). The UI lane renames it with B2. `5852e5e7` is not a landing head; a
     review counts as accepted for landing only with a green CI on the reviewed head.
+    **UI-PANELS-PREP** (UI lane, the owner's request in its session, 2026-11-16): four read-only research
+    subagents prepare the in-game panels that do not exist yet, with the History Edition as the reference and
+    both editions' files: the warehouse and trade panels; the ship panels and diplomacy; statistics; the
+    in-game options and the main menu. Evidence and specs only (`docs/re/ui-<area>.md` and draft packets
+    `tasks/ui-<area>-1.md` on `task/UI-PANELS-PREP` from main `0f46b1b2`), no implementation, no game runs,
+    OQ-650 to 689 reserved. Nothing is released from them without the owner's go per packet.
     **UI-PAN-1** (UI lane; `65a9632c`; owner: "Yes, no click pan") is ACCEPTED for landing
     ([review](reviews/2026-11-16-ui-pan-1-review.md)): a press inside the 4 px click slop no longer moves the map.
     **LANDED on main `3ce4150e`** 2026-11-16 (owner: "Yes, land it"; verified as an ancestor of `origin/main`;

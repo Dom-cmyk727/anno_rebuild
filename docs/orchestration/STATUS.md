@@ -14,6 +14,8 @@ says who is doing what, where the work is, and what it waits on.
   **The Windows PC's part PASSED:** GPU tests on the RTX 4090 and the app lanes with the game files, 516
   selected, 513 executed, 0 failed, 3 opt-in skips; the drag fix's `live_resize` cases among them. The Mac's
   full run is requested (the owner pastes the prompt); not landed yet.
+  **The owner, 2026-11-16:** GATE-MAC-1 (`d4f2e592`) and UNIX-WARN-1 (`841af180`, once its CI is green) "land
+  with the next one": the candidate `784b5a27` stays as it is, and the two go into the following candidate.
 - **What is left and who does what next:** [remaining-work-2026-11-16.md](remaining-work-2026-11-16.md)
   (2026-11-16, the owner's request): a research agent read the repository and every document; the
   orchestrator checked its plan, changed the order to the LAN target's critical path, and assigned first lists

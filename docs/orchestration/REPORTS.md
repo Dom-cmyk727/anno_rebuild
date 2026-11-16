@@ -12642,3 +12642,89 @@ QUESTIONs: is a `FrameRenderer`-internal instrumentation pass (per-layer scale/o
 (dropped/duplicated frame in OBS, vsync tear) before more engine-side instrumentation?
 
 READY FOR REVIEW.
+
+## ZOOM-BOUNCE-2 — not reproduced hammering both limits; the clamp regression-tested — READY FOR REVIEW (same branch task/ZOOM-BOUNCE-1, new commits, no rebase)
+
+**The hypothesis refuted, so checked the leads directly rather than assume more.** Extended
+`ANNO_VIEW_TRACE`'s own `frames.tsv` with three new columns (`resample_scale`, `resample_offset_x/y`: the
+`gpu::Resample` actually handed to `FrameRenderer::render`, captured at the same point `scale` already is) -
+lead 3's own ask, "the scale that is presented, not only the view state," for free from existing
+infrastructure. `tools/bench/window_table.py`'s `COLUMNS` and its contract test updated to match (columns
+appended at the end, not inserted, so none of that test's many positional `sed` edits needed touching).
+
+**The script** (`tools/test/viewer_wiring/zoom_bounce_2.script`, same cursor and window size): drives hard
+to each zoom limit, then sends several more notches in the same direction with as little gap as the script
+can express (0 ms and 3 ms, some back to back with no wait at all - lead 1's "within a few frames of each
+other"), alternating the closest and farthest limit, 40 repeats = 960 wheel events, **21,775 presented
+frames**. Confirmed the closest limit was genuinely reached and hammered, not approximated: the recorded
+`resample_scale * tile_w(group)` peaked at 118.79364, against the exact theoretical limit
+`84 * sqrt(2) = 118.79394` - matched to four decimals, repeatedly, with the extra inward notches still
+landing on top of it.
+
+**Checked, all clean:**
+- `scale` (view state) vs `resample_scale` (presented): **0 mismatches** over 0.05 %, across all 21,775
+  frames - rules out lead 3 directly; `resampled_view`'s own grid-fit clamp (`resample.cpp`) is confirmed a
+  no-op in this scale range (`fit ≈ 0.315` for this window size, far below any scale near a zoom limit), so
+  it was never going to diverge here, but this is now measured, not assumed.
+- A one-frame spike in the presented, group-independent eased tile width against smooth neighbours (the
+  owner's own signature: one frame far from both its neighbours, which agree with each other): **0 spikes**.
+- A group that flips for one frame and reverts: **0 flickers** (unchanged from ZOOM-BOUNCE-1).
+- `drawable_w`/`drawable_h` (the window's own reported size): **rock steady at 2560 x 1369 on every single
+  frame** of the whole run - rules out a window-size blip producing the same "whole view scaled" look lead 2
+  raised as a possibility.
+
+**Lead 1 is also false by construction, not just by measurement.** `zoom_target_after`'s clamp
+(`std::clamp(target * factor, lowest, levels.tile_w(0) * kZoomEndFactor)`) is applied on every single call,
+inside the one function `zoom_by` ever calls - there is no intermediate state in which an unclamped value
+exists for even one frame, with or without an intervening `zoom_advance`. Proved this directly: a new test
+(below) calls it 20 times in a row from exactly at the limit, with no advance between calls (exactly what
+several same-frame wheel events would produce) - the target never moves, let alone past the limit, by even
+a floating-point hair.
+
+**Added a permanent regression test** (`app_test.cpp`): `zoom_target_after` from exactly at the closest-zoom
+limit, 20 repeated inward notches with no `zoom_advance` between them, asserting the target stays exactly
+at the limit every time (`<=`, not just `Approx`) - proves lead 1's own mechanism cannot occur in this code,
+not just that this run didn't show it.
+
+**Did not reproduce.** No fix made - nothing to fix at the cause the leads named. `view_w`/`view_h`/`group`/
+`scale`/`resample_scale`/`resample_offset_x/y`/`drawable_w`/`drawable_h` were all checked and all clean,
+hammering the exact scenario (reaching a true limit, extra same-direction notches arriving with no gap) the
+owner's own session plausibly produced. What remains unchecked is everything inside `FrameRenderer::render`'s
+own per-layer compositing (`frame.cpp`/`gpu.cpp`) and the capture itself - the same two items ZOOM-BOUNCE-1's
+own entry named, still open.
+
+**Gates (changed lanes only, per the instruction).** `anno_app_tests`: 284/284
+(`cache/gates/zoombounce2-app-1.log`). `viewer_wiring_contract` + `window_tools_contract`: 2/2
+(`cache/gates/zoombounce2-viewerwiringcontract-1.log`). `window_table_contract` (the Python reader's own
+contract test) only registers on UNIX (`CMakeLists.txt`: `if(ANNO_BUILD_TESTS AND UNIX)`), so it never runs
+on this Windows gate; verified the two `sed` substitutions my column change touched by hand against the new
+header/rows (both produce the expected row), and hosted Linux CI is the real check for it. WSL `-Werror`:
+clean on every file this packet touched, same pre-existing `extensions_test.cpp` gap as every other packet
+this cycle. `clang-format` clean.
+
+NOT_RUN: `FrameRenderer`/`gpu.cpp`-internal instrumentation (still the open item from ZOOM-BOUNCE-1); a
+capture-side check of the owner's own recording; the render suite (not run - this packet changes no render
+code, per the instruction not to run it for an unrelated lane).
+
+Decisions and reasoning:
+- **Extended the existing `ANNO_VIEW_TRACE` facility rather than adding a second, parallel trace mechanism**
+  for "the scale handed to the renderer" - `resample` is already a parameter at the exact call site `scale`
+  is read, so this needed one new read, not new plumbing.
+- **Appended the new columns instead of inserting them**, once the contract test's own dozens of
+  position-sensitive `sed` substitutions made clear that an insertion would need touching most of them for
+  no benefit - the column's own name, not its position, is what every reader keys on.
+- **Verified the limit was actually reached, numerically, before trusting the hammering**, rather than
+  assuming 10-14 notches of magnitude 12 would obviously clear it - the recorded value matched the closed
+  form to four decimals, so the "at the limit" condition the lead names was genuinely exercised.
+- **Proved lead 1 false by construction, not only by absence of evidence in one run** - a clamp applied
+  unconditionally on every call admits no gap for an unclamped value to exist in, and the new test pins that
+  down for any future change to `zoom_target_after`.
+- **Did not touch `frame.cpp`/`gpu.cpp`**, since nothing in the view/presented state pointed there and the
+  review's own list of what the executor's checks could not see is the orchestrator's own next step, not a
+  reason to start guessing inside the renderer now.
+
+QUESTIONs: with the view state, the presented resample state, and the window size all clean under direct
+hammering, is the `FrameRenderer`-internal instrumentation (frame 3 of the review's own numbered leads) still
+the next step, or does this shift the balance toward a capture-side check of the owner's own recording first?
+
+READY FOR REVIEW.

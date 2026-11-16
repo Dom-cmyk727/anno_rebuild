@@ -40,7 +40,7 @@ section and line index only.
    meaning: `@4` = amount in whole tons (the sim stores `<< 8`), `@6` = price.
 5. The "Deny building material" toggle sends **command 0x7c mode 9** for goods **0x29 only** with
    value 0x7fff00 (on) or 0 (off), through command slot +0x94 = 0x1005ef70 (D).
-6. All textures of this area are **pixel-identical in HE** (`fenster.tex` ids shifted +4 / +5 / +6,
+6. All textures of this area are **pixel-identical in HE** (`fenster.tex` ids shifted +5 / +4 / +6 by GOG id range, section 3,
    `fenster8` ids unshifted); HE English texts are byte-identical to GOG, HE German texts have the
    same line counts (P). **The HE videos show the plain set, recorded at 0.75:** `HE_UI_1.mp4` and
    `ui_5.mp4` are 1920 x 1080 recordings of a 2542 x 1351 client (video px = 0.75 screen px;
@@ -215,7 +215,7 @@ The right-panel host creates the city panel 0xa3a as a child (0x1003a7d6) and th
 
 | Item | GOG | HE | Evidence |
 |---|---|---|---|
-| `fenster.tex` ids of this area | 661 `VIEWINFOSTADTTAB`, 677, 678, 855, 856, 860-871, 1019, 1511, ... | +5 for ids up to `WARENICONS_SOLDAT` 808 (`VIEWINFOSTADTTAB` 666, `STADT_BILANZ_BK` 682, `VIEWINFOSTADTAUSBAUSTOP` 683), +4 from `WARENICONS_SCHIFF` (829) to 1438 (`VKEK_HINTERGRUND` 859, `PLANKEGROSS` 1023), +6 from 1517 (`FREMDERKONTOR_UNTERGRUND`) | P `anno-dump inc` of both `fenster.inc`; GOG 218 ACCESS / 1606 textures, HE 224 / 1612 |
+| `fenster.tex` ids of this area | 661 `VIEWINFOSTADTTAB`, 677, 678, 855, 856, 860-871, 1019, 1511, ... | by GOG id: **+5 for 6..823** (`VIEWINFOSTADTTAB` 661 → 666, `STADT_BILANZ_BK` 677 → 682, `VIEWINFOSTADTAUSBAUSTOP` 678 → 683); GOG 824, the 22nd `WARENICONS_SOLDAT` frame (803..824), has no HE frame (HE 808..828); **+4 for 825..1487** (`WARENICONS_SCHIFF` 825 → 829, `VKEK_HINTERGRUND` 855 → 859, `PLANKEGROSS` 1019 → 1023); **+6 from 1488** (`OPTION_HELPPLAYER` 1488 → 1494, `FREMDERKONTOR_UNTERGRUND` 1511 → 1517); as `ui-ships-diplomacy.md` §2 and `ui-options-mainmenu.md` §3.2 have it (this row first gave HE ids as the range ends; corrected by the orchestrator's review 2026-11-16) | P `anno-dump inc` of both `fenster.inc` (re-run with `tools/tex.py inc`); GOG 218 ACCESS / 1606 textures, HE 224 / 1612 |
 | Pixels | - | every frame of the 66 ACCESS names checked is pixel-identical (hash) to GOG; exception: `WARENICONS_SOLDAT` has 22 frames in GOG, 21 in HE (the next HE name starts one earlier) | P `cache/prep-warehouse/scripts/acc.py` |
 | `fenster8` (small set) ids | same as plain | **unshifted** (661, 677, 678, 1019 as GOG) | P HE `fenster8.inc` |
 | Graphic set on screen | plain set at 1024 x 768 (tab 42 x 46) | plain set at UI scale 1.0, chrome at x = W - 245 (`he-ui-scale.md`); both owner videos are 0.75 recordings of a 2542 x 1351 client placed at video (7, 24). Prediction `x_video = 7 + 0.75 (x_ref + 1518)`, `y_video = 24 + 0.75 y_ref` against the positions measured in this prep (`ui_5.mp4` frame 405 s): tab 0 (1717.0, 251.3) vs (1716, 251) (the review's prediction: 1716.8, 251.5); plank (1732.8, 213.0) vs (1731, 212); deny button (1789.0, 529.5) vs (1787, 528); page bk (1729.8, 249.8) vs (1725, 245), a match of the smaller `8`-set sprite. The `8` set (0.78125 of the plain size) scored better than the **unscaled** plain set (tab 18.06 vs 43.7) because its size is close to 0.75 x plain; the 0.75-scaled plain set was not matched in this prep | A, M-HE; retracts this prep's "8 set at 1920 x 1080" (orchestrator's review 2026-11-16); OQ-652 |

@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <deque>
 #include <filesystem>
 #include <map>
 #include <optional>
@@ -453,12 +454,21 @@ class Viewer {
     [[nodiscard]] std::uint64_t time_ms() const;
     [[nodiscard]] std::pair<int, int> view_size() const;
     /// ZOOM-SMOOTH-3: the counts the hitch line's own frame steps say nothing about (how much
-    /// content, not how long it took) - visible chunks, stand-in parts, open-sea chunks, chunks
-    /// dropped, planes freed, sprites decoded - gpu::GpuStats's own fields, so this is appended
-    /// only from the GPU path; the CPU path's own measure() call passes no counts.
+    /// content, not how long it took) - chunks built/missing/drawn, stand-in parts, open-sea
+    /// chunks, chunks dropped, planes freed, sprites decoded, draws and bind-group sets this
+    /// frame (ZOOM-SMOOTH-3b item 2), and finish's own wall/CPU time (item 3) - gpu::GpuStats's
+    /// own fields, so this is appended only from the GPU path; the CPU path's own measure() call
+    /// passes no counts.
+    ///
+    /// ZOOM-SMOOTH-3b item 1 (review F1): chunks_built + chunks_missing (the old "visible chunks")
+    /// is 0 at rest, since neither counts a chunk already cached from an earlier frame - it
+    /// measures new work this frame, not what is drawn. chunks_drawn (GpuStats::chunks_visible,
+    /// visible_chunks(view).size() - every chunk the view covers, cached or not) is the real count.
     struct FrameCounts {
-        std::size_t visible_chunks = 0, stand_in_parts = 0, open_sea_chunks = 0, chunks_dropped = 0,
-                    planes_freed = 0, sprites_decoded = 0;
+        std::size_t chunks_built = 0, chunks_missing = 0, chunks_drawn = 0, stand_in_parts = 0,
+                    open_sea_chunks = 0, chunks_dropped = 0, planes_freed = 0, sprites_decoded = 0,
+                    draw_calls = 0, bind_group_sets = 0;
+        double finish_ms = 0, finish_cpu_ms = 0;
     };
     void measure(double chunks_ms, const std::array<double, 4>& stages,
                  const FrameCounts* counts = nullptr);
@@ -469,6 +479,11 @@ class Viewer {
     /// The previous frame's own counts (measure()'s own counts parameter, carried over the way
     /// last_steps_ is) - std::nullopt for the CPU path, which passes none.
     std::optional<FrameCounts> last_counts_;
+    /// The kLookback frames before the one just measured (ZOOM-SMOOTH-3b item 4): whether a slow
+    /// finish follows unusually heavy plane-freeing/chunk-dropping/sprite-decoding just before it
+    /// (deferred destruction, upload catch-up) or none of that, for a given spike.
+    static constexpr std::size_t kLookback = 8;
+    std::deque<FrameCounts> counts_history_;
 
     /// The scene of --view (null in play: the frames draw the picture's generations).
     std::shared_ptr<const render::Scene> fixed_;
@@ -3169,12 +3184,10 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     chunks_received_ += s.chunks_built; // reported with the periodic line, not per frame
     tex_w_ = out_w;
     tex_h_ = out_h;
-    const FrameCounts counts{s.chunks_built + s.chunks_missing,
-                             s.stand_in_parts,
-                             s.open_sea_chunks,
-                             s.chunks_dropped,
-                             s.planes_freed,
-                             s.sprites_new};
+    const FrameCounts counts{s.chunks_built,    s.chunks_missing,  s.chunks_visible,
+                             s.stand_in_parts,  s.open_sea_chunks, s.chunks_dropped,
+                             s.planes_freed,    s.sprites_new,     s.draw_calls,
+                             s.bind_group_sets, s.finish_ms,       s.finish_cpu_ms};
     measure(s.chunks_ms, {s.upload_ms, s.sprites_ms, s.encode_ms, present}, &counts);
 }
 #endif
@@ -3449,14 +3462,37 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages,
         if (!c) {
             return std::string("n/a");
         }
-        char buf[160];
+        char buf[320];
         std::snprintf(buf, sizeof buf,
-                      "visible chunks %zu, stand-in parts %zu, open sea chunks %zu, dropped %zu, "
-                      "planes freed %zu, sprites decoded %zu",
-                      c->visible_chunks, c->stand_in_parts, c->open_sea_chunks, c->chunks_dropped,
-                      c->planes_freed, c->sprites_decoded);
+                      "chunks built %zu, missing %zu, drawn %zu, stand-in parts %zu, open sea "
+                      "chunks %zu, dropped %zu, planes freed %zu, sprites decoded %zu, draws %zu, "
+                      "bind groups set %zu, finish %.2f ms (cpu %.2f ms)",
+                      c->chunks_built, c->chunks_missing, c->chunks_drawn, c->stand_in_parts,
+                      c->open_sea_chunks, c->chunks_dropped, c->planes_freed, c->sprites_decoded,
+                      c->draw_calls, c->bind_group_sets, c->finish_ms, c->finish_cpu_ms);
         return std::string(buf);
     };
+    // ZOOM-SMOOTH-3b item 4: a slow finish this frame (same 2 ms line as ZOOM-MEASURE-1's
+    // control-sweep criterion, not yet classified past 3.1 ms, review F4) prints the sums of
+    // the kLookback frames just before it - unusually heavy freeing/dropping/decoding there
+    // would support deferred destruction or upload catch-up; all quiet there rules it out for
+    // that spike.
+    constexpr double kSlowFinishMs = 2.0;
+    auto describe_lookback = [this] {
+        std::size_t planes = 0, dropped = 0, sprites = 0;
+        for (const FrameCounts& c : counts_history_) {
+            planes += c.planes_freed;
+            dropped += c.chunks_dropped;
+            sprites += c.sprites_decoded;
+        }
+        char buf[160];
+        std::snprintf(
+            buf, sizeof buf,
+            "planes freed %zu, chunks dropped %zu, sprites decoded %zu, over %zu frame(s)", planes,
+            dropped, sprites, counts_history_.size());
+        return std::string(buf);
+    };
+    const bool slow_finish = counts != nullptr && counts->finish_ms > kSlowFinishMs;
     if (last_start_ && last_animating_ && frame_animating_) {
         const double gap =
             std::chrono::duration<double, std::milli>(draw_start_ - *last_start_).count();
@@ -3474,6 +3510,18 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages,
                          events_ms_, group_, describe(last_steps_, last_busy_ms_).c_str(),
                          describe(steps_, total_ms).c_str(), describe_counts(last_counts_).c_str(),
                          describe_counts(counts ? std::optional(*counts) : std::nullopt).c_str());
+            if (slow_finish) {
+                std::fprintf(stderr,
+                             "  finish %.2f ms (cpu %.2f ms) over %.1f ms: look-back - %s\n",
+                             counts->finish_ms, counts->finish_cpu_ms, kSlowFinishMs,
+                             describe_lookback().c_str());
+            }
+        }
+    }
+    if (counts != nullptr) {
+        counts_history_.push_back(*counts);
+        if (counts_history_.size() > kLookback) {
+            counts_history_.pop_front();
         }
     }
     last_counts_ = counts ? std::optional(*counts) : std::nullopt;

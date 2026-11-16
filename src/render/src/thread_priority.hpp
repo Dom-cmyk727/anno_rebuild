@@ -3,6 +3,7 @@
 // Background threads (chunk builders, the reaper, river flow builders, the wave
 // simulation setup, texture pre-creation) yield to the window thread.
 
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 
@@ -18,6 +19,7 @@
 #include <pthread.h>
 #include <sys/resource.h>
 #include <sys/syscall.h>
+#include <time.h>
 #include <unistd.h>
 #endif
 
@@ -43,6 +45,34 @@ inline void lower_thread_priority() {
     // The kernel's thread id is a task id, which setpriority takes.
     const int rc = setpriority(PRIO_PROCESS, static_cast<id_t>(::syscall(SYS_gettid)), 5);
     static_cast<void>(rc);
+#endif
+}
+
+/// CPU time (ms) the calling thread has consumed so far, not wall time
+/// (ZOOM-SMOOTH-3b item 3): comparing this against a wall-clock duration around
+/// the same call tells "computing" (CPU close to wall) apart from "waiting on a
+/// lock, descheduled, or paying for another thread's deferred destruction"
+/// (CPU well under wall). -1 if the platform call fails.
+inline double thread_cpu_time_ms() {
+#if defined(_WIN32)
+    FILETIME creation{};
+    FILETIME exit{};
+    FILETIME kernel{};
+    FILETIME user{};
+    if (GetThreadTimes(GetCurrentThread(), &creation, &exit, &kernel, &user) == 0) {
+        return -1.0;
+    }
+    const auto ticks = [](const FILETIME& ft) {
+        return (static_cast<std::uint64_t>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
+    };
+    // 100 ns ticks (kernel + user) to milliseconds.
+    return static_cast<double>(ticks(kernel) + ticks(user)) / 10000.0;
+#else
+    struct timespec ts{};
+    if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts) != 0) {
+        return -1.0;
+    }
+    return static_cast<double>(ts.tv_sec) * 1000.0 + static_cast<double>(ts.tv_nsec) / 1.0e6;
 #endif
 }
 

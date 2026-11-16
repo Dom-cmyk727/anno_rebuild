@@ -98,6 +98,8 @@ struct GpuStats {
     double encoder_ms = 0, uniforms_ms = 0, draws_ms = 0, stand_in_ms = 0, pieces_ms = 0;
     bool pieces_realloc = false;
     double record_ms = 0, finish_ms = 0, scope_ms = 0, queue_ms = 0, release_ms = 0;
+    /// CPU time of the finish_ms call (ZOOM-SMOOTH-3b item 3); -1 if unavailable.
+    double finish_cpu_ms = 0;
     /// A step of render(): a name and its time on the window thread.
     struct Step {
         const char* name;
@@ -184,6 +186,18 @@ struct GpuStats {
     std::size_t chunks_cpu_fallback = 0;
     std::size_t chunk_atlas_grows = 0;
     double chunk_atlas_mb = 0;
+    /// The chunks of visible_chunks(view) this frame (ZOOM-SMOOTH-3b item 1):
+    /// what is actually drawn, unlike chunks_built (built this frame) and
+    /// chunks_missing (not cached yet), which are both 0 at rest while this
+    /// stays the full count.
+    std::size_t chunks_visible = 0;
+    /// Render-pass draw calls and SetBindGroup calls issued this frame
+    /// (ZOOM-SMOOTH-3b item 2): the chunk passes (terrain/ground/sea/objects/
+    /// sea-over, each one draw + two SetBindGroup per chunk draw) and the
+    /// sprite/resample/UI-overlay passes. Omits the one SetBindGroup(p, 0, ...)
+    /// per render pass (terrain/under/sea): fixed at 3 a frame, not content-scaling.
+    std::size_t draw_calls = 0;
+    std::size_t bind_group_sets = 0;
 };
 
 /// Tuning of the compositor (Rust constants; data, PLAN §0.1).

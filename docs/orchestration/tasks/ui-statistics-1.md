@@ -60,8 +60,10 @@ one concern of about 2–4 hours, reviewed by the orchestrator at handover (no e
 ### S4 — Clicks and keys (2–3 h)
 - `-` opens (and the options button), exit button and the S0 key close, view switch, Stores/Productivity, goods
   toggle with the 8-slot limit (9th refused, icon un-pressed), memory I–VIII (selection per memory, list rebuilt
-  in goods order), city list choice and scroll. Memories in a local per-player store until the owner decides
-  OQ-675.
+  in goods order), city list choice and scroll. The owner decided OQ-675 on 2026-11-16: the memories are
+  **saved in the game**, as in the original. They are player state, saved and loaded with the game and kept in
+  sync in multiplayer. Until the sim has that field (the sim lane's packet), S4 keeps them in a per-player
+  store and puts it behind one interface so the field can replace it.
 - **Acceptance:** scripted UI tests for each action; a replay of the HE sequence (open, select wood, %, back,
   supply, close) produces the same states as `ui_5` 7:36.88–8:50.45; the game clock does not advance while the
   screen is open if OQ-670 confirms the pause.

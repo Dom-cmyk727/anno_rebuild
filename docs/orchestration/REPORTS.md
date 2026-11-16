@@ -12895,8 +12895,14 @@ thread machine is not an obvious match for a 13 ms descheduling.
 after a solo rerun of 6 tests that first failed under memory contention (unrelated to this diff - chunk-draw/
 river-corpus/water-field/scene-digest tests, none touching `gpu.hpp`, `gpu.cpp`, `gpu_fluid.cpp`,
 `viewer.cpp` or `thread_priority.hpp`), run strictly after both captures finished (never together, per F5).
-`clang-format`: pending. WSL `-Werror`: pending - held at the orchestrator's own request (this PC's landing
-gate needs it); will follow in a later message.
+`clang-format`: clean after one `-i` fix. WSL `-Werror`: **found a real bug the MSVC build cannot see**
+(docs' own note: "MSVC does not report most of these warnings") - `hitch_tracking_enabled()`'s one call
+site is `draw_gpu`'s own `render()` call, `ANNO_VIEWER_GPU`-only; without a matching guard the function
+itself is unused in the CPU-only build, `-Werror=unused-function` under both GCC and Clang. Fixed by
+wrapping it in the same `#ifdef ANNO_VIEWER_GPU` as its call site (commit `08b683c7`); rebuilt (MSVC, still
+clean) and reran the WSL check - clean on every touched file under GCC 13 and Clang 18, both with and
+without the viewer's GPU code, except the same pre-existing `extensions_test.cpp` gap. No gate was visibly
+running on this PC before either WSL run (checked per the orchestrator's own landing-gate hold).
 
 NOT_RUN: a third or fourth background-wgpu-calling thread search (not asked for this packet; item 6's own
 three are the full list found so far); the full suite and the game-file run (the orchestrator's, at

@@ -232,6 +232,12 @@ says who is doing what, where the work is, and what it waits on.
     zooms the main view, a click centres the camera, and **the chevrons turn the whole view**. The rebuild's
     renderer has no view turn, so that is a render-lane packet to be written (VIEW-TURN-1), to be placed
     against RENDER-DIRECT by the orchestrator; UI-MINIMAP-1 covers drawing, zoom and click.
+    **Step B1 (the drawing) reviewed and ACCEPTED** 2026-11-16 (`5852e5e7`): the parchment, the world image and
+    the white view box are drawn under the chrome's hole in the CPU and GPU UI paths (0 of 31,850 pixels
+    differ between them); every number is in `data/ui/minimap.txt` with the original's value and its code
+    address, guarded by a test; app code only. Against the owner's History Edition recording the island
+    outlines agree. Owner colours, markers and clicks (B2, C) follow on the same branch; it lands when the
+    packet is complete, with the owner's OK.
     **UI-PAN-1** (UI lane; `65a9632c`; owner: "Yes, no click pan") is ACCEPTED for landing
     ([review](reviews/2026-11-16-ui-pan-1-review.md)): a press inside the 4 px click slop no longer moves the map.
     **LANDED on main `3ce4150e`** 2026-11-16 (owner: "Yes, land it"; verified as an ancestor of `origin/main`;

@@ -17,6 +17,9 @@ says who is doing what, where the work is, and what it waits on.
   `task/UI-TABS-1` from `main` `ac02d4a2`, packet `tasks/ui-tabs-1.md` on that branch (`6d20d16e`). Stage A: the
   tab and sub-tab switching (player, city view, options) with clicks and the keys D, S and C; stage B (the
   overview's live figures) after A's review. App-side only. Landing stays with the orchestrator.
+  **Stage A reviewed** 2026-11-16 (`a79499cf`, [review](reviews/2026-11-16-ui-tabs-1-stage-a-review.md)):
+  ACCEPTED once CI is green; two of its addresses were disassembled again by the orchestrator; the owner's
+  viewer test is next.
 - **Landing evidence, owner rule of 2026-11-16** ("i agree with you recommendations", after the PC's memory
   stopped up to 14 large tests per run): from the next landing on,
   1. **the Mac executor runs the full game-file suite** on each landing candidate (it has the files and more

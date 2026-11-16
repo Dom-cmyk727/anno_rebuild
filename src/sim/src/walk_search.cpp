@@ -83,8 +83,8 @@ void seed(Open& open, SearchResult& result, WalkCells& cells, std::span<const Wa
             continue;
         }
         cell.high = static_cast<std::uint16_t>((cell.high & 0xfc07) | 7);
-        cell.low =
-            static_cast<std::uint16_t>(cell.low | start_keys(raw.mask9, point.col, point.row));
+        cell.low = static_cast<std::uint16_t>(
+            cell.low | start_keys(cells.point_mask(point.tile), point.col, point.row));
         if (cells.set(point.tile, cell)) {
             enqueue(open, result, Node{point.tile, 0});
         }
@@ -240,8 +240,8 @@ GoalMasks mark_goals(WalkCells& cells, std::span<const WalkPoint> goals, SearchR
         // 0x10003aa0), the way a start cell does (0x10003f73). Without it a tile whose mapped low
         // word is 0 (stand 1314, mask 0x155) could never be entered, so its goals were never
         // reached.
-        cell.low =
-            static_cast<std::uint16_t>(cell.low | start_keys(raw.mask9, point.col, point.row));
+        cell.low = static_cast<std::uint16_t>(
+            cell.low | start_keys(cells.point_mask(point.tile), point.col, point.row));
         if (cells.set(point.tile, cell)) {
             masks[point.tile] =
                 static_cast<std::uint16_t>(masks[point.tile] | (1U << (point.col + 3 * point.row)));
@@ -414,7 +414,8 @@ RouteCheck route_legal(const WalkCells& input, const WalkTables& tables, std::ui
     }
     WalkCell cur = cells.get(start.tile);
     cur.high = static_cast<std::uint16_t>((cur.high & 0xfc07) | 7);
-    cur.low = static_cast<std::uint16_t>(cur.low | start_keys(raw.mask9, start.col, start.row));
+    cur.low = static_cast<std::uint16_t>(
+        cur.low | start_keys(cells.point_mask(start.tile), start.col, start.row));
     for (std::size_t i = 1; i < route.size(); ++i) {
         std::uint32_t dir = 8;
         for (const std::uint32_t d : {0U, 2U, 4U, 6U}) {

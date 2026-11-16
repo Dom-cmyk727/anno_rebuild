@@ -74,6 +74,13 @@ Structural invariants that hold under **both** rule sets (refused when violated)
 
 **Enhanced rules (`forestry_claim_hygiene = true`).** Stable: (E-i) every `claims` entry names a worker that exists, has not ended (no `expiry_stamp`: every end path releases its entry first, §3.5), is in `ToTree` or `Cut`, has that tile as its `target`, and the tile's bit 29 is set; (E-ii) every set bit 29 has an entry (no stray bits: the world never creates one, and a loader **refuses** a save that has one); (E-iii) a worker in `ToTree`/`Cut` without an entry is **transitional but valid** (the enhanced invalidation of a placement or a clearing dropped its claim, §3.5; it revalidates at its next visit); (E-iv) at most one entry per tile (a map). Violations of E-i, E-ii and E-iv are refused, never repaired. Transitions: those of §3.5 (enhanced column). A faithful save is not loadable into an enhanced world and vice versa (Rules are hashed and compared). *(E2.0: unchanged from E1-FINAL except that the enhanced invalidation is now the only way a held claim is dropped by a tile change, since faithful placement keeps the bit.)*
 
+**Enabled fisher exception (FISHER-1f).** Job 45 behind `fisher_rules` also
+uses the existing `wait` in Done, with no home and no expiry stamp, for its
+released outside end wait. The counter is already free; the position and cargo
+stay unchanged until the wait finishes and normal expiry starts. This is not
+a new field or a changed ordinary-forester rule. See
+[fisher.md §11](../re/fisher.md#11-closed-fisher-runtime-and-native-proof-fisher-1f-2026-11-16).
+
 ### 2.2 Raw-store width
 
 The original's `raw` is a u16 (`+0x1c`); `Farm::raw` is u32. For the evidenced forester the largest reachable value is bounded by its own parameters: sends need `raw/need <= 384/rate`, i.e. `raw <= (384/14)*32 + 31 = 895` at a send, plus `max_figures * capacity = 2 * 256` of deliveries in flight -> **1407**, far from 65 536, so the u16 wrap is unobservable for 801 (**A**, with the arithmetic). This is a property of the **configured type**, not a global limit: the general bound is `B = (floor(384/rate) * need + need - 1) + max_figures * worker_capacity`, evaluated per `ProductionType` and figure type at load; a configuration with `B > 0xFFFF` for its store width needs a recorded decision (model the width as data, or accept the u32 difference) - the engine adds **no** `raw <= 0xFFFF` invariant and clips nothing. `StoreDelta::Input` clamps to 0 .. 0xFFFFFFFF (u32), which equals the u16 add whenever the sum stays below 65 536 (always for 801).

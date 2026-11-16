@@ -429,6 +429,12 @@ WalkCells::WalkCells(const Island& island, const TypeRegistry& types, const Walk
     rect_ = {static_cast<std::int32_t>(x0), static_cast<std::int32_t>(y0),
              static_cast<std::uint32_t>(x1 - x0), static_cast<std::uint32_t>(y1 - y0)};
 }
+std::uint16_t WalkCells::point_mask(TileXY p) const {
+    // docs/re/fisher.md 10.2: 0x10003b0f increments the cell mode; mode 4
+    // (0x1009215e-0x10092181) supplies nine free subcells even on closed sea cells.
+    return mode_ == WalkCellMode::FisherSea ? std::uint16_t{0}
+                                            : walk_record(island_, types_, p).mask9;
+}
 WalkRecord WalkCells::record(TileXY p) const {
     if (mode_ == WalkCellMode::Land)
         return walk_record(island_, types_, p);

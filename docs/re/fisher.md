@@ -1177,6 +1177,20 @@ claim and cuts are unchanged from §3: `0x10059210`–`0x10059398`,
 `0x100553e0`, `0x10054530`; three successful cuts normally give 768 cargo.
 The inherited finer-route/float qualification remains [OQ-603](../open-questions.md).
 
+**D — paired-subcell refinement, 2026-11-16 (FISHER-1f).** The point flood
+`0x10003aa0` reads the configured coarse mode at `0x10003b07`, increments
+it at `0x10003b0f`, and calls island `+0x128` at `0x10003b17`. The ordinary
+land pair is modes 0/1; the fisher pair is **3/4**. Dispatcher table
+`0x10092190`, entry 4, selects `0x1009215e`–`0x10092187`: stores at
+`0x10092166`–`0x10092181` write nine bytes of value 8, the free-subcell
+value. Thus the fisher point flood's blocked bitmap is **zero even on a
+closed coarse cell**. All four edge keys can be reached from its seed.
+Neither mode 3's blocked bitmap nor the object's mode-1 WALKMASK is the
+correct point-flood input. This explains the real site's departure toward
+adjacent water; it does not admit a closed destination. The coast, coarse
+cell and goal-mask rules above are unchanged. Original listings remain in
+`cache/fisher-1f/point-mode-original.txt`, outside git.
+
 **D/A — closed home goals cannot be entered.** The home start
 `0x10057ae0`–`0x10057bbe` bypasses search only if already inside the home
 footprint (`0x10057b68`–`0x10057b73`). Otherwise it uses the fisher's mode-3
@@ -1306,3 +1320,88 @@ can run in the rebuild viewer. It must also verify the HE build/entrance
 means, rather than assume GOG equality. No viewer wiring, original live run,
 HE code read, pixel capture or new rule is smuggled into this read packet.
 The remaining save-caller closure and OQ-603 likewise remain unproved.
+
+## 11. Closed fisher runtime and native proof (FISHER-1f, 2026-11-16)
+
+**T — measured base before edits.** Normal Tutorial/02Trade01 loading,
+World::create, original INIT and one player-2 Build of 810 at (242,217),
+rotation 1, reproduced the two entrance means 32/48. At base `5901b846`,
+worker 16 spawned at tick 690, ended at 720 without leaving or catching,
+released its slot and entered expiry immediately. Worker 44 spawned at 1090;
+the first registry slot disappeared at 8220. Raw and food stayed zero.
+`cache/fisher-1f/baseline-site-01.log` records the stages. This did not meet
+§10.2's point-flood rule or outside end wait. The new real-site test linked
+to preserved base production archives fails `REQUIRE(left)`; the two new
+synthetic cases also fail on the base. These are negative proofs, not passes.
+
+**D/T — only two behavioral corrections.** The paired-mode read in §10.2
+makes `WalkCells::point_mask` return the free mode-4 bitmap for FisherSea,
+while coarse cells and layer admission retain their mode-3 values. Land
+point floods are unchanged. Start, explicit-goal and route-validation keys
+all use the paired bitmap. In the harvest body's Done state, an enabled
+fisher ending outside releases its home once, starts the nominal 7,500 ticks
+in its existing `wait`, and consumes elapsed/surplus time without movement.
+Only after that does `end_figure` start registry expiry. A forced end cancels
+the pending wait. Inside completion, raw receipt, harvest and eligible-attempt
+draw order retain their existing rules. Types 810/3978 use this route-45 path;
+3510/route 44 is untouched. The duration is the original timed rule, not a
+capacity limit, and is separate from the configurable registry-expiry delay.
+
+**T — state/validation.** Done with a positive wait is allowed only for an
+enabled fisher with no home and no expiry stamp. The existing authoritative
+step, wait, position, cargo and home/expiry fields suffice; no field, enum,
+tag, payload, state number or section version changes. The native loader
+accepts this valid continuation and still refuses unresolved Done with zero
+wait. The disabled-state refusal wording is retained.
+
+| Stage | Base | Corrected real-site measurement |
+|---|---|---|
+| Spawn | 690, first entrance | 690, same first entrance |
+| First movement / footprint exit | none | 720 / 1170, normal sea walk |
+| Catch | none | 7370 / 13580 / 19720, cargo 256 / 512 / 768 |
+| Failed home / release | 720, empty cargo | 19720, cargo 768, raw 0, workers_out 0 |
+| Second dispatch | 1090 | 19890, while the first worker still waits |
+| Begin registry expiry | 720 | 27230 |
+| Registry removal | 8220 | 34730 |
+
+**T/A — time qualification.** The measurement above uses 10-tick turns;
+the exact departure/catch/release observations and remaining-wait values are
+in the canary log. The private production driver observes 7,480 ticks left
+on release, because that visit already carried surplus time into the new
+wait. Registry visits determine when an expired remainder is next observed.
+The integer transition is tested at zero elapsed, one tick, a partitioned
+wait ending with one tick owed, and a final tick plus surplus; a saved wait
+resumes without re-arming or losing whole ticks. This does not assert x87,
+vertical, frame-time or HE equality (OQ-603).
+
+**T — proof scope.** All five `closed_home` reference records drive the C++
+runtime, including inside bypass, no goods, empty cargo and u16 raw wrap.
+A separate paired-mode control departs from a closed coarse cell even when
+the object's raw mask is fully blocked, and cannot enter that cell as a goal.
+The real canary retains original actors, terrain, stocks, resources and INIT:
+no projection, actor deletion, inventory injection or relocation. Its two
+independent starts compare every turn; native continuations are captured both
+mid-cut and mid-released-wait. The two old open canaries remain controls.
+Exact gate outcomes, including unsuccessful Debug timeouts and their targeted
+Release retries, belong to the package entry in [REPORTS.md](../orchestration/REPORTS.md).
+
+| Requirement | Positive proof | Counterexample / boundary | Review |
+|---|---|---|---|
+| Paired start flood, closed goals | Coarse mode 3 / point mode 4; real departure | Closed destination still refused | orchestrator pending |
+| Failed home never credits or drops cargo | Three claimed cuts, raw/food 0, fixed position/cargo | Inside reference records do credit, with u16 wrap | orchestrator pending |
+| Separate release, wait and expiry | Slot free and second worker sent before first expiry | Zero/one tick, native remainder, surplus and forced end | orchestrator pending |
+| Disabled compatibility | Disabled/default runs plus preserved-base trace | No update mode or pin/recording edits | orchestrator pending |
+
+**T — compatibility measurements.** At tick 60,000 the closed-site disabled
+world is `da38267a8c04253f`, with per-turn trace `cf34641133b002cb`, exactly
+matching the preserved base-engine driver. Explicit off and omitted/default
+extensions also agree every turn and in native bytes. The two existing open
+canaries retain their earlier enabled traces (`2550a07bc1a58b` for Venice,
+`cfe100edcf0f7bfc` for the human hut) and their disabled traces from §9.
+The scoped pin check covers touched lanes; all pin values and existing fixture
+bytes remain unchanged. It is not a claim that the full game-file suite ran.
+
+**NOT_RUN / U.** HE/live-original captures, original temporary-worker save
+survival and float/Y parity remain unproved. This is the GOG-read integer sim
+slice. The enabled viewer entry point, stock/time readout and picture comparison
+remain the UI lane's FISHER-HE-1 work; no app wiring is included here.

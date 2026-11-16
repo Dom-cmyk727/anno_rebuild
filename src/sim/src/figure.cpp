@@ -217,13 +217,20 @@ void erase_id(std::vector<FigureId>& list, FigureId id) {
 
 /// MAP-ECON-1-CLOSE-1: the harvest job's terminal state on the shared end path (docs/sim/
 /// forestry.md 2.1, 3.5). Runs before release_home clears the home id, which names the island of
-/// the target. Done (the body's own end, already normalized) is left untouched, so the ordinary
-/// completion's bytes do not change; repeated calls do nothing.
+/// the target. Ordinary Done completions stay unchanged; an explicit end also
+/// cancels a released fisher's pending wait. Repeated calls do nothing.
 void finish_harvest(Figure& figure, Effects& fx) {
-    if (!figure.harvest.has_value() || figure.harvest->step == HarvestStep::Done) {
+    if (!figure.harvest.has_value()) {
         return;
     }
     HarvestState& h = *figure.harvest;
+    if (h.step == HarvestStep::Done) {
+        // An explicit end (e.g. destruction) also cancels a released fisher's
+        // pending wait; normal expiry reaches here with wait already zero.
+        if (fisher_job(figure.job))
+            h.wait = 0;
+        return;
+    }
     if (h.step == HarvestStep::ToTree || h.step == HarvestStep::Cut) {
         // Only these steps hold a claim (Start has not selected, the cut arrival released it before
         // ToHome). Owner-conditional and hygiene-gated at the merge: never another worker's claim.
@@ -278,6 +285,10 @@ void release_home(Figure& figure, Effects& fx) {
 }
 
 } // namespace
+
+void release_figure_home(Figure& figure, Effects& fx) {
+    release_home(figure, fx);
+}
 
 std::optional<Figure> remove_figure(FigureRegistry& registry, FigureId id) {
     erase_id(registry.expiry, id);
@@ -439,10 +450,16 @@ std::string validate_figures(const FigureRegistry& registry, const IdCounters& i
                 return hw + ".start_delay: " + std::to_string(h.start_delay) +
                        " ticks still owed, but the job has started (a step, a route or cargo)";
             }
-            if ((h.step == HarvestStep::Cut) != (h.wait > 0)) {
+            const bool released_fisher_wait = fisher && fisher_job(f.job) &&
+                                              h.step == HarvestStep::Done && !f.home.valid() &&
+                                              !f.expiry_stamp.has_value() && h.wait > 0;
+            if ((h.step == HarvestStep::Cut || released_fisher_wait) != (h.wait > 0)) {
                 return hw + ".wait: " + std::to_string(h.wait) + " in step " +
                        std::to_string(static_cast<unsigned>(h.step)) +
-                       " (a wait is owed exactly in Cut, and a finished wait is resolved at once)";
+                       (fisher && fisher_job(f.job)
+                            ? " (a wait is owed in Cut or a released fisher's Done)"
+                            : " (a wait is owed exactly in Cut, and a finished wait is resolved at "
+                              "once)");
             }
             if (!h.route.empty() && (h.next == 0 || h.next > h.route.size())) {
                 return hw + ".next: " + std::to_string(h.next) + " is not in 1 .. " +
@@ -456,7 +473,8 @@ std::string validate_figures(const FigureRegistry& registry, const IdCounters& i
                 h.step != HarvestStep::ToHome) {
                 return hw + ".route: a walk outside the walking steps ToTree and ToHome";
             }
-            if (h.step == HarvestStep::Done && !f.expiry_stamp.has_value()) {
+            if (h.step == HarvestStep::Done && !f.expiry_stamp.has_value() &&
+                !released_fisher_wait) {
                 return hw + ".step: Done, but the figure has not ended (Done is resolved in the "
                             "same call by its end)";
             }

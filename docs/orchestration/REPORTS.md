@@ -12512,3 +12512,64 @@ Branch `task/UI-PAN-1` from main `67a960c9`. Done by the UI lane itself on the o
   continuation also remain unverified; no HE parity or capture-readiness claim is made.
 
 READY FOR REVIEW. Stop here; FISHER-HE-1 is not released.
+
+## FISHER-1f — READY FOR REVIEW (Mac, 2026-11-16)
+
+- Base/branch: accepted RE-3 `5901b846`, `task/FISHER-1f`; no merge/rebase/main push.
+- [Rule, stage comparison and acceptance table](../re/fisher.md#11-closed-fisher-runtime-and-native-proof-fisher-1f-2026-11-16).
+- Baseline normal Tutorial/02Trade01, player 2, one Build 810 at (242,217), rotation 1:
+  spawn 690; end 720 without leaving/catching, raw/food 0; second 1090; removed 8220.
+- Measured first, with original INIT/actors/terrain/stock; no projection or injected state.
+- Corrected: spawn 690, exit footprint 1170, catches 7370/13580/19720 (256/512/768).
+- Failed home/release 19720: raw 0, workers_out 0, cargo 768, fixed position (63104,57643).
+- Second worker 19890, first begins expiry 27230 and is removed 34730; no raw/food rise.
+- New primary refinement: AnnoWelt `0x10003b07`/`0x10003b0f` pairs coarse mode 3 with
+  subcell mode 4; dispatcher `0x10092190[4]`, `0x1009215e`–`0x10092187`, writes nine free 8s.
+- `WalkCells::point_mask` now uses that bitmap for starts/goals/route validation;
+  closed destination code 7 is still never admitted. No guessed launch relocation.
+- Done reuses existing `HarvestState::wait`; immediate one-time release, wait in place,
+  then registry expiry. Inside bypass/receipt, raw width, cut and draw order retained.
+- Nominal 7500 ticks, initial observed remainder 7480, nominal due 27200, observed
+  expiry 27230: surplus is carried; registry-visit/float qualification stays OQ-603.
+- No field, enum, tag, payload, version, default or pin changes; 3510/route 44 untouched.
+- Five reference records through C++ include goods 0, inside credit and u16 raw wrap.
+  Zero/one tick, partition/surplus, saved remainder, forced end and invalid Done covered.
+- New real canary: two fresh starts plus cut/wait reloads agree every turn and in bytes.
+- New tests with preserved base archives fail (safe expected failures after harness fixes):
+  `cache/fisher-1f/base-negative-02.log`; real test `base-real-negative-01.log` fails `REQUIRE(left)`.
+  `COUNTS: selected=2 executed=0 failed=2 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0`
+  `VERDICT: FAIL failed tests`
+- Debug game-file attempt `cache/fisher-1f/canaries-vectors-01.log`: vectors and human
+  open control pass; Venice and closed site time out at their declared 600 seconds.
+  `COUNTS: selected=4 executed=2 failed=2 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0`
+  `VERDICT: FAIL failed tests`
+- Only timed-out cases retried in Release, declared 900 seconds from prior Release calibration.
+- Venice `cache/fisher-1f/venice-release-retry-01.log`, 131.74 seconds:
+  `COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`
+- Strengthened vector case + failed closed site `cache/fisher-1f/closed-release-final-01.log`, 38.87 seconds:
+  `COUNTS: selected=2 executed=2 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`
+- Touched fisher/harvest/figure/walk lanes and references, `cache/fisher-1f/affected-pins-01.log`:
+  `COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`
+  `COUNTS: selected=91 executed=91 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`
+- PINS check PASS: 0 pins moved, 0 fixture byte changes, **scope=partial** (touched lanes).
+- Disabled closed-site end/trace `da38267a8c04253f` / `cf34641133b002cb` at tick 60000
+  matches preserved base; old open on/off trace values also match exactly (§11).
+- Full Dev build `cache/fisher-1f/dev-build-final-02.log`: exit 0, zero warnings.
+- Diff/format checks and lint pass; exact timed-rule lint exception carries original addresses.
+- Earlier harness failures (null guard, asymmetric zero advance) are retained in
+  `base-negative-01.log` / `closed-focused-01.log`; corrected and superseded, never counted as passes.
+- No memory refusals; no running test interrupted. Hosted pushed-head CI supplied at handover.
+- Decisions and reasoning:
+  - Mode 4 point connectivity and mode 3 destination admission are separate original rules.
+  - Reuse the saved integer remainder, keeping release and registry expiry separate; add no state.
+  - A timed rule is not a capacity limit; use an addressed constant/precise lint exception.
+  - Preserve Debug timeouts; retry only failed cases in the calibrated Release configuration.
+  - Scope pins/tests to affected consumers; full suite/Windows game-file run belong to the orchestrator.
+- NOT_RUN: full game-file suite, Windows/HE/live-original capture, original save closure, float/Y parity.
+- QUESTIONs: none; nominal wait fits existing fields. Independent review: orchestrator pending.
+
+READY FOR REVIEW. Stop after pushed-head CI; no UI/capture or parked task started.

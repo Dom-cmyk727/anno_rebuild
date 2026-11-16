@@ -150,7 +150,7 @@ void observe(sim::World& w, Trip& t) {
     t.out = farm.out;
 }
 sim::World original_world(const std::filesystem::path& game, const std::string& map,
-                          std::optional<bool> enabled, bool human) {
+                          std::optional<bool> enabled, bool human, bool closed = false) {
     const auto registry =
         anno::sim_load::load_original_registry(game, anno::sim_load::FigureEntries::Required);
     REQUIRE_MESSAGE(registry.types, registry.error);
@@ -169,8 +169,10 @@ sim::World original_world(const std::filesystem::path& game, const std::string& 
     REQUIRE_MESSAGE(session, (session ? "" : session.error()));
     if (human) {
         const auto result =
-            w.apply({sim::PlayerId{2}, sim::BuildCmd{{sim::IslandId{3}, sim::CityNo{0}},
-                                                     {{sim::TypeId{810}, 243, 216, 0, 0, 0}}}});
+            w.apply({sim::PlayerId{2},
+                     sim::BuildCmd{{sim::IslandId{3}, sim::CityNo{0}},
+                                   {{sim::TypeId{810}, closed ? 242 : 243, closed ? 217 : 216,
+                                     static_cast<std::uint8_t>(closed ? 1 : 0), 0, 0}}}});
         REQUIRE(result.ok());
         REQUIRE(result.records.size() == 1);
         REQUIRE(result.records.front().status == sim::Reject::None);
@@ -354,4 +356,189 @@ TEST_CASE("fisher real map: human 810 one prescribed Build completes trip and fo
     auto w = original_world(*game, map, true, true);
     auto trips = original_huts(w, true);
     run_canary(w, trips, map, *game, true);
+}
+
+TEST_CASE("fisher closed real map: human 810 leaves catches fails home waits releases resends and "
+          "reloads deterministically with flag-off identity (game files)" *
+          doctest::test_suite("heavy")) {
+    const auto game = anno::test::game_dir();
+    if (!game) {
+        std::cout << "SKIPPED: ANNO1503_GAME_DIR not set (original game files unavailable)\n";
+        return;
+    }
+    const std::string map = "Tutorial/02Trade01.sze";
+    auto w = original_world(*game, map, true, true, true);
+    auto duplicate = original_world(*game, map, true, true, true);
+    auto off = original_world(*game, map, false, true, true);
+    auto defaults = original_world(*game, map, std::nullopt, true, true);
+    const auto registry =
+        anno::sim_load::load_original_registry(*game, anno::sim_load::FigureEntries::Required);
+    REQUIRE_MESSAGE(registry.types, registry.error);
+    const auto huts = original_huts(w, true);
+    REQUIRE(huts.size() == 1);
+    const auto hid = huts[0].home;
+    const auto* type = w.types().find(sim::TypeId{810});
+    REQUIRE(type);
+    const auto farm_at = [&](const sim::World& world) -> const sim::Farm& {
+        const auto* b = world.find_building(hid);
+        REQUIRE(b);
+        return std::get<sim::Farm>(b->payload);
+    };
+    const auto& island = *w.islands()[3];
+    const auto entrances = sim::entrance_walk_points(*w.find_building(hid), *type);
+    REQUIRE(entrances.size() == 2);
+    for (std::size_t n = 0; n < entrances.size(); ++n) {
+        const auto cell = sim::fisher_cell_at(
+            island.terrain->height, island.tiles.width(), island.tiles.height(),
+            static_cast<std::uint32_t>(entrances[n].tile.x - island.tiles.x0()),
+            static_cast<std::uint32_t>(entrances[n].tile.y - island.tiles.y0()));
+        REQUIRE(cell);
+        CHECK(cell->mean == (n == 0 ? 32 : 48));
+        CHECK_FALSE(cell->walkable_water);
+    }
+    std::optional<sim::World> cut_reload, end_reload;
+    sim::FigureId first, second;
+    std::uint64_t spawn = 0, left = 0, caught = 0, released = 0, expiry = 0, removed = 0,
+                  second_tick = 0;
+    std::uint32_t cargo = 0, cuts = 0, due = 0;
+    sim::FixedPos last_catch, stop;
+    std::optional<sim::TileXY> cutting;
+    sim::StateHasher on_trace, off_trace;
+    while (w.clock().tick() < kTripBound) {
+        w.advance(kTurnMs);
+        duplicate.advance(kTurnMs);
+        off.advance(kTurnMs);
+        defaults.advance(kTurnMs);
+        if (cut_reload)
+            cut_reload->advance(kTurnMs);
+        if (end_reload)
+            end_reload->advance(kTurnMs);
+        REQUIRE_MESSAGE(!w.faulted(), w.fault());
+        REQUIRE_MESSAGE(!off.faulted(), off.fault());
+        const auto hash = w.state_hash();
+        REQUIRE(hash == duplicate.state_hash());
+        if (cut_reload)
+            REQUIRE(hash == cut_reload->state_hash());
+        if (end_reload)
+            REQUIRE(hash == end_reload->state_hash());
+        REQUIRE(off.state_hash() == defaults.state_hash());
+        on_trace.u64(hash);
+        off_trace.u64(off.state_hash());
+        const auto tick = w.clock().tick();
+        const auto& farm = farm_at(w);
+        REQUIRE(farm.raw == 0);
+        REQUIRE(farm.out == 0);
+        REQUIRE(farm_at(off).workers_out == 0);
+        REQUIRE(farm_at(off).raw == 0);
+        REQUIRE(farm_at(off).out == 0);
+        for (const auto& slot : w.figures().list.slots)
+            if (slot && slot->home == hid) {
+                if (!first.valid()) {
+                    first = slot->id;
+                    spawn = tick;
+                    REQUIRE(slot->kind == 142);
+                    REQUIRE(slot->job == 45);
+                    REQUIRE(slot->pos == sim::entrance_position(*w.find_building(hid), *type, 0));
+                    std::cout << "FISHER_CLOSED spawn=" << spawn << " worker=" << first.v << '\n';
+                } else if (slot->id != first && !second.valid()) {
+                    second = slot->id;
+                    second_tick = tick;
+                    REQUIRE(released != 0);
+                    std::cout << "FISHER_CLOSED second=" << second_tick << " worker=" << second.v
+                              << '\n';
+                }
+            }
+        const auto* f = find_worker(w, first);
+        if (f && f->harvest) {
+            const auto& h = *f->harvest;
+            if (!left &&
+                !sim::tile_in_footprint(*w.find_building(hid), *type, sim::tile_of_q8(f->pos.x),
+                                        sim::tile_of_q8(f->pos.y))) {
+                left = tick;
+                std::cout << "FISHER_CLOSED left=" << left << '\n';
+            }
+            if (f->cargo_88 > cargo) {
+                REQUIRE(cutting);
+                const auto at = island.tile_index(cutting->x, cutting->y);
+                REQUIRE(at != sim::kNoSlot);
+                REQUIRE(island.tiles.object(at) == 10);
+                REQUIRE_FALSE(island.tiles.claimed(at));
+                REQUIRE(f->cargo_88 - cargo == 256);
+                cargo = f->cargo_88;
+                ++cuts;
+                if (!caught)
+                    caught = tick;
+                last_catch = f->pos;
+                std::cout << "FISHER_CLOSED catch=" << tick << " cargo=" << cargo << '\n';
+            }
+            if (h.step == sim::HarvestStep::Cut && h.wait) {
+                const auto at = island.tile_index(h.target.x, h.target.y);
+                REQUIRE(at != sim::kNoSlot);
+                REQUIRE(island.tiles.object(at) == 11);
+                REQUIRE(island.tiles.claimed(at));
+                cutting = h.target;
+                if (!cut_reload) {
+                    auto loaded = sim::World::load(w.save(), registry.types);
+                    REQUIRE_MESSAGE(loaded, (loaded ? "" : loaded.error()));
+                    cut_reload.emplace(std::move(loaded).value());
+                    REQUIRE(cut_reload->state_hash() == hash);
+                }
+            }
+            if (!f->home.valid() && !released) {
+                released = tick;
+                stop = f->pos;
+                due = std::uint32_t{f->stamp} + h.wait;
+                REQUIRE(left);
+                REQUIRE(cuts == 3);
+                REQUIRE(f->cargo_88 == 768);
+                REQUIRE(farm.workers_out == 0);
+                REQUIRE(h.step == sim::HarvestStep::Done);
+                REQUIRE(h.route.empty());
+                REQUIRE(h.wait > 0);
+                REQUIRE_FALSE(f->expiry_stamp);
+                REQUIRE(stop == last_catch);
+                auto loaded = sim::World::load(w.save(), registry.types);
+                REQUIRE_MESSAGE(loaded, (loaded ? "" : loaded.error()));
+                end_reload.emplace(std::move(loaded).value());
+                REQUIRE(end_reload->state_hash() == hash);
+                std::cout << "FISHER_CLOSED released=" << released << " remaining=" << h.wait
+                          << " nominal_due=" << due << " pos=" << stop.x << ',' << stop.y
+                          << " raw=" << farm.raw << " workers=" << farm.workers_out << '\n';
+            }
+            if (released) {
+                REQUIRE(f->pos == stop);
+                REQUIRE(f->cargo_88 == 768);
+                REQUIRE(h.route.empty());
+                if (!f->expiry_stamp) {
+                    REQUIRE(std::uint32_t{f->stamp} + h.wait == due);
+                } else if (!expiry) {
+                    expiry = tick;
+                    REQUIRE(h.wait == 0);
+                    REQUIRE(*f->expiry_stamp >= due);
+                    std::cout << "FISHER_CLOSED expiry=" << expiry << '\n';
+                }
+            }
+        } else if (first.valid() && !removed) {
+            removed = tick;
+            REQUIRE(expiry);
+            std::cout << "FISHER_CLOSED removed=" << removed << '\n';
+        }
+    }
+    REQUIRE(spawn);
+    REQUIRE(left);
+    REQUIRE(caught);
+    REQUIRE(released);
+    REQUIRE(second_tick);
+    REQUIRE(expiry);
+    REQUIRE(removed);
+    REQUIRE(cut_reload);
+    REQUIRE(end_reload);
+    REQUIRE(w.save() == duplicate.save());
+    REQUIRE(w.save() == cut_reload->save());
+    REQUIRE(w.save() == end_reload->save());
+    REQUIRE(off.save() == defaults.save());
+    REQUIRE_MESSAGE(w.check_invariants().empty(), w.check_invariants());
+    std::cout << "FISHER_CLOSED_FINAL tick=" << w.clock().tick() << " on=" << std::hex
+              << w.state_hash() << " on_trace=" << on_trace.value() << " off=" << off.state_hash()
+              << " off_trace=" << off_trace.value() << std::dec << '\n';
 }

@@ -21,6 +21,10 @@ namespace {
 
 /// PRODTYPE 226 = ROHSTWACHS (AnnoGame 0x100138e0; the cut's test `cmp eax, 0xe2`, 0x1008739a).
 constexpr std::uint32_t kRohstwachs = 226;
+/// Original duration, not a capacity limit: 15.0 / 0.01 / 0.2 nominal ticks.
+/// Integer/visit adaptation of AnnoWelt 0x1003af56-0x1003af96 (fisher.md 10.2,
+/// OQ-603). Separate from the registry's later configurable expiry delay.
+constexpr std::uint32_t kFisherOutsideEndWaitTicks = 7500;
 
 /// The per-call view of the tile fields the body writes (docs/sim/forestry.md 3.2): every read
 /// consults it before the island, every write goes to it and, in order, to Effects::tile_edits.
@@ -163,7 +167,8 @@ struct Body {
         }
     }
     /// Step C's start (D 0x10057ae0): inside the home's footprint no walk; else the walk home, or
-    /// no path: the job ends (the cargo stays with the figure).
+    /// no path: the job ends (the cargo stays with the figure). For the enabled
+    /// fisher these are the inside bypass and failed-return rules of fisher.md 10.2.
     void start_home() {
         h.wait = 0;
         reset_walk();
@@ -510,6 +515,24 @@ bool harvest_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
             // released it, this covers any other way into Done.
             if (b.hygiene && b.owner(h.target) == fig.id) {
                 b.unclaim(h.target);
+            }
+            if (b.fisher && fig.home.valid()) {
+                // fisher.md 10.2: a failed outside home start installs no walk
+                // and credits nothing. Release at end dispatch, then wait in place
+                // before Remove; an inside completion has no end wait.
+                if (home != nullptr && home_type != nullptr &&
+                    !tile_in_footprint(*home, *home_type, tile_of_q8(fig.pos.x),
+                                       tile_of_q8(fig.pos.y)))
+                    h.wait = kFisherOutsideEndWaitTicks;
+                release_figure_home(fig, world.fx);
+            }
+            if (b.fisher && h.wait > 0) {
+                if (ticks < h.wait) {
+                    h.wait = static_cast<std::uint32_t>(h.wait - ticks);
+                    return true;
+                }
+                ticks -= h.wait;
+                h.wait = 0;
             }
             if (!b.delivered && fig.cargo_88 > 0 && b.stats != nullptr) {
                 b.stats->raw_lost_88 += fig.cargo_88;

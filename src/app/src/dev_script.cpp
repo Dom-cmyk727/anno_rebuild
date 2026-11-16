@@ -46,6 +46,12 @@ std::optional<SDL_Keycode> keycode(const std::string& name) {
     if (name == "o") {
         return SDLK_O; // UI-WINDOW-1 fix round R2: the main menu's key
     }
+    if (name == "s") {
+        return SDLK_S; // UI-TABS-1: the player view's ship list
+    }
+    if (name == "c") {
+        return SDLK_C; // UI-TABS-1: the player view's city list
+    }
     if (name == "esc") {
         return SDLK_ESCAPE;
     }

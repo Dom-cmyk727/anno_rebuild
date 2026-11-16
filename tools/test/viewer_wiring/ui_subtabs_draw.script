@@ -1,0 +1,26 @@
+# UI-TABS-1 stage A: screenshots of three sub-tab states through the live window's CPU path
+# (draw_cpu -> draw_live_screen_xrgb), for tools/test/ui_subtabs_compare.py: the player view at
+# sub-tab 3 (key S), the options view at sub-tab 2, the city view at sub-tab 5.
+# Launch: --play data/maps/lan5.txt --construction-menu on --layout data/ui
+resize 1024 768
+wait frames 5
+key s
+wait frames 5
+expect fact hud.view == player
+expect fact hud.subtab == 3
+screenshot subtabs_player_3
+click_px 992 212
+wait frames 3
+click_px 783 418
+wait frames 5
+expect fact hud.view == options
+expect fact hud.subtab == 2
+screenshot subtabs_options_2
+click_px 931 212
+wait frames 3
+click_px 783 556
+wait frames 5
+expect fact hud.view == info
+expect fact hud.subtab == 5
+screenshot subtabs_info_5
+quit

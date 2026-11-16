@@ -272,6 +272,15 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_ui_tabs PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-TABS-1: every sub-tab of the three views, the keys S, C, D, O, each view keeping its own.
+      add_test(NAME viewer_wiring_ui_subtabs
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_subtabs
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_subtabs PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # UI-WINDOW-1 fix round R2/R4: the status bar counters (centred city, else the first).
       add_test(NAME viewer_wiring_ui_counters_centred
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
@@ -383,6 +392,14 @@ if(ANNO_BUILD_TESTS)
       add_test(NAME info_panel_gog_compare
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/info_panel_gog_compare.py)
       set_tests_properties(info_panel_gog_compare PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600)
+      # UI-TABS-1: the sub-tab columns' selected and idle frames, the GPU layer's composer against
+      # the GOG shots (ANNO_UI_ORACLE_SHOTS, never in git; skips without it) and the window's CPU
+      # path against that composer.
+      add_test(NAME ui_subtabs_compare
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/ui_subtabs_compare.py
+                $<TARGET_FILE:anno_ui_mock> $<TARGET_FILE:anno1503>)
+      set_tests_properties(ui_subtabs_compare PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # UI-INFO-2: the preview at rotations 0..3 after clicks on the rotate arrows, through the
       # real window, pixel-exact against compose_info_panel(rotation) (info_panel_rotation_check.py),
       # and that reference against the original's own shots after its arrows and keys

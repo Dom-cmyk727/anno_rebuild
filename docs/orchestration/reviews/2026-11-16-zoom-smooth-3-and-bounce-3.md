@@ -54,3 +54,31 @@ mechanism with the right size.
 - No filter was added. Whether close opposite notches are filtered is a change of feel and the owner's decision.
 
 **Verdict: ACCEPTED.** It lands with ZOOM-BOUNCE-1 and 2 in a later candidate. Open: the owner's wheel test.
+
+## The owner's wheel test (2026-11-16, evening)
+
+The orchestrator started the `fc1fbff7` build (`--play data/maps/lan5.txt --water enhanced`, RTX 4090, maximised at
+2560 x 1369) with `ANNO_VIEW_TRACE`; the owner wheeled in and out quickly for 55 s and closed the window. The trace
+stays outside git (`cache/wheel-test/wheel-trace-190856`).
+
+| Measure | Result |
+|---|---|
+| Wheel events | 1,027 (523 out, 504 in), every one a whole notch |
+| Gap between notches | median 12.0 ms, shortest 0.6 ms |
+| Changes of direction | 39; the closest two opposite notches were 60.0 ms apart; none under 50 ms |
+| A single notch between two runs of the other direction | 0 |
+| Frames in the wheel span | 28,465 |
+| Frames where the view's scale and the presented scale differ | 0 |
+| Frames where the zoom on screen turns round by more than 0.3 % each way | 0 |
+| Frame interval while wheeling | median 2.00 ms, 99th percentile 3.07 ms, longest 8.55 ms; 10 over 8 ms, none over 16 ms |
+
+- **The owner saw no bounce** ("no bounce"), and the trace has none.
+- **The owner's wheel did not send close opposite notches** in this run. The mechanism of ZOOM-BOUNCE-3 is real,
+  but it is not shown to be what happened in `ui_4`. The bounce stays a rare event seen once and not reproduced in
+  three attempts. No filter is added. The wheel trace stays in, so the next sighting with `ANNO_VIEW_TRACE` on
+  settles it.
+- **Measured on the way, for whoever reads `frames.tsv`:** the zoom groups' tile widths are 84, 42, 20, 10 and 5
+  px, so groups 1 and 2 differ by 2.1, not 2. A check that assumes a factor of 2 between groups reports a false
+  jump of 3 to 5 % at every switch between them.
+
+**ZOOM-BOUNCE-1 to 3 are closed as "not reproduced; diagnostics in place".** They land with a later candidate.

@@ -235,8 +235,13 @@ says who is doing what, where the work is, and what it waits on.
     with no new work; its cause is not classified, so **[ZOOM-SMOOTH-3b](tasks/zoom-smooth-3.md) is RELEASED**
     (CPU against wall time of that call, draws per pass, the real drawn-chunk count); **ZOOM-BOUNCE-3 ACCEPTED**
     (`fc1fbff7`, CI green, same review): two opposite notches 5 ms apart give a 1.47 % zoom-in for one frame,
-    the size the owner saw; the owner's 20 s wheel test with the trace is open; ZOOM-SMOOTH-2e's code is ACCEPTED (`46fd1f2b`, a move
-    trigger at most every 16 ms) and waits for the owner's fast drag. **Mac:** the gate run for FISHER-VIEW-1,
+    the size the owner saw; **the owner's wheel test is done** (2026-11-16): 1,027 notches, no two opposite
+    notches closer than 60 ms, no frame of 28,465 where the zoom turns round, and the owner saw no bounce; the
+    bounce is closed as not reproduced, diagnostics in place, no filter; ZOOM-SMOOTH-2e's code is ACCEPTED
+    (`46fd1f2b`, a move trigger at most every 16 ms) and **the owner's fast drag is MET** (2026-11-16,
+    [note](reviews/2026-11-16-zoom-smooth-2e-owner-proof.md)): the longest gap between draws is 30.9 ms (before:
+    526 ms), the 99th percentile 24.4 ms (before: 136 ms); ZOOM-SMOOTH-2 lands after the small
+    [ZOOM-SMOOTH-2f](tasks/zoom-smooth-2.md) (a thread guard, queued after 3b), with the owner's OK. **Mac:** the gate run for FISHER-VIEW-1,
     FISHER-RE-4, then [ANNOSCENE-ORE-1](tasks/annoscene-ore-1.md) RELEASED. **All three reported and reviewed**
     2026-11-16 ([review](reviews/2026-11-16-mac-three-reports-review.md)): the gate run on `eb11f0c6` has the
     candidate's tree and 2656 executed with 2 failures, both GPU timing tests on Metal that pass on the 4090 (a

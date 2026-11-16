@@ -517,3 +517,25 @@ TEST_CASE("minimap config: the B2 keys") {
     CHECK_FALSE(app::parse_minimap_config("anno1503-ui-minimap 1\nowner_rule 0 2\n").ok());
     CHECK_FALSE(app::parse_minimap_config("anno1503-ui-minimap 1\nmarker_square -1 5\n").ok());
 }
+
+TEST_CASE("minimap owners: a changed owner, city or mask is a different territory") {
+    app::TerritoryView a;
+    a.neutral_owner = 15;
+    app::TerritoryIsland is;
+    is.w = 2;
+    is.h = 1;
+    is.owner = {0, 15};
+    is.cities = {{0, 2, {2}}};
+    a.islands.push_back(is);
+    app::TerritoryView b = a;
+    b.version = 7; // the version is not content
+    CHECK(a.same_content(b));
+    b.islands[0].owner[1] = 0; // a claimed tile
+    CHECK_FALSE(a.same_content(b));
+    b = a;
+    b.islands[0].cities[0].known_by.push_back(3); // another player learns of the city
+    CHECK_FALSE(a.same_content(b));
+    b = a;
+    b.islands[0].cities[0].owner = 1; // a takeover
+    CHECK_FALSE(a.same_content(b));
+}

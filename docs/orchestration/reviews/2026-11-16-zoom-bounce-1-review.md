@@ -68,3 +68,34 @@ to assume:
 Steps: extend the script with notches at both zoom limits and with notches that arrive within a few frames of each
 other; look for a frame whose presented scale differs from both neighbours by more than 0.5 %; fix at the cause;
 a test that fails before the fix. If it still does not reproduce, say so and stop.
+
+## ZOOM-BOUNCE-2: reviewed, NOT REPRODUCED again (`bf35b89c`, code `9b53a862`; CI green)
+
+- The trace now also records the resample scale and offset that are handed to the frame renderer. Over 40 repeats,
+  960 notches and **21,775 presented frames**, driven hard to each zoom limit with notches back to back: no frame
+  whose presented scale differs from its neighbours, no difference between the view's scale and the presented one
+  above 0.05 %, no group flicker, the drawable steady at 2560 x 1369.
+- Lead 1 is false by construction: the limit clamp runs inside every zoom call, and a new test sends 20 inward
+  notches at the limit with no frame between them; the target never passes the limit.
+- **A fact found on the way:** the closest zoom of the rebuild is a tile width of 84 times the square root of 2,
+  118.79 px (`kZoomEndFactor`, `zoom.hpp`). The original's closest level is 84 px. That is the 1.42 the
+  orchestrator measured against the owner's History Edition recording: **the rebuild zooms in further than the
+  original.** Whether that stays the default is the owner's choice.
+
+## Where this stands: a new hypothesis, to be tested with the owner's real wheel
+
+Two scripted attempts with synthetic wheel events found nothing. The odd frame is the whole view about 1.5 % closer
+around the cursor, steady before, back afterwards, and the owner was about to wheel outwards. Hypothesis, not a
+finding: **the input itself** held one inward tick just before the outward ones, either the finger's or the wheel
+encoder's bounce. The view eases towards the new target for a few milliseconds, the next tick reverses it, and at
+about 300 drawn frames per second one captured frame of 60 shows it. The viewer would then be showing what the
+wheel sent.
+
+No log of the owner's session holds the wheel events, so this cannot be decided from what exists.
+
+**ZOOM-BOUNCE-3 (queued after ZOOM-SMOOTH-3, about 45 minutes):** trace every wheel event (time, the raw and the
+integer deltas, the direction flag, the pointer, the target before and after) into the existing window trace; a
+scripted inward tick followed by outward ticks 5, 10 and 20 ms later, to show what the picture does. Then the owner
+wheels in and out quickly for about 20 seconds with the trace on. If opposite ticks a few milliseconds apart are
+there, the cause is the input, and whether to filter them is the owner's choice (a feel change). If they are not,
+the per-layer instrumentation inside the frame renderer is next.

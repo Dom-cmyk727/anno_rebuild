@@ -226,7 +226,10 @@ says who is doing what, where the work is, and what it waits on.
     scale out of line; the owner's log has exactly one not-ready frame, five stand-in chunks, next to the flagged
     frame; the UI lane checked the recording and **refuted that**: frame 970 is the whole view about 1.5 % closer
     around the cursor for one frame, steady before and after, so the overshoot is real; **ZOOM-BOUNCE-2 RELEASED**
-    (notches at the zoom limits, the presented scale logged)); **ZOOM-SMOOTH-3 RELEASED**; ZOOM-SMOOTH-2e's code is ACCEPTED (`46fd1f2b`, a move
+    (notches at the zoom limits, the presented scale logged): **not reproduced again** in 21,775 frames
+    (`bf35b89c`); found on the way: the rebuild's closest zoom is 84 x sqrt(2) = 118.8 px tiles, closer than the
+    original's 84 px (the owner's choice whether that stays the default); next, the owner's real wheel with
+    every wheel event traced (ZOOM-BOUNCE-3, queued after ZOOM-SMOOTH-3)); **ZOOM-SMOOTH-3 RELEASED**; ZOOM-SMOOTH-2e's code is ACCEPTED (`46fd1f2b`, a move
     trigger at most every 16 ms) and waits for the owner's fast drag. **Mac:** the gate run for FISHER-VIEW-1,
     FISHER-RE-4, then [ANNOSCENE-ORE-1](tasks/annoscene-ore-1.md) RELEASED. **All three reported and reviewed**
     2026-11-16 ([review](reviews/2026-11-16-mac-three-reports-review.md)): the gate run on `eb11f0c6` has the

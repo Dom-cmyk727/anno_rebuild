@@ -6,6 +6,7 @@
 // opinion to reconcile.
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -38,6 +39,10 @@ class UiTexCache {
     UiTexCache& operator=(UiTexCache&&) noexcept;
     UiTexCache(const UiTexCache&) = delete;
     UiTexCache& operator=(const UiTexCache&) = delete;
+
+    /// The decoded texture `tex_id` of `rel_path` (game-dir-relative), kept for the session; null
+    /// when the file or the id is missing (UI-MINIMAP-1: the minimap's parchment).
+    [[nodiscard]] const assets::Rgba* decode(const std::string& rel_path, int tex_id);
 
     struct Impl;
     /// For ui_mock.cpp's own use (`draw_live_screen_xrgb`'s implementation) - not part of this
@@ -115,6 +120,18 @@ struct InfoPanelContent {
     std::uint8_t rotation = 0;
 };
 
+/// UI-MINIMAP-1 step B1: what the HUD draws for the minimap, under the `WELTKARTE` chrome
+/// (docs/re/ui.md 2.9: AnnoFrame draws it before the HUD, the chrome's diamond hole shows it).
+/// `raster` (minimap.hpp compose_minimap: the parchment and the world image, straight alpha) is
+/// drawn at (x, y), its transparent pixels left out; then every pixel of `box` (the view box,
+/// minimap_line_pixels) in `box_rgb`. The caller keeps `raster` alive for the call.
+struct MinimapOverlay {
+    const assets::Rgba* raster = nullptr;
+    int x = 0, y = 0;
+    std::vector<std::pair<int, int>> box;
+    std::array<std::uint8_t, 3> box_rgb{255, 255, 255};
+};
+
 /// The x at which a centred text box draws a text image `text_w` pixels wide: `box_x +
 /// box_w / 2 - text_w / 2`, both divisions rounding down (docs/re/ui.md section 2.5; measured
 /// exactly on 15 GOG shots for 1-, 2- and 3-digit values and 15 names).
@@ -190,13 +207,17 @@ compose_screen(const HudLayout& hud, const ConstructionLayout& construction,
 /// building answers `BuildingInspection::kind == "House"` - never a guess ahead of the sim's own
 /// answer. The row's other two need icons and its tab are not measured yet (OQ-569/OQ-570) and
 /// are not drawn; there is no close button to draw (OQ-570: none exists in the capture).
+///
+/// `minimap` (UI-MINIMAP-1 B1): drawn first, under every chrome element (MinimapOverlay); null
+/// leaves the chrome's diamond hole showing what is under it, as before.
 [[nodiscard]] std::string draw_live_screen_xrgb(
     std::uint32_t* dst, int dst_w, int dst_h, const HudLayout& hud,
     const ConstructionLayout& construction, const MaskLayout& masks, const UiMockSpec& screen,
     UiTexCache& cache, const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
     const HudCounters& counters = {}, bool placement_open = false, bool demolish_mode = false,
     bool paused = false, bool selected_house = false, const InfoPanelContent* info = nullptr,
-    const formats::anlagen::AnlagenFile* anlagen = nullptr);
+    const formats::anlagen::AnlagenFile* anlagen = nullptr,
+    const MinimapOverlay* minimap = nullptr);
 
 /// `draw_live_screen_xrgb`'s own state and arguments, composed instead into a fresh RGBA canvas
 /// that starts fully transparent (every byte 0, not the oracle's own alpha-255 convention) - the
@@ -217,7 +238,8 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
                       const HudCounters& counters = {}, bool placement_open = false,
                       bool demolish_mode = false, bool paused = false, bool selected_house = false,
                       const InfoPanelContent* info = nullptr,
-                      const formats::anlagen::AnlagenFile* anlagen = nullptr);
+                      const formats::anlagen::AnlagenFile* anlagen = nullptr,
+                      const MinimapOverlay* minimap = nullptr);
 
 /// `draw_live_screen_rgba` into a caller-owned `canvas`, whose pixel storage is reused between
 /// calls (UI-WINDOW-1 fix round R1: the window's GPU path no longer allocates a window-sized image
@@ -228,6 +250,7 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
     UiTexCache& cache, const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
     const HudCounters& counters = {}, bool placement_open = false, bool demolish_mode = false,
     bool paused = false, bool selected_house = false, const InfoPanelContent* info = nullptr,
-    const formats::anlagen::AnlagenFile* anlagen = nullptr);
+    const formats::anlagen::AnlagenFile* anlagen = nullptr,
+    const MinimapOverlay* minimap = nullptr);
 
 } // namespace anno::app

@@ -19,6 +19,7 @@
 #include <anno/app/construction_menu.hpp>
 #include <anno/app/dev_script.hpp>
 #include <anno/app/dev_tool.hpp>
+#include <anno/app/minimap.hpp>
 #include <anno/app/opening_ui.hpp>
 #include <anno/app/play_follow.hpp>
 #include <anno/app/publication_hold.hpp>
@@ -85,6 +86,12 @@ struct ViewerHooks {
     /// `construction_menu`'s own hud.txt/construction.txt. The caller owns it. Unused when
     /// `construction_menu` is null.
     MaskLayout* construction_masks = nullptr;
+    /// UI-MINIMAP-1 B1: data/ui/minimap.txt and the world the minimap shows (the islands'
+    /// heights and owners, the world size); both or neither. The window builds the minimap's
+    /// image from them once and draws it under the HUD chrome. The caller owns them. Unused when
+    /// `construction_menu` is null.
+    const MinimapConfig* minimap_config = nullptr;
+    const MinimapWorld* minimap_world = nullptr;
     /// ADR 0004 R2, W4-NEXT-1 part U's key-collision QUESTION: `Classic` (the default) reserves
     /// the window's own S/Q/D keys (today: pan down, quit, pan right) for the original screens
     /// they would open once those screens exist (ADR 0004 rows 15/17/9, still placeholders) -

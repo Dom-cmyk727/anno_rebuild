@@ -350,6 +350,23 @@ class Viewer {
             ui_scale_ = hooks->ui_scale;
             ui_rule_.ref_w = construction_menu_->hud().resolution_w;
             ui_rule_.ref_h = construction_menu_->hud().resolution_h;
+            if (hooks->minimap_config != nullptr && hooks->minimap_world != nullptr) {
+                // UI-MINIMAP-1 B1: the world image, once (docs/re/ui.md 2.9 Q2; OQ-634 for when
+                // the original refreshes it).
+                const auto start = Clock::now();
+                MinimapState m;
+                m.cfg = hooks->minimap_config;
+                m.world_w = hooks->minimap_world->w;
+                m.world_h = hooks->minimap_world->h;
+                m.image = build_minimap_image(*m.cfg, *hooks->minimap_world);
+                m.palette = minimap_palette(*m.cfg);
+                m.zoom = m.cfg->zoom_start;
+                m.image_ms =
+                    std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+                std::fprintf(stderr, "[minimap] image %ux%u of a %ux%u world built in %.2f ms\n",
+                             m.cfg->image_w, m.cfg->image_h, m.world_w, m.world_h, m.image_ms);
+                minimap_ = std::move(m);
+            }
             if (dev_ != nullptr && dev_->setup().registry) {
                 const auto& registry = *dev_->setup().registry;
                 goods_tools_ = registry.goods_by_name("WERKZEUG");
@@ -548,6 +565,29 @@ class Viewer {
     /// texture off disk each frame; this is the fix). Constructed once, in the constructor body,
     /// only when construction_menu_ is set (needs construction_game_dir_, itself conditional).
     std::optional<UiTexCache> construction_tex_cache_;
+    /// UI-MINIMAP-1 B1: the minimap (minimap.hpp, docs/re/ui.md 2.9). Its image is built once in
+    /// the constructor from the hooks' world (`image_ms` measured); its composed raster (the
+    /// parchment and the image) is kept until the UI layer's width or the minimap window changes,
+    /// as the original rebuilds its texture only when the world image changed (AnnoFrame
+    /// 0x100030f9..0x10003125). Only the view box follows the camera every frame. Unset without
+    /// the construction menu or without the hooks' minimap data.
+    struct MinimapState {
+        const MinimapConfig* cfg = nullptr;
+        std::uint32_t world_w = 0, world_h = 0;
+        std::vector<std::uint16_t> image;
+        std::vector<std::array<std::uint8_t, 4>> palette;
+        double zoom = 1.0;
+        assets::Rgba raster;
+        int raster_ui_w = -1;
+        MinimapWindow raster_window;
+        std::uint64_t composes = 0;
+        double image_ms = 0, compose_ms = 0;
+    };
+    std::optional<MinimapState> minimap_;
+    MinimapOverlay minimap_frame_;
+    /// The minimap for the frame about to be drawn into a UI layer `ui_w` pixels wide; null when
+    /// there is none.
+    const MinimapOverlay* minimap_overlay(int ui_w);
     /// H2: the four build-material goods, resolved by name once (registry lookup, never a
     /// hardcoded number - synthetic.cpp's own "never hardcode the goods number" convention) so
     /// draw_cpu's HudCounters can read the right slot of PlaySnapshot::goods every frame. Null
@@ -1819,6 +1859,52 @@ bool Viewer::construction_handle(const SDL_Event& e) {
     return false;
 }
 
+const MinimapOverlay* Viewer::minimap_overlay(int ui_w) {
+    if (!minimap_ || construction_tex_cache_ == std::nullopt) {
+        return nullptr;
+    }
+    MinimapState& m = *minimap_;
+    const MinimapConfig& cfg = *m.cfg;
+    const MinimapRect rect = minimap_rect(cfg, ui_w);
+    // The camera: the world point at sea level under the view's centre (cam_x_, cam_y_ are the
+    // centre's scene pixels of group_; picking.hpp corner_point inverted), in tiles.
+    const auto g = render::pick_geometry_of(levels().tile_w(group_), levels().tile_h(group_));
+    const auto [wx, wy] = render::screen_tile(
+        cam_x_, cam_y_ + g.lift * static_cast<double>(render::kSeaLevel), g.tile_w, g.tile_h);
+    // u is the world's y (minimap.hpp, "Axes"); the window follows the camera (0x10033ad0).
+    const double cu = m.world_h > 0 ? wy / static_cast<double>(m.world_h) : 0.5;
+    const double cv = m.world_w > 0 ? wx / static_cast<double>(m.world_w) : 0.5;
+    const MinimapWindow window = minimap_window(m.zoom, cu, cv);
+    const bool same_window = window.u0 == m.raster_window.u0 && window.v0 == m.raster_window.v0 &&
+                             window.u1 == m.raster_window.u1 && window.v1 == m.raster_window.v1;
+    if (m.raster_ui_w != ui_w || !same_window) {
+        const auto start = Clock::now();
+        m.raster =
+            compose_minimap(cfg, rect, window, m.image, m.palette,
+                            construction_tex_cache_->decode(cfg.parchment_file, cfg.parchment_id));
+        m.raster_ui_w = ui_w;
+        m.raster_window = window;
+        ++m.composes;
+        m.compose_ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+        std::fprintf(stderr, "[minimap] raster %ux%u composed in %.2f ms (compose %llu)\n",
+                     m.raster.width, m.raster.height, m.compose_ms,
+                     static_cast<unsigned long long>(m.composes));
+    }
+    // The box's size follows the main view's zoom level (2^level, 0x1002ff5b); the continuous
+    // zoom passes the closest level's tile width over the shown one (minimap_view_box).
+    const double shown_w = continuous_ ? zoom_now_ : levels().tile_w(group_);
+    const double level_factor = shown_w > 0.0 ? levels().tile_w(0) / shown_w : 1.0;
+    minimap_frame_.raster = &m.raster;
+    minimap_frame_.x = rect.x;
+    minimap_frame_.y = rect.y;
+    minimap_frame_.box = minimap_line_pixels(
+        minimap_view_box(cfg, rect, window, wx, wy, m.world_w, m.world_h, level_factor));
+    minimap_frame_.box_rgb = {static_cast<std::uint8_t>((cfg.box_colour >> 16) & 0xffU),
+                              static_cast<std::uint8_t>((cfg.box_colour >> 8) & 0xffU),
+                              static_cast<std::uint8_t>(cfg.box_colour & 0xffU)};
+    return &minimap_frame_;
+}
+
 UiTransform Viewer::ui_transform_now() const {
     const auto [w, h] = view_size();
     return ui_transform(w, h, ui_scale_, ui_rule_);
@@ -3049,7 +3135,8 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
                 *construction_tex_cache_, in.snapshot ? in.snapshot->eligibility.get() : nullptr,
                 in.counters, construction_placement_open_,
                 dev_ != nullptr && dev_->input().demolish_mode(), paused_at_.has_value(),
-                in.selected_house, info ? &*info : nullptr, &gen->anlagen)
+                in.selected_house, info ? &*info : nullptr, &gen->anlagen,
+                minimap_overlay(ui_t.ui_w))
                 .empty();
         steps_.push_back({"construction ui", since_ms(ui_start, Clock::now())});
     }
@@ -3301,18 +3388,19 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         }
         const auto* eligibility = in.snapshot ? in.snapshot->eligibility.get() : nullptr;
         const bool demolishing = dev_ != nullptr && dev_->input().demolish_mode();
+        const MinimapOverlay* minimap = minimap_overlay(ui_t.ui_w);
         if (ui_t.identity()) {
             static_cast<void>(draw_live_screen_xrgb(
                 buffer_.data(), w, h, construction_menu_->hud(), construction_menu_->construction(),
                 *construction_masks_, in.spec, *construction_tex_cache_, eligibility, in.counters,
                 construction_placement_open_, demolishing, paused_at_.has_value(),
-                in.selected_house, info ? &*info : nullptr, &gen->anlagen));
+                in.selected_house, info ? &*info : nullptr, &gen->anlagen, minimap));
         } else if (auto layer = draw_live_screen_rgba(
                        ui_t.ui_w, ui_t.ui_h, construction_menu_->hud(),
                        construction_menu_->construction(), *construction_masks_, in.spec,
                        *construction_tex_cache_, eligibility, in.counters,
                        construction_placement_open_, demolishing, paused_at_.has_value(),
-                       in.selected_house, info ? &*info : nullptr, &gen->anlagen);
+                       in.selected_house, info ? &*info : nullptr, &gen->anlagen, minimap);
                    layer.ok()) {
             blend_over_xrgb(buffer_.data(), w, h, ui_scaler_.scale(layer.value(), ui_t));
         }

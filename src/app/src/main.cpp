@@ -56,6 +56,7 @@
 #include <anno/app/commands_file.hpp>
 #include <anno/app/dev_session.hpp>
 #include <anno/app/loader.hpp>
+#include <anno/app/minimap.hpp>
 #include <anno/app/opening.hpp>
 #include <anno/app/opening_session.hpp>
 #include <anno/app/play.hpp>
@@ -480,6 +481,9 @@ int run(const std::vector<std::string>& raw) {
     std::optional<anno::app::ConstructionLayout> construction_layout;
     std::optional<anno::app::MaskLayout> construction_masks;
     std::optional<anno::app::ConstructionMenu> construction_menu;
+    // UI-MINIMAP-1 B1: data/ui/minimap.txt and the world the minimap shows, outliving the window.
+    std::optional<anno::app::MinimapConfig> minimap_config;
+    std::optional<anno::app::MinimapWorld> minimap_world;
     // A scripted session (ANNO_DEV_SCRIPT=<file>) and its record (ANNO_DEV_SESSION=<new dir>),
     // round ee E3: --play only.
     std::optional<anno::app::DevScript> script;
@@ -572,13 +576,38 @@ int run(const std::vector<std::string>& raw) {
             auto construction_loaded =
                 anno::app::load_construction_layout(layout_dir / "construction.txt");
             auto masks_loaded = anno::app::load_mask_layout(layout_dir / "masks.txt");
-            if (!hud_loaded.ok() || !construction_loaded.ok() || !masks_loaded.ok()) {
+            auto minimap_loaded = anno::app::load_minimap_config(layout_dir / "minimap.txt");
+            if (!hud_loaded.ok() || !construction_loaded.ok() || !masks_loaded.ok() ||
+                !minimap_loaded.ok()) {
                 std::fprintf(stderr, "--construction-menu: %s\n",
                              !hud_loaded.ok()            ? hud_loaded.error().c_str()
                              : !construction_loaded.ok() ? construction_loaded.error().c_str()
-                                                         : masks_loaded.error().c_str());
+                             : !masks_loaded.ok()        ? masks_loaded.error().c_str()
+                                                         : minimap_loaded.error().c_str());
                 return 1;
             }
+            // The minimap's world (UI-MINIMAP-1 B1): the size from the world's settings, each
+            // island's HEIGHT grid from the scene as loaded. No owners yet: every tile shows
+            // no_owner (the olive land); the live owners are step B2 (OQ-629).
+            minimap_config.emplace(std::move(minimap_loaded).value());
+            minimap_world.emplace();
+            minimap_world->w = play->world.settings().world_width;
+            minimap_world->h = play->world.settings().world_height;
+            for (const auto& island : shown->islands) {
+                auto heights = island.heights();
+                if (!heights.ok()) {
+                    continue; // an island without a readable grid shows as sea, as it renders
+                }
+                anno::app::MinimapIsland mi;
+                mi.x = island.x;
+                mi.y = island.y;
+                mi.w = island.width;
+                mi.h = island.height;
+                mi.heights = std::move(heights).value();
+                minimap_world->islands.push_back(std::move(mi));
+            }
+            hooks.minimap_config = &*minimap_config;
+            hooks.minimap_world = &*minimap_world;
             construction_hud.emplace(std::move(hud_loaded).value());
             construction_layout.emplace(std::move(construction_loaded).value());
             construction_masks.emplace(std::move(masks_loaded).value());

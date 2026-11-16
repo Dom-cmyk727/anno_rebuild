@@ -12995,10 +12995,22 @@ draws, intercept 0.20 ms - still flat, not computing's own signature.
 **Gates (changed lanes).** `anno_app_tests` + `anno_render_tests` + `anno_render_gpu_tests` +
 `viewer_wiring_*`: 642/642 after a solo rerun of 3 tests that failed only under memory contention
 (unrelated - chunk-draw/scene-digest/river-shading corpus tests, none touching this packet's
-files), run after the capture, never alongside it. `clang-format`: clean after one `-i` fix. WSL
-`-Werror`: clean on every touched file. No gate was visibly running before either WSL run or the
-capture; the capture's own process-list check (before and after) found nothing else running
-either.
+files), run after the capture, never alongside it. `clang-format`: clean after one `-i` fix.
+
+**WSL `-Werror`: found a real bug (two iterations to fully fix).** The whole slow-finish
+diagnostic block is only ever reached with a real `counts` (`draw_gpu`'s own `measure()` call,
+itself `ANNO_VIEWER_GPU`-only); without that macro `counts` is provably null in this translation
+unit, making the block dead code there. GCC's `-O3 -Wnull-dereference` flagged the array indexing
+inside `section_overlap_ms`'s own loop directly (not the simpler scalar reads elsewhere in the
+same function) - a local reference did not help (the dataflow traces straight through it to the
+same provably-null source). Fixed by moving the block behind `#ifdef ANNO_VIEWER_GPU`, matching
+`hitch_tracking_enabled`'s own existing pattern (commit `a155e730`); doing so left
+`describe_lookback` (already `slow_finish`-only, unrelated to this packet) newly unused outside
+the macro too, caught by a second WSL run and fixed the same way. Clean on every touched file
+after that, GCC 13 and Clang 18, with and without the viewer's GPU code, except the same
+pre-existing `extensions_test.cpp` gap (UNIX-WARN-1's own fix, a different branch, not yet
+landed here). No gate was visibly running before any WSL run or the capture; the capture's own
+process-list check (before and after) found nothing else running either.
 
 Decisions and reasoning:
 - **Moved the snapshot, did not add a second one** - reading after `finish()` is strictly better

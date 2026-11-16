@@ -637,6 +637,43 @@ TEST_CASE("zoom_advance: the zoom is held while the next coarser level is not re
     // its scale raised by resampled_view (gpu_test: "resampled_view: ... limits").
 }
 
+TEST_CASE("zoom_advance: a reversing sequence of notches (the group sequence "
+          "0,1,2,1,0,1,2,3,4 ZOOM-BOUNCE-1 investigated, and its reverse) never moves `now` "
+          "away from the leg's own target, at any inter-notch delay or frame rate") {
+    using namespace anno::app;
+    const auto levels = anno::render::ZoomLevels::with_derived(2); // groups 0..4
+    const std::vector<std::size_t> forward = {0, 1, 2, 1, 0, 1, 2, 3, 4};
+    std::vector<std::size_t> groups = forward;
+    groups.insert(groups.end(), forward.rbegin() + 1, forward.rend());
+    int checked = 0;
+    for (double inter_notch_ms : {5.0, 15.0, 30.0, 60.0, 90.0, 120.0, 180.0, 300.0, 500.0}) {
+        for (double dt_ms : {2.0, 5.0, 8.0, 16.7, 33.3, 66.7}) {
+            ZoomState s = zoom_state(levels.tile_w(groups.front()), groups.front());
+            for (std::size_t i = 1; i < groups.size(); ++i) {
+                const double new_target = levels.tile_w(groups[i]);
+                const double sign = new_target > s.now ? 1.0 : new_target < s.now ? -1.0 : 0.0;
+                s.target = new_target;
+                double elapsed = 0.0, last = s.now;
+                while (elapsed < inter_notch_ms) {
+                    const double dt = std::min(dt_ms, inter_notch_ms - elapsed);
+                    s = zoom_advance(s, dt, 120, kAllReady, levels);
+                    ++checked;
+                    if (sign > 0) {
+                        CHECK(s.now >= last - 1e-9);
+                    } else if (sign < 0) {
+                        CHECK(s.now <= last + 1e-9);
+                    }
+                    last = s.now;
+                    elapsed += dt;
+                }
+            }
+        }
+    }
+    // Every combination of inter-notch delay and frame rate, over the whole reversing
+    // sequence, each step checked - far more than 200 individual checks.
+    CHECK(checked > 200);
+}
+
 TEST_CASE("--zoom-factor and --resample: the headless picture at a fractional scale") {
     using anno::app::parse_args;
     const auto d = parse_args({"--view", "x.scp", "--png", "o.png"});

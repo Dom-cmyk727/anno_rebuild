@@ -170,7 +170,14 @@ says who is doing what, where the work is, and what it waits on.
     comparison once FISHER-1f has landed.
     **UI-PAN-1** (UI lane; `65a9632c`; owner: "Yes, no click pan") is ACCEPTED for landing
     ([review](reviews/2026-11-16-ui-pan-1-review.md)): a press inside the 4 px click slop no longer moves the map.
-    Landing waits for the owner's OK. The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
+    Landing waits for the owner's OK.
+    **Co-developer exchange** (2026-11-16): his deliveries 14 to 19 (notes only) were read as untrusted data.
+    One finding is confirmed on our files and closes an open point of `annoscene.md` §5 step 10: the ore table's
+    ids at `AnnoScene 0x1003AF24` are `FigurenHeader.dat` figure types (1560 to 1564 and 1661 share one
+    `BEWOHNTYPE` record; 1550 and 1551 the treasure's), to be recorded in the note by a small Mac step together
+    with a check of his claim that `INFO` byte 5 is the number of ore markers. Our reply
+    `to-codev/reply-2026-11-16.md` (owner: "Yes, send it"; 14,001 bytes, sha256 `49168f86...`) answers his nine
+    questions with their evidence levels and repeats the request for his build's hashes. The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
     PASSED its game-file run (2608 executed, 0 failed); landing waits for the owner's OK.
     **The Mac's four tasks reviewed 2026-11-15** ([review](reviews/2026-11-15-mac-four-task-review.md)): FISHER-1b
     and FIXTURES-TRIM-1 ACCEPTED with findings, FISHER-RE-2 ACCEPTED, FISHER-1c a QUESTION checkpoint (the S01_02_01

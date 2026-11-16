@@ -4,7 +4,9 @@
 Read-only static analysis of GOG `View.dll` / `AnnoFrame.dll` (pefile + capstone, virtual addresses,
 image base 0x10000000), parsed game files of both editions, and measurements on existing GOG Wine-runner
 shots and the owner's HE videos. Scratch work (listings, crops, scripts) is in
-`cache/prep-warehouse/` of this worktree (git-ignored).
+`cache/prep-warehouse/` of this worktree (git-ignored). Documentation only, on `task/UI-PANELS-PREP`.
+Paths under `cache/`, other worktrees' caches and `E:\1503_test_videos` are local evidence on the owner's PC and
+are not in git; every D and P claim is reproducible from the cited address or file, the M claims from the named capture.
 
 **Owner rule (2026-11-16):** the History Edition (HE) is the visual reference, the GOG build is for
 reading code, the game files of both editions are used. The original UI is the bit-identical base;
@@ -231,7 +233,7 @@ State the panel reads (sim names from `src/sim`, app names from `src/app`):
 | Panel item | Sim state today | App view today | Status |
 |---|---|---|---|
 | Which city a clicked Kontor / market belongs to | `World::find_building`, `Building` in `Island::cities[..].index`; `CityRef` | `CityView::warehouse` (first warehouse only, `opening_view.hpp`) | **missing in view**: building id → `CityRef` for any Kontor and market of the player; for S10 also for foreign cities |
-| City name | `City::name` | `CityView::name` | exists |
+| City name | `City::name` (`city.hpp`: drawn from the world's `STAEDTE` list when a city is founded in play; the app loads the list, `opening.cpp`); app `CityView::name` | exists for cities founded in play; empty for cities imported from scenario files (not read from files yet) |
 | Crest at the plank | - | - | missing (source U, OQ-657) |
 | Row 0 inhabitants | `World::city_population(CityRef)` | `CityCounters::population` (`play.hpp`) | exists |
 | Rows 1-5 | `CityAccounts::sales`, `civil_cost`, `trade_purchases`, `trade_sales`, `military_cost` (`city_accounts.hpp`) | none | **missing in view**; which field and which period the original shows per row: OQ-655 |

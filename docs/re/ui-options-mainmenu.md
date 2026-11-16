@@ -1,11 +1,13 @@
 # In-game options and the main menu (original GOG 2.0.0.5 and History Edition)
 
 **Status:** research and specification only (UI-PANELS-PREP, 2026-11-16). No engine code, no game
-runs, no commits. Static reads of the GOG 32-bit DLLs (pefile + capstone, VAs), parsed ToolGfx and
+runs; documentation only, on `task/UI-PANELS-PREP`. Static reads of the GOG 32-bit DLLs (pefile + capstone, VAs), parsed ToolGfx and
 `Texte.dat` files of both editions, sprite matches on existing GOG Wine shots and on frames taken
 from the owner's HE recording `HE_UI_1.mp4`. Scratch work (dumps, disassembly listings, extracted
 frames) is in `cache/prep-options-menu/` (git-ignored). No pixels or frames are in git; text is
 cited by section and index, with at most a short label.
+Paths under `cache/`, other worktrees' caches and `E:\1503_test_videos` are local evidence on the owner's PC and
+are not in git; every D and P claim is reproducible from the cited address or file, the M claims from the named capture.
 
 Owner rule (2026-11-16): the **History Edition is the picture reference**, the GOG DLLs give the
 addresses, the game files of both editions are used. The original UI, bit-identical, is the base;
@@ -105,7 +107,7 @@ each, P). Text = `STARTUP:SPLASH` line i (P), font attribute `+0x4c`(0x1c6, 2) (
 | 0 | Profile | (202, 79) 420 × 75 | (200, 79) 420 × 75 | 21 / 25 | `STARTUP:SPLASH` 0 "Profile: %s", formatted with the active profile name (0x1002ad5a, global 0x1009c27c) | 0x1002b1d0 | sub-frame 2 (profile), then re-formats the name |
 | 1 | Singleplayer | (238, 205) 312 × 52 | (258, 205) 292 × 52 | 23 / 27 | `SPLASH` 1 | 0x1002b240 | sub-frame 0 |
 | 2 | Multiplayer | (271, 259) 275 × 51 | (271, 259) 275 × 51 | 25 / 29 | `SPLASH` 2 | 0x1002b2a0 | sub-frame 1 |
-| 3 | Credits | (271, 312) 274 × 56 | (274, 312) 274 × 56 | 27 / 31 | `SPLASH` 3 | 0x1002b2f0 | Bink `Videos\1008.bik` |
+| 3 | Credits | (271, 312) 274 × 56 | (271, 312) 274 × 56 (both `push 0x138; push 0x10f` at 0x1002ae5f and 0x1002ae82; this row first said x 274) | 27 / 31 | `SPLASH` 3 | 0x1002b2f0 | Bink `Videos\1008.bik` |
 | 4 | Options | (265, 370) 280 × 61 | (265, 367) 280 × 61 | 29 / 33 | `SPLASH` 4 | 0x1002b370 | sub-frame 3 |
 | 5 | Quit | (301, 505) 216 × 61 | (301, 500) 216 × 61 | 31 / 35 | `SPLASH` 5 | 0x1002b390 | vtable `+0xb4` (leave, no confirm box, A) |
 
@@ -226,7 +228,7 @@ buttons and one `0xb05` toggle, tooltips `TOOLTIP:OPTION_MAIN_ADDON` (D 0x10079c
 | Background | (779, 301) 245 × 467 | `OPTION_BACKGROUND` 1475 | — | — | — | — |
 | Exit (door) | (927, 660) 92 × 100 | `OPTION_EXIT` 1492/1493 | 92 × 109 | `OPTION_MAIN_ADDON` 0 | 0x1007a370 | frame `+0x58`(0x10) (what 0x10 does: U, OQ-683) |
 | Rating (laurel) | (934, 533) 69 × 61 | `OPTION_BILANZ` 1486/1487 | 69 × 62 | 1 | 0x1007a310 | frame attribute `+0x4c`(0x28, 0) (opens the rating screen, A: same screen as key Q, `ui.md` §9.5) |
-| Player statistics (chart) | (793, 348) 94 × 82 | `ADDON_SPIELERSTATISTIK` 1580/1581 | 94 × 82 | 2 | 0x1007a340 | frame attribute `+0x4c`(0x29, 0) (statistics screen; ui_5: the game pauses while it is open, M-HE `ui_5-report.md` §2) |
+| Player statistics (chart) | (793, 348) 94 × 82 | `ADDON_SPIELERSTATISTIK` 1580/1581 | 94 × 82 | 2 | 0x1007a340 | frame attribute `+0x4c`(0x29, 0) (statistics screen; that the game pauses while it is open is **inferred** from ui_5, M-HE `ui_5-report.md` §2, not decoded: OQ-670) |
 | Active help (toggle `0xb05`) | (936, 455) 64 × 55 | `OPTION_HELPPLAYER` 1488/1489 (2 states) | — | 3 / 4 (on / off) | 0x1007a300 → 0x1007a210 | toggles; persisted as profile `HELPPLAYER` (A, OQ-689) |
 
 M-HE `he_108.0.png` (gear tab, page 0), GOG sprites scaled 0.75, positions relative to the matched
@@ -380,7 +382,7 @@ State each screen reads. "missing" = nothing in `src/` today (main 0f46b1b2, rea
 | Music page | 18 songs (name, id, ticked), current song, volume | — | missing (no audio code in `src/`) |
 | Speech page | 11 category bits, volume | — | missing |
 | Active help toggle | on/off | — | missing |
-| Rating / player statistics buttons | the screens they open | — | missing (other packets; statistics screen pauses the game, M-HE ui_5) |
+| Rating / player statistics buttons | the screens they open | — | missing (other packets; whether the statistics screen pauses the game is inferred from ui_5 only, OQ-670) |
 | Main menu | active profile name, version text, multiplayer shown | — | missing |
 | Profile screen | profile list, active profile | `tools/orig/userdat.py` reads `user.dat` (tool only) | missing in the engine |
 | Main-menu Options | display mode index, details flag, supported modes | window size: `app` `ui_transform.hpp` / `ui_layout.hpp` (`ui.md` §5.1) | settings store missing |
@@ -448,8 +450,8 @@ everything else is app state (profile, saves, audio, settings) or game setup bef
   it returns to the main menu or ends the program, and whether it writes `Lastgame.sav`. (Overlaps
   `ui.md` OQ-549.)
 - **OQ-684** Pause box texts (`MESSAGEBOX` 24 / 16 assumed), whether the gear tab or any options
-  page pauses the game (the statistics screen does, M-HE ui_5), and whether P works while a menu
-  page is open.
+  page pauses the game (the statistics screen appears to, inferred from ui_5, OQ-670), and whether P
+  works while a menu page is open.
 - **OQ-685** Choose game: which `Scenes` folder feeds which heading (`SZ_AUSWAHL` 4..9), row order,
   the meaning and column of the `SCENARIOB_*` icons (the round red icon), and why GOG shows five
   endless rows (Citizen..Marquess) under heading 8 "Continuous games/Add-on" while
@@ -461,10 +463,11 @@ everything else is app state (profile, saves, audio, settings) or game setup bef
 - **OQ-687** HE menu fit: exact scale and filter (measured 2.25 screen px per menu px at a
   1351-px client, A), placement of `RESOLUTION_BORDER_*` at other aspect ratios, and whether a wide
   but short client is ever width-limited.
-- **OQ-688** Music/speech: which `VOLUME` i32 is music (the music slider path is 0x1007b9c0 →
+- **OQ-688** (overlaps main's OQ-111 items 1 and 2, which it extends; the volume path below is new evidence
+  for OQ-111 item 2) Music/speech: which `VOLUME` i32 is music (the music slider path is 0x1007b9c0 →
   0x1007aa30; the speech path at 0x1007e313 is not traced), whether a slider move writes `user.dat`
   at once (observed for both, `user-dat.md`), and how song names are made from file names
   ("Capture-trip" shown as "Capturetrip" in HE).
 - **OQ-689** HE's sixth `TOOLTIP:OPTION` / `OPTIONSUBS_TEXTE` line "Options": a hidden sixth page or
   the gears page's banner? Also confirm that profile `HELPPLAYER` is the active-help toggle (name
-  match only, A).
+  match only, A; this half is main's OQ-111 item 4).

@@ -1,9 +1,11 @@
 # In-game UI: ship panels and diplomacy (UI-PANELS-PREP, ships and diplomacy area)
 
-2026-11-16. Research and specification only (no code, no game run, no commit). Read-only against main
+2026-11-16. Research and specification only (no code, no game run; documentation on `task/UI-PANELS-PREP`). Read-only against main
 `0f46b1b2`. Visual reference: **History Edition** (owner rule 2026-11-16); code addresses: **GOG 2.0.0.5**
 DLLs; game files of both editions. Nothing original is stored here beyond ACCESS names, ids, section
 names and short labels; captures and scratch scripts stay in `cache/prep-ships-diplomacy/` (git-ignored).
+Paths under `cache/`, other worktrees' caches and `E:\1503_test_videos` are local evidence on the owner's PC and
+are not in git; every D and P claim is reproducible from the cited address or file, the M claims from the named capture.
 
 ## Evidence letters
 

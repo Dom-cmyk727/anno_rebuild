@@ -1,8 +1,10 @@
 # Statistics screens: player statistics, rating, city list, balance pages (UI-STATISTICS prep)
 
-**Status:** research and specification only (2026-11-16, UI-PANELS-PREP). No implementation, no game runs, no
-commits. Scratch work (frames, decoded textures, disassembly listings) is under
+**Status:** research and specification only (2026-11-16, UI-PANELS-PREP). No implementation, no game runs;
+documentation only, on `task/UI-PANELS-PREP`. Scratch work (frames, decoded textures, disassembly listings) is under
 `cache/prep-statistics/` (git-ignored); nothing original is in this note beyond short labels, ids and numbers.
+Paths under `cache/`, other worktrees' caches and `E:\1503_test_videos` are local evidence on the owner's PC and
+are not in git; every D and P claim is reproducible from the cited address or file, the M claims from the named capture.
 
 **Sources.** GOG 2.0.0.5 DLLs (code addresses are GOG, image base `0x10000000`), GOG and History Edition (HE)
 `ToolGfx/fenster.tex/.inc`, `Texte.dat` (GOG; HE `Languages/Eng`, `Languages/Ger`), HE owner video `ui_5.mp4`
@@ -158,7 +160,8 @@ From the draw functions `0x10013e70` (% axes), `0x10013f60` (m[t] axes) and `0x1
 - **Colours:** COLORREF table `0x10094fd8` (slot 0..7): `0x22e2d2`, `0x3f03c6`, `0xbc0707`, `0xc58d13`,
   `0xcdc20e`, `0x84db1d`, `0x065e10`, `0xbb13bd`, read as `0x00BBGGRR` → (210,226,34), (198,3,63), (7,7,188),
   (19,141,197), (14,194,205), (29,219,132), (16,94,6), (189,19,187) (**D**; slot 0 matches the HE wood line
-  ≈ (208, 215, 61), **M-HE**). The same 16 bytes are in HE `AnnoFrame.dll` and `AnnoFrameAddOn.dll` (**P**).
+  ≈ (208, 215, 61), **M-HE**). The same 32 bytes (8 COLORREFs × 4) are in HE `AnnoFrame.dll` and `AnnoFrameAddOn.dll`, once each (**P**; re-checked
+  for all 32 bytes, this line first said 16).
 
 ### 2.5 Chart content (Supply)
 
@@ -300,7 +303,7 @@ The panel reads only history and per-player selection state; it sends **no gamep
 | Sample countdowns (3 × u32, 2 500 ticks) | `+0x30b0..+0x30b8`, stamp `+0x14` | `City::tick_stamp` (D `[city+8]`) exists; countdowns missing | **missing** |
 | Save / load of the history | `STST2` raw record | – (legacy import does not read it) | **missing** |
 | Player's cities in list order | player `+0x84(…, 2)` | `PlaySnapshot::cities` in (island, city) order | exists; order vs original U (OQ-679) |
-| City name | property `0x12` | `City::name` (not filled from files yet) | partly |
+| City name | property `0x12` | `City::name` (`city.hpp`: drawn from the world's `STAEDTE` list when a city is founded in play; the app loads the list, `opening.cpp`) | exists for cities founded in play; empty for cities imported from scenario files (not read from files yet) |
 | Memory slots: 8 × (city entry, goods flags) | player `+0x370`, `+0x37c` | – | **missing** |
 | Paused flag while open | U | `PlaySnapshot::paused`, `SetSpeedCmd` | exists; whether the screen uses it: OQ-670 |
 

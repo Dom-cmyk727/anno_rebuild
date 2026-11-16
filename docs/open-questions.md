@@ -1114,6 +1114,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   4. What does `HELPPLAYER` switch?
   5. Does the game choose the active profile from the registry value `HKCU\Software\Max-Design\Anno1503` `AKTPLAYER`? The first start wrote `"AKTPLAYER"="ANNOnymous"` to the prefix's `user.reg`, and the string sits next to the profile code's strings in `AnnoFrame.dll` and `1503Startup.exe` (`user-dat.md`); the reader is not traced.
 - **How to resolve:** move one slider at a time and diff the file. For the scale, trace the reader of the `VOLUME` chunk. For `AKTPLAYER`, trace the references to the string in `AnnoFrame.dll` (`tFrameStartupProfile`), or set it to a second profile's name in a run's prefix and see which profile the game opens.
+- **Update 2026-11-16 (UI-PANELS-PREP, D; `docs/re/ui-options-mainmenu.md` section 2.6; OQ-688, OQ-689):** item 2: the in-game music slider's handler `View.dll` 0x1007b9c0 calls 0x1007aa30(v), which passes 10 · v to the music object (`+0x64`(10 · v), then `+0x88`(10 · v, -2500), 0x1007aa52..0x1007aa77), so 0 .. -250 becomes 0 .. -2500, DirectSound hundredths of a dB (A); whether -2500 is silence and the speech slider's path (0x1007e313) are not traced. Items 1 and 4 stay open as before; OQ-688 and OQ-689 continue them for the options pages.
 
 ## OQ-112: `COMPPROFIL2` profile columns the hand-over does not use, and its doubled `SUSPEND` call (new, T18 2026-10-22)
 - **Status:** open

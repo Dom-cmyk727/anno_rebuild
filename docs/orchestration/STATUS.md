@@ -159,7 +159,10 @@ says who is doing what, where the work is, and what it waits on.
     time; main healthy.
     **Next for the Mac** (owner, 2026-11-15): [FISHER-RE-3](tasks/fisher-re-3.md), a fisher hut with every
     entrance on land, "matching pixel perfect with HE as reference": RELEASED as a read with a capture
-    recipe; the History Edition picture comparison is a later Windows step (FISHER-HE-1, not released). The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
+    recipe; the History Edition picture comparison is a later Windows step (FISHER-HE-1, not released).
+    **UI-PAN-1** (UI lane; `65a9632c`; owner: "Yes, no click pan") is ACCEPTED for landing
+    ([review](reviews/2026-11-16-ui-pan-1-review.md)): a press inside the 4 px click slop no longer moves the map.
+    Landing waits for the owner's OK. The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
     PASSED its game-file run (2608 executed, 0 failed); landing waits for the owner's OK.
     **The Mac's four tasks reviewed 2026-11-15** ([review](reviews/2026-11-15-mac-four-task-review.md)): FISHER-1b
     and FIXTURES-TRIM-1 ACCEPTED with findings, FISHER-RE-2 ACCEPTED, FISHER-1c a QUESTION checkpoint (the S01_02_01

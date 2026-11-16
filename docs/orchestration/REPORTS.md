@@ -12595,7 +12595,7 @@ Branch `task/FISHER-VIEW-1` from main `3ce4150e`, merged with main `4b104d3a` (F
 
 **Gates (this PC, MSVC Release).**
 - Build: clean.
-- Focused `ctest --preset msvc -j 16` with the game files and the UI shot variables, regex over all `anno_app_tests` and `anno_app_input_tests`, every `viewer_wiring_*`, the oracle-shot UI tests, the opening and selected-house replays, construction sessions and the fisher tests: **431 of 431 passed**. Three of them are opt-in measurements that skip themselves (`ANNO_PLAY_LIVE_TIMING`, `ANNO_PROBE` ×2).
+- Focused `ctest --preset msvc -j 16` with the game files and the UI shot variables, regex over all `anno_app_tests` and `anno_app_input_tests`, every `viewer_wiring_*`, the oracle-shot UI tests, the opening and selected-house replays, construction sessions and the fisher tests: **431 of 431 passed** on `3ce4150e`, and after the merge with `4b104d3a` and the closed case **435 of 435 passed** (all three `viewer_wiring_fisher_view_*` among them). Three of them are opt-in measurements that skip themselves (`ANNO_PLAY_LIVE_TIMING`, `ANNO_PROBE` ×2).
 - clang-format 23.1.3 `--dry-run --Werror` on the changed C++: clean.
 - wsl -d Ubuntu -- bash tools/check_unix_warnings.sh: GCC 13 and Clang 18 viewer-without-GPU clean (78 files); viewer+GPU 409 of 410 clean, the one FAIL the known src/sim/tests/extensions_test.cpp (untouched). Hosted CI runs on the push.
 

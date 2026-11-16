@@ -256,6 +256,12 @@ says who is doing what, where the work is, and what it waits on.
     then FAILED in the evidence preflight: a new doctest name holds a `*`, which `cmake/CheckTestNames.cmake`
     rejects (the code was not reached). The UI lane renames it with B2. `5852e5e7` is not a landing head; a
     review counts as accepted for landing only with a green CI on the reviewed head.
+    **The orchestrator's own picture check against the History Edition** (owner's instruction, 2026-11-16;
+    [note](reviews/2026-11-16-ui-minimap-1-he-check.md)), on `8978a6a1`, maximised at 2560 x 1369: position,
+    islands, colours, the marker and the view box agree with the owner's recording. To fix before landing: the
+    scroll's left end is cut off (F1) and the parchment is speckled (F2). Also found: our tutorial starts 2.08
+    times farther out than the History Edition and elsewhere (F4), and our closest zoom is 1.42 times closer
+    than the recording's (F5, a question).
     **UI-PANELS-PREP** (UI lane, the owner's request in its session, 2026-11-16): four read-only research
     subagents prepare the in-game panels that do not exist yet, with the History Edition as the reference and
     both editions' files: the warehouse and trade panels; the ship panels and diplomacy; statistics; the

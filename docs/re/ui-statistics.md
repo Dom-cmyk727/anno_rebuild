@@ -214,8 +214,7 @@ of **2 500 ticks** (1 tick = 2 ms, `production.md` §1, `population.md` §9) dri
 | `0x0004` (+0x850) | 60 × 70 u8 | stock rows; byte g (g < 56) = `trunc(stock_t[g] / divisor)` from city store `+0x334 + 12g` (`>> 8`); bytes 56..69 never written | D `0x1002d465`–`0x1002d484` |
 | `0x106c` (+0x18b8) | u16 | largest capacity in tons seen (only grows) | D `0x1002d431`–`0x1002d442` |
 | `0x106e` (+0x18ba) | u16 | 2500 | D |
-| `0x1070` (+0x18bc) | 60 × 70 u8 | productivity rows, % per output goods g (0 < g < 70) | D `0x1002d4ba`–`0x1002d64b` |
-| `0x2098` (+0x28e4) | 64 bytes | not written by the sampler | U |
+| `0x1070` (+0x18bc) | 60 × 70 u8 (to `0x20d7`, +0x2923) | productivity rows, % per output goods g (0 < g < 70); the new row 59 is written at `[city + 0x28de + g]` for g = 0..69 (`0x1002d615`–`0x1002d64b`, `cmp esi, 0x46`), so the block has no unwritten bytes between the productivity rows and `0x20d8` (this prep first listed 64 unwritten bytes at +0x28e4; corrected by the orchestrator's review 2026-11-16) | D `0x1002d4ba`–`0x1002d64b` |
 | `0x20d8` (+0x2924) | u16 | supply y max in tons: `m = (max + 0x80) >> 8`, then `m + (10 − m mod 10)` (always the next multiple of 10 above) | D `0x1002d8d5`–`0x1002d8f3` |
 | `0x20da` (+0x2926), `0x249e` (+0x2cea) | u16 | 2500 | D |
 | `0x20dc` (+0x2928), `0x24a0` (+0x2cec) | u8 | supply divisor `ceil(ymax / 256)`, ≥ 1 | D `0x1002d8f1`–`0x1002d963` |
@@ -368,7 +367,7 @@ wall time.
   the UI.
 - **OQ-676 — Productivity inputs.** The rate getters `+0x94` of the farm (`0x1006ef30`), mine (`0x1006e2f0`) and
   base class (`0x10025410`), the second argument of type `+0xc8(j, 0)`, which building list city slot `+0x60`
-  → `+0x24(1)` enumerates, and the unwritten block bytes (`+0x0001`, `+0x2098..+0x20d7`, `+0x30bc/+0x30bd`).
+  → `+0x24(1)` enumerates, and the unwritten block byte `+0x0001` and the bytes `+0x30bc/+0x30bd`.
 - **OQ-677 — Rating screen data.** `tFrameGameStatistik` (init `0x1000f5e0`) rows (`STATISTIK` lines 3–16:
   villages, subjects, satisfaction, capital, islands, soldiers defeated/died, ships sunk/lost, enemies, bonus,
   summary) — which player/world values and which score formulas; the player record `STATIS` (12 bytes); HE's

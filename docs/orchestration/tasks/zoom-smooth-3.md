@@ -213,3 +213,33 @@ named background section, descheduled (few cycles and no overlap), or still unkn
 **Gates:** the changed lanes only (`anno_app_tests`, `anno_render_tests`, `anno_render_gpu_tests`,
 `viewer_wiring_*`), run after the measurements, not during them; clang-format 23.1.3; the WSL `-Werror` check on the
 touched files.
+
+## ZOOM-SMOOTH-3d: the overlap check reads after the call
+
+**Status:** written and **RELEASED** 2026-11-16 by the Claude Code orchestrator for the Windows executor, from the
+[review of 3c](../reviews/2026-11-16-zoom-smooth-3c-review.md) (F1). Next in the lane: if UNIX-WARN-1 or
+TRACE-COLS-1 is already started, finish it first, then this.
+
+**Base:** `task/ZOOM-SMOOTH-3` `7bec1780`, same branch and worktree, new commits. About 1 hour. One concern: make
+the overlap check able to see a background section that runs during the `finish` call, then measure once more.
+Measurement and diagnostics only. The last packet of this series. Never rebase, force-push or push `main`. No
+reviewer subagents. **Nothing else runs during the capture**; check the process list before and after and say so.
+
+**Do:**
+1. Read the three sections' stamps **after** the frame's `finish` call returns, not before it.
+2. A section whose latest begin is newer than its latest end is **in progress**: treat it as running from its
+   begin to the read time, and report it as such.
+3. Keep the last few instances of each section (a small ring, its size a named field with its reason), so two
+   runs of a section close together are both checked.
+4. A unit test of the overlap decision as a pure function: a section entirely inside the call, one that starts
+   during it, one in progress at the read, one entirely before; the old code must fail the second and third.
+5. Run the five-location session once more, alone, with the hitch line on every frame. If no call exceeds 4 ms,
+   run it once more; then stop either way.
+
+**Report** (about 40 lines): the counts per run as in 3c; for every call over 2 ms, the cycle ratio and the
+overlapping sections (now including in-progress ones); one conclusion: waiting behind a named section (which), or
+waiting with no named section running (lock elsewhere or scheduler; not distinguished by this method). Guesses
+marked as guesses.
+
+**Gates:** the changed lanes only, run after the capture; clang-format 23.1.3; the WSL `-Werror` check on the
+touched files.

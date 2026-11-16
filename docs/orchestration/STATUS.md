@@ -259,7 +259,11 @@ says who is doing what, where the work is, and what it waits on.
     `finish` grows with the draws (correlation 0.77 to 0.85; 99th percentile 1.2 ms of the 2 ms frame), and three
     background threads call wgpu (plane pre-creation, the fluid job, its background release); the 4 to 10 ms
     calls were not looked for in the session that showed them and the CPU-time question is open, so
-    **[ZOOM-SMOOTH-3c](tasks/zoom-smooth-3.md) is RELEASED** (in work); **ZOOM-SMOOTH-2f is reviewed**
+    **[ZOOM-SMOOTH-3c](tasks/zoom-smooth-3.md) ACCEPTED** 2026-11-16 (`7bec1780`, CI green;
+    [review](reviews/2026-11-16-zoom-smooth-3c-review.md)): the spikes reproduced (2 calls over 4 ms in 126,274
+    frames, longest 13.6 ms); they were waiting, not computing; `finish` costs 0.14 ms per 100 draws, which
+    supports RENDER-DIRECT; its overlap check reads the background stamps before the call and cannot see a
+    section that runs during it, so **ZOOM-SMOOTH-3d** (about 1 hour, the series' last) is RELEASED; **ZOOM-SMOOTH-2f is reviewed**
     (`d33432aa`, [note](reviews/2026-11-16-zoom-smooth-2e-owner-proof.md)): the guard is in place, ACCEPTED once
     CI is green on that head; then ZOOM-SMOOTH-2 is ready for a landing candidate (owner's OK);
     **ZOOM-BOUNCE-3 ACCEPTED**

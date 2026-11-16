@@ -452,11 +452,23 @@ class Viewer {
     void toggle_pause();
     [[nodiscard]] std::uint64_t time_ms() const;
     [[nodiscard]] std::pair<int, int> view_size() const;
-    void measure(double chunks_ms, const std::array<double, 4>& stages);
+    /// ZOOM-SMOOTH-3: the counts the hitch line's own frame steps say nothing about (how much
+    /// content, not how long it took) - visible chunks, stand-in parts, open-sea chunks, chunks
+    /// dropped, planes freed, sprites decoded - gpu::GpuStats's own fields, so this is appended
+    /// only from the GPU path; the CPU path's own measure() call passes no counts.
+    struct FrameCounts {
+        std::size_t visible_chunks = 0, stand_in_parts = 0, open_sea_chunks = 0, chunks_dropped = 0,
+                    planes_freed = 0, sprites_decoded = 0;
+    };
+    void measure(double chunks_ms, const std::array<double, 4>& stages,
+                 const FrameCounts* counts = nullptr);
     /// The steps of the frame being drawn (filled by draw_gpu / draw_cpu), the
     /// end of the last one, and the previous frame's.
     std::vector<Step> steps_, last_steps_, worst_steps_;
     Clock::time_point steps_end_ = Clock::now();
+    /// The previous frame's own counts (measure()'s own counts parameter, carried over the way
+    /// last_steps_ is) - std::nullopt for the CPU path, which passes none.
+    std::optional<FrameCounts> last_counts_;
 
     /// The scene of --view (null in play: the frames draw the picture's generations).
     std::shared_ptr<const render::Scene> fixed_;
@@ -3157,7 +3169,13 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     chunks_received_ += s.chunks_built; // reported with the periodic line, not per frame
     tex_w_ = out_w;
     tex_h_ = out_h;
-    measure(s.chunks_ms, {s.upload_ms, s.sprites_ms, s.encode_ms, present});
+    const FrameCounts counts{s.chunks_built + s.chunks_missing,
+                             s.stand_in_parts,
+                             s.open_sea_chunks,
+                             s.chunks_dropped,
+                             s.planes_freed,
+                             s.sprites_new};
+    measure(s.chunks_ms, {s.upload_ms, s.sprites_ms, s.encode_ms, present}, &counts);
 }
 #endif
 
@@ -3405,7 +3423,8 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
     measure(s.chunks_ms, {s.ground_ms, s.water_objects_ms, s.sea_ms, s.objects_ms});
 }
 
-void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
+void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages,
+                     const FrameCounts* counts) {
     // The window thread's busy time: all of draw() (events excluded) from
     // its start to the end of the present call, minus the wait for the
     // display. Not just the compositor's own timer: acquiring the surface
@@ -3422,6 +3441,22 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
     // Gap between the starts of two frames of the continuous animation: the
     // true hitch (the vsync wait is in it, so it is one display interval
     // when all is well).
+    // ZOOM-SMOOTH-3: how much content a frame handled, not how long it took - the previous
+    // frame's own counts are what the PREVIOUS line's own busy time (the spike, if any) is
+    // about; nullopt (the CPU path, which passes no counts) prints as "n/a", told apart from a
+    // real, all-zero GPU frame.
+    auto describe_counts = [](const std::optional<FrameCounts>& c) {
+        if (!c) {
+            return std::string("n/a");
+        }
+        char buf[160];
+        std::snprintf(buf, sizeof buf,
+                      "visible chunks %zu, stand-in parts %zu, open sea chunks %zu, dropped %zu, "
+                      "planes freed %zu, sprites decoded %zu",
+                      c->visible_chunks, c->stand_in_parts, c->open_sea_chunks, c->chunks_dropped,
+                      c->planes_freed, c->sprites_decoded);
+        return std::string(buf);
+    };
     if (last_start_ && last_animating_ && frame_animating_) {
         const double gap =
             std::chrono::duration<double, std::milli>(draw_start_ - *last_start_).count();
@@ -3432,13 +3467,16 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
                          "%.1f ms, waiting for the display %.1f ms; previous frame: busy %.1f ms, "
                          "waiting %.1f ms; %.1f ms from the end of that frame to the start of "
                          "this one, of which %.1f ms handling window events); zoom group %zu\n"
-                         "  previous frame steps (ms): %s\n  this frame steps (ms): %s\n",
+                         "  previous frame steps (ms): %s\n  this frame steps (ms): %s\n"
+                         "  previous frame counts: %s\n  this frame counts: %s\n",
                          gap, total_ms, display_wait_ms_, last_busy_ms_, last_wait_ms_,
                          std::chrono::duration<double, std::milli>(draw_start_ - last_end_).count(),
                          events_ms_, group_, describe(last_steps_, last_busy_ms_).c_str(),
-                         describe(steps_, total_ms).c_str());
+                         describe(steps_, total_ms).c_str(), describe_counts(last_counts_).c_str(),
+                         describe_counts(counts ? std::optional(*counts) : std::nullopt).c_str());
         }
     }
+    last_counts_ = counts ? std::optional(*counts) : std::nullopt;
     last_busy_ms_ = total_ms;
     last_steps_ = steps_;
     last_wait_ms_ = display_wait_ms_;

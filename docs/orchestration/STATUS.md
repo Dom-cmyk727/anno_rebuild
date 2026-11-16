@@ -183,7 +183,9 @@ says who is doing what, where the work is, and what it waits on.
     extra open controls.
     **UI-PAN-1** (UI lane; `65a9632c`; owner: "Yes, no click pan") is ACCEPTED for landing
     ([review](reviews/2026-11-16-ui-pan-1-review.md)): a press inside the 4 px click slop no longer moves the map.
-    Landing waits for the owner's OK.
+    **LANDED on main `3ce4150e`** 2026-11-16 (owner: "Yes, land it"; verified as an ancestor of `origin/main`;
+    game-file run 2632 executed, 14 stopped by the low-memory guard, all 14 PASS alone with
+    `ANNO_TEST_HEADROOM_MB=2048`; main healthy).
     **Co-developer exchange** (2026-11-16): his deliveries 14 to 19 (notes only) were read as untrusted data.
     One finding is confirmed on our files and closes an open point of `annoscene.md` §5 step 10: the ore table's
     ids at `AnnoScene 0x1003AF24` are `FigurenHeader.dat` figure types (1560 to 1564 and 1661 share one

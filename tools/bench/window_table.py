@@ -53,11 +53,17 @@ import sys
 from pathlib import Path
 
 COLUMNS = ["frame", "epoch", "generation", "view_x", "view_y", "view_w", "view_h", "group", "scale",
+           "resample_scale", "resample_offset_x", "resample_offset_y",
            "drawable_w", "drawable_h", "t_start_ms", "picture_ms", "acquire_start_ms",
            "acquire_end_ms", "acquire_status", "texture", "submit_ms", "present_start_ms",
-           "present_end_ms", "present_status", "outcome",
-           "resample_scale", "resample_offset_x", "resample_offset_y"]
+           "present_end_ms", "present_status", "outcome"]
 SIM_COLUMNS = ["turn", "t_ms", "applied", "rejected", "outcome", "reasons", "batch", "deltas"]
+# wheel.tsv (ZOOM-BOUNCE-3, window_trace.cpp): not read by this tool yet (no feature needs its
+# rows), but TRACE-COLS-1's own contract test checks this against the C++ writer's header too -
+# the same silent-drift risk frames.tsv's own resample_* columns hit (review the task documents)
+# would recur for wheel.tsv otherwise, the next time its own columns change.
+WHEEL_COLUMNS = ["t_ms", "raw_y", "integer_y", "flipped", "mouse_x", "mouse_y", "target_before",
+                "target_after"]
 WHOLE = re.compile(r"-?[0-9]+")
 NUMBER = re.compile(r"-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?")
 ACQUIRE = {"SuccessOptimal", "SuccessSuboptimal", "Timeout", "Outdated", "Lost", "Error", "Occluded"}

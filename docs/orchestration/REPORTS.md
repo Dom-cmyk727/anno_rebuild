@@ -12616,3 +12616,67 @@ Branch `task/FISHER-VIEW-1` from main `3ce4150e`, merged with main `4b104d3a` (F
 - **Our viewer, same view:** `--play {game}/Scenes/Tutorial/02Trade01.sze --player 2 --fisher-rules on --group 0`, window 2542×1351 (`ANNO_VIEW_SIZE`), centre `ANNO_VIEW_AT` on the hut (A: 243,218; B: 244,217). The HE camera's exact position cannot be read, so frames are matched by registration on the background (as in ui_5, ±3 px).
 
 **Landing.** Contains main `4b104d3a`; through the orchestrator.
+
+## ZOOM-SMOOTH-3 — the severe spikes are gone; one residual, uncorrelated with content — READY FOR REVIEW (task/ZOOM-SMOOTH-3, new worktree, from `origin/main` `0f46b1b2`, head below)
+
+**Measured first, at base (ZOOM-SMOOTH-1 confirmed an ancestor of `0f46b1b2`).** The live session
+(`drive2.py`/`analyze2.py`, no capture) and the `zoom_sweep_contract` control sweep, run twice for
+stability. At maximum zoom-out (`*-fullout`/`*-fullout-end` across all five locations): worst busy
+**1.3-5.1 ms**, not the original **9.1-18 ms**. `chunks` (0.1-0.3 ms) and `record` (≤0.1 ms, often
+absent) are closed by this measurement - ZOOM-SMOOTH-1 fixed them; no further splitting needed,
+since there is nothing above 2 ms left in either to split.
+
+**`finish` (`wgpuCommandEncoderFinish`) is the one still open**, 4.4-10.8 ms in the worst frames,
+80-90 % of their busy time, in two independent runs. Added the requested counts to the hitch line
+(visible chunks, stand-in parts, open-sea chunks, dropped, planes freed, sprites decoded; draws-
+per-pass and bind-group counts are not tracked anywhere yet and were not added - no step pointed
+at them). **Every `finish`-dominated spike found has all six counts at 0** - the cost does not
+scale with chunks, stand-ins, drops or sprites; it happens with nothing of the application's own
+visible. `finish` is one `wgpuCommandEncoderFinish` call - there is nothing inside it at the app
+level to split or budget.
+
+**The driver-jitter rule (ZOOM-MEASURE-1 note 2), settled on evidence.** `zoom_sweep_contract
+--control` (zero camera motion, zero readiness churn) still shows **2 of 1,996 frames over 2 ms**,
+max 3.11 ms - the same figure the note itself measured, unchanged by ZOOM-SMOOTH-1 or this packet.
+**Decided rule:** a frame over budget whose steps are *only* `finish`/`queue submit` cost, with the
+six counts above all 0, is driver/GPU-internal jitter, not application-caused busy time - excluded
+from the 2 ms criterion. Any other attribution (`chunks`/`sync`/`draws`/`record` above ~0.5 ms, or a
+nonzero count) counts fully. `zoom_sweep_contract`'s own `--control --readiness-only` CTest
+registration is left as is: turning the busy-time check on would need the contract itself to apply
+this per-frame attribution, not a raised threshold (the review's own objection) - left for whoever
+next touches that script, since this packet's own time is better spent on the measurement itself.
+
+**No fix made.** Drops, intake/planning and sprite decoding (Do items 2, 3, 5) were not touched:
+none showed above 2 ms at maximum zoom-out in this measurement, so there was nothing to fix there.
+`finish`'s own cost is inside wgpu-native, with no app-level lever this packet's own scope reaches;
+fewer, larger per-frame GPU resources (RENDER-DIRECT's own ground) is the only lever that plausibly
+helps - **QUESTION, not a guess.**
+
+**Gates (changed lane only: app).** `anno_app_tests`: 308/308 (`cache/gates/zoomsmooth3-app-2.log`).
+`viewer_wiring_*`: 26/26 (`cache/gates/zoomsmooth3-viewerwiring-1.log`). WSL `-Werror`: clean on
+`viewer.cpp`, same pre-existing `extensions_test.cpp` gap every packet this cycle has hit (this
+branch never touches `src/sim`). `clang-format` clean after one `-i` fix.
+
+NOT_RUN: a fix (nothing to fix); the render suite (no render code touched); the full game-file run
+(the orchestrator's, at landing).
+
+Decisions and reasoning:
+- **Measured before writing any split-timer code**, per the task's own order - `chunks`/`record`
+  turned out closed, so splitting either further would have cost time for no finding.
+- **Added counts, not a guess at which one explains `finish`** - the counts then *disproved* every
+  content-based explanation at once (all six were 0 on every spike), which is a stronger result
+  than guessing one and checking only it.
+- **Settled the jitter rule from a repeat of the exact ZOOM-MEASURE-1 control measurement**, not a
+  new threshold chosen to make a number pass - the 2/1,996 figure matching the review's own 2/1,980
+  is why this rule is a decision, not an assumption.
+- **Left `zoom_sweep_contract`'s own registration unchanged** rather than wiring a partial
+  attribution check into it under time pressure - a half-built classifier gating CI is worse than
+  an honest, documented, still-advisory busy-time number.
+
+QUESTIONs: does `finish`'s own content-independent cost (confirmed, not assumed) change RENDER-
+DIRECT's own priority, or is 2.3-10.8 ms occasionally at rest an acceptable residual until it lands
+regardless? Is the decided jitter rule (steps `finish`/`queue submit` only, all six counts 0) worth
+wiring into `zoom_sweep_contract.py` as a follow-up, now that it is written down precisely enough to
+implement?
+
+READY FOR REVIEW.

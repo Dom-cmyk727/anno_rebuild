@@ -216,7 +216,10 @@ says who is doing what, where the work is, and what it waits on.
     ([review](reviews/2026-11-16-fisher-view-1-review.md)): `--fisher-rules` and `--player` in `--play`, and the
     hut's stock readout. The owner's OK is given ("Yes, land it"); candidate `0f46b1b2` has the branch's tree.
     The Windows PC's part PASSED (GPU on the 4090 and the app lanes with the game files: 472 executed, 0 failed);
-    the Mac's full run is pending.
+    the Mac's full run on the same tree: 2656 executed, 2 failed, both GPU timing tests on Metal that pass on
+    the 4090. **LANDED on main `0f46b1b2`** 2026-11-16, verified as an ancestor of `origin/main`; the first
+    landing under the new landing-evidence rule; main healthy by that rule. The next full game-file run on the
+    Windows PC (the daily one) is due on 2026-11-17 or with the next landing, whichever comes first.
     **New jobs, 2026-11-16** (the owner asked for one per lane): **Windows executor:**
     [ZOOM-BOUNCE-1](tasks/zoom-bounce-1.md) RELEASED; ZOOM-SMOOTH-2e's code is ACCEPTED (`46fd1f2b`, a move
     trigger at most every 16 ms) and waits for the owner's fast drag. **Mac:** the gate run for FISHER-VIEW-1,

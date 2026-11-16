@@ -1,7 +1,7 @@
 # GATE-MAC-1: the GPU timestamp tests that fail on Metal
 
-**Status:** written 2026-11-16 by the Claude Code orchestrator for **the Mac executor**. Not released: the owner
-pastes the prompt when the Mac is to start.
+**Status:** written 2026-11-16 by the Claude Code orchestrator for **the Mac executor**. **RELEASED** 2026-11-16 on the
+owner's go (the owner pastes the prompt).
 
 **Base:** `origin/main` after the minimap candidate has landed (the commit is named in the prompt). Branch
 `task/GATE-MAC-1`, a new worktree. About 3 hours. One concern: why three GPU timestamp tests fail on the Mac, and

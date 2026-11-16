@@ -298,7 +298,7 @@ says who is doing what, where the work is, and what it waits on.
     **LANDED 2026-11-16: `main` `0f46b1b2` -> `ac02d4a2`** by `land.py` (required check `gate` green, run
     43929064417), verified an ancestor of `origin/main` in a separate command; GitLab and the share are synced.
     It holds UI-MINIMAP-1 (`3c7ea686`), FISHER-RE-4 and ANNOSCENE-ORE-1.
-    **[GATE-MAC-1](tasks/gate-mac-1.md) is written for the Mac** (not released: the owner pastes the prompt):
+    **[GATE-MAC-1](tasks/gate-mac-1.md) is RELEASED to the Mac** (2026-11-16, the owner pastes the prompt; base `ac02d4a2`):
     why the timestamp tests fail on Metal, then a fix or corrected tests, so the Mac's verdict can be PASS.
     **UI-PANELS-PREP** (UI lane, the owner's request in its session, 2026-11-16): four read-only research
     subagents prepare the in-game panels that do not exist yet, with the History Edition as the reference and

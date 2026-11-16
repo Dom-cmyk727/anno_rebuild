@@ -484,6 +484,7 @@ int run(const std::vector<std::string>& raw) {
     // UI-MINIMAP-1 B1: data/ui/minimap.txt and the world the minimap shows, outliving the window.
     std::optional<anno::app::MinimapConfig> minimap_config;
     std::optional<anno::app::MinimapWorld> minimap_world;
+    std::optional<anno::app::MinimapOwnerRule> minimap_rule;
     // A scripted session (ANNO_DEV_SCRIPT=<file>) and its record (ANNO_DEV_SESSION=<new dir>),
     // round ee E3: --play only.
     std::optional<anno::app::DevScript> script;
@@ -587,8 +588,9 @@ int run(const std::vector<std::string>& raw) {
                 return 1;
             }
             // The minimap's world (UI-MINIMAP-1 B1): the size from the world's settings, each
-            // island's HEIGHT grid from the scene as loaded. No owners yet: every tile shows
-            // no_owner (the olive land); the live owners are step B2 (OQ-629).
+            // island's HEIGHT grid from the scene as loaded. The owners come with every snapshot
+            // (PlaySnapshot::territory, B2), coloured by the rule read here from the world before
+            // it moves into the runner (docs/re/ui.md 2.9, OQ-629).
             minimap_config.emplace(std::move(minimap_loaded).value());
             minimap_world.emplace();
             minimap_world->w = play->world.settings().world_width;
@@ -606,8 +608,13 @@ int run(const std::vector<std::string>& raw) {
                 mi.heights = std::move(heights).value();
                 minimap_world->islands.push_back(std::move(mi));
             }
+            minimap_rule.emplace(anno::app::minimap_owner_rule(
+                *play, args->file,
+                opening ? std::optional{anno::sim::PlayerId{opening->setup.local}} : std::nullopt));
+            std::fprintf(stderr, "[minimap] viewer player %u\n", minimap_rule->viewer);
             hooks.minimap_config = &*minimap_config;
             hooks.minimap_world = &*minimap_world;
+            hooks.minimap_rule = &*minimap_rule;
             construction_hud.emplace(std::move(hud_loaded).value());
             construction_layout.emplace(std::move(construction_loaded).value());
             construction_masks.emplace(std::move(masks_loaded).value());

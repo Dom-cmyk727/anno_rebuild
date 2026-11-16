@@ -92,6 +92,9 @@ struct ViewerHooks {
     /// `construction_menu` is null.
     const MinimapConfig* minimap_config = nullptr;
     const MinimapWorld* minimap_world = nullptr;
+    /// UI-MINIMAP-1 B2: whose cities the minimap colours and in which colour (play.hpp
+    /// minimap_owner_rule); null: every cell keeps the islands' own owners (no_owner).
+    const MinimapOwnerRule* minimap_rule = nullptr;
     /// ADR 0004 R2, W4-NEXT-1 part U's key-collision QUESTION: `Classic` (the default) reserves
     /// the window's own S/Q/D keys (today: pan down, quit, pan right) for the original screens
     /// they would open once those screens exist (ADR 0004 rows 15/17/9, still placeholders) -

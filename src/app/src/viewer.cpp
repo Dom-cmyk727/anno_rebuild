@@ -356,6 +356,8 @@ class Viewer {
                 const auto start = Clock::now();
                 MinimapState m;
                 m.cfg = hooks->minimap_config;
+                m.world = hooks->minimap_world;
+                m.rule = hooks->minimap_rule;
                 m.world_w = hooks->minimap_world->w;
                 m.world_h = hooks->minimap_world->h;
                 m.image = build_minimap_image(*m.cfg, *hooks->minimap_world);
@@ -571,8 +573,15 @@ class Viewer {
     /// as the original rebuilds its texture only when the world image changed (AnnoFrame
     /// 0x100030f9..0x10003125). Only the view box follows the camera every frame. Unset without
     /// the construction menu or without the hooks' minimap data.
+    /// B2: the image is rebuilt when the snapshot's territory has a new version (the original's
+    /// counter test, OQ-634), `owners_ms` measured; the markers are taken every frame.
     struct MinimapState {
         const MinimapConfig* cfg = nullptr;
+        const MinimapWorld* world = nullptr;
+        const MinimapOwnerRule* rule = nullptr;
+        std::uint64_t territory_version = 0;
+        std::uint64_t owner_builds = 0;
+        double owners_ms = 0;
         std::uint32_t world_w = 0, world_h = 0;
         std::vector<std::uint16_t> image;
         std::vector<std::array<std::uint8_t, 4>> palette;
@@ -1875,6 +1884,22 @@ const MinimapOverlay* Viewer::minimap_overlay(int ui_w) {
     const double cu = m.world_h > 0 ? wy / static_cast<double>(m.world_h) : 0.5;
     const double cv = m.world_w > 0 ? wx / static_cast<double>(m.world_w) : 0.5;
     const MinimapWindow window = minimap_window(m.zoom, cu, cv);
+    // B2: the owners from the snapshot (PlaySnapshot::territory), only when they changed.
+    const auto snap = play_ != nullptr ? play_->runner().snapshot() : nullptr;
+    if (snap && snap->territory && m.rule != nullptr && m.world != nullptr &&
+        snap->territory->version != m.territory_version) {
+        const auto start = Clock::now();
+        const std::vector<MinimapOwnerLayer> layers =
+            minimap_owner_layers(cfg, *snap->territory, *m.rule);
+        m.image = build_minimap_image(cfg, *m.world, &layers);
+        m.territory_version = snap->territory->version;
+        ++m.owner_builds;
+        m.raster_ui_w = -1; // recompose
+        m.owners_ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+        std::fprintf(stderr, "[minimap] owners v%llu: image rebuilt in %.2f ms (build %llu)\n",
+                     static_cast<unsigned long long>(m.territory_version), m.owners_ms,
+                     static_cast<unsigned long long>(m.owner_builds));
+    }
     const bool same_window = window.u0 == m.raster_window.u0 && window.v0 == m.raster_window.v0 &&
                              window.u1 == m.raster_window.u1 && window.v1 == m.raster_window.v1;
     if (m.raster_ui_w != ui_w || !same_window) {
@@ -1892,8 +1917,13 @@ const MinimapOverlay* Viewer::minimap_overlay(int ui_w) {
     }
     // The box's size follows the main view's zoom level (2^level, 0x1002ff5b); the continuous
     // zoom passes the closest level's tile width over the shown one (minimap_view_box).
+    // B2 fix: 2^level exactly at the built levels (84 / 20 = 4.2 was used at group 2 before).
     const double shown_w = continuous_ ? zoom_now_ : levels().tile_w(group_);
-    const double level_factor = shown_w > 0.0 ? levels().tile_w(0) / shown_w : 1.0;
+    std::vector<double> level_w;
+    for (std::size_t k = 0; k < levels().built_count(); ++k) {
+        level_w.push_back(levels().tile_w(k));
+    }
+    const double level_factor = minimap_level_factor(level_w, shown_w);
     minimap_frame_.raster = &m.raster;
     minimap_frame_.x = rect.x;
     minimap_frame_.y = rect.y;
@@ -1902,6 +1932,14 @@ const MinimapOverlay* Viewer::minimap_overlay(int ui_w) {
     minimap_frame_.box_rgb = {static_cast<std::uint8_t>((cfg.box_colour >> 16) & 0xffU),
                               static_cast<std::uint8_t>((cfg.box_colour >> 8) & 0xffU),
                               static_cast<std::uint8_t>(cfg.box_colour & 0xffU)};
+    // B2: the markers, from the snapshot's figures every frame (the original rebuilds its list
+    // in every update, AnnoFrame 0x10002e43).
+    minimap_frame_.marks.clear();
+    if (snap && snap->map_figures && m.rule != nullptr) {
+        minimap_frame_.marks =
+            minimap_marker_pixels(cfg, minimap_markers(cfg, rect, window, *snap->map_figures,
+                                                       m.world_w, m.world_h, m.rule->viewer));
+    }
     return &minimap_frame_;
 }
 

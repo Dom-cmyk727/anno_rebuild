@@ -8,6 +8,11 @@ says who is doing what, where the work is, and what it waits on.
 - **`main` is `ac02d4a2`** (2026-11-16, evening): the minimap (UI-MINIMAP-1), FISHER-RE-4 and ANNOSCENE-ORE-1
   landed together on the owner's OK, the second landing under the evidence split below. The next full game-file
   run on the Windows PC is due 2026-11-17.
+- **What is left and who does what next:** [remaining-work-2026-11-16.md](remaining-work-2026-11-16.md)
+  (2026-11-16, the owner's request): a research agent read the repository and every document; the
+  orchestrator checked its plan, changed the order to the LAN target's critical path, and assigned first lists
+  to the three lanes, with ten decisions for the owner. New packets: [UNIX-WARN-1](tasks/unix-warn-1.md),
+  [TRACE-COLS-1](tasks/trace-cols-1.md) (Windows, queued after ZOOM-SMOOTH-3c).
 - **UI lane: UI-TABS-1 started** (2026-11-16, the owner's go in the UI lane's session, as reported by it):
   `task/UI-TABS-1` from `main` `ac02d4a2`, packet `tasks/ui-tabs-1.md` on that branch (`6d20d16e`). Stage A: the
   tab and sub-tab switching (player, city view, options) with clicks and the keys D, S and C; stage B (the

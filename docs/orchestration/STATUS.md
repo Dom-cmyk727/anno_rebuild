@@ -264,7 +264,11 @@ says who is doing what, where the work is, and what it waits on.
     islands, colours, the marker and the view box agree with the owner's recording. To fix before landing: the
     scroll's left end is cut off (F1) and the parchment is speckled (F2). Also found: our tutorial starts 2.08
     times farther out than the History Edition and elsewhere (F4), and our closest zoom is 1.42 times closer
-    than the recording's (F5, a question).
+    than the recording's (F5, a question). **The fix round (`3c7ea686`) was checked the same way and ACCEPTED:** the
+    scroll's left end is drawn (it was a texture nothing drew), and the parchment is filtered as the History
+    Edition's (grain 3.5 against its 3.2; the GOG look stays a setting). `[CAMARAPOS]` is not a start camera;
+    the History Edition starts at zoom level 1 on the player's ship. Landing waits for a green CI on that head
+    and the owner's OK.
     **UI-PANELS-PREP** (UI lane, the owner's request in its session, 2026-11-16): four read-only research
     subagents prepare the in-game panels that do not exist yet, with the History Edition as the reference and
     both editions' files: the warehouse and trade panels; the ship panels and diplomacy; statistics; the

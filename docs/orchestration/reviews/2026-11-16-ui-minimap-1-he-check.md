@@ -53,3 +53,28 @@ times farther out; at the fisher site our closest zoom is 1.42 times closer than
 
 The minimap's drawing matches the History Edition in position, islands, colours, marker and view box. **F1 and F2
 are to be fixed before UI-MINIMAP-1 lands**; F3 with B2; F4 and F5 are questions for the UI lane and the owner.
+
+## The fix round, checked the same way (`3c7ea686`, 2026-11-16)
+
+The orchestrator rebuilt the head and took the maximised screenshot again.
+
+| | Before (`8978a6a1`) | After (`3c7ea686`) | History Edition |
+|---|---|---|---|
+| Whole minimap patch, mean difference to the recording | 14.1 | 12.8 | |
+| The scroll's left end, mean difference | 25.7 | 14.1 | |
+| Parchment grain (spread of the pixel minus its 3 x 3 mean), left / right / top | 6.7 / 5.6 / 8.8 | 3.5 / 3.1 / 7.6 | 3.2 / 2.6 / 6.0 |
+
+- **F1 is fixed.** The rolled left end hangs over the map with the same shape and reaches the same place, within a
+  pixel. It was a texture of its own (`fenster.tex` id 3) that nothing drew. A two-to-three pixel bump remains
+  below the diamond's tip in the lossy comparison; the UI lane's lossless capture gives a median of 0 there.
+- **F2 is fixed.** The parchment is drawn as the History Edition draws it: a quad two pixels larger, sampled
+  bilinearly, 8 bits per channel. The GOG look is kept as a setting (`parchment_quad 1 1 1 1`, `colour_depth 16`).
+  **The default is now the History Edition's look**, by the owner's rule that it is the picture reference.
+- **F3:** no change; the fringe is the video's blur and the open shade rounding (OQ-636).
+- **F4, answered:** `[CAMARAPOS]` is the camera memory slot, not a start camera. The History Edition starts at zoom
+  level 1 on the player's ship; ours starts at group 2 on the scene's centre. A start at level 1 on the player's
+  first ship is proposed as a small app change, for the owner to decide.
+- **F5, answered:** the rebuild's closest zoom is 84 x sqrt(2); see the ZOOM-BOUNCE review.
+
+**Verdict:** the minimap's drawing is accepted against the History Edition. It can land when CI is green on
+`3c7ea686`, with the owner's OK.

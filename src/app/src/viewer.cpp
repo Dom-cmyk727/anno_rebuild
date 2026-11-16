@@ -56,13 +56,18 @@ double hitch_ms() {
     }();
     return v;
 }
+#ifdef ANNO_VIEWER_GPU
 /// ZOOM-SMOOTH-3c F3: whether to read the window thread's CPU use around the finish call this
 /// frame (a real syscall) - only while ANNO_VIEW_HITCH_MS is explicitly set, the signal that
 /// hitch diagnostics are being watched closely, not on every ordinary run at the 30 ms default.
+/// GPU-only (its one call site, draw_gpu's own render() call, is): unused and -Werror on the CPU
+/// path otherwise (GCC/Clang -Wunused-function; MSVC does not report it, docs/orchestration's
+/// own note on this check).
 bool hitch_tracking_enabled() {
     static const bool v = std::getenv("ANNO_VIEW_HITCH_MS") != nullptr;
     return v;
 }
+#endif
 /// One step of a frame on the window thread: the steps of a frame, laid end to
 /// end, add up to its busy time (see Viewer::measure).
 struct Step {

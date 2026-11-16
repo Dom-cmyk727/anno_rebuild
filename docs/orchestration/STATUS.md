@@ -271,6 +271,11 @@ says who is doing what, where the work is, and what it waits on.
     43911327994). The candidate `ac02d4a2` (main `0f46b1b2`, then UI-MINIMAP-1, FISHER-RE-4 and ANNOSCENE-ORE-1;
     tree `bf78e4f1`) is built locally and not pushed; it waits for the owner's landing OK, then the Mac's full
     run and the Windows PC's GPU and app lanes.
+    **Owner's landing OK given 2026-11-16** ("Yes, land it"). The candidate is fetchable as
+    `refs/candidates/minimap-stack` (a non-branch ref; no CI run started). **The Windows PC's part PASSED** on
+    `ac02d4a2`: GPU tests on the RTX 4090 and the app lanes with the game files, 506 selected, 503 executed, 0
+    failed, 3 opt-in skips; the reference lanes (`annoscene_ore_*`, `fisher_*`, `script_objects_*`) 6 of 6.
+    The Mac's full run is requested (the owner pastes the prompt); not landed yet.
     **UI-PANELS-PREP** (UI lane, the owner's request in its session, 2026-11-16): four read-only research
     subagents prepare the in-game panels that do not exist yet, with the History Edition as the reference and
     both editions' files: the warehouse and trade panels; the ship panels and diplomacy; statistics; the

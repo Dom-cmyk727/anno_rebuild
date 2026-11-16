@@ -212,6 +212,9 @@ says who is doing what, where the work is, and what it waits on.
     no memory refusal; the closed-hut tests ran on Windows for the first time; main healthy. The first
     `land.py` attempt stopped on GitHub's hourly API limit and was repeated after the reset. This was the
     last landing under the old every-landing rule.
+    **FISHER-VIEW-1** (UI lane, FISHER-HE-1 step B; `eb11f0c6`) is ACCEPTED for landing
+    ([review](reviews/2026-11-16-fisher-view-1-review.md)): `--fisher-rules` and `--player` in `--play`, and the
+    hut's stock readout. Landing waits for the owner's OK; it is the first under the new landing-evidence rule.
     **UI-PAN-1** (UI lane; `65a9632c`; owner: "Yes, no click pan") is ACCEPTED for landing
     ([review](reviews/2026-11-16-ui-pan-1-review.md)): a press inside the 4 px click slop no longer moves the map.
     **LANDED on main `3ce4150e`** 2026-11-16 (owner: "Yes, land it"; verified as an ancestor of `origin/main`;

@@ -114,12 +114,16 @@ page background `info_bk` (`STADT_BILANZ_BK` at (779, 301)), the eight tabs `inf
 
 The page reaches the command sender by `[page+0x62c]` slot +0x98 (AnnoFrame object, vtable 0x100893ec,
 installed at AnnoFrame 0x100608a1). Records are written with sender slot +0x144 (record, length).
+The vtable's RTTI name is `tNetClientNet` (P, `.?AVtNetClientNet@@` through the locator at
+0x100893ec - 4): the three packers below are the **multiplayer client's**; single player applies
+the same action directly through `tNetClient` (OQ-005, `AnnoFrame.dll` 0x100589a0). The byte
+layouts are those packers' writes (offsets from the type byte at 0).
 
-| UI action | Sender slot | Record (bytes after the type byte) | Sim command | Evidence |
+| UI action | Sender slot (`tNetClientNet`) | Record | Sim command | Evidence |
 |---|---|---|---|---|
-| Sell/Buy page: slider moved (handlers below), plus/minus clicked, goods deleted | +0x64 = 0x1005d780 `(list, rec, city)` | 0x73, u8 island, u8 city, u8 goods, u8 index, u16 amount (whole tons), u16 price, 2 bytes not written, u8 list (13 bytes) | `SetTradeSlotCmd{city, list, index, goods, amount_88 = amount << 8, price}` | D AnnoFrame 0x1005d79d..0x1005d7f2; View rec built at 0x10023e0b..0x10023e4c: `{goods, index, u16 trunc(upper slider), u16 trunc(lower slider), 0}` |
-| Deny building material | +0x94 = 0x1005ef70 `(mode, goods, value, city)` | 0x7c, u8 island, u8 city, u16 mode = 9, u16 goods = 0x29, u32 value = 0x7fff00 (pressed) or 0 | `SetTradeFlagCmd{city, mode 9, goods 0x29, value}` | D View 0x1006cab8..0x1006caee (`neg; sbb; and 0x7fff00`), AnnoFrame 0x1005efa7 |
-| (entry append) | +0xd0 = 0x1005f0b0 `(u32, city)` | 0x8a, u8 island, u8 city, u32 (9 bytes) | `SetTradeSlotCmd{index = kAppendIndex}` | D AnnoFrame 0x1005f0cd; no caller in the VKEK handlers found → OQ-653 |
+| Sell/Buy page: slider moved (handlers below), plus/minus clicked, goods deleted | +0x64 = 0x1005d780 `(list, rec, city)` | 13 bytes: 0 = 0x73, 1 = u8 island, 2 = u8 city, 3 = u8 goods, 4 = u8 index, 5 = u16 amount (whole tons), 7 = u16 price, 9-10 not written, 11 = u8 list, 12 not written | `SetTradeSlotCmd{city, list, index, goods, amount_88 = amount << 8, price}` | D AnnoFrame 0x1005d780..0x1005d7f2 (list `[esp+0x17]`, goods `[esp+0xf]`, amount `[esp+0x11]` with the record at `[esp+0xc]`; index, city and price after the two pushes at `[esp+0x14]`, `[esp+0x16]`, `[esp+0x1b]`; length `push 0xd`); View rec built at 0x10023e0b..0x10023e4c: `{goods, index, u16 trunc(upper slider), u16 trunc(lower slider), 0}` |
+| Deny building material | +0x94 = 0x1005ef70 `(mode, goods, value, city)` | 13 bytes: 0 = 0x7c, 1 = u8 island, 2 = u8 city, 3 = u16 mode (9), 5 = u16 goods (0x29), 7-8 not written, 9 = u32 value (0x7fff00 pressed, or 0) | `SetTradeFlagCmd{city, mode 9, goods 0x29, value}` | D View 0x1006cab8..0x1006caee (`neg; sbb; and 0x7fff00`); AnnoFrame 0x1005ef70..0x1005efd6 (mode `[esp+0xf]`, goods `[esp+0x11]`, value `[esp+0x15]` with the record at `[esp+0xc]`, length `push 0xd`) |
+| (entry append) | +0xd0 = 0x1005f0b0 `(u32, city)` | 9 bytes: 0 = 0x8a, 1 = u8 island, 2 = u8 city, 3-4 not written, 5 = u32 | `SetTradeSlotCmd{index = kAppendIndex}` | D AnnoFrame 0x1005f0b0..0x1005f0fc (u32 at `[esp+0x11]` with the record at `[esp+0xc]`, length `push 9`); no caller in the VKEK handlers found → OQ-653 |
 
 After each send the page sets a 1 s timer (`GetTickCount + 1000` at page +0x570, e.g. 0x10023e5b) and
 marks itself dirty (+0x649 = 1) (D); the meaning of the timer gate 0x10019400 is U.

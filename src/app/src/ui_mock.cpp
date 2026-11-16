@@ -772,6 +772,8 @@ formats::Result<assets::Rgba, std::string> compose_screen(const HudLayout& hud,
     };
 
     blit_el("weltkarte");
+    // UI-MINIMAP-1 fix F1: the scroll's rolled left end, left of the column (hud.txt).
+    blit_el("minimap_curl");
     blit_el("mainuntergrund");
     if (!is_construction) {
         blit_el("tab_construction", 8);
@@ -911,6 +913,8 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
                     static_cast<std::size_t>(m.x)] = m.rgb & 0xffffffU;
     }
     blit_el("weltkarte");
+    // UI-MINIMAP-1 fix F1: the scroll's rolled left end, left of the column (hud.txt).
+    blit_el("minimap_curl");
     blit_el("mainuntergrund");
     draw_column_filler(cache, hud, placement, blit_image);
     // UI-WINDOW-1 fix round R2: the selected tab follows the screen (hud.txt frame_selected /
@@ -1172,6 +1176,8 @@ std::string draw_live_screen_rgba_into(
         }
     }
     blit_el("weltkarte");
+    // UI-MINIMAP-1 fix F1: the scroll's rolled left end, left of the column (hud.txt).
+    blit_el("minimap_curl");
     blit_el("mainuntergrund");
     draw_column_filler(cache, hud, placement, blit_image);
     // UI-WINDOW-1 fix round R2: the selected tab follows the screen (hud.txt frame_selected /

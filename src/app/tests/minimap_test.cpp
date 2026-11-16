@@ -1,6 +1,7 @@
 // UI-MINIMAP-1 step B1: the minimap's data, image, palette, geometry and drawing (minimap.hpp),
 // against values computed by hand from docs/re/ui.md section 2.9's formulas (each case shows the
-// arithmetic) and the shipped data/ui/minimap.txt. No original files needed.
+// arithmetic) and the shipped data/ui/minimap.txt. No original files needed, except the fix round's
+// scroll drawing case (it skips without ANNO1503_GAME_DIR).
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -16,6 +17,7 @@
 #include <anno/app/minimap.hpp>
 #include <anno/app/ui_layout.hpp>
 #include <anno/app/ui_mock.hpp>
+#include <anno/test/game_dir.hpp>
 
 namespace fs = std::filesystem;
 namespace app = anno::app;
@@ -704,4 +706,89 @@ TEST_CASE("minimap magnifier: one press is one built level, clamped at both ends
     CHECK(app::magnifier_target(levels, 100.0, false) == W(84.0));
     CHECK(app::magnifier_target(levels, 10.0, true) == W(20.0));
     CHECK(app::magnifier_target({}, 20.0, true) == std::nullopt);
+}
+
+// ---- UI-MINIMAP-1 fix round: F1, the scroll's rolled left end ----
+
+TEST_CASE("minimap scroll: the rolled left end is chrome left of the column at any width") {
+    const auto hud = app::load_hud_layout(fs::path(ANNO_REPO_DIR) / "data" / "ui" / "hud.txt");
+    REQUIRE(hud.ok());
+    // fenster.tex id 3, measured at (745, 49) on hud_idle_running and the History Edition's
+    // lossless capture (hud.txt), right-anchored like the column.
+    const auto* curl = hud.value().element("minimap_curl");
+    REQUIRE(curl != nullptr);
+    CHECK(curl->tex_id == std::optional<int>(3));
+    CHECK(std::pair{curl->pos_x, curl->pos_y} == std::pair{745, 49});
+    CHECK(std::pair{curl->size_w, curl->size_h} == std::pair{34U, 47U});
+    for (const int w : {1024, 2560}) {
+        const int dx = w - 1024;
+        const auto at = app::place_hud(hud.value(), w, 768);
+        // (750, 60): on the curl, left of the column and of the minimap's click area.
+        const auto hit = app::ui_hit(hud.value(), at, 750 + dx, 60);
+        CHECK(hit.chrome);
+        CHECK(hit.ref == std::optional<std::pair<int, int>>({750, 60}));
+        CHECK(app::ui_hit(hud.value(), at, 745 + dx, 49).chrome);
+        CHECK(app::ui_hit(hud.value(), at, 778 + dx, 95).chrome);
+        // Just outside its rectangle: the map.
+        CHECK_FALSE(app::ui_hit(hud.value(), at, 744 + dx, 60).chrome);
+        CHECK_FALSE(app::ui_hit(hud.value(), at, 750 + dx, 48).chrome);
+        CHECK_FALSE(app::ui_hit(hud.value(), at, 750 + dx, 96).chrome);
+    }
+}
+
+TEST_CASE("minimap scroll: both UI paths draw the rolled left end left of the column") {
+    const auto game = anno::test::game_dir();
+    if (!game) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR is not set");
+        return;
+    }
+    const auto hud = app::load_hud_layout(fs::path(ANNO_REPO_DIR) / "data" / "ui" / "hud.txt");
+    REQUIRE(hud.ok());
+    const app::ConstructionLayout construction;
+    const app::MaskLayout masks;
+    app::UiTexCache cache(*game);
+    const anno::assets::Rgba* sprite = cache.decode("toolgfx/fenster.tex", 3);
+    REQUIRE(sprite != nullptr);
+    REQUIRE(sprite->width == 34);
+    REQUIRE(sprite->height == 47);
+    // At 1024 x 768 and at a maximised 2560 x 1369 window: every opaque pixel of id 3 lands at
+    // (745 + W - 1024, 49) + its own position, in the GPU path's RGBA layer and in the CPU
+    // path's XRGB frame alike; without the curl these are map pixels (transparent / untouched).
+    for (const auto& [w, h] : {std::pair{1024, 768}, std::pair{2560, 1369}}) {
+        const int x0 = 745 + w - 1024, y0 = 49;
+        anno::assets::Rgba canvas;
+        const auto err = app::draw_live_screen_rgba_into(
+            canvas, w, h, hud.value(), construction, masks, app::UiMockSpec{}, cache, nullptr, {},
+            false, false, false, false, nullptr, nullptr, nullptr);
+        REQUIRE_MESSAGE(err.empty(), err);
+        std::vector<std::uint32_t> xrgb(static_cast<std::size_t>(w) * static_cast<std::size_t>(h),
+                                        0x123456);
+        const auto err2 = app::draw_live_screen_xrgb(
+            xrgb.data(), w, h, hud.value(), construction, masks, app::UiMockSpec{}, cache, nullptr,
+            {}, false, false, false, false, nullptr, nullptr, nullptr);
+        REQUIRE_MESSAGE(err2.empty(), err2);
+        std::size_t opaque = 0, rgba_same = 0, xrgb_same = 0;
+        for (int sy = 0; sy < sprite->height; ++sy) {
+            for (int sx = 0; sx < sprite->width; ++sx) {
+                const auto s = pixel(*sprite, sx, sy);
+                if (s[3] == 0)
+                    continue;
+                ++opaque;
+                const auto c = pixel(canvas, x0 + sx, y0 + sy);
+                rgba_same += c == std::array<std::uint8_t, 4>{s[0], s[1], s[2], 255} ? 1U : 0U;
+                const std::uint32_t want =
+                    (std::uint32_t{s[0]} << 16) | (std::uint32_t{s[1]} << 8) | std::uint32_t{s[2]};
+                xrgb_same += xrgb[static_cast<std::size_t>(y0 + sy) * static_cast<std::size_t>(w) +
+                                  static_cast<std::size_t>(x0 + sx)] == want
+                                 ? 1U
+                                 : 0U;
+            }
+        }
+        INFO("window " << w << " x " << h);
+        CHECK(opaque == 1022); // fenster.tex id 3's opaque count (anno-dump tex)
+        CHECK(rgba_same == opaque);
+        CHECK(xrgb_same == opaque);
+        // The column itself starts at 779 + W - 1024: the curl is the part left of it.
+        CHECK(x0 + sprite->width == 779 + w - 1024);
+    }
 }

@@ -5,6 +5,7 @@
 #include <cmath>
 #include <condition_variable>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <limits>
@@ -2737,13 +2738,44 @@ struct GpuFrame::Impl {
         wait_idle(ref->instance.get(), dev(), queue());
         last_frame_ms.reset();
         last_passes.reset();
+        const char* trace_env = std::getenv("ANNO_GPU_TIMESTAMP_TRACE");
+        const bool trace = trace_env != nullptr && std::strcmp(trace_env, "1") == 0;
+        const auto pass_name = [](TimedPass p) {
+            switch (p) {
+            case TimedPass::Fluid:
+                return "fluid";
+            case TimedPass::Terrain:
+                return "terrain";
+            case TimedPass::Under:
+                return "under";
+            case TimedPass::Sea:
+                return "sea";
+            case TimedPass::Objects:
+                return "objects";
+            case TimedPass::Resample:
+                return "resample";
+            }
+            return "unknown";
+        };
+        const auto trace_map_failure = [&](const char* detail) {
+            if (trace) {
+                for (const TimedPass p : ts_ran) {
+                    std::fprintf(stderr,
+                                 "GPU_TIMESTAMP pass=%s begin=unavailable end=unavailable "
+                                 "period_ns=%.9g rule=map_failed detail=%s\n",
+                                 pass_name(p), static_cast<double>(timestamp_period_ns), detail);
+                }
+            }
+        };
         const std::uint64_t bytes = kTimestampSlot * kTimedPasses;
         if (!map_read(ref->instance.get(), dev(), ts_read.get(), bytes)) {
+            trace_map_failure("map_read");
             return std::nullopt;
         }
         const auto* t = static_cast<const std::uint64_t*>(
             wgpuBufferGetConstMappedRange(ts_read.get(), 0, bytes));
         if (t == nullptr) {
+            trace_map_failure("mapped_range");
             wgpuBufferUnmap(ts_read.get());
             return std::nullopt;
         }
@@ -2753,13 +2785,24 @@ struct GpuFrame::Impl {
         // Equal ticks are no reading either: a driver that ignores the writes leaves the
         // slots equal, and a pass of 0 ms must never read as free (measure_river_cost then
         // falls back to the wall clock).
-        auto span_ms = [&](std::uint64_t a, std::uint64_t b) -> std::optional<double> {
-            if (b <= a) {
-                return std::nullopt;
-            }
+        auto span_ms = [&](const char* name, std::uint64_t a,
+                           std::uint64_t b) -> std::optional<double> {
             const double ms =
-                static_cast<double>(b - a) * static_cast<double>(timestamp_period_ns) * 1e-6;
-            return ms < kMaxFrameMs ? std::optional<double>(ms) : std::nullopt;
+                b > a ? static_cast<double>(b - a) * static_cast<double>(timestamp_period_ns) * 1e-6
+                      : 0.0;
+            const char* rule = b == a             ? "equal_ticks"
+                               : b < a            ? "end_before_begin"
+                               : ms < kMaxFrameMs ? "ok"
+                                                  : "over_10_s";
+            if (trace) {
+                std::fprintf(stderr,
+                             "GPU_TIMESTAMP pass=%s begin=%llu end=%llu period_ns=%.9g "
+                             "rule=%s\n",
+                             name, static_cast<unsigned long long>(a),
+                             static_cast<unsigned long long>(b),
+                             static_cast<double>(timestamp_period_ns), rule);
+            }
+            return b > a && ms < kMaxFrameMs ? std::optional<double>(ms) : std::nullopt;
         };
         constexpr std::size_t kTicksPerSlot = kTimestampSlot / 8;
         auto begin_tick = [&](TimedPass p) {
@@ -2770,7 +2813,7 @@ struct GpuFrame::Impl {
         };
         GpuPassTimes passes;
         for (const TimedPass p : ts_ran) {
-            const auto ms = span_ms(begin_tick(p), end_tick(p));
+            const auto ms = span_ms(pass_name(p), begin_tick(p), end_tick(p));
             switch (p) {
             case TimedPass::Fluid:
                 passes.fluid = ms;
@@ -2793,12 +2836,12 @@ struct GpuFrame::Impl {
             }
         }
         if (!ts_ran.empty()) {
-            passes.frame = span_ms(begin_tick(ts_ran.front()), end_tick(ts_ran.back()));
+            passes.frame = span_ms("frame", begin_tick(ts_ran.front()), end_tick(ts_ran.back()));
         }
         // The sea pass as it was before the split: from the sea's start to the objects' end.
         std::optional<double> sea = passes.sea;
         if (passes.sea && passes.objects) {
-            sea = span_ms(begin_tick(TimedPass::Sea), end_tick(TimedPass::Objects));
+            sea = span_ms("sea_objects", begin_tick(TimedPass::Sea), end_tick(TimedPass::Objects));
         }
         last_frame_ms = passes.frame;
         last_passes = passes;
@@ -3893,7 +3936,14 @@ std::vector<RiverCost> GpuFrame::measure_river_cost(std::size_t repeats,
             fell_back = true;
         }
         wait();
-        return ms_since(t0);
+        const double wall_ms = ms_since(t0);
+        const char* trace_env = std::getenv("ANNO_GPU_TIMESTAMP_TRACE");
+        if (trace_env != nullptr && std::strcmp(trace_env, "1") == 0) {
+            std::fprintf(stderr,
+                         "GPU_TIMESTAMP_FALLBACK scope=river_cost source=wall_clock ms=%.9g\n",
+                         wall_ms);
+        }
+        return wall_ms;
     };
     std::vector<RiverCost> out;
     // All tiers from the cheapest up; with a gate from the dearest down, stopping at

@@ -164,6 +164,21 @@ Loaded load_scene(const std::filesystem::path& dir, const char* name,
 
 /// A device, or nullopt (skip) when there is none; with ANNO_REQUIRE_GPU
 /// set a missing device fails the test instead.
+// GATE-MAC-1: on Apple M5 Max / Metal (wgpu-native 29.0.1.1), raw end ticks
+// precede begin ticks even in an independent WebGPU triangle probe (27/30).
+// Missing is honest; zero/negative timing is not. Limit this exception to Apple
+// Metal: Vulkan/D3D12 and Intel/AMD Metal keep their reading requirements.
+// Raw evidence and the upstream context are in docs/render/gpu-timestamp-evidence.md.
+bool apple_metal_may_miss_timestamps(const gpu::Context& ctx) {
+    WGPUAdapterInfo info = WGPU_ADAPTER_INFO_INIT;
+    const auto status = wgpuAdapterGetInfo(ctx.adapter.get(), &info);
+    const bool allowed = status == WGPUStatus_Success &&
+                         info.backendType == WGPUBackendType_Metal &&
+                         gpu::str(info.device).starts_with("Apple ");
+    wgpuAdapterInfoFreeMembers(info);
+    return allowed;
+}
+
 std::optional<gpu::Context> device_or_skip() {
     auto ctx = gpu::headless_context();
     if (ctx) {
@@ -2370,6 +2385,10 @@ TEST_CASE("river flow on the GPU: the cost is measured per tier, GPU timestamps 
     REQUIRE(made);
     const auto costs = made.value()->measure_river_cost(3);
     REQUIRE(costs.size() == 4);
+    if (ctx->timestamps) {
+        // Missing individual spans must not excuse failure to map the timing record.
+        REQUIRE(made.value()->pass_gpu_ms().has_value());
+    }
     CHECK_FALSE(costs[0].quality.has_value());
     CHECK(costs[1].quality == render::RiverQuality::Low);
     CHECK(costs[2].quality == render::RiverQuality::Medium);
@@ -2382,7 +2401,15 @@ TEST_CASE("river flow on the GPU: the cost is measured per tier, GPU timestamps 
         CHECK(c.ms > 0.0);
         CHECK(c.megapixels == doctest::Approx(1.048576));
         CHECK(c.ms_per_mpx == doctest::Approx(c.ms / c.megapixels));
-        CHECK(c.gpu_timestamps == ctx->timestamps);
+        if (apple_metal_may_miss_timestamps(*ctx)) {
+            if (c.gpu_timestamps) {
+                CHECK(ctx->timestamps);
+            }
+            MESSAGE(
+                "cost source: " << (c.gpu_timestamps ? "GPU timestamps" : "wall-clock fallback"));
+        } else {
+            CHECK(c.gpu_timestamps == ctx->timestamps);
+        }
     }
     // With a gate only what the choice needs is measured: the dearest tier first, stopping
     // at the first that fits, and no Low after a failed Medium (the floor).
@@ -2503,6 +2530,7 @@ TEST_CASE("the sea pass is timed with GPU timestamps when asked and the device c
     // second frame on there is one.
     const auto first = g.sea_pass_ms();
     if (first) {
+        CHECK(std::isfinite(*first));
         CHECK(*first > 0.0);
     }
     std::optional<double> ms;
@@ -2512,9 +2540,15 @@ TEST_CASE("the sea pass is timed with GPU timestamps when asked and the device c
         ms = g.sea_pass_ms();
     }
     if (ctx->timestamps) {
-        REQUIRE(ms.has_value());
-        CHECK(*ms > 0.0);
-        CHECK(*ms < 1000.0);
+        REQUIRE(g.pass_gpu_ms().has_value());
+        if (!apple_metal_may_miss_timestamps(*ctx)) {
+            REQUIRE(ms.has_value());
+        }
+        if (ms) {
+            CHECK(std::isfinite(*ms));
+            CHECK(*ms > 0.0);
+            CHECK(*ms < 1000.0);
+        }
         // Read once: asking again without a new frame gives nothing.
         CHECK_FALSE(g.sea_pass_ms().has_value());
     } else {
@@ -2857,17 +2891,31 @@ TEST_CASE("every pass of a frame is timed, and the timed frame is the untimed pi
     REQUIRE(timed_passes.has_value());
     const gpu::GpuPassTimes& p = *timed_passes;
     // 16 ms of animation per frame is one or two steps of 1/120 s: the simulation ran.
+    const bool allow_missing = apple_metal_may_miss_timestamps(*ctx);
     for (const auto& pass : {p.fluid, p.terrain, p.under, p.sea, p.objects, p.resample}) {
-        REQUIRE(pass.has_value());
-        CHECK(*pass >= 0.0);
+        if (!allow_missing) {
+            REQUIRE(pass.has_value());
+        }
+        if (pass) {
+            CHECK(std::isfinite(*pass));
+            CHECK(*pass > 0.0);
+        }
     }
-    REQUIRE(p.frame.has_value());
+    if (!allow_missing) {
+        REQUIRE(p.frame.has_value());
+    }
     // The frame spans every pass (the driver may overlap passes that share nothing, so
     // the sum of the passes can exceed it).
-    for (const auto& pass : {p.fluid, p.terrain, p.under, p.sea, p.objects, p.resample}) {
-        CHECK(*p.frame >= *pass);
+    if (p.frame) {
+        CHECK(std::isfinite(*p.frame));
+        CHECK(*p.frame > 0.0);
+        for (const auto& pass : {p.fluid, p.terrain, p.under, p.sea, p.objects, p.resample}) {
+            if (pass) {
+                CHECK(*p.frame >= *pass);
+            }
+        }
+        CHECK(*p.frame < 1000.0);
     }
-    CHECK(*p.frame < 1000.0);
     CHECK(timed.value()->frame_gpu_ms() == p.frame);
     CHECK(timed.value()->errors() == 0);
     CHECK(plain.value()->errors() == 0);

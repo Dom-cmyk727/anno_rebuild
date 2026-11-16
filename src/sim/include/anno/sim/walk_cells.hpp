@@ -115,6 +115,9 @@ class WalkCells {
     [[nodiscard]] WalkCell get(TileXY);
     /// The mapped low word is not invertible; start floods need the raw bitmap.
     [[nodiscard]] WalkRecord record(TileXY p) const;
+    /// Point floods use the paired subcell mode, not the coarse cell's blocked mask.
+    /// Fisher mode 3 pairs with all-free mode 4 (fisher.md 10.2); Land keeps mode 1.
+    [[nodiscard]] std::uint16_t point_mask(TileXY p) const;
     /// Search marks remain in this scratch store. Outside rectangle writes fail.
     bool set(TileXY, WalkCell);
     [[nodiscard]] TileRect rect() const { return rect_; }

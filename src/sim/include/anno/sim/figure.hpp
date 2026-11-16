@@ -158,7 +158,8 @@ struct HarvestState {
     /// Ticks of the first micro-step still owed (kHarvestStartDelay at the spawn, 0 afterwards,
     /// never re-armed; docs/sim/forestry.md 3.2).
     std::uint32_t start_delay = kHarvestStartDelay;
-    /// Ticks left of the cut wait (Cut).
+    /// Ticks left of the cut wait (Cut), or the enabled fisher's released outside
+    /// end wait (Done with no home/expiry stamp; docs/re/fisher.md 10.2).
     std::uint32_t wait = 0;
     /// The claimed tile in world coordinates (step +4/+6); meaningful in ToTree and Cut only.
     TileXY target;
@@ -438,6 +439,10 @@ void rebuild_figure_index(FigureRegistry& registry);
 /// at the figure's end (end_figure, OQ-131).
 std::optional<Figure> remove_figure(FigureRegistry& registry, FigureId id);
 
+/// Release the home counter once, without starting registry expiry. The fisher's
+/// outside end wait precedes Remove (docs/re/fisher.md 10.2).
+void release_figure_home(Figure& figure, Effects& fx);
+
 /// Ends `figure` on its own fields (the half of end_figure a behaviour seam may do, C2):
 /// D 0x1003b6e0 (unit slot +0x110): if the figure still has a home, `fx` gets the
 /// ReleaseCounter of its home counter (home slot +0x2c, which nulls the building's
@@ -453,7 +458,8 @@ std::optional<Figure> remove_figure(FigureRegistry& registry, FigureId id);
 /// as history); in ToTree/Cut `fx` gets a TileEdit::Release of the target, which the
 /// merge applies only under Rules::forestry_claim_hygiene and only to the worker's own
 /// entry (the faithful rules write nothing beyond the traced cut/abort). A Done job, the
-/// body's own end, is left exactly as it is.
+/// body's own end, is left as it is except that an explicit end cancels a pending
+/// released-fisher wait (docs/re/fisher.md 10.2).
 bool end_figure(Figure& figure, std::uint32_t t, Effects& fx);
 
 /// end_figure on a figure of `registry`, which also appends it to the expiry list

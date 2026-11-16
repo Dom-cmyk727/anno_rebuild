@@ -334,6 +334,7 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
         // the send then does (D 0x1006edf3-0x1006ee06: city +0x18, island +0x18, world +0xb4 =
         // 0x100a1740, the result discarded; docs/sim/forestry.md 3.1). farm_step's send_figure is
         // exactly that eligibility (gate, switched on, not suspended, the count and rate tests).
+        // The enabled fisher keeps this per-attempt draw (docs/re/fisher.md 10.2).
         if (r.send_figure) {
             static_cast<void>(ctx.draw.next(DrawSite::FarmWorkerDispatch));
         }
@@ -559,8 +560,8 @@ void consume(const TickContext& ctx, const Island& island, const City& city, Bui
                 s.job = ft != nullptr ? ft->route : 0;
                 s.cargo_goods = type.input_goods.empty() ? GoodsId{0} : type.input_goods[0];
                 if (ctx.fisher_enabled && fisher_job(s.job) && !type.entrances.empty())
-                    s.pos =
-                        entrance_position(b, type, 0); // 0x10067e60, no reachable-entrance retry
+                    s.pos = entrance_position(b, type,
+                                              0); // fisher.md 10.2: no reachable-entrance retry
                 s.harvest =
                     (farm_figure_route(s.job) == FarmFigureRoute::Worker ||
                      farm_figure_route(s.job) == FarmFigureRoute::Animal ||

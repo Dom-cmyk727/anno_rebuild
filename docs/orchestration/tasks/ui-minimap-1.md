@@ -1,0 +1,58 @@
+# UI-MINIMAP-1: the minimap, drawn and working like the History Edition's
+
+**Status:** written 2026-11-16 by the UI lane on the owner's request for a new job per lane (relayed by
+the orchestrator). Branch `task/UI-MINIMAP-1` from main `4b104d3a`.
+
+**Owner's rule (2026-11-16):** the reference is the **History Edition**, judged on pixels; the GOG build is
+for reading code. Bit-identical UI is the base (owner, 2026-11-14); changes come later as options.
+
+**What is wrong today** (owner test `ui_4.mp4`, 2026-11-15): the minimap is a see-through hole onto the
+world drawn under the panel; its +/−, magnifier and rotate buttons do nothing.
+
+**What the History Edition shows** (`E:\anno1503-worktrees\he-ui-captures\he_ui_1_video\c_minimap6.jpg`,
+the owner's `ui_5.mp4`): a parchment with the whole world as a diamond; islands olive, the sea pale
+parchment with faint lines and a compass rose at the top; a white box for the main view (its size follows
+the zoom); small markers (a green ship dot). Below: a magnifier with + and −, two rotate arrows; at the top
+right a + and a −. Rectangles of the chrome are measured (`data/ui/hud.txt`, `docs/re/ui.md` 2.1-2.2:
+`WELTKARTE` atlas (779, 0) 245 × 248, `KARTEPLUS` gadgets, `LUPE`, compass chevrons).
+
+## Step A: evidence (no rebuild code)
+
+1. **GOG code read** (View.dll, static; `docs/re/ui.md` gives the gadget creation at `0x10034388`): the
+   minimap gadget's draw routine - what fills the diamond (per-tile colour source and palette for land,
+   coast, water; the parchment), the world-to-minimap transform (scale, origin, diamond orientation), the
+   view box (colour, thickness, how its corners come from the camera), the markers (ships, other players,
+   alerts: `MINIMAP_ALERT`), the compass rose; the click handlers of the minimap itself and of its six
+   `0xb09` gadgets (+, −, two bar ids, two chevrons) and the `LUPE`. Findings with addresses into
+   `docs/re/ui.md` (a new section "Minimap"); guesses into `docs/open-questions.md`.
+2. **History Edition pixels** from the owner's recording (recipe below): what each control does, the
+   view box per zoom level, a click and a drag on the minimap, the markers. Event table with frames.
+3. Report: what the rebuild must draw and do, every unknown named.
+
+## Step B: draw it (after A is reviewed)
+
+The diamond's content from the sim's islands and the world size, the view box from the camera, ship and
+player markers from the snapshot; drawn into the existing chrome at the measured rectangle, at any window
+size (UI-WINDOW-1's transform). Pixel comparison against the History Edition frames at matched views.
+
+## Step C: make it work (after B)
+
+Left click (and drag, if HE does) on the minimap moves the main view; the buttons as HE does them. The
+rotate arrows need a camera rotation the renderer does not have yet: if HE rotates the view, this part is a
+separate packet (named in the report), not hidden in this one.
+
+## Owner recipe for the History Edition recording (step A.2)
+
+History Edition, interface scale 1.0, window maximised; OBS at native 2560 × 1440 (Settings → Video:
+base = output resolution), 60 fps, high quality. Any running game (e.g. "Trade & Diplomacy" or a
+continuous game). About 3 minutes, narrated:
+1. Hover over each minimap control for 2 s (tooltips): top-right +, top-right −, magnifier +, magnifier −,
+   left rotate arrow, right rotate arrow.
+2. Click each once, 3 s apart, and undo it (− after +, the other arrow after an arrow).
+3. Left-click three different places on the minimap, 3 s apart; right-click once on it; then hold the left
+   button on the minimap and drag slowly.
+4. Zoom the main map through all levels with the mouse wheel and scroll it a little with the keys, so the
+   white box shows how it follows.
+
+**Rules:** no original pixels or code text in git (captures stay outside the repository); small steps,
+each reported to the orchestrator; landing stays with the orchestrator.

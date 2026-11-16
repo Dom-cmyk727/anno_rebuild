@@ -12573,3 +12573,46 @@ READY FOR REVIEW. Stop here; FISHER-HE-1 is not released.
 - QUESTIONs: none; nominal wait fits existing fields. Independent review: orchestrator pending.
 
 READY FOR REVIEW. Stop after pushed-head CI; no UI/capture or parked task started.
+
+
+## FISHER-RE-4 — READY FOR REVIEW (Mac, 2026-11-16)
+
+- Base: origin/main `4b104d3a`; branch `task/FISHER-RE-4`.
+- Read both 2026-11-16 reviews: FISHER-1f and FISHER-HE-1 step A.
+- Scope: GOG 2.0.0.5 static read plus parsed FigurenHeader.dat; documents only.
+- Result: figure 142 is NOT DRAWN after normal release, while still registered.
+- Rule/evidence: [fisher.md §12](../re/fisher.md#12-released-fisher-visibility-fisher-re-4-2026-11-16).
+- End flags: AnnoWelt `0x1003af80`–`0x1003af96`, word +6:
+  clear 1, set 2 and 512. These are behavioral end flags, not a proven hide mask.
+- Bit 0 gates active route/rate: `0x10033cba`, `0x10035bc0`–`0x10035bd0`.
+- Bit 1 takes terminal-step Remove: `0x1003481a`–`0x10034844`.
+- Bit 9 inhibits re-arming in the read restart consumers:
+  `0x100518c4`–`0x100518d2`, `0x10045c4e`–`0x10045c60`.
+- Sector draw: `0x1009ffc2`–`0x100a0004`, slot +0x30 list, slot +0x7c display.
+- Post-draw bit-1 deletion is for class 162/163, not fisher class 4.
+- Fisher vtable `0x100cb4d8`, display `0x100384d0`–`0x10038689`.
+- It receives the figure; there is no generic end-flag hide test in this pass.
+- End selects animation 17 at `0x1003afc6`; +0x150 notification is a no-op.
+- Type frame lookup: AnnoGame `0x100113a0`; absent-set return -1 at
+  `0x100113e2`–`0x100113ff`; fisher negative-result exit `0x10038539`.
+- Piece lookup also refuses absence: AnnoGame `0x1001137d`–`0x1001139a`,
+  fisher `0x10038583`–`0x10038588`, before sprite submission `0x100385a5`.
+- Parsed figure 142: four graphics sets, keys 4/7/8/9, no 17.
+- Loader binding: AnnoGame `0x10011818`–`0x10011836`, `0x10011af7`–`0x10011b04`.
+- Distinguishing counterexample: figures 108/203 have animation 17;
+  102/106 do not. Do not hide every figure solely because its home was released.
+- Viewer rule: omit the released fisher sprite; retain the sim wait and cargo.
+- This explains the visible HE disappearance without asserting identical HE code.
+- Checks: git diff --check and added local link resolution; no tests locally (docs only).
+- COUNTS/VERDICT: NOT_RUN locally; docs-only hosted CI supplied at handover.
+- 0 pins moved; no original text/bytes/listings/pixels, engine or fixture changes.
+- Private read evidence: `cache/fisher-re-4/`; original listings remain ignored.
+- NOT_RUN: HE binary read, live GOG/HE, pixels, other-worker full timelines.
+- Decisions and reasoning:
+  - Follow the actual display chain through data lookup, not a guessed flag meaning.
+  - Separate drawing, sector membership, end wait and registry destruction.
+  - Use a present-animation counterexample to bound the rule to its proven scope.
+  - No reviewer subagent; orchestrator re-checks addresses at handover.
+- QUESTIONs: none for figure 142; original symbolic bit names remain unproved.
+
+READY FOR REVIEW.

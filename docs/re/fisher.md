@@ -1405,3 +1405,65 @@ bytes remain unchanged. It is not a claim that the full game-file suite ran.
 survival and float/Y parity remain unproved. This is the GOG-read integer sim
 slice. The enabled viewer entry point, stock/time readout and picture comparison
 remain the UI lane's FISHER-HE-1 work; no app wiring is included here.
+
+
+## 12. Released fisher visibility (FISHER-RE-4, 2026-11-16)
+
+**D/P — answer: figure 142 is not drawn after the normal release.** The
+registry can still hold and visit it during the end wait. Its absence from the
+picture follows from its selected animation and the shipped figure data, not
+from deleting the figure or a universal hide-on-release flag. Addresses below
+are GOG 2.0.0.5; D = disassembled control/data flow, P = parsed original file.
+
+**D — end flags are behavioral.** AnnoWelt `0x1003af80`–`0x1003af96`
+updates the u16 at figure +6 to `(old & 0xfffe) | 0x202` before releasing:
+bit 0 (value 1) is cleared; bit 1 (2) and bit 9 (512) are set. Bit 0 gates
+active route processing (`0x10033cba`–`0x10033cc7`) and the active-rate
+getter (`0x10035bc0`–`0x10035bd0`). Bit 1 is the terminal-step marker:
+when the remaining step expires, the tick removes the figure from its sector
+and starts registry expiry (`0x1003481a`–`0x10034844`, already read in
+[annowelt.md](annowelt.md#the-carrier-worker-and-animal-class)). Bit 9 is
+also an end marker: other end/restart handlers test it to avoid installing a
+fresh short delay (`0x100518b4`–`0x100518d2`, `0x10045c4e`–`0x10045c60`).
+These consumers establish their effects, not original symbolic bit names.
+Neither the fisher display routine nor the sector draw loop tests bit 9 to hide it.
+
+**D — the sector pass still calls display.** AnnoWelt
+`0x1009ffc2`–`0x1009ffdb` obtains the sector list through registry slot +0x30;
+`0x1009ffde`–`0x100a0004` walks its records (+0xc figure, +4 next) and calls
+figure slot +0x7c. The subsequent bit-1 test at `0x100a000d`–`0x100a0052`
+is after display and conditionally deletes class codes 162/163, not FISCHER 4.
+Figure 142 uses table `0x100cb4d8`, whose +0x7c is `0x100384d0`.
+
+**D/P — why that call emits no fisher sprite.** End sets animation byte +0x10
+to 17 and its stamp at `0x1003af9c`–`0x1003afce`; the normal fisher branch
+passes this code unchanged. The notification at +0x150 is the no-op
+`0x10099840`. With home cleared, display skips its owner-visibility branch
+(`0x100384db`–`0x10038526`), then queries animation at `0x10038530`.
+Shared `0x100330e0`–`0x1003315b` passes that byte to the type's +0x78;
+AnnoGame's graphics-enabled tables `0x10021e8c`/`0x10021f58` use
+`0x100113a0`. Its missing-set branch `0x100113e2`–`0x100113ff` returns -1.
+The fisher exits at `0x10038537`–`0x10038539` when that result is negative.
+Even at zero animation elapsed, its later piece lookup is decisive:
+AnnoGame `0x1001137d`–`0x1001139a` returns false for an absent set, and
+AnnoWelt `0x10038583`–`0x10038588` exits before the sprite submission
+`0x100385a5`. The loader attaches each set by its prefix's low u16
+(AnnoGame `0x10011818`–`0x10011836`, `0x10011af7`–`0x10011b04`).
+FigurenHeader.dat figure 142 has exactly four HAEUSER sets, keys 4, 7, 8, 9;
+17 is absent. No fallback boat sprite should be invented for that missing set.
+
+**D/P — not a blanket rule for released workers.** The same end selects 17
+for the ordinary carrier/hunter classes, and their common display wrapper
+AnnoWelt `0x1003ab20`–`0x1003ab7a` delegates to `0x100332b0`, using the
+same animation/piece lookup. Parsed figures 108 and 203 *do* contain set 17;
+figures 102 and 106 do not. Thus release flags alone cannot mean invisible
+for every worker. Visibility remains dependent on its selected set, frame,
+normal view admission and eventual sector removal, not just a null home.
+
+**Viewer rule:** a released figure-142 fisher in its end wait emits no sprite;
+retain its sim continuation and honor the absent animation 17, without a fallback.
+
+**U / NOT_RUN.** HE binaries, live GOG/HE captures, pixel comparison and other
+workers' complete animation timelines were not run. The GOG read already
+explains the owner's observed disappearance; it establishes no HE code parity
+and no need to remove the saved waiting figure. No engine state or pin changed.

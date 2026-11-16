@@ -215,3 +215,71 @@ TEST_CASE("mark_watch_tick only ever advances, and reads as far in the past as "
     state.mark_watch_tick();
     CHECK(state.last_watch_tick() > first);
 }
+
+TEST_CASE("should_draw_from_move: false until min_interval has passed since the last tick, true "
+          "at and after it, and true before any tick has ever happened (ZOOM-SMOOTH-2e)" *
+          doctest::test_suite("live_resize")) {
+    anno::app::LiveResizeState state;
+    const auto min_interval = std::chrono::milliseconds(16);
+    // Never ticked: last_watch_tick() reads as steady_clock::time_point::min(), so any real `now`
+    // already clears the threshold - matches the main loop's own events_ms_ fix, which relies on
+    // the same property before the first tick ever happens.
+    CHECK(state.should_draw_from_move(std::chrono::steady_clock::now(), min_interval));
+    state.mark_watch_tick();
+    const auto tick = state.last_watch_tick();
+    CHECK_FALSE(state.should_draw_from_move(tick + std::chrono::milliseconds(10), min_interval));
+    CHECK(state.should_draw_from_move(tick + min_interval, min_interval));
+    CHECK(state.should_draw_from_move(tick + std::chrono::milliseconds(20), min_interval));
+}
+
+TEST_CASE("a timer tick resets the move fallback's own clock exactly as a move-triggered draw "
+          "does - is_live_resize_expose's own path calls mark_watch_tick() the same way "
+          "live_resize_watch's move fallback would (ZOOM-SMOOTH-2e)" *
+          doctest::test_suite("live_resize")) {
+    anno::app::LiveResizeState state;
+    state.mark_watch_tick();
+    const auto just_after = state.last_watch_tick() + std::chrono::milliseconds(5);
+    CHECK_FALSE(state.should_draw_from_move(just_after, std::chrono::milliseconds(16)));
+}
+
+TEST_CASE("the move fallback draws at most once per min_interval however many WINDOW_MOVED "
+          "events arrive in between, real SDL_PushEvent flood included (ZOOM-SMOOTH-2e)" *
+          doctest::test_suite("live_resize")) {
+    // Mirrors live_resize_watch's own move-trigger decision (should_draw_from_move, then
+    // mark_watch_tick on a draw) through the real SDL_AddEventWatch/SDL_PushEvent wiring, rather
+    // than calling the predicate directly - the property under test is the rate limit's own
+    // effect on a real flood, not just the predicate in isolation (2c F4's own reasoning: a test
+    // should exercise the real decision, not a second copy of it).
+    const SdlEvents guard;
+    int draws = 0;
+    anno::app::LiveResizeState state;
+    const auto min_interval = std::chrono::milliseconds(16);
+    using Ctx = std::pair<int*, anno::app::LiveResizeState*>;
+    auto watch = [](void* userdata, SDL_Event* event) -> bool {
+        if (event->type != SDL_EVENT_WINDOW_MOVED) {
+            return true;
+        }
+        auto* ctx = static_cast<Ctx*>(userdata);
+        if (ctx->second->should_draw_from_move(std::chrono::steady_clock::now(),
+                                               std::chrono::milliseconds(16))) {
+            ctx->second->mark_watch_tick();
+            ++*ctx->first;
+        }
+        return true;
+    };
+    Ctx ctx{&draws, &state};
+    REQUIRE(SDL_AddEventWatch(watch, &ctx));
+    SDL_Event moved{};
+    moved.type = SDL_EVENT_WINDOW_MOVED;
+    for (int i = 0; i < 500; ++i) {
+        SDL_PushEvent(&moved);
+    }
+    CHECK(draws == 1); // the first push past the (never-ticked) threshold; the other 499 land
+                       // inside the one min_interval window the first one just opened
+    std::this_thread::sleep_for(min_interval + std::chrono::milliseconds(10));
+    for (int i = 0; i < 500; ++i) {
+        SDL_PushEvent(&moved);
+    }
+    CHECK(draws == 2); // one more, now that a full min_interval has actually elapsed
+    SDL_RemoveEventWatch(watch, &ctx);
+}

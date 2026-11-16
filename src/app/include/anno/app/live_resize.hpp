@@ -109,6 +109,32 @@ class LiveResizeState {
             last_watch_tick_ns_.load(std::memory_order_acquire)));
     }
 
+    /// ZOOM-SMOOTH-2e: the fallback trigger's own predicate. WM_TIMER is a documented
+    /// low-priority Windows message (learn.microsoft.com/windows/win32/winmsg/wm-timer:
+    /// "GetMessage and PeekMessage... post this message only when no other higher-priority
+    /// messages are in the thread's message queue") and 2d's own trace found it starved for up
+    /// to 526 ms by a sustained WM_MOVING/mouse-move stream during a fast drag, while
+    /// SDL_EVENT_WINDOW_MOVED itself kept arriving every 1-2 ms throughout. `now` and
+    /// `min_interval` are both passed in rather than read from a clock here, so a test can drive
+    /// this with synthetic timestamps alone, no sleeping, no window - the same shape as
+    /// should_draw_from_watch above. Pure: reads only this instance's own last tick, no other
+    /// shared state, so a caller can check this before touching anything else.
+    ///
+    /// Never ticked yet (last_watch_tick() == time_point::min()) is handled explicitly, not by
+    /// the subtraction below: `now - time_point::min()` overflows duration's own representation
+    /// (now is nowhere near that far from the epoch, so the difference exceeds what the
+    /// duration's width can hold), so this checks for it first rather than relying on the
+    /// subtraction to come out some particular way.
+    [[nodiscard]] bool
+    should_draw_from_move(std::chrono::steady_clock::time_point now,
+                          std::chrono::steady_clock::duration min_interval) const {
+        const auto last = last_watch_tick();
+        if (last == std::chrono::steady_clock::time_point::min()) {
+            return true;
+        }
+        return now - last >= min_interval;
+    }
+
   private:
     std::atomic<bool> frame_in_progress_{false};
     std::atomic<bool> watch_drawing_{false};

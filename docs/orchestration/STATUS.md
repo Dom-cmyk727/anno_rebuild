@@ -240,7 +240,13 @@ says who is doing what, where the work is, and what it waits on.
     (`3526d253`, CI green; [review](reviews/2026-11-16-zoom-smooth-3-and-bounce-3.md)): the 9 to 18 ms spikes at
     maximum zoom-out are gone (worst 1.3 to 5.1 ms); one step is left, `finish`, 4.4 to 10.8 ms in rare frames
     with no new work; its cause is not classified, so **[ZOOM-SMOOTH-3b](tasks/zoom-smooth-3.md) is RELEASED**
-    (CPU against wall time of that call, draws per pass, the real drawn-chunk count); **ZOOM-BOUNCE-3 ACCEPTED**
+    (CPU against wall time of that call, draws per pass, the real drawn-chunk count); **3b ACCEPTED as
+    diagnostics** 2026-11-16 (`73f06bd2`, CI green; [review](reviews/2026-11-16-zoom-smooth-3b-review.md)):
+    `finish` grows with the draws (correlation 0.77 to 0.85; 99th percentile 1.2 ms of the 2 ms frame), and three
+    background threads call wgpu (plane pre-creation, the fluid job, its background release); the 4 to 10 ms
+    calls were not looked for in the session that showed them and the CPU-time question is open, so
+    **[ZOOM-SMOOTH-3c](tasks/zoom-smooth-3.md) is queued** after 2f; **ZOOM-SMOOTH-2f is RELEASED**;
+    **ZOOM-BOUNCE-3 ACCEPTED**
     (`fc1fbff7`, CI green, same review): two opposite notches 5 ms apart give a 1.47 % zoom-in for one frame,
     the size the owner saw; **the owner's wheel test is done** (2026-11-16): 1,027 notches, no two opposite
     notches closer than 60 ms, no frame of 28,465 where the zoom turns round, and the owner saw no bounce; the

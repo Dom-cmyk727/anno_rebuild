@@ -176,3 +176,40 @@ or deferred destruction; and what, if anything, the application can change. Gues
 **Gates:** the changed lanes only (`anno_app_tests`, `anno_render_tests` and `anno_render_gpu_tests` if `GpuStats`
 changes, `viewer_wiring_*`), clang-format 23.1.3, the WSL `-Werror` check on the touched files. A test refused for
 memory is rerun alone.
+
+## ZOOM-SMOOTH-3c: catch a slow `finish` in the act
+
+**Status:** written 2026-11-16 by the Claude Code orchestrator for the Windows executor; **queued after
+ZOOM-SMOOTH-2f**. From the [review of 3b](../reviews/2026-11-16-zoom-smooth-3b-review.md) (F1 to F5).
+
+**Base:** `task/ZOOM-SMOOTH-3` `73f06bd2`, same branch and worktree, new commits. About 2 hours. One concern: one
+slow `wgpuCommandEncoderFinish` call, caught with enough around it to say what it waited for or computed.
+Measurement and diagnostics only. Never rebase, force-push or push `main`. No reviewer subagents. **Nothing else
+runs on the PC during a measurement** (no tests, no second viewer); say so in the report.
+
+**Do:**
+1. **Take the system call off the ordinary frame (F3).** Read the thread's CPU measure only when the hitch line is
+   on.
+2. **Cycles instead of `GetThreadTimes` (F2).** On Windows use `QueryThreadCycleTime` around the `finish` call.
+   Report cycles per millisecond of wall time: the median over the ordinary calls of the run is the yardstick; print
+   each slow call's value against it. Keep `clock_gettime` elsewhere.
+3. **Log the three background wgpu sections (3b item 6)** with the window trace's clock, behind the hitch switch:
+   begin and end of the pre-creation thread's texture creation, of the fluid job's `make_grid`, and of
+   `free_job_in_background`'s release. For every `finish` over 2 ms print which of these sections overlap the call
+   and by how many milliseconds. Add the counts "fluid windows new" and "planes pre-created" per frame to the hitch
+   line.
+4. **Run the session that showed the spikes (F1):** the same `drive2.py` live session over the five locations as
+   ZOOM-SMOOTH-3, twice, with the hitch line on every frame. If no call exceeds 4 ms in two runs, run it twice
+   more. Report the number of frames and the calls over 2 ms and over 4 ms per run.
+5. **The line (F4):** from the frames of step 4, the least-squares slope and intercept of `finish` against
+   `draw_calls`, in milliseconds per 100 draws, and the same for `record`.
+
+**Report** (about 60 lines): for each slow call, its cycles per millisecond against the yardstick, the overlapping
+background sections, the look-back sums and the frame's counts; then one conclusion: computing, waiting behind a
+named background section, descheduled (few cycles and no overlap), or still unknown. If four runs show no call over
+4 ms, say so plainly and stop: the residual is then closed as "not reproducible after ZOOM-SMOOTH-1", with the
+3.1 ms rule of the ZOOM-SMOOTH-3 review.
+
+**Gates:** the changed lanes only (`anno_app_tests`, `anno_render_tests`, `anno_render_gpu_tests`,
+`viewer_wiring_*`), run after the measurements, not during them; clang-format 23.1.3; the WSL `-Werror` check on the
+touched files.

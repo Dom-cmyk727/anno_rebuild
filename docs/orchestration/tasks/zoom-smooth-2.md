@@ -121,8 +121,8 @@ READY FOR REVIEW, about 60 lines:
 
 ## ZOOM-SMOOTH-2f: guard the move trigger's thread
 
-**Status:** written 2026-11-16 by the Claude Code orchestrator for the Windows executor; **queued after
-ZOOM-SMOOTH-3b**. From the [owner's proof of 2e](../reviews/2026-11-16-zoom-smooth-2e-owner-proof.md).
+**Status:** written 2026-11-16 by the Claude Code orchestrator for the Windows executor; **RELEASED**
+2026-11-16 after the review of ZOOM-SMOOTH-3b. From the [owner's proof of 2e](../reviews/2026-11-16-zoom-smooth-2e-owner-proof.md).
 
 **Base:** `task/ZOOM-SMOOTH-2` `46fd1f2b`, same branch and worktree, new commits. About 45 minutes. One concern.
 Never rebase, force-push or push `main`. No reviewer subagents.

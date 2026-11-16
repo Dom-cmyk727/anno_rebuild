@@ -16,7 +16,7 @@ note states it as a finding (section 3).
 
 Related notes: [`ui.md`](ui.md) (HUD chrome, the gear tab's first capture, pause in 9.4, capture
 index in 7), [`he-ui-scale.md`](he-ui-scale.md) (HE interface scale), [`tick-loop.md`](tick-loop.md)
-§6 (speed keys), [`../formats/user-dat.md`](../formats/user-dat.md) (profile), 
+§6 (speed keys), [`../formats/user-dat.md`](../formats/user-dat.md) (profile),
 [`../testing/original-wine.md`](../testing/original-wine.md) §2.2, §2.5, §6.
 
 ## Evidence letters

@@ -12728,3 +12728,67 @@ hammering, is the `FrameRenderer`-internal instrumentation (frame 3 of the revie
 the next step, or does this shift the balance toward a capture-side check of the owner's own recording first?
 
 READY FOR REVIEW.
+
+## ZOOM-BOUNCE-3 — the bounce hypothesis reproduces almost exactly — READY FOR REVIEW (same branch task/ZOOM-BOUNCE-1, new commits, no rebase)
+
+**Traced every wheel event into the existing window trace** (`wheel.tsv`, recorded whenever
+`ANNO_VIEW_TRACE` is already running - no new switch): `t_ms`, the raw float and accumulated-
+integer deltas SDL gives (`SDL_MouseWheelEvent::y`/`integer_y`), the flipped flag, the pointer
+position, and `zoom_target_` just before and after that one event's own `zoom_by()` call.
+
+**The scripted pair** (`zoom_bounce_3.script`): one inward tick, then one outward tick 5, 10 and
+20 ms later, at rest between 20 and 42 tile width (away from either limit). Read `wheel.tsv`
+against `frames.tsv`'s own `resample_scale` (same clock) frame by frame:
+
+| gap | peak scale reached | excursion over the 20/42 rest value | frames it shows in |
+|---|---|---|---|
+| 5 ms | 0.4832 | **+1.47 %** | 1 (the very next drawn frame; already reversing the one after) |
+| 10 ms | 0.4876 | **+2.40 %** | 2 |
+| 20 ms | 0.4956 | **+4.08 %** | 3-4 |
+
+**The 5 ms result is the owner's own number, to within measurement precision**: the reported
+frame was "the whole view zoomed in by about 1.5 %" - this packet's own 5 ms pair peaks at
+**1.47 %**, one frame after the inward tick, reversing by the very next one. The excursion grows
+roughly linearly with the gap (consistent with the easing's own early-time behaviour, first-order
+in `dt`), so a brief double-tick anywhere under about 10 ms plausibly explains a single captured
+frame differing by 1-2 %, exactly as reported - without any readiness miss, group flicker or
+presented/view-state disagreement, all of which ZOOM-BOUNCE-1/2 already ruled out.
+
+**No zoom change.** This is a finding about the input, not the easing or the renderer: the target
+correctly reflects every tick it receives, including a brief reversal, and the view correctly
+eases toward whatever the latest target is. Whether a double-tick this close together is ever
+really intended by the user, and so whether it is worth filtering, is the owner's own call - a feel
+change, per the instruction.
+
+**The owner's recipe.** With `ANNO_VIEW_LIVE_RESIZE_TRACE` unrelated, just the usual:
+```powershell
+$env:ANNO_VIEW_TRACE = "wheel-trace-1"
+.\build\msvc\src\app\Release\anno1503.exe --play data\maps\lan5.txt --game-dir E:\anno1503\game\app --water enhanced
+```
+Wheel in and out quickly, varying speed, for about 20 s, then close the window. In
+`wheel-trace-1\trace\wheel.tsv`, sort by `t_ms` and flag any two consecutive rows whose `raw_y`
+signs differ with `t_ms` less than 30 ms apart - that count, and how often it happens during an
+ordinary fast scroll, is what decides whether this is rare or constant.
+
+**Gates (changed lane: app).** `anno_app_tests` + `viewer_wiring_*`: 307/307
+(`cache/gates/zoombounce3-app-1.log`). WSL `-Werror`: clean on every file this packet touched,
+same pre-existing `extensions_test.cpp` gap. `clang-format` clean after one `-i` fix.
+
+NOT_RUN: the owner's own 20 s recipe (above, not yet run); whether a double-tick this close
+together occurs during the owner's own ordinary play (not measured here - only the scripted pair).
+
+Decisions and reasoning:
+- **Reused the existing `ANNO_VIEW_TRACE` switch rather than adding a new one**, since the window
+  trace is already off by default; a second toggle would only add a step the owner has to remember.
+- **Read `wheel.tsv` against `frames.tsv`'s own clock, not a new correlation mechanism** - both
+  already share `WindowTrace::now_ms()`/`ms_at()`, so no new plumbing was needed to line them up.
+- **Reported the exact matching number (1.47 % against the owner's 1.5 %) rather than just "yes, a
+  bounce can cause an excursion"** - the close match is what makes this a strong finding, not a
+  plausible-sounding one.
+- **Did not add a filter or a minimum-gap guard**, per the instruction - a scroll-wheel feel change
+  is the owner's decision, not a fix this packet should make unasked.
+
+QUESTIONs: does the owner's own hardware (recipe above) actually produce opposite-sign ticks under
+30 ms apart during ordinary fast scrolling, and if so, is filtering them wanted as a feel change?
+
+READY FOR REVIEW.

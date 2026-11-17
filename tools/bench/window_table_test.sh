@@ -93,7 +93,7 @@ for bad in gap mismatch count contradictory incomplete notime sim_outcome presen
     case $bad in
     gap) sed -i.orig 's/^2\t1\t1\t/3\t1\t1\t/' "$c/trace/frames.tsv" ;;
     mismatch) sed -i.orig 's/\tTimeout\t0\t/\tSuccessOptimal\t0\t/' "$c/trace/frames.tsv" ;;
-    count) sed -i.orig 's/acquire_skipped\t/acquire_retry\t/; s/\tTimeout\t/\tOutdated\t/' "$c/trace/frames.tsv" &&
+    count) sed -i.orig 's/acquire_skipped$/acquire_retry/; s/\tTimeout\t/\tOutdated\t/' "$c/trace/frames.tsv" &&
         sed -i.orig '/frame_failed/d' "$c/trace/events.tsv" &&
         "$BENCH" --aggregate "$c/trace/events.tsv" > "$c/aggregate.txt" 2> /dev/null ;;
     # Round ed: the raw trace changed after the run; its saved aggregate.txt (a success) and run.txt
@@ -110,7 +110,7 @@ for bad in gap mismatch count contradictory incomplete notime sim_outcome presen
     epoch_back) sed -i.orig 's/^1\t1\t1\t/1\t2\t1\t/' "$c/trace/frames.tsv" ;;
     junk_cols) sed -i.orig 's/^1\t1\t1\t0\t0\t/1\t1\tabc\tx\t0\t/' "$c/trace/frames.tsv" ;;
     wrong_skip) sed -i.orig 's/\tTimeout\t/\tOutdated\t/' "$c/trace/frames.tsv" ;;
-    junk_present) sed -i.orig 's/\tSuccess\tpresented\t/\tbanana\tpresent_failed\t/' "$c/trace/frames.tsv" ;;
+    junk_present) sed -i.orig 's/\tSuccess\tpresented$/\tbanana\tpresent_failed/' "$c/trace/frames.tsv" ;;
     neg_acquire) sed -i.orig 's/\t5.6\t6.0\tTimeout/\t5.6\t5.2\tTimeout/' "$c/trace/frames.tsv" ;;
     over_reject) sed -i.orig 's/\t1\t0\taccepted\t-\t1\t1$/\t1\t2\tinvalid\tx,y\t1\t1/' "$c/trace/sim.tsv" ;;
     # Both present events moved, so the trace stays consistent and only the cross-check refuses it.
@@ -120,6 +120,14 @@ for bad in gap mismatch count contradictory incomplete notime sim_outcome presen
     generation_back) sed -i.orig 's/^2\t1\t1\t/2\t1\t0\t/' "$c/trace/frames.tsv" ;;
     reasons_count) printf 'turn\tt_ms\tapplied\trejected\toutcome\treasons\tbatch\tdeltas\n3\t1.0\t1\t0\taccepted\t-\t1\t1\n4\t1.5\t1\t1\trejected\ta,b,c\t0\t0\n' > "$c/trace/sim.tsv" ;;
     esac
+    # TRACE-COLS-1's column reorder silently broke junk_present's and count's own sed patterns (a
+    # trailing \t that no longer exists once outcome became frames.tsv's last column): the
+    # corruption never applied and the case passed for the wrong reason. Guard against that class of
+    # mistake: every .orig this case's sed left behind must differ from what it edited.
+    while IFS= read -r -d '' orig; do
+        edited="${orig%.orig}"
+        cmp -s "$orig" "$edited" && fail "$bad: sed left $edited unchanged (pattern matched nothing)"
+    done < <(find "$WORK/m_$bad" -name '*.orig' -print0)
     expected=1
     table "$WORK/m_$bad" "$expected" "a window case with $bad evidence"
     grep -q "^| good | 8x8 | 8x8 | " "$WORK/out" || fail "$bad: the good case lost its row"

@@ -170,6 +170,28 @@ says who is doing what, where the work is, and what it waits on.
   order?", the owner answered "Yes". They run in the UI lane, then UI-RANGE-1. Also, asked "Delete the public
   task branch with the data table after landing, and recreate it clean?", the owner answered "Yes, clean it
   up": `task/BUILDINGS-REF-1` is recreated as one clean commit.
+- **HALT until 2026-11-18** (owner, 2026-11-17 evening: "i want you to finish what you are currently doing as
+  well as the oither two executors and halt all work until tomorrow. only the mac executor and orchestrator
+  will keep working through the night"). Where everything stands:
+  - **LANDED:** ui-tabs-b (UI-TABS-1 B) on main `b5c0ada2` through `land.py`, after the Mac's GATE-RUN
+    ui-tabs-b passed on `004a26f4` (tree `7ab5576f`): 2,775 selected, 2,731 executed, 0 failed, 44 skips
+    (platform 9, opt-in 30, the two expected `gpu`, other 3; the one new skip `ui_balance_rows_compare`, GOG
+    shots absent on the Mac). Its candidate ref is deleted.
+  - **Waiting for the Mac's full run** (GATE-RUN on candidate 10 `95897a55`, which covers all of them):
+    atlas-pages-minimap `c9bdc3e3`, status-crops `c01d5806`, refs-crops-fertility-2 `43157de2`,
+    render-direct-1cd `45384a64`, ui-info-2d-buildcat `95897a55`. This PC's parts passed for all but
+    candidate 10, whose PC lanes run tomorrow.
+  - **Windows executor halted** on FLAKE-RESIZE-1 `0835d2c5`: the SDL TLS leak is proven by CI with the
+    fix removed (run 44177906209); the fix `b3304fd1` is pushed, its CI not yet checked; the local WSL
+    ASan proof needs the Clang 18 compiler-rt runtime (missing); the msvc 50-loop runs and the
+    `viewer_wiring_r4_occupancy` loops are open.
+  - **UI lane halted:** GHOST-1 R1 `32958430` is the last gated state; R2 ("Start at my city", the owner's
+    answer in the UI lane) is a WIP commit at `0c623006` that does not compile yet (one-line fix noted in
+    REPORTS). UI-HARVEST-ICON-1 B+C `c8da3ff2` waits for the owner's forester test. FERTILITY-1 1b-1d not
+    started.
+  - **Mac lane** continues overnight under the new Mac orchestrator
+    ([mac-lane-2026-11-17.md](mac-lane-2026-11-17.md); its branch `orch/mac-lane`; MAC-HEAVY-1's fix round
+    as `task/MAC-HEAVY-1b`).
 - **The owner's "go for all", 2026-11-17,** to the two open questions (prune the co-dev share repo; install
   the Linux viewer dev packages in WSL):
   - the share repo's reflog was expired and `gc --prune=now` run: `c0c3f3a0` is gone, `fsck` clean, the

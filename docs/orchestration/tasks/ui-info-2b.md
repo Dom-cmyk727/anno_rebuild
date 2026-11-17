@@ -63,4 +63,4 @@ to the he_01 packet list, in order. Branch `task/UI-INFO-2b`, base origin/main `
 - The owner's test: the build menu's preview for the Markthaupthaus, Kleine Farm and Pionierhaus at all
   four turns, side by side with `c7`/`c6`.
 - Next free OQ numbers: check main and the open branches. UI-STATUS-1 and ISLAND-CROPS-1 use up to
-  OQ-708, use OQ-710..714 (reserved for this packet; ask the UI lane for more).
+  OQ-708, use OQ-711..714 (reserved for this packet; OQ-710 belongs to RE-HE-PRODUCTION-1; ask the UI lane for more).

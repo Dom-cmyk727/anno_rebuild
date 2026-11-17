@@ -94,10 +94,44 @@ expectation; §5.4 written with addresses; OQs for the rest.
 
 ## Stage B: the overview's live figures (2-3 h, code; after A)
 
-The player overview's balance rows (tab 0, `SPIELER_BILANZ_BK`) and the "?" view's tab 0 value boxes show
-live figures as the original: which rows, which source, which font and position (code read +
-`hud_idle_running`, `r2_tab_help`, HE captures). Snapshot-only reads (no sim change; a missing sim value
-becomes a QUESTION to the orchestrator, not a guess). Written when A is accepted.
+**Released 2026-11-17** by the UI lane on the owner's go ("Go"), after the owner's viewer test of A (every
+sub-tab clickable; bodies empty as planned). Continue on `task/UI-TABS-1` from `a79499cf`; do **not** rebase.
+The orchestrator lands A stacked on the zoom candidate and resolves the `viewer.cpp` conflict there; once A
+is on origin/main, merge origin/main into this branch before reporting B (orchestrator, 2026-11-17).
+
+Scope: the text rows on two pages that A already shows: the player view's tab 0 (`tViewSpieler_Bilanz`,
+`SPIELER_BILANZ_BK`) and the "?" view's tab 0 (city status, `STADT_BILANZ_BK`). Nothing else.
+
+1. **Evidence (already read by UI-PANELS-PREP, branch `origin/task/UI-PANELS-PREP`; read it from there,
+   it is not on main yet).**
+   - Player page: `docs/re/ui-ships-diplomacy.md` §2.10: seven text gadgets `0xb1c` 195 × 15
+     (View.dll `0x1007ff21..0x100800ad`, loop `0x1007ffd7..0x100800c7`), labels `TEXT:SPIELER_DIPLOMATIE`,
+     tooltips `TOOLTIP:INFOSTADT_SPIELERBILANZMAIN`; HE 00:44.5 shows 0, 0, 0, 0, 0, 17, −17 (row 7 =
+     balance, red when negative). §5 table: "player balance rows: partly (city accounts), a player sum
+     **missing**".
+   - City page: `docs/re/ui-warehouse-trade.md` §2.2: eight text gadgets `0xb1c` 195 × 15 (builder
+     `0x1006c7e0`), plates at about y 319, 349, 379, 409, 439, 469, 530, 629, values right-aligned near
+     x 1007; row meanings and the balance rule (only row 6 = row 1 − row 2 is evidenced; OQ-655 for the
+     other signs); OQ-651 (where View.dll positions come from).
+   - Still to read here: the gadget positions inside the page (code offsets, or measure on
+     `hud_idle_running`, `r2_tab_help`, `f15_kontor` and the HE captures), the font (gadget font property,
+     and which `.zei` font it maps to as the existing UI text code does), the alignment, the number format
+     (thousands separator?), and the red colour of a negative balance. Write the result into `docs/re/ui.md`
+     §5.4 (or a §5.5 "The balance pages") with addresses; OQs for the rest (check the next free OQ number
+     on main and on `origin/task/UI-PANELS-PREP`, which uses OQ-650..689).
+2. **Values: snapshot only.** Read what `PlaySnapshot` already offers (city accounts, inhabitants, …). Draw a
+   row only where its source is evidenced and present. A row whose source is missing or unread stays empty
+   (no zero, no placeholder figure) and becomes a QUESTION in the report to the UI lane, naming the sim
+   field it needs. No change under `src/sim`, `src/render`, `src/formats`.
+3. **Drawing.** Rows as data in `data/ui/` (positions, font, alignment, colour), drawn in the CPU and GPU UI
+   paths; texts from the game's own `Texte.dat` at runtime (never copied into git).
+4. **Facts and tests.** Viewer facts for the shown row values (e.g. `hud.row.<page>.<i>`); unit tests for the
+   formatting (negative, large numbers) and the value sources; a wiring script that opens both pages and
+   asserts the facts; the oracle-shot tests named for A still pass unchanged; failure proof as in A.
+
+**Accept B:** both pages show every row whose source is evidenced, at the measured position and font, in
+both paths; every empty row has a QUESTION or OQ; HE side by side of both pages (`hud_idle_running`-like
+start state, HE 00:44.5; city page HE 6:45 or the nearest capture); A's tests unchanged.
 
 ## Gates (each stage)
 

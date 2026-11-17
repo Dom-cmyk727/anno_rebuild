@@ -15,6 +15,9 @@ Domains the trace did not decode are reported as UNSUPPORTED, never as accept or
   placement_ref.py classify [game_dir]           support classes over every Anlagen.dat type
   placement_ref.py corpus [game_dir]             the rule against every PROD2/GELAENDE item of the shipped islands
   placement_ref.py roads [game_dir]              MAP-ROAD-1: the STRASSE inventory and every shipped STRASSE placement against the road rule
+  placement_ref.py tilecorpus [game_dir] [--write F | --check F]
+                                                 FERTILITY-1 1a: engine_place of the crop object 1 and the 3x3 tile object at every
+                                                 tile of every shipped island; one digest line per island (the C++ test reads the same file)
 
 Runtime vertex grid: the original keeps heights in a corner grid of stride W + 1 (docs/re/ship-founding.md
 12.3); vertex (W, y) and (x, H) are 0. A vector gives that grid explicitly (rows 0..H, W+1 values each).
@@ -612,6 +615,121 @@ def roads(game_dir):
         print('%7d  %s' % (n, ' | '.join(k)))
 
 
+# --- FERTILITY-1 1a: the tile-object class over the shipped islands --------------------------------
+
+TILE_CORPUS_TYPES = (1, 3215)          # ROHSTWACHS 1 (1 x 1 crop object, 0x29) and ROHSTOFF 3215 (3 x 3, 0x29)
+TILE_CORPUS_RECORDS = ('GELAENDE', 'FLUESSE', 'PROD2')
+TILE_CODES = {ACCEPT: 0, 'LOWLEVEL': 1, 'TERRAIN': 1, 'OCCUPIED': 2, 'BOUNDS': 3, UNSUPPORTED: 4}
+
+
+def tile_corpus_islands(game_dir):
+    """Yield (relative path, island index, W, H, heights or None, objects) for every island of every .scp/.sze under
+    Scenes, files sorted by their '/'-joined relative path. The corpus's own occupancy model (the same in
+    src/sim/tests/placement_tile_object_test.cpp): records GELAENDE, FLUESSE and PROD2 in file order, whole 6-byte items
+    in order, an id (& 0xFFF) the registry knows and that is not 0 writes itself onto every tile of its rotated footprint
+    inside the island unless an earlier item took the tile. It tests the RULE on real terrain and real neighbours; it is
+    not the scenario loader (which keeps one tile object per origin tile)."""
+    sys.path.insert(0, HERE)
+    import insel
+    reg = load_registry(game_dir)
+    root = os.path.join(game_dir, 'Scenes')
+    files = []
+    for d, _, fs in os.walk(root):
+        files += [os.path.relpath(os.path.join(d, f), game_dir).replace(os.sep, '/') for f in fs
+                  if f.lower().endswith(('.scp', '.sze'))]
+    for rel in sorted(files):
+        isls = insel.islands(open(os.path.join(game_dir, rel), 'rb').read())
+        for k, i in enumerate(isls):
+            W, H = i['width'], i['height']
+            try:
+                hs = insel.grid(i, 'HEIGHT', 1)
+            except insel.Bad:
+                yield rel, k, W, H, None, None
+                continue
+            occ = [0] * (W * H)
+            for name, pl in i['records']:
+                if name not in TILE_CORPUS_RECORDS:
+                    continue
+                bx, by = struct.unpack_from('<HH', pl, 0)
+                data = pl[6:]
+                for o in range(0, len(data) - len(data) % 6, 6):
+                    idrot, _, ix, iy = struct.unpack_from('<HHBB', data, o)
+                    tid, rot = idrot & 0xFFF, (idrot >> 14) & 3
+                    t = reg.get(tid)
+                    if tid == 0 or t is None:
+                        continue
+                    fw, fh = (t.w, t.h) if rot & 1 == 0 else (t.h, t.w)
+                    x, y = bx + ix, by + iy
+                    for ty in range(y, min(y + fh, H)):
+                        for tx in range(x, min(x + fw, W)):
+                            if occ[ty * W + tx] == 0:
+                                occ[ty * W + tx] = tid
+            yield rel, k, W, H, hs, occ
+
+
+def tile_corpus(game_dir):
+    """The digest lines: per island and type, the verdict counts of engine_place at every tile (rotation 0, row-major) and
+    the FNV-1a 64 of the bytes (code, accepted byte or 0) per tile; codes 0 accept, 1 LOWLEVEL, 2 OCCUPIED, 3 BOUNDS,
+    4 UNSUPPORTED."""
+    reg = load_registry(game_dir)
+    out = []
+    for rel, k, W, H, hs, occ in tile_corpus_islands(game_dir):
+        if hs is None:
+            out.append('%s %d %dx%d no-height' % (rel, k, W, H))
+            continue
+
+        def vertex(vx, vy, hs=hs, W=W, H=H):
+            return hs[vy * W + vx] if 0 <= vx < W and 0 <= vy < H else 0
+        isl = Island(0, 0, W, H, vertex, lambda x, y, occ=occ, W=W: occ[y * W + x])
+        for tid in TILE_CORPUS_TYPES:
+            n = [0] * 5
+            h = 0xcbf29ce484222325
+            for y in range(H):
+                for x in range(W):
+                    v, why, b = engine_place(isl, reg, tid, x, y, 0, ANALYSIS)
+                    c = TILE_CODES[ACCEPT if v == ACCEPT else (UNSUPPORTED if v == UNSUPPORTED else why)]
+                    n[c] += 1
+                    for byte in (c, b if c == 0 else 0):
+                        h = ((h ^ byte) * 0x100000001b3) & 0xffffffffffffffff
+            out.append('%s %d %dx%d type %d accept %d low %d occupied %d bounds %d unsupported %d fnv %016x'
+                       % (rel, k, W, H, tid, n[0], n[1], n[2], n[3], n[4], h))
+    return out
+
+
+TILE_CORPUS_HEADER = ('# FERTILITY-1 1a: tools/placement_ref.py tilecorpus over Scenes/**/*.scp|*.sze (GOG 2.0.0.5): per island and\n'
+                      '# tile-object type, engine_place at every tile (rotation 0) on the island\'s HEIGHT grid and its GELAENDE/FLUESSE/\n'
+                      '# PROD2 occupancy; counts and FNV-1a 64 of (code, byte) per tile. No content of the files. Read by\n'
+                      '# src/sim/tests/placement_tile_object_test.cpp; rewrite with `placement_ref.py tilecorpus --write <this file>`.\n')
+
+
+def tile_corpus_main(game_dir, args):
+    lines = tile_corpus(game_dir)
+    totals = [0] * 5
+    for ln in lines:
+        w = ln.split()
+        if len(w) > 4 and w[3] == 'type':
+            for j, key in enumerate(('accept', 'low', 'occupied', 'bounds', 'unsupported')):
+                totals[j] += int(w[w.index(key) + 1])
+    print('tile corpus: %d lines; accept %d low %d occupied %d bounds %d unsupported %d' % ((len(lines),) + tuple(totals)))
+    if '--write' in args:
+        with open(args[args.index('--write') + 1], 'w', newline='\n') as f:
+            f.write(TILE_CORPUS_HEADER + '\n'.join(lines) + '\n')
+        return 0
+    if '--check' in args:
+        want = [ln.rstrip('\n') for ln in open(args[args.index('--check') + 1]) if ln.strip() and not ln.startswith('#')]
+        if want != lines:
+            bad = [(a, b) for a, b in zip(want, lines) if a != b]
+            print('tile corpus: %d of %d lines differ (file %d lines, oracle %d)' % (len(bad), len(lines), len(want), len(lines)))
+            for a, b in bad[:5]:
+                print('  file:   ' + a)
+                print('  oracle: ' + b)
+            return 1
+        print('tile corpus: the file agrees')
+        return 0
+    print('\n'.join(lines))
+    return 0
+
+
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else ''
     if cmd == 'selftest':
@@ -637,6 +755,16 @@ def main(argv):
             print('placement check: %d cases in %s, at least %d required' % (len(cases), path, minimum), file=sys.stderr)
             return 2
         return 0 if check_vectors(path) else 1
+    if cmd == 'tilecorpus':
+        args = argv[2:]
+        gd = args[0] if args and not args[0].startswith('--') else os.environ.get('ANNO1503_GAME_DIR')
+        if not gd:
+            print('skipping: placement tilecorpus needs ANNO1503_GAME_DIR')
+            return 77
+        if not os.path.isfile(os.path.join(gd, 'Anlagen.dat')):
+            print('placement tilecorpus: %s holds no Anlagen.dat' % gd, file=sys.stderr)
+            return 2
+        return tile_corpus_main(gd, args)
     if cmd in ('classify', 'corpus', 'roads'):
         gd = argv[2] if len(argv) > 2 else os.environ.get('ANNO1503_GAME_DIR')
         if not gd:

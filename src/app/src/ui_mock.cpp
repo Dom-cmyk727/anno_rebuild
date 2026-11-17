@@ -3,6 +3,7 @@
 #include <fstream>
 #include <map>
 
+#include <anno/app/balance_rows.hpp>
 #include <anno/app/hud_tabs.hpp>
 #include <anno/app/ui_mock.hpp>
 #include <anno/assets/building.hpp>
@@ -386,12 +387,15 @@ constexpr std::array<std::array<std::uint8_t, 3>, 3> kInfoTextLevels = {
 
 /// `text` in `font` as one opaque image, each level in its own kInfoTextLevels colour: three
 /// render_text passes (one level each at alpha 255, the others at 0) merged - every glyph pixel
-/// has exactly one level, so the passes never overlap.
-assets::Rgba render_info_text(const formats::zei::CharSet& font, const std::string& text) {
+/// has exactly one level, so the passes never overlap. `level1` replaces level 1's white
+/// (UI-TABS-1 stage B: the balance row's red, the text gadget's colour property 0x1c5; docs/re/
+/// ui.md 5.5).
+assets::Rgba render_info_text(const formats::zei::CharSet& font, const std::string& text,
+                              std::array<std::uint8_t, 3> level1 = kInfoTextLevels[0]) {
     assets::Rgba out;
     for (std::size_t level = 0; level < 3; ++level) {
         assets::TextStyle style;
-        style.rgb = kInfoTextLevels[level];
+        style.rgb = level == 0 ? level1 : kInfoTextLevels[level];
         style.level_alpha = {0, 0, 0};
         style.level_alpha[level] = 255;
         assets::Rgba pass = assets::render_text(font, text, style);
@@ -531,6 +535,50 @@ void draw_info_content(TexCache& cache, const HudLayout& hud, const UiPlacement&
         blit(clip_to(silhouette, sx, sy, box_x, box_y, bw, bh), sx, sy);
     }
     blit(clip_to(fitted, x, y, box_x, box_y, bw, bh), x, y);
+}
+
+/// UI-TABS-1 stage B: the balance pages' figures (docs/re/ui.md 5.5) over the screen's panel,
+/// through `blit` (an opaque blit of an RGBA image at (x, y): the XRGB or the GPU-overlay
+/// path's own), shared by both paths as draw_info_content is. Every hud.txt element with a
+/// `value` whose `page` is the panel showing draws counters.rows[value] (absent: nothing) in its
+/// font, `align right` at pos_x + size_w - text_w, top at pos_y + text_dy, level 1 in
+/// `negative_rgb` below 0, cut to its box with `clip box`.
+template <typename Blit>
+void draw_balance_rows(TexCache& cache, const HudLayout& hud, const UiPlacement& placement,
+                       const UiMockSpec& screen, const HudCounters& counters, Blit&& blit) {
+    if (counters.rows.empty())
+        return;
+    const std::string panel = ui_panel_group(hud, screen);
+    if (panel.empty())
+        return;
+    for (const UiElement& el : hud.elements) {
+        if (el.value.empty() || el.page != panel || el.align != "right" || !el.has_pos ||
+            !el.has_size || el.file.empty())
+            continue;
+        const auto it = counters.rows.find(el.value);
+        if (it == counters.rows.end())
+            continue;
+        const formats::zei::CharSet* font = cache.font(el.file);
+        if (font == nullptr)
+            continue;
+        std::array<std::uint8_t, 3> level1 = kInfoTextLevels[0];
+        if (it->second < 0 && el.negative_rgb) {
+            level1 = {static_cast<std::uint8_t>(*el.negative_rgb >> 16),
+                      static_cast<std::uint8_t>(*el.negative_rgb >> 8),
+                      static_cast<std::uint8_t>(*el.negative_rgb)};
+        }
+        const assets::Rgba image = render_info_text(*font, balance_text(it->second), level1);
+        const auto [bx, by] = placement.place(el.anchor, el.pos_x, el.pos_y);
+        const int x = bx + static_cast<int>(el.size_w) - static_cast<int>(image.width);
+        const int y = by + el.text_dy;
+        if (el.clip_box) {
+            blit(clip_to(image, x, y, bx, by, static_cast<int>(el.size_w),
+                         static_cast<int>(el.size_h)),
+                 x, y);
+        } else {
+            blit(image, x, y);
+        }
+    }
 }
 
 /// `sprite` cut to at most `w` x `h` pixels, its top-left kept.
@@ -1020,6 +1068,11 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
     // its names and figures are UI-TABS-1).
     draw_panel(hud, screen,
                [&](const std::string& name, std::optional<int> tid) { blit_el(name, tid); });
+    // UI-TABS-1 stage B: the balance pages' figures over the panel (docs/re/ui.md 5.5).
+    draw_balance_rows(cache, hud, placement, screen, counters,
+                      [&](const assets::Rgba& image, int x, int y) {
+                          blit_xrgb(dst, dst_w, dst_h, image, x, y);
+                      });
 
     if (is_construction) {
         blit_el("plankegross");
@@ -1263,6 +1316,10 @@ std::string draw_live_screen_rgba_into(
     // its names and figures are UI-TABS-1).
     draw_panel(hud, screen,
                [&](const std::string& name, std::optional<int> tid) { blit_el(name, tid); });
+    // UI-TABS-1 stage B: the balance pages' figures over the panel (docs/re/ui.md 5.5).
+    draw_balance_rows(
+        cache, hud, placement, screen, counters,
+        [&](const assets::Rgba& image, int x, int y) { blit_rgba_over(canvas, image, x, y); });
 
     if (is_construction) {
         blit_el("plankegross");

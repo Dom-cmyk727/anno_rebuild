@@ -98,3 +98,31 @@ built from real pages. If any pair exceeds 384 MiB, that is a finding for the ow
 
 No builds, tests or measurements on this PC until the orchestrator releases it (the owner's recording).
 Code edits for F2-F4 can start now.
+
+## Fix round and acceptance (added 2026-11-17)
+
+`95a5ace6`, after two merges of `origin/main` (UNIX-WARN-1, then LAYER-CHECK-1):
+- **F1:** the bench was rerun on the msvc Release build, alone on a quiet PC. All 200 byte fields equal the
+  Debug run. Wall times are 19-24 times shorter; `endless02.sze` takes 1.30 s. `collect` still takes 85.3-92.4 %
+  of static wall time (median 90.1 %). That finding is queued as its own packet; RENDER-DIRECT-1c does not fix
+  it.
+- **F2:** every frame and every texel is checked: 50,755,526 assertions on the two `.sze` scenes in
+  `anno_render_tests`. `lan5.txt` is checked in `anno_app_tests` (39,965,981 assertions), so
+  `anno_render_tests` links nothing above render. The checker is shared through the header-only
+  `anno/test/atlas_pages_check.hpp`. A missing named file fails instead of skipping, which fixes the preflight
+  failure of run 44038688654.
+- **F3:** `duplicate_ids`; the first occurrence wins. A synthetic test checks one placement and equal hashes at
+  1 and 8 threads.
+- **F4:** the mip rectangle is computed from the slot origin with floor and ceil. Asserted on an odd-sized
+  frame; no earlier test read those fields.
+- **F5:** the worst adjacent pair built from real pages is 0+1 = 340.0 MiB (`endless02.sze`), 44 MiB under
+  384 MiB; 1+2 is 100.0 MiB. No finding for the owner.
+
+**The RTX 4090 gate,** msvc build with `ANNO_GPU_ADAPTER=RTX`, the log naming the 4090: 119 of 119 cases. The
+"Validation Error" lines in that log also appear in `main`'s own earlier GPU gate logs; they are not new.
+
+**One correction to the report:** the peak memory of 1,569.6 MiB (Release) against 967 MiB (Debug) compares
+two platforms, not two build types. The Debug run was WSL/Linux and the Release run Windows/MSVC.
+
+**CI green on `95a5ace6`** (run 44051159572). **ACCEPTED.** It lands under the owner's standing rule.
+RENDER-DIRECT-1c is released on it.

@@ -150,7 +150,12 @@ says who is doing what, where the work is, and what it waits on.
   The lan5 case goes into the app tests, so `anno_render_tests` does not link `anno_app_core`. CI on
   `c7a1e77b` failed the evidence preflight: a new skip message for a missing game file, which must be a
   failure. The 4090 gate ran by mistake in WSL on llvmpipe, so it is no result; it reruns from the msvc
-  build. The fix round, the Release bench rerun and the 4090 gate are running on this PC).
+  build. **Fix round `95a5ace6`: all five answered.** The Release bytes equal the Debug run; every frame and
+  texel is checked, `lan5.txt` among them; the 4090 gate passed 119/119 on the real adapter; the iGPU pair
+  is 340 MiB, under 384. **CI green** (run 44051159572). **ACCEPTED** 2026-11-17; it lands under the
+  standing rule); [RENDER-DIRECT-1c](tasks/render-direct-1c.md) (Windows, **RELEASED** 2026-11-17 on
+  1b: the pages uploaded to a texture array and proven byte-exact by readback and by nearest sampling on
+  both adapters; VRAM and upload time measured; nothing in the viewer's frame changes).
 - **UI lane: UI-TABS-1 started** (2026-11-16, the owner's go in the UI lane's session, as reported by it):
   `task/UI-TABS-1` from `main` `ac02d4a2`, packet `tasks/ui-tabs-1.md` on that branch (`6d20d16e`). Stage A: the
   tab and sub-tab switching (player, city view, options) with clicks and the keys D, S and C; stage B (the
@@ -166,8 +171,13 @@ says who is doing what, where the work is, and what it waits on.
   **Stage B ACCEPTED** 2026-11-17, head `5e6c1ad5`, CI green (run 44023629594). The owner's viewer test is
   `ui_6.mp4`; [review](reviews/2026-11-17-ui-tabs-1-b-review.md). **Landing candidate `004a26f4`** (tree
   `7ab5576f`), stacked on `4dfdd9b7`; one end-of-file conflict in `docs/open-questions.md`, both sides kept.
-  Fetchable as `refs/candidates/ui-tabs-b`. Next: this PC's changed lanes and the day's full game-file run on
-  this tree, after the Windows executor's bench, plus the Mac's full run.
+  Fetchable as `refs/candidates/ui-tabs-b`. **The Windows PC's part PASSED** 2026-11-17. It was the day's
+  full game-file run, msvc build of `004a26f4`, GPU tests on the 4090 and the Radeon:
+  - 2,755 selected, 2,720 executed, 1 failed, 34 skipped (platform 3, opt-in 26, other 5);
+  - the one failure was a memory refusal (`low-memory stop`, free 1.9 GB) while the UI lane built
+    alongside. That case (`anno_render_tests.chunk draw lists replay ...`) passed when rerun alone: 1/1;
+  - the WSL warning check is clean.
+  Waits for the Mac's run (GATE-RUN ui-tabs-b).
   **Two questions for the sim lane**, raised by stage B; the rows stay empty until they are answered:
   1. `Player::upkeep_a/b` and `stat_a/b` are held and decayed by the sim but fed by nothing. The overview's
      rows 3 to 6 need them; the History Edition shows military 17 for the start ship.

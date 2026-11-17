@@ -111,10 +111,12 @@ enum class ScenarioWarningKind : std::uint8_t {
     /// mountain objects with one draw each (D 0x100085d5–0x10008784), which is not
     /// read far enough to map (O-37): no deposit is made, the draws are not made.
     LinkOresUnplaced,
-    /// Every placed link: the original sets island property 11 = 0xF009 | the raw
-    /// materials assigned to it (D 0x100085a2–0x100085cf); the sim has no field for it
-    /// yet.
-    LinkRawMaterials,
+    /// An ANBAU name that names no goods of SimConfig::crops' ANBAU range (anbau_first_goods ..
+    /// anbau_last_goods): the original skips it silently (D AnnoWelt 0x10089931 -> 0x10089943,
+    /// no bit, no message) and counts it toward the name cap; so does the loader, and warns.
+    /// None in the corpus. (Replaces LinkRawMaterials: a placed link's property 11 is now kept,
+    /// Island::crops, ISLAND-CROPS-1.)
+    UnknownCropName,
     /// A placed link that holds a treasure: the original creates a treasure object
     /// with up to two draws (D 0x10008b25–0x10008bb5, the spot scan 0x10008cc0 not
     /// read); not placed, not drawn.
@@ -297,8 +299,10 @@ resolve_scenario_links(LoadedScenario& s, std::span<const TemplateSummary> candi
 /// chosen candidate, read by the caller) becomes an island of slot `number & 0xFFFF`
 /// at the link's position, built as an INSEL5 of the scenario is, with the link's
 /// climate (island property 7, D 0x10008532–0x10008545), and the warnings for what
-/// the placement does beyond that (LinkRawMaterials, LinkOresUnplaced,
-/// LinkTreasureUnplaced, LinkTemplatePlayers). Errors name the link
+/// the placement does beyond that (LinkOresUnplaced, LinkTreasureUnplaced,
+/// LinkTemplatePlayers). Island property 11 becomes SimConfig::crops' base set and the link's
+/// raw marks (mark k = goods crops.mask_first_goods + k; D 0x100085a2–0x100085cf). Errors name the
+/// link
 /// ("links[3] (island 12): ...").
 std::optional<std::string> place_island_links(LoadedScenario& s, const LinkResolution& res,
                                               std::span<const formats::Bytes> templates,

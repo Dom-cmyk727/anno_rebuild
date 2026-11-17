@@ -1,0 +1,44 @@
+# UI-MINIMAP-2: the stepped zoom (--zoom-mode stepped, the original's three groups) keeps the
+# original's magnifier clamp to levels 0..2 (AnnoFrame 0x10007710, 0x10007692; docs/re/ui.md
+# 2.9), although zoom.min_tile (zoom_floor over this mode's levels, thousandths of a pixel: with
+# no derived levels, level 2 / sqrt 2) lies past level 2: the - stops at level 2, the + at level
+# 0. The continuous zoom's extra stages: ui_magnifier_range.
+# Launch (--gpu, so that --zoom-mode stepped itself, not the CPU renderer, picks the stepped
+# zoom): --play data/maps/lan5.txt --construction-menu on --layout data/ui --zoom-mode stepped
+resize 1024 768
+wait frames 5
+look 1140 516
+wait frames 5
+expect fact view.tile_w == 20
+expect fact zoom.min_tile < 20000
+expect fact zoom.at_min == 0
+# The magnifier's - (826, 153), 19 x 21, at level 2: nothing changes.
+click_px 835 163
+wait frames 3
+click_px 835 163
+wait frames 3
+click_px 835 163
+wait frames 3
+expect fact view.tile_w == 20
+expect fact zoom.at_min == 0
+# The + (796, 135): one group per press (a group still being built applies when ready), clamped
+# at level 0.
+click_px 805 145
+wait fact view.tile_w == 42
+click_px 805 145
+wait fact view.tile_w == 84
+click_px 805 145
+wait frames 3
+expect fact view.tile_w == 84
+# And back down to level 2, where the - stops again.
+click_px 835 163
+wait fact view.tile_w == 42
+click_px 835 163
+wait fact view.tile_w == 20
+click_px 835 163
+wait frames 3
+expect fact view.tile_w == 20
+expect fact zoom.at_min == 0
+expect fact selection.clicks == 0
+expect fact camera.pans == 0
+quit

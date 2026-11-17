@@ -1,0 +1,113 @@
+# UI-MINIMAP-2: in the continuous zoom the magnifier's - reaches the mouse wheel's furthest
+# zoom-out (owner decision 2026-11-17, ui_6.mp4; docs/re/ui.md 2.9). Its stages
+# (magnifier_stages): the built levels' tile widths 84, 42, 20, then one halving per press (10,
+# 5, 2.5, ...) while wider than the wheel's end, then that end itself (zoom.min_tile: zoom_floor,
+# lan5 fitting the 1024 x 768 window, below a pixel). The + walks back through the same stages.
+# zoom.target and zoom.min_tile are tile widths in thousandths of a pixel; zoom.at_min is 1 when
+# the view's target is the wheel's end. The stepped zoom's clamp: ui_magnifier_range_stepped.
+# Launch (--gpu: the continuous zoom needs the GPU renderer): --play data/maps/lan5.txt
+# --construction-menu on --layout data/ui
+resize 1024 768
+wait frames 5
+look 1140 516
+wait frames 5
+expect fact view.tile_w == 20
+expect fact zoom.target == 20000
+expect fact zoom.at_min == 0
+# lan5 at 1024 x 768: the wheel's end lies more than three halvings past level 2, so the first
+# three presses below are fixed widths.
+expect fact zoom.min_tile < 2500
+# The magnifier's - (826, 153), 19 x 21: one halving per press past level 2.
+click_px 835 163
+wait frames 3
+expect fact zoom.target == 10000
+click_px 835 163
+wait frames 3
+expect fact zoom.target == 5000
+click_px 835 163
+wait frames 3
+expect fact zoom.target == 2500
+# On until nothing changes: more presses than stages can remain (--max-derived-levels 8 by
+# default), a press at the end changes nothing. The view then targets the wheel's end exactly.
+click_px 835 163
+wait frames 2
+click_px 835 163
+wait frames 2
+click_px 835 163
+wait frames 2
+click_px 835 163
+wait frames 2
+click_px 835 163
+wait frames 2
+click_px 835 163
+wait frames 2
+click_px 835 163
+wait frames 2
+click_px 835 163
+wait frames 2
+click_px 835 163
+wait frames 2
+click_px 835 163
+wait frames 2
+click_px 835 163
+wait frames 2
+click_px 835 163
+wait frames 3
+expect fact zoom.at_min == 1
+note fact zoom.target
+click_px 835 163
+wait frames 3
+expect fact zoom.target same
+expect fact zoom.at_min == 1
+# The magnifier's + (796, 135): back through the same stages until nothing changes, at level 0.
+click_px 805 145
+wait frames 2
+expect fact zoom.at_min == 0
+click_px 805 145
+wait frames 2
+click_px 805 145
+wait frames 2
+click_px 805 145
+wait frames 2
+click_px 805 145
+wait frames 2
+click_px 805 145
+wait frames 2
+click_px 805 145
+wait frames 2
+click_px 805 145
+wait frames 2
+click_px 805 145
+wait frames 2
+click_px 805 145
+wait frames 2
+click_px 805 145
+wait frames 2
+click_px 805 145
+wait frames 2
+click_px 805 145
+wait frames 2
+click_px 805 145
+wait frames 2
+click_px 805 145
+wait frames 2
+click_px 805 145
+wait frames 3
+expect fact view.tile_w == 84
+expect fact zoom.target == 84000
+click_px 805 145
+wait frames 3
+expect fact zoom.target == 84000
+# And the - from level 0 down through the built levels into the halvings again.
+click_px 835 163
+wait frames 3
+expect fact zoom.target == 42000
+click_px 835 163
+wait frames 3
+expect fact zoom.target == 20000
+click_px 835 163
+wait frames 3
+expect fact zoom.target == 10000
+expect fact selection.clicks == 0
+expect fact camera.pans == 0
+quit

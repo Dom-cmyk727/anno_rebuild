@@ -434,6 +434,10 @@ TEST_CASE("zoom over derived levels: the range follows the last level and the mi
     CHECK(zoom_target_after(20.0, 0.0001, levels, 6.0) == 6.0);
     CHECK(zoom_target_after(20.0, 0.0001, levels, 1.0) == doctest::Approx(2.5 / kZoomEndFactor));
     CHECK(zoom_target_after(42.0, 1000.0, levels, 6.0) == doctest::Approx(84.0 * kZoomEndFactor));
+    // UI-MINIMAP-2: zoom_floor is that far end (the magnifier's last stage).
+    CHECK(zoom_floor(levels, 6.0) == 6.0);
+    CHECK(zoom_floor(levels, 1.0) == doctest::Approx(2.5 / kZoomEndFactor));
+    CHECK(zoom_floor(levels) == zoom_target_after(20.0, 0.0001, levels));
     // The level shown follows the zoom through the derived levels: the coarsest level
     // whose tile width is at least the zoom, so the scale stays in [0.95 / 2.1, 1] at
     // every width below group 0 (the widest ratio between two levels is 2.1, the coarser

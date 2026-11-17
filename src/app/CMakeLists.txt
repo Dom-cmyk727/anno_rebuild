@@ -254,6 +254,26 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_ui_minimap_player PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-MINIMAP-2: the magnifier's - reaches the wheel's furthest zoom-out in the continuous
+      # zoom (ui_magnifier_range) and keeps the original's clamp at level 2 in the stepped one
+      # (ui_magnifier_range_stepped). Both in the GPU window (--gpu): the continuous zoom needs the
+      # GPU renderer, and on it --zoom-mode stepped itself must pick the stepped zoom.
+      if(ANNO_HAVE_WGPU)
+        foreach(case ui_magnifier_range ui_magnifier_range_stepped)
+          set(zoom_mode_args)
+          if(case STREQUAL "ui_magnifier_range_stepped")
+            set(zoom_mode_args --app-arg --zoom-mode --app-arg stepped)
+          endif()
+          add_test(NAME viewer_wiring_${case}
+            COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                    $<TARGET_FILE:anno1503> ${case} --gpu
+                    --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                    --app-arg --construction-menu --app-arg on
+                    --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui ${zoom_mode_args})
+          set_tests_properties(viewer_wiring_${case} PROPERTIES
+            SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4 LABELS gpu RESOURCE_LOCK gpu)
+        endforeach()
+      endif()
       # UI-WINDOW-1 fix round R1 (F6, F7): a chrome drag starts no pan; a lost UI press is dropped.
       add_test(NAME viewer_wiring_ui_chrome_press
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py

@@ -164,6 +164,11 @@ says who is doing what, where the work is, and what it waits on.
   - **CI on 1c `f148638e` failed:** the adapter-pinned cases skip as `gpu` on lavapipe, where the job requires
     a GPU. They get the same skip classification as `play_gpu_test`'s pinned cases, plus one adapter-agnostic
     upload case; then 1c and 1d are accepted on green CI.
+- **The owner's go, 2026-11-17:** asked "go for UI-INFO-2d (the arrow-reading code moved into the file-format
+  library, arrows on a placed building's info picture, the preview flags), UI-GHOST-1 and UI-BUILDCAT-1, in that
+  order?", the owner answered "Yes". They run in the UI lane, then UI-RANGE-1. Also, asked "Delete the public
+  task branch with the data table after landing, and recreate it clean?", the owner answered "Yes, clean it
+  up": `task/BUILDINGS-REF-1` is recreated as one clean commit.
 - **[MAC-HEAVY-1](tasks/mac-heavy-1.md) written** 2026-11-17 for the Mac executor, on the owner's request
   ("I also need a new mac job. This can be more comprehensive once this time, it may contain CPU and or RAM
   heavy test jobs"). Released when the owner pastes the prompt, after GATE-RUN ui-tabs-b. Verification of

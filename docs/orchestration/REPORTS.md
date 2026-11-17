@@ -15223,7 +15223,7 @@ adapter).
 
 READY FOR REVIEW.
 
-## RENDER-DIRECT-1c CI fix — the named-adapter skip order, matched to play_gpu_test.cpp's own — READY FOR REVIEW (same branch, commit TBD)
+## RENDER-DIRECT-1c CI fix — the named-adapter skip order, matched to play_gpu_test.cpp's own — READY FOR REVIEW (same branch, commit `50de7c24`)
 
 **The failure.** CI run `44095685040` failed on `cpp (linux-gcc)` ("test" step) then `gate`: eight `atlas_upload_test.cpp` cases reported `SKIPPED(gpu)` on lavapipe (no adapter named "RTX 4090"/"Radeon"), and `linux-gcc` does not pass `--allow-skip gpu` (`ci.yml`: every OTHER job does; `linux-gcc` is the one job meant to run the real GPU parity path on lavapipe for real, OQ-089/GATE-1c item 2) - so an unallowed `gpu` skip there fails the gate.
 

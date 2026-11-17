@@ -97,3 +97,34 @@ Asked:
 **CHANGES REQUESTED**, about one hour: `atlas.md`, the summary output of `--atlas-report` (the sums of F1), and a
 REPORTS addendum. If F1 or F2 ends in a QUESTION, the executor stops and reports it; the orchestrator takes it to
 the owner. The measurement itself (tool, test, corpus run) is accepted as it is.
+
+## Fix round (added 2026-11-17)
+
+`6bfb78cd` on `9773d4d0`, CI running at review time (run 44006619634).
+
+- **F1:** `--atlas-report` now writes the per-scene sums 0+1+2, 0+1 and 1+2 itself. The orchestrator counted the
+  rows of the generated table at 2048 px pages and 2 px padding:
+
+  | Resident set | No mips: worst / maps over 256 MiB | One mip level: worst / maps over 256 MiB |
+  |---|---|---|
+  | One group | 208 MiB / 0 | 260 MiB / 5 |
+  | Groups 0+1, the pair a zoom crosses | 272 MiB / 1 | 340 MiB / 20 |
+  | All three groups | 288 MiB / 5 | 360 MiB / 24 |
+
+  - The worst scene is always `0010SingleEndlos/02_1024_easy_128.sze`. Without mips, five more scenes need exactly
+    256 MiB for the pair.
+  - No scene goes over 384 MiB in any row.
+  - The LAN map (`lan5.txt`) needs 128 MiB for the pair without mips and 160 MiB with one level.
+  - The RTX 4090 holds all three groups with one level in every scene (360 of 512 MiB).
+- **F1 ends in the QUESTION** the packet provides for (`atlas.md` section 4, OQ-096b). It goes to the owner.
+- **F2:** the "full" rows are replaced by one mip level (+25 %), and the padding limit is stated. `atlas.md` calls
+  the mip level a proposal; OQ-096b holds the decision.
+- **F3:** figures come from the start units only; the maximum is 3,401,840 bytes (74 frames, `single38.sze`, group
+  0). The figure class gets its own evicting budget, sized later.
+- **F4:** reworded. The green test cannot be applied to static frames. The real question is a new OQ.
+
+**One fix before acceptance:** the new question is numbered OQ-641, which `task/UI-TABS-1` already uses (OQ-639 to
+644; `task/UI-PANELS-PREP`, in the candidate waiting to land, uses up to OQ-689). Renumber it to **OQ-690**.
+
+**Verdict: ACCEPTED once CI is green on the renumbered head.** The packet's result is a measurement and a QUESTION
+for the owner (OQ-096b together with OQ-096). RENDER-DIRECT-1b is written once the owner has answered.

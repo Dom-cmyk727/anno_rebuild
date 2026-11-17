@@ -31,7 +31,12 @@ says who is doing what, where the work is, and what it waits on.
   in the document: the fit is checked per group, not for all groups or the pair a zoom crosses; dropping the
   mips is the owner's decision; figure needs are start units only; the static green test is not player
   colour. Known, separate: `scene_reclaim_test` fails when `anno_render_tests` runs whole in its default
-  order, on `main` too).
+  order, on `main` too. **Fix round** `6bfb78cd`: all four answered; ACCEPTED once CI is green after the new
+  OQ is renumbered 641 to 690. The pair of zoom groups 0+1 does not fit the iGPU's 256 MiB in one scene (272 MiB),
+  in 20 with one mip level; a QUESTION to the owner, OQ-096b with OQ-096);
+  [LAYER-CHECK-1](tasks/layer-check-1.md) (Windows, **RELEASED** 2026-11-17 ahead of RENDER-DIRECT-1b, which
+  waits for the owner's answer: a test that `formats`, `sim` and `sim_load` include and link nothing above
+  them).
 - **UI lane: UI-TABS-1 started** (2026-11-16, the owner's go in the UI lane's session, as reported by it):
   `task/UI-TABS-1` from `main` `ac02d4a2`, packet `tasks/ui-tabs-1.md` on that branch (`6d20d16e`). Stage A: the
   tab and sub-tab switching (player, city view, options) with clicks and the keys D, S and C; stage B (the

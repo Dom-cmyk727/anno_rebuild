@@ -3,6 +3,7 @@
 // Background threads (chunk builders, the reaper, river flow builders, the wave
 // simulation setup, texture pre-creation) yield to the window thread.
 
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 
@@ -18,6 +19,7 @@
 #include <pthread.h>
 #include <sys/resource.h>
 #include <sys/syscall.h>
+#include <time.h>
 #include <unistd.h>
 #endif
 
@@ -45,5 +47,37 @@ inline void lower_thread_priority() {
     static_cast<void>(rc);
 #endif
 }
+
+#if defined(_WIN32)
+/// Thread CPU cycles the calling thread has consumed so far (QueryThreadCycleTime), not a time
+/// (ZOOM-SMOOTH-3c F2, replacing GetThreadTimes: its ~15.6 ms system-clock quantum made a direct
+/// millisecond reading meaningless for a call a few milliseconds long, ZOOM-SMOOTH-3b's own
+/// finding - and there is no reliable API to convert cycles to time). No conversion is needed:
+/// compare a slow call's own cycles against this run's own cycles-per-millisecond yardstick,
+/// computed from the ordinary calls of the same run (the caller's job, not this function's) -
+/// far fewer cycles than the yardstick for the call's own wall time means it was waiting (a lock,
+/// descheduled, another thread's deferred wgpu work), not computing. 0 if the platform call
+/// fails.
+inline std::uint64_t thread_cpu_cycles() {
+    ULONG64 cycles = 0;
+    if (QueryThreadCycleTime(GetCurrentThread(), &cycles) == 0) {
+        return 0;
+    }
+    return cycles;
+}
+#else
+/// CPU time (ms) the calling thread has consumed so far, not wall time: comparing this against a
+/// wall-clock duration around the same call tells "computing" (CPU close to wall) apart from
+/// "waiting on a lock, descheduled, or paying for another thread's deferred destruction" (CPU
+/// well under wall). -1 if the platform call fails. Windows uses thread_cpu_cycles() instead
+/// (ZOOM-SMOOTH-3c F2) - clock_gettime's own resolution is fine where it is available.
+inline double thread_cpu_time_ms() {
+    struct timespec ts{};
+    if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts) != 0) {
+        return -1.0;
+    }
+    return static_cast<double>(ts.tv_sec) * 1000.0 + static_cast<double>(ts.tv_nsec) / 1.0e6;
+}
+#endif
 
 } // namespace anno::render

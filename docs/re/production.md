@@ -417,3 +417,21 @@ Read-only, Citizen single-player scenario, the copy through dgVoodoo2, driven by
 - `PROD3` bytes 0x42/0x43 (`+0x1fd`/`+0x1fc`); fill-level graphic stage (`+0x11c`) condition in the farm tick.
 - Kontor level ↔ city capacity (`+0x624`), and the second `t`-period (15000) island pass (slot `+0x194`).
 - `STEINBRUCH`/`EISLOCH` (base class, no own tick): where quarries produce (probably in the worker job).
+
+## HE comparison (RE-HE-PRODUCTION-1, 2026-11-17)
+The History Edition's production code was compared with this note function by function. The modules, method, labels and the full table are in `docs/re/forestry.md` §8. In short:
+- **Identical** (same logic, recompiled, D or S) in both HE modules: `AnnoWeltAddOn.dll` (x86) and the running `AnnoWelt.dll` (x64).
+  - The farm tick (§4.2, HE86 `0x1006c3e0`, HE64 `0x18007f580`), including its single world draw per eligible dispatch.
+  - The status helper (§4.1, `0x10070be0` / `0x1800847d0`).
+  - The small farm tick and line step (§4.5, `0x1006cd90` and `0x1006d030` / `0x180080280` and `0x1800800e0`), with the same kind and limit tables.
+  - The growth visit (§4.3, inlined in HE86's island update `0x10032870`, `0x18004e860` in HE64) and the island chunk scheduler (`/ 2000`, `/ 15000`).
+  - The send (§5.1, `0x1006fa10` with the entrance test inlined).
+  - The market cart's step A score, step B load and the farm-family remove (§5.2, `transport.md` §1).
+  - The `AnnoGame` building-type and figure-type getters (§2.5, §5.4).
+- **ISS-150 is in HE too:** the small farm's 75 000-tick "missing input" interval is compared signed against a 16-bit elapsed time in all three builds, so the message never comes due.
+- **Changed: the load-time conversion (§2.3, §8).** HE converts `PROD3` in SSE single precision (`AnnoGameAddOn` `0x10004111`-`0x10004209`, x64 `AnnoGame` `0x180002dab`-`0x180002e9e`): `divss`, `addss`, `mulss`, truncated with `cvttss2si`. GOG uses the x87 here and converts `need1` from `q1` stored as a float but `need0` from `q0` at full x87 precision. Over all 921 entries the integers differ only in `need1` of 1010 (HE 7, GOG 6) and 3979 (HE 4, GOG 3), the two entries OQ-032 names for 24-bit precision. Every other `rate`/`need`, and 801, 809 and 811, are equal.
+- **Data:** HE `Anlagen.addon` = GOG `Anlagen.dat` (sha256). The 801 and 809 gameplay records are equal in HE `Anlagen.dat` and `Anlagen.classic` too. In `.classic`, the potato field 709's gold cost differs (0 against 5).
+- **Small farm workers (§4.5):**
+  - Line 0's figure 106 runs the forester's route (job `0x2a`, `tRouteMaeher`) on `KARTOFFEL` fields (709 → 708). It has capacity 3 t and waits 7.0 per field, so it cuts up to three fields per trip.
+  - Line 1's animals 107, 109 and 110 run `tRouteWeide` (job `0x2e`), whose step B is the same cut on `GRAS`.
+  - Details are in `forestry.md` §8.5.

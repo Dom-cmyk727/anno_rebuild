@@ -57,6 +57,12 @@ struct DevToolSetup {
     /// The developer player's city and its island's tiles; no city: the tool stays off.
     std::optional<sim::CityRef> city;
     TileRect island;
+    /// UI-GHOST-1 R2: the city's home tile, where a play window's camera starts (the owner's
+    /// decision of 2026-11-17, "Start at my city": the original starts the player at his own ship
+    /// or settlement). The north-west tile of the city's warehouse
+    /// (CargoRules::warehouse_prodtypes, the Kontor) when it has one, else of its first building in
+    /// the canonical order, else the island's centre; nullopt without a city.
+    std::optional<sim::TileXY> home;
     sim::PlayerId issuer;
     /// Another player's city on another island (none when the world has no second city).
     std::optional<ForeignSpot> foreign;

@@ -445,6 +445,19 @@ class Viewer {
         cam_x_ = b.x + b.w / 2.0;
         cam_y_ = b.y + b.h / 2.0;
         zoom_now_ = zoom_target_ = levels().tile_w(group);
+        // UI-GHOST-1 R2, the owner's decision of 2026-11-17 ("Start at my city"; the original
+        // starts the player at his own ship or settlement): a play session with a developer city
+        // opens on that city's home tile (DevToolSetup::home: its Kontor). Without one (a scene
+        // view, a session with no city yet) the camera stays on the scene's middle.
+        if (dev_ != nullptr && dev_->setup().city && dev_->setup().home) {
+            const auto g = render::pick_geometry_of(levels().tile_w(group), levels().tile_h(group));
+            const auto [sx, sy] =
+                render::corner_point(static_cast<double>(dev_->setup().home->x) + 0.5,
+                                     static_cast<double>(dev_->setup().home->y) + 0.5,
+                                     static_cast<double>(render::kSeaLevel), g);
+            cam_x_ = sx;
+            cam_y_ = sy;
+        }
         if (play_ == nullptr) {
             fixed_ = std::move(scene);
         }

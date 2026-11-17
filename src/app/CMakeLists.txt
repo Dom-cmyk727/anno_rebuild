@@ -350,6 +350,16 @@ if(ANNO_BUILD_TESTS)
       set_tests_properties(viewer_wiring_ui_ghost_world PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4
         ENVIRONMENT "ANNO_DEV_GOODS_TONS=3")
+      # UI-GHOST-1 R2: the play window opens on the developer city (the owner's decision of
+      # 2026-11-17): the start camera's tile lies on the city's island, near its Kontor.
+      add_test(NAME viewer_wiring_ui_start_view
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_start_view
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_start_view PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # UI-GHOST-1: the same session's screenshots, the outline's exact 0xffff00 pixels counted
       # (ghost_pixel_check.py; the hidden shot is the negative control).
       add_test(NAME viewer_wiring_ui_ghost_pixel_check

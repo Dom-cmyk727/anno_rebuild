@@ -279,6 +279,35 @@ DevToolSetup dev_tool_setup(const PlayLoad& load, sim::PlayerId player) {
             }
         }
     }
+    if (s.city) {
+        // UI-GHOST-1 R2: the camera's start (DevToolSetup::home). Read-only queries of the loaded
+        // world, before the runner owns it.
+        std::vector<sim::BuildingId> ids;
+        world.rect_query(*s.city, sim::TileRect{s.island.x0, s.island.y0, s.island.w, s.island.h},
+                         ~0U, ids);
+        const auto& warehouses = world.config().cargo.warehouse_prodtypes;
+        for (const sim::BuildingId id : ids) {
+            const sim::Building* b = world.find_building(id);
+            const sim::BuildingType* type =
+                b != nullptr && s.registry ? s.registry->find(b->type) : nullptr;
+            if (b == nullptr) {
+                continue;
+            }
+            const bool warehouse =
+                type != nullptr &&
+                std::find(warehouses.begin(), warehouses.end(), type->prodtype) != warehouses.end();
+            if (!s.home || warehouse) {
+                s.home = sim::TileXY{b->x, b->y};
+            }
+            if (warehouse) {
+                break;
+            }
+        }
+        if (!s.home) {
+            s.home = sim::TileXY{s.island.x0 + static_cast<std::int32_t>(s.island.w / 2),
+                                 s.island.y0 + static_cast<std::int32_t>(s.island.h / 2)};
+        }
+    }
     if (s.registry) {
         s.types = buildable_types(*s.registry, world.config().layout);
     }

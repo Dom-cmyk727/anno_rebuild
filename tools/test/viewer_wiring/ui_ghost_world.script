@@ -1,10 +1,12 @@
-# UI-GHOST-1 R1: the ghost and the click anywhere on the map, from the default --play start view (no
-# `look` first: the camera starts on the map's centre, lan5's middle island 100 at (648, 648),
-# T_128X128_0038, land around its centre; the developer city is on island 1 at (1048, 440)).
+# UI-GHOST-1 R1: the ghost and the click anywhere on the map. Since R2 the play window opens on the
+# developer city, so the case looks at lan5's middle island 100 first (648, 648, T_128X128_0038,
+# land around its centre (712, 712)); the developer city is on island 1 at (1048, 440).
 # Off the city's island the ghost is refused (the sim's OutOfIsland) and a click there reaches the
 # sim and is refused with the same reason; over open sea (1380, 680; no lan5 island holds it) the
 # same; on the city's island, free land is valid. Run with ANNO_DEV_GOODS_TONS=3 like ui_ghost.
 resize 1024 768
+wait frames 5
+look 712 712
 wait frames 5
 key b
 wait frames 5

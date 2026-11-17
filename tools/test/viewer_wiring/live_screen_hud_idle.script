@@ -4,6 +4,12 @@
 # no city yet; tools/test/live_screen_compare.py compares the screenshot pixel for pixel.
 resize 1024 768
 wait frames 30
-expect fact hud.counters == hidden
+# UI-STATUS-1 B: the fact names the groups shown (gold only); no island is discovered before the
+# first founding (OQ-701), so the fertility row is hidden and live_screen_compare.py leaves its
+# slots out of this screen.
+expect fact hud.counters == gold
+# The gold figure is drawn before the first founding (its digits are live: masks.txt gold_digits).
+expect fact hud.gold != none
+expect fact hud.fertility == hidden
 screenshot hud_idle_live
 quit

@@ -97,6 +97,9 @@ std::map<std::string, std::int64_t> balance_row_values(const BalanceInputs& in) 
     std::optional<I64> civil = I64{0};
     if (in.cities != nullptr) {
         for (const CityCounters& c : *in.cities) {
+            if (!c.own) {
+                continue; // UI-STATUS-1: another player's city the local player knows
+            }
             population = add(population, c.population);
             if (in.accounts_live) {
                 sales = add(sales, shown_stat(c.accounts.sales, in.stat_num, in.stat_den));

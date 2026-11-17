@@ -851,9 +851,13 @@ formats::Result<assets::Rgba, std::string> compose_screen(const HudLayout& hud,
         blit_el("baumat_marble");
     }
     blit_el("fragezeichen");
-    blit_el("rosh_46");
-    blit_el("rosh_48");
-    blit_el("rosh_51");
+    // UI-STATUS-1 B: the oracle shots' fertility row - each slot's own `segment` (hud.txt: the
+    // NORD row 6, 8, 11 every GOG shot shows); a slot without one is on no shot.
+    for (std::size_t k = 0; k < fertility_slot_count(hud); ++k) {
+        const UiElement* el = hud.element(fertility_slot_name(k));
+        if (el != nullptr && el->segment)
+            blit_el(el->name, el->tex_id.value_or(0) + *el->segment);
+    }
     if (is_construction)
         blit_el("einwohner");
     blit_el("zoom_plus");
@@ -903,6 +907,17 @@ formats::Result<assets::Rgba, std::string> compose_screen(const HudLayout& hud,
     return canvas;
 }
 
+std::string fertility_slot_name(std::size_t k) {
+    return "rosh_" + std::to_string(k);
+}
+
+std::size_t fertility_slot_count(const HudLayout& hud) {
+    std::size_t k = 0;
+    while (hud.element(fertility_slot_name(k)) != nullptr)
+        ++k;
+    return k;
+}
+
 std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, const HudLayout& hud,
                                   const ConstructionLayout& construction, const MaskLayout& masks,
                                   const UiMockSpec& screen, UiTexCache& cache_wrapper,
@@ -925,10 +940,14 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
     // pixel; MainSmall is picked only because its name best fits a compact status-bar readout.
     // Null (missing/unparseable file) silently draws nothing - `draw_text_xrgb`'s own contract.
     const formats::zei::CharSet* digit_font = cache.font("toolgfx/mainsmall.zei");
-    // UI-WINDOW-1 fix round R2: the materials and residents (icons and digits) show whenever the
-    // caller has a city's figures for them, on every screen (docs/re/ui.md 5.2).
-    const bool city_shown =
-        counters.tools || counters.wood || counters.bricks || counters.marble || counters.residents;
+    // UI-WINDOW-1 fix round R2, UI-STATUS-1 B: the materials (icons and digits) show whenever the
+    // caller has a city's figures for them, and the residents (icon and digits) on their own: a
+    // city of the local player shows both, another player's city that knows the local player only
+    // the residents (AnnoFrame 0x10063aa0: flag 1 the residents, flag 4 the materials;
+    // docs/re/ui.md 5.6), on every screen.
+    const bool materials_shown =
+        counters.tools || counters.wood || counters.bricks || counters.marble;
+    const bool residents_shown = counters.residents.has_value();
 
     // Mirrors compose_screen's own blit_el exactly (ADR 0004 R1: a divergence here is a bug, not
     // a second design); the only difference from compose_screen below is the lock source.
@@ -1005,7 +1024,7 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
                            pos->first, pos->second);
         }
     }
-    if (city_shown) {
+    if (materials_shown) {
         blit_el("baumat_tools");
         blit_el("baumat_wood");
         blit_el("baumat_bricks");
@@ -1042,10 +1061,14 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
         }
     }
     blit_el("fragezeichen");
-    blit_el("rosh_46");
-    blit_el("rosh_48");
-    blit_el("rosh_51");
-    if (city_shown) {
+    // UI-STATUS-1 B: the fertility row, slot k the k-th segment the caller gives (tex_id + segment,
+    // hud.txt rosh_<k>); the green bars are not drawn (OQ-702).
+    for (std::size_t k = 0; k < counters.fertility.size() && k < fertility_slot_count(hud); ++k) {
+        const UiElement* el = hud.element(fertility_slot_name(k));
+        if (el != nullptr)
+            blit_el(el->name, el->tex_id.value_or(0) + static_cast<int>(counters.fertility[k]));
+    }
+    if (residents_shown) {
         blit_el("einwohner");
         // H2: the residents counter - construction-screen only, same as the icon itself
         // (docs/re/ui.md 2.1: `STATUSBAR_EINWOHNER` is "absent from pass-2 idle"). masks.txt
@@ -1180,10 +1203,14 @@ std::string draw_live_screen_rgba_into(
     UiTexCache::Impl& cache = cache_wrapper.impl();
     const bool is_construction = screen.kind == UiMockScreen::Construction;
     const formats::zei::CharSet* digit_font = cache.font("toolgfx/mainsmall.zei");
-    // UI-WINDOW-1 fix round R2: the materials and residents (icons and digits) show whenever the
-    // caller has a city's figures for them, on every screen (docs/re/ui.md 5.2).
-    const bool city_shown =
-        counters.tools || counters.wood || counters.bricks || counters.marble || counters.residents;
+    // UI-WINDOW-1 fix round R2, UI-STATUS-1 B: the materials (icons and digits) show whenever the
+    // caller has a city's figures for them, and the residents (icon and digits) on their own: a
+    // city of the local player shows both, another player's city that knows the local player only
+    // the residents (AnnoFrame 0x10063aa0: flag 1 the residents, flag 4 the materials;
+    // docs/re/ui.md 5.6), on every screen.
+    const bool materials_shown =
+        counters.tools || counters.wood || counters.bricks || counters.marble;
+    const bool residents_shown = counters.residents.has_value();
 
     canvas.width = static_cast<std::uint16_t>(w);
     canvas.height = static_cast<std::uint16_t>(h);
@@ -1264,7 +1291,7 @@ std::string draw_live_screen_rgba_into(
                            pos->second);
         }
     }
-    if (city_shown) {
+    if (materials_shown) {
         blit_el("baumat_tools");
         blit_el("baumat_wood");
         blit_el("baumat_bricks");
@@ -1295,10 +1322,14 @@ std::string draw_live_screen_rgba_into(
         }
     }
     blit_el("fragezeichen");
-    blit_el("rosh_46");
-    blit_el("rosh_48");
-    blit_el("rosh_51");
-    if (city_shown) {
+    // UI-STATUS-1 B: the fertility row, slot k the k-th segment the caller gives (tex_id + segment,
+    // hud.txt rosh_<k>); the green bars are not drawn (OQ-702).
+    for (std::size_t k = 0; k < counters.fertility.size() && k < fertility_slot_count(hud); ++k) {
+        const UiElement* el = hud.element(fertility_slot_name(k));
+        if (el != nullptr)
+            blit_el(el->name, el->tex_id.value_or(0) + static_cast<int>(counters.fertility[k]));
+    }
+    if (residents_shown) {
         blit_el("einwohner");
         if (counters.residents) {
             if (const auto pos = digit_origin("einwohner_digits")) {

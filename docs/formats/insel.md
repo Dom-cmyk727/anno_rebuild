@@ -45,6 +45,9 @@ Order in templates: `INFO, HEIGHT…, GFXID…, GELAENDE…, FRUCHTBAR, [FLUESSE
 | `FRUCHTBAR` | `width × height` bytes, row-major, no blocks; values 0–10 | P (size asserted) |
 | `BERGWERK2`, `OCCUR`, `ANBAU`, `DISCOVER` (4), `KONTORID` (2), `DUERRE`, `LOCKED` (1, decoded: the island's lock byte, see below), `NAME`, `HIRSCH`, `EVENTINSEL`, `STAEDTE` | ? OQ-024 | P (sizes) |
 
+### ANBAU (semantics read, UI-STATUS-1 C; not decoded by the rebuild)
+A list of NUL-terminated crop names (e.g. `GETREIDE`, `TABAKBAUM`, `GEWUERZBAUM`, `FLACHSBAUM`, `ZUCKERROHR`, `BAUMWOLLE`, `WEINTRAUBEN`, `KAKAOBAUM`, `HOPFENBAUM`, `SEIDENRAUPE`, `FARBBAUM`, `KRÄUTER`, `KARTOFFEL`). The AnnoWelt loader (`0x10089871`-`0x1008995f`) sets island property 11 (`+0xac`) to `0xF009` (0 when the climate byte `+0xc0` is 0) and ORs bit `ware − 0x38` for each name it finds among wares `0x38..0x44` (at most 13 names; the name table, AnnoGame `0x100251f8`, is likely). D. In the 465 `Scenes/Islands` templates every crop is listed except: 29 files lack `KARTOFFEL`, 6 lack `KRÄUTER` (`D_128x128_0015_1B_Azteken`, `N_128x128_0023_1B`, `N_256x256_0002_2B`, `N_256x256_0006_2B`, `Pr_080x080_0003_2B`, `T_080x080_0001_0B_Po`). P. A new game's link placement overwrites the property (`annoscene.md` §5 step 10).
+
 ### LOCKED (decoded, task MAP-2)
 One byte, the island's persisted lock (AnnoWelt.dll island `+0xc4`, property `0x10`; loader `0x10089c0c`, serializer `0x10089d80`, which writes it only when non-zero). Present on 128 of the 1,133 islands: value 1 on 107 (8 scenario files), value 0 on the 21 `*_DUMMY.scp` templates; absent means 0. See `docs/re/ship-founding.md` section 11.5. The rebuild keeps the raw byte (`Island::lock`) and refuses a record that is not exactly one byte.
 

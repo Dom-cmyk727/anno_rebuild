@@ -14903,6 +14903,294 @@ READY FOR REVIEW.
   64-bit, empty on overflow (no 32-bit wrap); "?" page = status bar city; a fact is the row's
   text even while its page is hidden.
 
+## UI-STATUS-1 stage A: READY FOR REVIEW (Windows, 2026-11-17)
+
+- Base origin/main `09315620`, packet `3608be57`, branch `task/UI-STATUS-1`. Commits: `9b844677` (re), then this entry.
+  Docs only: `docs/re/ui.md` 5.6, `docs/open-questions.md`. No code, no pixels, no listings in git; the helper scripts
+  are in `cache/ui-status-1/`. Stage B not started.
+- **The rule** (GOG `AnnoFrame.dll`, static read, [ui.md 5.6](../re/ui.md#56-the-status-bars-island-ui-status-1-stage-a-2026-11-17)):
+  - The point is the frame cursor's map tile, not the view centre (`0x100052a0`, `tViewedInfo` `+0x1c`, SetCursor
+    `0x10007e00`). It is re-read every frame by the frame tick `0x10005a10`.
+  - The counters (`tStadtInfo` `0x10009920`) follow the city whose **territory** holds the tile (owner nibble,
+    island slot `+0xec`):
+    - an own city shows the four materials (wares `0x29..0x2c` / 256) and the residents;
+    - a foreign city shows only the residents, and only if its property-0 mask has the player;
+    - no city shows gold only; with a building armed, the building's corners select an own city.
+  - The fertility row (`0x10009770`) needs the island's discovery word `+0xa6` (property `0xe`, the rebuild's
+    `players_present`). The segments come from the climate mask (jump table `0x10009904`, = `raw_climate_mask`),
+    minus `0xf009` and minus 7, ascending, at most 4, at x 547 + 40k. BALKEN is 100 if island property 11 has the
+    bit, else 50. Open sea hides the row at once; sea inside an island's chunks hides it after 2 s.
+  - The cost row's code is located for UI-STATUS-2 (5.6, groups table).
+- **HE re-check:** fertility before the founding = the discovery rule (high). The 20 s gap and the hide at 02:04.5 =
+  territory, not island, for the counters (medium / medium-high). Recipe for the owner in 5.6.
+- **Owner comparison** (5.6, last table). Three points need an owner decision (OQ-703): (1) counters by territory,
+  not by island; (2) **fertility icons over every discovered island, own or not**; (3) residents over a foreign city
+  that knows him.
+- **OQs:** 622 PARTLY ANSWERED; 700 (cursor tile over the panel), 701 (writers of `+0xa6` besides founding: ship
+  reveal?), 702 (meaning of the half bar; the sim has no island property 11), 703 (owner decision).
+
+| Requirement | Positive proof | Counterexample / control | Evidence |
+|---|---|---|---|
+| Segment choice | NORD `0xf949` minus `0xf009` minus 7 gives 6, 8, 11 = the three icons on GOG `hud_idle_running` (2.3) | Without the `0xf009` filter, NORD would give 0, 3, 6, 8 (four slots, 0 first): the shot refutes it | `0x100098aa`-`0x100098e4` |
+| Counters by territory | HE 02:04.5: M hides, F stays (the tile is still on the island) | An island rule would hide F with M | `0x100053bf`, island `0x100860c0` |
+| Point = cursor tile | `tViewedInfo +8` is written only by SetCursor `0x10007e00` | The camera vector `+0x15bc` is not read on the path | `0x100041f0` |
+| Discovery flag | getter `0x10087c30` case `0xe` = word `+0xa6` | The player property 7 is not read on the path | `0x10009797`-`0x100097c2` |
+
+- **Gates:** none run. Docs only, and the PC was asked to stay quiet (no build, no ctest, no agree.py). CI not polled
+  (dispatch instruction). NOT_RUN: everything executable; any HE capture (recipe written instead).
+- **Decisions and reasoning:**
+  - I used the user-site capstone/pefile (`python` without `-I`, as `tools/disasm.py` documents). `python -I` was
+    used only for the doc edits, which keep CRLF.
+  - I followed the bar's feeder through `tStadtInfo` instead of reading every bar slot. It answers all the packet's
+    questions; the bar's mouse/tooltip slot `+0x2c` (`0x10064290`) is left for the tooltip packet.
+  - The status bar's flag is called "discovery word" and tied to `players_present`, not `Player::discovery`, because
+    the getter address shows the island word. Its other writers are an OQ, not a guess.
+  - I kept the owner differences as decisions (OQ-703), not as defaults: a feel matter.
+  - The +1 texture-index offset is marked P/L: it agrees with every measured element, but the group's load order was
+    not read.
+  - I did not chase the 1-pixel EINWOHNER x (code 400, `hud.txt` 401): it is left to B's pixel check.
+- **QUESTION for B:** with no island property 11 in the sim, B draws the icons without bars or with none? The packet
+  rule says draw nothing for a missing source. This needs the UI lane's call with OQ-702.
+
+READY FOR REVIEW.
+
+## UI-STATUS-1 stage B: READY FOR REVIEW (Windows, 2026-11-17)
+
+- Base `57109f85` (A accepted; OQ-703 answered "Like original"). Commits `42482bbc` (feat), `aeb95c6c` (docs),
+  `e20e1e74` (test name), `1fa3c45f` (fix), then this entry. No `src/sim`, `src/render` or `src/formats` change, no
+  new sim field, no pixels in git. The rule and the rebuild's table are in
+  [ui.md 5.6](../re/ui.md#56-the-status-bars-island-ui-status-1-stage-a-2026-11-17).
+- **What changed:**
+  - `status_bar.hpp/.cpp` (new, pure):
+    - `pick_status`: the island is the one whose rectangle holds the tile; the city comes from the tile's owner.
+      An own city shows materials and residents; a foreign city that knows the player shows residents; anything
+      else shows gold. An armed building's corners are tried on island land outside every territory.
+    - `fertility_segments`: the climate mask without `0xf009` and without 7, at most the hud.txt slots.
+    - `FertilityRow`: hides now, or after 2 s on the window clock; land cancels the hide.
+  - Published `TerritoryView`: each island's slot, climate and `discovered_by` (`players_present` plus the city
+    owners, E9). It also carries `land` (vertex height > 0, reused per terrain digest, compared by content) and the
+    climate mask.
+  - `CityCounters` now also lists foreign cities that know the player. `PlaySnapshot::local_player` is new.
+  - Viewer `update_status_bar`: every frame, on the CPU and GPU paths, it reads the cursor tile with `pick_point`
+    (split out of `FrameProjection::pick`). It keeps that tile while the pointer is on chrome (OQ-700).
+    `centre_tile()` and R4's "Always show my city" are removed.
+  - Draw (all three ui_mock paths): the materials and the residents are gated separately. hud.txt `rosh_46/48/51`
+    became `rosh_0..3` (x 547 + 40k, `tex_id` 40 + segment); the oracles draw each slot's shot `segment`.
+  - Bars: not drawn, a named placeholder (hud.txt comment; masks.txt `balken_0..3`, OQ-702).
+  - New facts: `hud.status.tile`, `.island`, `.city`, `hud.fertility`, `hud.fertility.pending`. `hud.counters`
+    now reads `gold` / `residents` / `materials+residents`. New script verbs: `hover-sea`, `hover_px`.
+- **Changed tests and scripts, and why:**
+  - `viewer_wiring_ui_counters_centred` and its script are removed (they tested the centre rule). Its replacement
+    is `viewer_wiring_ui_status_island`.
+  - `ui_counters_before_founding.script` and `live_screen_hud_idle.script`: `hidden` became `gold` (the new fact
+    names), and both now check that the row is hidden.
+  - `construction_menu_draw_check.script` hovers the developer city (1130, 516) before its screenshots.
+  - `live_screen_compare.py`: the slot names changed. hud_idle on the ship start masks the three slots: before the
+    first founding no island is discovered (OQ-701), while the GOG shot shows the row.
+  - `tools/ui_layout.py` and the C++ `compose_screen`: they draw the slots from hud.txt `segment`.
+- **Tests:** `status_bar_test.cpp` has 12 cases: every climate, with the always-set and slot-count controls; own
+  territory; own island outside its territory; a foreign city, known and unknown; open sea; sea within the rectangle
+  (delay, cancel, no re-arm); undiscovered; two own cities; corner order; a climate with no segment; no height
+  column; hud.txt slots.
+  - `viewer_wiring_ui_status_island` (lan5): own territory, the panel keeping the tile while the camera moves,
+    open sea, a foreign island, undiscovered island 10, and sea inside island 1 with the 2 s hide.
+  - Not on lan5: own island outside the territory (the developer start owns the whole rectangle), a known foreign
+    city, two own cities. These are covered by the unit tests.
+- **Gate:** `run_selected.py --build-dir build/msvc --config Release --select
+  '^anno_app_tests\.(status bar|hud |ui |dev script|construction menu|selection|minimap|play)|^viewer_wiring_|^live_screen_matches_oracle$|^ui_dynamic_draw_check$|^info_panel|^selected_house|^ui_panels_match_gog$|^ui_mock_matches_oracle$|^ui_subtabs_compare$|^ui_window_matches_he$'
+  --exclude 'opt-in measure' --jobs 8 --asset-policy required` with the 7 oracle/new tests `--require-test`.
+  - Head `1fa3c45f`, `cache/gates/ui-status-1-B-03.log` (sha256 `40f48ebfb15b...`):
+    `COUNTS: selected=144 executed=144 failed=0 empty=0 skipped=0`, `VERDICT: PASS`.
+  - B-01 failed the test-name preflight (a `;` in a case name). B-02 had one failure, `play: the tutorial's
+    territory...` (`land` compared by pointer; fixed in `1fa3c45f`), and one opt-in skip, now excluded.
+- **Failure proof:** `update_status_bar` was given the old view-centre point (temporary, restored):
+  - `ui_status_island` FAILs at line 15 (the centre always yields a tile);
+  - a copy without the no-tile checks FAILs at the decisive step: `hud.status.tile is '1002,322', it was
+    '1140,516'` after `look 1000 320` with the pointer on the panel (`cache/ui-status-1/failure-proof-centre*.log`);
+  - restored: PASS.
+- **Pixels and measurements:**
+  - Residents icon x: GOG `r2_construction_public` and `f13_hud_cursor_map` give sprite-sad 4.74 at 401, against
+    29.5 at 400 and 30.6 at 402. hud.txt's 401 stays; the 1-pixel gap to the code's 400 is likely the sprite inside
+    the 40-px ACCESS rectangle (the decoded sprite is 38 wide).
+  - `ANNO_PUBLISH_STATS`, lan5 script run: snapshot build median 552 us, p95 1160 us; turn max 10.8 ms (the
+    first collection of the land tests). No base run to compare against.
+  - The play test's 20 cold `collect_territory_view` calls take 190 us each.
+- clang-format 23.1.3 (`anno1503-T10c/cache/cfpkg`) is clean on every changed C++ file. `ui_layout.py validate` and
+  `self-test` pass; self-test had failed on stage A's `\|` in a 5.6 table row, fixed in `aeb95c6c`.
+- **NOT_RUN:** the WSL GCC/Clang warning check (`check_unix_warnings.sh`), CI (not polled), the GPU window path
+  live, and the owner's viewer test.
+- **Decisions and reasoning:**
+  - `discovered_by` adds the city owners to `players_present`. A fixed map's developer start does not set the word,
+    but the original's registration always does (E9). This is a derivation, not a new field.
+  - The island is found by rectangle, not by the original's 8 x 8 chunks. They agree for 8-aligned templates.
+  - A tile inside an island's rectangle with no height column counts as land, so synthetic islands show the row.
+  - Gold keeps the existing gate: it is drawn once there is a city. The original draws gold always; changing that
+    is outside this packet.
+  - No hide delay is armed for a row that is already hidden (the original re-asks only on a new tile).
+  - `hud.status.island` is `none` before any tile, `sea` over open sea.
+  - A foreign city's goods are never published.
+- **QUESTION:** none new. Gold before the founding, and a ship reveal of islands (OQ-701), are left as they are.
+
+READY FOR REVIEW.
+
+**Addendum (review fix, gold before the first founding):** `e1d2e1d8` publishes the local player's money
+whenever that player exists (`PlaySnapshot::has_local_player`; `costs_waived` moved with it) and draws the gold
+figure in every mode, 0 when the world has no local player (the original's Update(zeros), `0x10009949`; there is
+no such session today). New fact `hud.gold`; `ui_counters_before_founding`, `live_screen_hud_idle` and
+`ui_status_island` check `hud.gold != none`. The gold digits stay masked as live digits (masks.txt `gold_digits`) in
+the live_screen comparison. No other test expected no gold before founding (`git grep -n counters`). Gate
+`cache/gates/ui-status-1-B-04.log` (sha256 `c2563f9dac18...`), head `e1d2e1d8`, select
+`^anno_app_tests\.(status bar|hud |play|command outcome)|^viewer_wiring_ui_counters_before_founding$|^viewer_wiring_ui_status_island$|^live_screen_matches_oracle$|^ui_dynamic_draw_check$`
+(`--exclude 'opt-in measure'`, the four named tests `--require-test`): `COUNTS: selected=59 executed=59 failed=0
+empty=0 skipped=0`, `VERDICT: PASS`. clang-format 23.1.3 clean on the changed files.
+
+READY FOR REVIEW.
+
+## UI-STATUS-1 stage C: READY FOR REVIEW (Windows, 2026-11-17; docs only)
+
+- Base `c58dab37`; this commit adds `docs/re/ui.md` 5.6 "Stage C", a `production.md` 4.3 note, OQ-701/702 (partly
+  answered) and OQ-704..706. GOG static reads (`py -3.14`, scripts in `cache/ui-status-1/`). No HE run (recipe
+  written). No code, no build, no test.
+- **Q1, when the fertility row appears** (OQ-701):
+  - The discovery word `+0xa6` is written by: the constructor; the `DISCOVER` loader `0x100899b6`; founding
+    registration `0x100862c5`; a city's owner change `0x1002e283`-`0x1002e2a1`; and the reveal with flag 4
+    (`0x10080c1d`-`0x10080c58`). All D.
+  - Founding calls the reveal with flags 1, which does not write the word. The flag-4 path runs through world slot
+    `+0xcc` (`0x1009d9b0`: x, y, r, flags, player; per 8 x 8 chunk island), but its caller is **not found** (OQ-704;
+    the only five-argument calls, in the event handler `0x1007f960`, pass flags 0).
+  - A ship's approach shows the row per the manual (p. 11) and HE (00:52-01:41): medium confidence, not D.
+  - 1503 has no "explore the island" text or command (`Texte.dat` P); exploring is the Scout's job ("Resource
+    discovered"). A click on an undiscovered island was not read (OQ-705).
+- **Q2, the bars** (OQ-702):
+  - The segments are the crops, ware `0x38 + i`, named by `WARE_ANBAU` line i (tooltip `%a`, `0x10064e54`-`0x10064e92`).
+    The order is grain, tobacco, spices, flax, sugarcane, cotton, wine, cocoa, hops, silk, indigo, herbs, so NORD
+    shows wine, hops and herbs. D + P.
+  - There are two levels only, 100 (crop bit in property 11) and 50; no 0 %. D.
+  - Property 11 comes from the `ANBAU` record (loader `0x10089871`; all 465 templates list every crop, so 100 % on a
+    template island, P) and, in a new game, from link placement (`0xF009 | raw marks`). D.
+  - Readers: the status bar, the AI (CompLogic, 10 sites), and the **crop-growth test** island slot `+0x140` =
+    `0x100817c0`. That test takes fertility nibble × 10, sets it to 0 when the climate forbids the crop, **halves it
+    when property 11 lacks the crop**, then maps L = (v+5)/10 to a 4 x 8 dither table (`0x100c9c28`: 16 of 32 cells
+    answer "1" at 50 %, none at 100 %). D.
+  - "1 = does not grow" is L (OQ-706).
+- **Q3, own resources and citizens:** the 5.6 territory rule is re-confirmed, D. Before founding: gold, plus the row
+  over discovered islands. Own territory: materials and residents. Own island outside the territory: gold only, or
+  the corner rule when a building is armed. A foreign city: residents only if it knows the player.
+- **Q4, HE recipe** (ui.md 5.6 stage C, 5 steps):
+  1. Sail the start ship towards a new island with the mouse on it (distance, persistence).
+  2. A second own ship and an AI ship.
+  3. A click on an undiscovered island.
+  4. The same farm on a 50 % and on a 100 % island (output after 10 minutes).
+  5. A scout.
+- **Stage D plan** (each packet one concern; "parsed today" says where the data is read now):
+
+| # | Kind | Packet | Data parsed today? | Size |
+|---|---|---|---|---|
+| D1 | (b) sim | **Island crop mask (property 11):** decode the `ANBAU` record (names → ware `0x38..0x44` bits, base `0xF009`, POLAR 0) with round-trip and corpus tests; an `Island` field in state (ADR 0006 extension tag or number, orchestrator); set at link placement to `0xF009 | raw marks`; save and hash | `ANBAU`: **no** (`docs/formats/insel.md` lists it as size-only, OQ-024; `tools/map2_opening.py` only names it). Raw marks: **yes**, `src/sim/src/island_links.cpp` `resolve_island_links` → `ResolvedLink::raw_marks`, used today only for the `LinkRawMaterials` warning (`scenario_formats.cpp` ~2151) | 3-4 h |
+| D2 | (a) UI | **The bars:** `TerritoryIsland` publishes the crop mask; `STATUSBAR_BALKEN` (5 x 29 at slot x + 25) drawn at 100 / 50 with the offset H − ⌊H·v/100⌋ + 1 (`0x10065890`); drop masks.txt `balken_*`; pixel check on `hud_idle_running`'s bars | needs D1 (the mask); everything else is in the app | 2-3 h |
+| D3 | research (docs) | **The reveal trigger:** read the ship tick and the scout for the world `+0xcc` flag-4 call (OQ-704); the owner's HE recipe 1, 2, 5 | n/a | 2-3 h |
+| D4 | (b) sim | **The reveal:** the trigger D3 finds (ship proximity or scout) ORs the player into `Island::players_present`, deterministic, per tick as the original | `DISCOVER`: **yes** (`scenario_formats.cpp` ~1211 → `players_present`); founding: **yes** (`founding.cpp` 470); owner change: not modelled; the trigger: **no** | 3-4 h after D3 |
+| D5 | research (docs) | **The crop-growth answer:** what "1" from slot `+0x140` does (the counter at `0x1008b364`, the two scaling flags), OQ-706; HE recipe 4 | n/a | 2 h |
+| D6 | (b) sim + (c) owner | **The growth rule:** the fertility nibble grid (`0x10084370` from `Wachstum.dat`) and the slot `+0x140` test with the property-11 halving. It changes farm output against today's rebuild, so its default goes to the owner as a `rules` option (the orchestrator raises it) | `FRUCHTBAR`: **yes**, raw (`src/formats/src/insel.cpp` 183 → `Terrain::fertility`); the rebuilt nibble grid and the `Wachstum.dat` tables: **no** in the sim (`Wachstum.dat` keyed file is readable by `tools/text.py`); crop climate masks: not read | 4-6 h, split after D5 |
+| — | (a) UI, later | Crop names in the bar's tooltip (`WARE_ANBAU`), with the tooltip packet (OQ-541) | **yes**, Texte.dat (`formats` data-text) | in that packet |
+
+  Order: D1 → D2 (the bars, visible to the owner), D3 → D4, D5 → D6 (owner decision before D6's default).
+- **Decisions and reasoning:**
+  - I stopped the OQ-704 hunt at the sweep of five-argument `+0xcc` calls. A register-held flag needs the ship
+    tick read, which is its own packet (D3) and too big for this one.
+  - "1 = does not grow" is left as L: the caller's counter was not read to its consumer.
+  - The bars' two levels and their source are D. The farm effect is D in arithmetic but not in meaning, so D6 waits
+    for D5.
+  - The OQ numbers used are 704-706, so 707-709 remain reserved.
+
+READY FOR REVIEW.
+
+**Stage C addendum (2026-11-17): corrections from the UI lane's independent check, and the updated stage D plan.**
+- **What I verified myself, all agreeing with the check:**
+  - the ship call `0x1004222e`-`0x10042273` (radius 14, flags 5, only while `(state & 7) == 1`);
+  - the scout call at `0x100365dc` (radius 8, flags 7);
+  - AnnoScene's clear `0x1000898f`-`0x100089d3`;
+  - the second owner-change OR at `0x100a869d`;
+  - the drought "+2" on the tile's object id (`0x1008b2d9`, `0x1008b2e5`);
+  - the table index `[(y − y0) & 3][(x − x0) & 7]`.
+
+  I have no disagreements. My first version had five errors: it called `0x1008041f`/`0x100804ca` world calls
+  (they are island SetHitPoints calls); it said a ship reveal was unproven; it read the "+2" as a counter; it gave
+  the wrong table index; and it said a crop the climate forbids has no icon (wine on WUESTE does have one).
+- **Docs:** `ui.md` 5.6 stage C rewritten, and the main table's climate-mask row annotated. Updated:
+  `production.md` 4.3 (the crop test, the dry-variant chain, the recoveries), `annoscene.md` §5 step 10 (the
+  overwrite is unconditional, on the INSELLNK path only, with random marks; the set-up clear), `annowelt.md`
+  (new section: the `+0xa6` writers, the reveal flags, world `+0xcc`/`+0x130`, island `+0xcc` = SetHitPoints),
+  `insel.md` (ANBAU semantics; 29 templates lack KARTOFFEL, 6 lack KRÄUTER, named).
+- **OQs:**
+  - 701 and 702: answered.
+  - 704: answered. Still open: the reach edge, the start-of-game discovered state, the scout's deposit pass.
+  - 705: answered. Still open: a foreign building on an undiscovered island.
+  - 706: answered. Still open: the output loss, a farm built after a well, objects 749/753/757.
+  - New OQ-707: desert islands show wine, which cannot grow there.
+  - OQ numbers 708-709 stay free.
+- **HE recipe**, now six steps in 5.6 stage C:
+  1. the start-of-game discovered state;
+  2. the reveal distance from a moving ship, and an anchored ship revealing nothing;
+  3. a click on an undiscovered island;
+  4. 50 % against 100 % (dry fields, output);
+  5. desert wine;
+  6. the scout.
+- **Stage D plan (updated; D3 and D5 are answered and dropped):**
+
+| # | Kind | Packet | Data parsed today? | Size |
+|---|---|---|---|---|
+| D1 | (b) sim | **Island crop list (property 11):**<br>- decode `ANBAU` (names → ware `0x38..0x44` bits, base `0xF009`, 0 for climate 0) with round-trip and corpus tests;<br>- add an `Island` field (state number or extension tag per ADR 0006, the orchestrator decides);<br>- on INSELLNK links, overwrite it with `0xF009 \| raw marks`;<br>- save and hash it | `ANBAU`: **no** (`insel.md` semantics only, not decoded; `tools/map2_opening.py` names it). Raw marks: **yes**, `src/sim/src/island_links.cpp` `resolve_island_links` → `ResolvedLink::raw_marks` (used today only for the `LinkRawMaterials` warning, `scenario_formats.cpp` ~2151) | 3-4 h |
+| D2 | (a) UI | **The bars:**<br>- publish the crop list in `TerritoryIsland`;<br>- draw `STATUSBAR_BALKEN` at 100 / 50;<br>- drop the `balken_*` masks;<br>- pixel check on `hud_idle_running`.<br>Keeps the raw-climate segment table, with desert wine (OQ-707) as the original shows it | needs D1 | 2-3 h |
+| D4 | (b) sim | **Discovery by a moving ship and by the scout:**<br>- a moving ship ORs its owner into `Island::players_present` for every island owning an 8 x 8 chunk within ± 14 tiles, every movement step;<br>- the scout does the same within ± 8 tiles on its own island;<br>- deterministic, no PRNG.<br>The map set-up clear and the owner-change path are optional extras | `DISCOVER`: **yes** (`scenario_formats.cpp` ~1211 → `players_present`). Founding: **yes** (`founding.cpp` 470). Ship movement steps: **yes** (sim navigation). The chunk map: **no** (approximate with island rectangles in 8-aligned chunks, as status_bar does). The scout: not in the sim | 3-4 h (ship); scout later |
+| D6 | (b) sim + (c) owner | **The dry-tile growth rule:**<br>- rebuild the fertility nibble grid (`0x10084370` from `Wachstum.dat`);<br>- add the crop test with the well/drought modifiers, the HEAD[0x13] climate check and the property-11 halving;<br>- turn tested tiles dry (712 → 714, 713 → 715) at its six callers.<br>**This changes farm output against today's rebuild** (at 50 % half the fields of a farm die; on desert, wine dies entirely), so its default goes to the owner as a `rules` option (the orchestrator raises it) | `FRUCHTBAR` raw: **yes** (`src/formats/src/insel.cpp` 183 → `Terrain::fertility`). The rebuilt nibble grid, `Wachstum.dat` tables, HEAD[0x13] climate masks: **no** in the sim. Dry variants 714/715: in `Anlagen.dat` (formats parse it) | 4-6 h, split (grid, test, callers) |
+
+  Order: D1 → D2 (visible bars). D4 is independent. D6 waits for the owner's default.
+- Docs only. No build; `ui_layout.py self-test` ok.
+
+READY FOR REVIEW.
+
+**UI-STATUS-1 merge addendum (2026-11-17): stacked on the UI-TABS-1 B candidate.**
+- Merged `refs/candidates/ui-tabs-b` (`004a26f4`) into task/UI-STATUS-1 as merge commit `9c1ca082` (no rebase).
+  Follow-up `85128f58` initialises `HudCounters::rows` (see the WSL result below).
+- **Conflicts and their resolutions** (both behaviours kept):
+  - `src/app/CMakeLists.txt`: both test files, `status_bar_test.cpp` and `balance_rows_test.cpp`. All three
+    `viewer_wiring_ui_balance_rows*` cases and `viewer_wiring_ui_status_island` are registered;
+    `ui_counters_centred` stays removed.
+  - `play.hpp` `CityCounters`: both fields kept, `own` and `accounts`. `own` now defaults to true; foreign
+    known cities are published with false. The island rectangle fields stay removed: only the old centre rule
+    used them.
+  - `ui_mock.hpp` `HudCounters`: both members, `fertility` and `rows`.
+  - `play.cpp`: both publish blocks, the balance pages' `accounts_live`/`stat_shown_*` and the local player's
+    money with `has_local_player`.
+  - `viewer.cpp`:
+    - members: both, the status bar's `status_tile_`/`status_pick_`/`fertility_row_` and the balance pages'
+      `hud_rows_`;
+    - counters: the status bar's `shown` city for the counters. The "?" city page now shows the status bar's
+      city when it is the local player's, else the player's first city. TABS-1 B used R4's `centred`, which no
+      longer exists.
+    - `balance_rows.cpp` skips cities that are not the player's own in the overview's sums: `CityCounters` now
+      also lists foreign known cities.
+  - `docs/re/ui.md`: §5.5 "The balance pages" and then §5.6 "The status bar's island". §5.5 notes the new city
+    page choice.
+  - `docs/open-questions.md`: OQ-690 and 691-695, then 700-707.
+  - `REPORTS.md`: both sides' entries.
+- **Gates** (env as before, `--jobs 8`, on `9c1ca082`):
+  - a. TABS-1 B's selection and its 9 `--require-test`: `cache/gates/ui-status-1-merge-tabs.log` (sha256 `75c400dfce76...`):
+    `selected=85 executed=85 failed=0 empty=0 skipped=0`, PASS.
+  - b. STATUS-1 B-03 plus the B-04 lanes (`--exclude 'opt-in measure'`, 8 `--require-test`):
+    `cache/gates/ui-status-1-merge-status.log` (sha256 `13f2a85280dd...`): `selected=150 executed=150 failed=0 empty=0
+    skipped=0`, PASS.
+  - After `85128f58`: `ui_status_island`, `ui_balance_rows`, `ui_counters_before_founding`,
+    `live_screen_matches_oracle` and `ui_balance_rows_compare` ran again (`cache/gates/ui-status-1-merge-fix.log`):
+    5 of 5 executed and passed.
+- **WSL** `check_unix_warnings.sh` (no other run was going):
+  - First run, on `9c1ca082`: FAILED under GCC 13 and Clang 18 with `-Wmissing-field-initializers` at
+    `viewer.cpp`, `HudCounters` missing `rows` (`cache/ui-status-1/wsl-warnings-01.log`).
+  - After `85128f58`: GCC with GPU clean, GCC without GPU clean, Clang with GPU clean, Clang without GPU clean,
+    rc 0.
+- clang-format 23.1.3 is clean on the touched C++ files.
+
 READY FOR REVIEW.
 
 ## RENDER-DIRECT-1b — the resident atlas pages, built on the CPU, proven texel-exact, every gate green — READY FOR REVIEW (task/RENDER-DIRECT-1b, from `origin/task/RENDER-DIRECT-1a` `5fb98192`, merged `origin/main` `09315620` then `4dfdd9b7`, head `c550124f`)

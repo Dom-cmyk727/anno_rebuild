@@ -65,9 +65,15 @@ SHIP_START = HERE / "data" / "maps" / "candidates" / "ship-start-v2" / "lan5-shi
 # screens (the info panel, the pause overlay, the rating screen, ...).
 HUD_NAMES = [
     "weltkarte", "mainuntergrund", "tab_construction", "tab_military", "tab_help", "tab_options",
-    "statusbar", "gold", "fragezeichen", "rosh_46", "rosh_48", "rosh_51", "zoom_plus",
+    "statusbar", "gold", "fragezeichen", "rosh_0", "rosh_1", "rosh_2", "zoom_plus",
     "zoom_minus", "lupe", "compass_w", "compass_e",
 ]
+# UI-STATUS-1 B: the fertility row's slots (data/ui/hud.txt rosh_<k>). The oracle draws the NORD row
+# 6, 8, 11 every GOG shot shows; the live window draws the row of the island under the cursor
+# (docs/re/ui.md 5.6). On lan5 the scripts hover the developer city's NORD island first, so the two
+# agree; on the ship start no island is discovered before the first founding (the rebuild has no
+# ship reveal, OQ-701), the row is hidden, and its slots are left out of the hud_idle comparison.
+FERTILITY_SLOTS = ["rosh_0", "rosh_1", "rosh_2"]
 CONSTRUCTION_EXTRA_NAMES = [
     "baumat_tools", "baumat_wood", "baumat_bricks", "baumat_marble", "einwohner", "plankegross",
     "abrissicon",
@@ -208,19 +214,24 @@ def main(argv):
             return 1
 
         failures = []
+        idle_names = [n for n in HUD_NAMES if n not in FERTILITY_SLOTS]
+        idle_masked = masked | ui_layout.load_mask_set(
+            str(layout_dir), [(x, y, w, h) for x, y, w, h, _ in rects_for(hud, FERTILITY_SLOTS)])
         checks = [
-            ("hud_idle", idle_dir / "hud_idle_live.png", rects_for(hud, HUD_NAMES)),
+            ("hud_idle", idle_dir / "hud_idle_live.png", rects_for(hud, idle_names), idle_masked),
             ("construction_public",
              session_dir / "construction_public_live.png",
-             rects_for(hud, HUD_NAMES + CONSTRUCTION_EXTRA_NAMES) + grid_rects(con, "public")),
+             rects_for(hud, HUD_NAMES + CONSTRUCTION_EXTRA_NAMES) + grid_rects(con, "public"),
+             masked),
             # Category-switching's own screenshot proof (W4-UI-2): a second category's grid draws
             # correctly too, not only the menu's default-open "public" - the script's click_px
             # exercises ConstructionMenu::click's SwitchCategory path for real, live.
             ("construction_roads",
              session_dir / "construction_roads_live.png",
-             rects_for(hud, HUD_NAMES + CONSTRUCTION_EXTRA_NAMES) + grid_rects(con, "roads")),
+             rects_for(hud, HUD_NAMES + CONSTRUCTION_EXTRA_NAMES) + grid_rects(con, "roads"),
+             masked),
         ]
-        for screen, png, rects in checks:
+        for screen, png, rects, screen_masked in checks:
             if not png.is_file():
                 failures.append(f"{screen}: {png} was not captured")
                 continue
@@ -233,8 +244,8 @@ def main(argv):
             # the GPU renderer is allowed up to channel_tolerance per channel and up to 8% of the
             # checked pixels bad; the CPU renderer's own target stays bit-exact (tolerance 0).
             channel_tolerance = 48 if renderer == "gpu" else 0
-            bad, checked, first, bad_by_name = compare(oracle, live, rects, width, height, masked,
-                                                       channel_tolerance)
+            bad, checked, first, bad_by_name = compare(oracle, live, rects, width, height,
+                                                       screen_masked, channel_tolerance)
             bad_fraction = (bad / checked) if checked else 0.0
             if bad and (renderer == "cpu" or bad_fraction > 0.08):
                 x, y, a, b = first[1], first[2], first[3], first[4]

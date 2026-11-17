@@ -1,0 +1,92 @@
+# UI-STATUS-1 B: the status bar shows the island under the cursor, as the original (docs/re/ui.md
+# 5.6; the owner chose the original, OQ-703). The developer is player 1, its city 1:1 owns all of
+# island 1 (NORD, 1048..1303 x 440..695; a fixed map's developer start claims the whole
+# rectangle); island 0 (NORD) holds player 0's city 0:0, which does not know player 1; island 10
+# (DSCHUNGEL) has no city and nobody has discovered it; (1000, 320) is open sea.
+# Facts: hud.counters (gold | residents | materials+residents), hud.status.island (slot | sea),
+# hud.status.city (island:city | none), hud.fertility (segments | hidden), hud.fertility.pending
+# (yes while the row's 2 s hide is pending).
+# Not on lan5, covered by status_bar_test.cpp: own island outside the territory, a foreign city
+# that knows the player, two own cities on one island, an armed building's corners.
+# Launch: --play data/maps/lan5.txt --construction-menu on --layout data/ui
+resize 1024 768
+wait frames 10
+# No map tile yet: gold only, the row hidden.
+expect fact hud.status.tile == none
+expect fact hud.counters == gold
+expect fact hud.gold != none
+expect fact hud.fertility == hidden
+# 1. The own territory: materials, residents and the NORD row (6, 8, 11).
+look 1140 516
+wait frames 5
+hover-land 1130 516
+wait frames 5
+expect fact hud.status.island == 1
+expect fact hud.status.city == 1:1
+expect fact hud.counters == materials+residents
+expect fact hud.counters.city == 1:1
+expect fact hud.fertility == 6,8,11
+# 2. The pointer on the right panel: the last map tile is kept (OQ-700), also when the camera
+# then moves to the open sea. Fails on the view-centre rule (UI-WINDOW-1 R2/R4).
+note fact hud.status.tile
+hover_px 900 500
+wait frames 5
+expect fact hud.status.tile same
+look 1000 320
+wait frames 5
+expect fact hud.status.tile same
+expect fact hud.status.city == 1:1
+expect fact hud.counters == materials+residents
+expect fact hud.fertility == 6,8,11
+# 3. Open sea: gold only, the row hidden at once.
+hover-sea 1000 320
+wait frames 5
+expect fact hud.status.island == sea
+expect fact hud.status.city == none
+expect fact hud.counters == gold
+expect fact hud.counters.city == none
+expect fact hud.fertility == hidden
+# 4. Another player's island (city 0:0 does not know player 1, nobody but player 0 discovered the
+# island): gold only, no row.
+look 692 142
+wait frames 5
+hover-land 692 142
+wait frames 5
+expect fact hud.status.island == 0
+expect fact hud.status.city == 0:0
+expect fact hud.counters == gold
+expect fact hud.fertility == hidden
+# 5. An undiscovered island without a city: gold only, no row.
+look 928 232
+wait frames 5
+hover-sea 928 232
+wait frames 5
+expect fact hud.status.island == 10
+expect fact hud.status.city == none
+expect fact hud.counters == gold
+expect fact hud.fertility == hidden
+# 6. Sea inside the own island's rectangle (its north corner): the counters stay the city's (the
+# developer start owns the whole rectangle); the row stays for 2 s of window time, then hides. The
+# camera moves while the pointer is on the panel, so the row's delay starts only at the hover.
+look 1140 516
+wait frames 5
+hover-land 1130 516
+wait frames 5
+expect fact hud.fertility == 6,8,11
+hover_px 900 500
+wait frames 2
+look 1052 444
+wait frames 5
+expect fact hud.fertility == 6,8,11
+expect fact hud.fertility.pending == no
+hover-sea 1050 442
+wait frames 1
+expect fact hud.status.island == 1
+expect fact hud.counters == materials+residents
+expect fact hud.fertility.pending == yes
+expect fact hud.fertility == 6,8,11
+wait ms 2500
+wait frames 3
+expect fact hud.fertility == hidden
+expect fact hud.fertility.pending == no
+quit

@@ -23,7 +23,13 @@ says who is doing what, where the work is, and what it waits on.
   `src/app/src/viewer.cpp`: both sides' helpers kept (ZOOM-SMOOTH-2's live-resize trace and move fallback,
   ZOOM-SMOOTH-3's GPU-only `hitch_tracking_enabled`). Fetchable as `refs/candidates/zoom-diag`. The Windows
   PC's part (GPU tests on the RTX 4090, the app lanes, the window-trace contract, the WSL warning check) is
-  running. The Mac's one full run on `945c3216` covers both candidates. They land in order, `784b5a27` first.
+  running. They land in order, `784b5a27` first.
+- **Landing candidate `09315620`** (tree `78444576`), **stacked on `945c3216`**: UI-TABS-1 stage A `a79499cf`
+  (the tab and sub-tab switching; CI green; accepted by the UI lane on the owner's viewer test). **The owner,
+  2026-11-17:** asked whether stage A lands with this batch, "Yes stack it". Two conflicts were resolved: both
+  includes kept in `src/app/src/viewer.cpp`, and in `docs/open-questions.md` UI-TABS-1's code-read line plus
+  OQ-641 to 644 after the candidate's entries. Fetchable as `refs/candidates/ui-tabs-a`. **The Mac's one full
+  run on `09315620` covers all three candidates**; this PC runs its part after `945c3216`'s.
 - **The owner decided OQ-096 and OQ-096b** 2026-11-17. Asked "Raise it to 384 MiB, one mipmap level on both
   cards (my recommendation)", against keeping 256 MiB with no mips on the iGPU or deciding on a build, the
   owner answered "your recommendation". So `atlas_budget_mb` defaults to 512 MiB discrete and 384 MiB

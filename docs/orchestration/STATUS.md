@@ -176,14 +176,18 @@ says who is doing what, where the work is, and what it waits on.
   - the synthetic exactness case and the one-byte-short refusal are adapter-agnostic, so CI's lavapipe
     runs the upload path for real (OQ-089); the non-Vulkan software adapters skip with a reason.
   1d (`849aa4c4`, 1c merged in plus the same fix) is accepted when its CI run 44146266934 is green.
-- **Candidate 8 `refs/candidates/refs-crops-fertility` = `c4b79447`** (tree `cda6649b`), stacked on
+- **Candidate 8 `refs/candidates/refs-crops-fertility-2` = `43157de2`** (tree `746a6b65`), stacked on
+  `c01d5806`. It replaces `c4b79447` (ref deleted): that one failed to link on the PC because the
+  orchestrator's conflict resolution of `src/app/CMakeLists.txt` dropped the two branches' new sources
+  (`info_preview.cpp`, `fertility_indicator.cpp`). The two UI merges were redone; the only difference to
+  `c4b79447` is those three CMake lines. Contents:
   `c01d5806`: BUILDINGS-REF-1 `cc2c6e80`, UNITS-REF-1 `8a8086e4`, FERTILITY-1a `3637c288`, ISLAND-CROPS-1 1b
   `1eef2cfb`, UI-INFO-2b `1a6f5ef5`, UI-PRODBAR-1 B `be6e13ed`.
   - Conflicts resolved by hand: `docs/open-questions.md` (in-place updates of OQ-023, 708, 624 and the
     fertility note, new OQs in numeric order 708-754), `data/ui/README.md` (both hud.txt clauses) and
     `src/app/CMakeLists.txt` (the union of the test files). No CR, no markers.
   - It changes the state stream (ISLAND-CROPS-1 1b), so it lands only after the Mac's full game-file run
-    (GATE-RUN refs-crops-fertility), which also covers the three candidates below it. The PC part (build,
+    (GATE-RUN refs-crops-fertility-2), which also covers the three candidates below it. The PC part (build,
     changed lanes, the WSL check) runs when the PC is quiet; the owner's viewer is open now.
   - UI-INFO-2d (`e4ae2b16`, owner test passed "Yes, they looked right") waits for its CI rerun and the
     orchestrator's review, then goes on top.

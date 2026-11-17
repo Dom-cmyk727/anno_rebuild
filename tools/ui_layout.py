@@ -1493,7 +1493,7 @@ def _anlagen_tables(game_dir: str):
     return _ANLAGEN_CACHE[key]
 
 
-def anlagen_preview_frame(game_dir: str, type_id: int, rotation: int = 0):
+def anlagen_preview_frame(game_dir: str, type_id: int, rotation: int = 0, set_index: int = 0):
     """(frame header dict, (w, h, rgba)) of Anlagen.dat type `type_id`'s sprite set 0, zoom group
     0, at `rotation` (pixels past the frame width kept, docs/formats/anlagen.md), or None. The
     frame is the first animation step of rotation block `rotation`: `(rotation mod blocks) * n`,
@@ -1506,12 +1506,13 @@ def anlagen_preview_frame(game_dir: str, type_id: int, rotation: int = 0):
 
     ents, tables, vols = _anlagen_tables(game_dir)
     e = ents.get(type_id)
-    if not e or not e["gfx"]:
+    if not e or len(e["gfx"]) <= set_index:
         return None
     frame = None
-    anim = next((rp for rn, rp in e["gfx"][0]["records"] if rn == "ANIM"), None)
+    gfx = e["gfx"][set_index]
+    anim = next((rp for rn, rp in gfx["records"] if rn == "ANIM"), None)
     n = max(struct.unpack_from("<H", anim, 2)[0], 1) if anim and len(anim) >= 4 else 1
-    for fs in e["gfx"][0]["sets"]:
+    for fs in gfx["sets"]:
         if fs["group"] == 0:
             if fs["frames"]:
                 blocks = max(len(fs["frames"]) // n, 1)
@@ -1642,6 +1643,10 @@ PREVIEW_SIDE = ((-0.5, 0.0), (0.0, 0.5), (0.5, 0.0), (0.0, -0.5))
 # tile of (x + y): 59.1633 cos 45 deg and 59.1633 sin 45 deg sin(42 pi / 256).
 PREVIEW_KX = _f32(59.1633) * 0.7071067811865476
 PREVIEW_KY = _f32(59.1633) * 0.7071067811865476 * 0.4928981922297840
+# UI-INFO-2d: screen y per tile of height, 59.1633 cos(42 pi / 256) (the same camera).
+PREVIEW_KH = _f32(59.1633) * 0.8700869911087115
+# The type's sprite-set slots (+0x244, 4 of 16 bytes; AnnoGame.dll 0x1000bf4c..0x1000bf5e).
+PREVIEW_SET_SLOTS = 4
 
 
 def preview_third(k: int) -> float:
@@ -1664,14 +1669,14 @@ def preview_parts(game_dir: str, type_id: int, rotation: int, arrow_figure: int 
     got = anlagen_preview_frame(game_dir, type_id, rotation)
     if got is None:
         return None
-    frame, sprite = got
     ents, _tables, _vols = _anlagen_tables(game_dir)
     head = next((rp for rn, rp in ents[type_id]["records"] if rn == "HEAD"), b"\1\1")
     w, h = head[0], head[1]
     r = rotation & 3
     cw, ch = (w, h) if r % 2 == 0 else (h, w)
-    bx, by = preview_project(cw / 2, ch / 2)
-    parts = [(bx - frame["ax"], by - frame["ay"], sprite)]
+    parts = []
+    for _x, _y, sprite in preview_set_parts(game_dir, type_id, r, cw / 2, ch / 2):
+        parts.append((_x, _y, sprite))
     frames = figure_frames(game_dir, arrow_figure) if arrow_figure is not None else []
     if frames:
         mask = len(frames) - 1
@@ -1685,6 +1690,39 @@ def preview_parts(game_dir: str, type_id: int, rotation: int, arrow_figure: int 
             sx, sy = preview_project(x, y)
             parts.append((sx - ax, sy - ay, (fw, fh, rgba)))
     return parts
+
+
+def preview_set_parts(game_dir: str, type_id: int, r: int, cx: float, cy: float) -> list:
+    """UI-INFO-2d: the type's sprite sets as picture parts, [(x0, y0, (w, h, rgba))] in draw
+    order. AnnoGame.dll type slots 0xa0 (0x1000b8c0) and 0xa4 (0x1000ba10) walk the four set
+    slots at +0x244 (16 bytes: display object, offset x, height, offset y; slot setter property
+    0x17, 0x1000c13b): 0xa0 takes the sets whose display object's slot 0x60 is 0, 0xa4 the
+    others (tHausAnim 0x100046f0 returns its frame time, tHausGebaude 0x1001fe70 returns 0), and
+    View.dll 0x1001d000 draws 0xa0's parts before 0xa4's. A set's point is the footprint centre
+    plus its offset turned with the footprint (rotation 0..3: (x, y), (y, -x), (-x, -y), (-y, x);
+    0x1000b966..0x1000b99b) and raised by its height. The offsets are the set prefix's three f32
+    at bytes 4..15 (x, height, y) and a set is animated when its prefix kind (byte 2) is 9 or 10
+    with a non-zero ANIM time: both read from the data, not from the loader (OQ-750)."""
+    import struct
+
+    ents, _tables, _vols = _anlagen_tables(game_dir)
+    e = ents[type_id]
+    still, animated = [], []
+    for i, g in enumerate(e["gfx"][:PREVIEW_SET_SLOTS]):
+        got = anlagen_preview_frame(game_dir, type_id, r, i)
+        if got is None:
+            continue
+        frame, sprite = got
+        pre = g["prefix"]
+        ox, oh, oy = struct.unpack_from("<3f", pre, 4) if len(pre) >= 16 else (0.0, 0.0, 0.0)
+        dx, dy = ((ox, oy), (oy, -ox), (-ox, -oy), (-oy, ox))[r]
+        sx, sy = preview_project(cx + dx, cy + dy)
+        sy = int(PREVIEW_KY * ((cx + dx) + (cy + dy)) - PREVIEW_KH * oh)
+        anim = next((rp for rn, rp in g["records"] if rn == "ANIM"), None)
+        ms = struct.unpack_from("<H", anim, 4)[0] if anim and len(anim) >= 6 else 0
+        moving = len(pre) > 2 and pre[2] in (9, 10) and ms != 0
+        (animated if moving else still).append((sx - frame["ax"], sy - frame["ay"], sprite))
+    return still + animated
 
 
 def preview_canvas(game_dir: str, type_id: int, rotation: int, arrow_figure: int | None):

@@ -12,7 +12,7 @@ skips with a message when either is missing. Passes when, on every shot, the nam
 and the chrome differ in 0 pixels, and the whole panel differs in 0 pixels for the types
 whose preview rule is proven (2520, 104, 708, and since UI-INFO-2b the stalls 1310 and 1314,
 whose pictures carry entrance arrows). The other previews are OQ-612: their counts are printed,
-not judged.
+bounded by PREVIEW_MAX (UI-INFO-2d) so they cannot get worse.
 
 Exit: 0 pass, 1 fail, 77 skipped.
 """
@@ -31,6 +31,10 @@ SHOTS = {
     1023: "r2_info_tannery_1023", 1001: "r2_info_weaver_1001", 810: "f12_info_fisher_810",
 }
 PREVIEW_PROVEN = {2520, 104, 708, 1310, 1314}
+# UI-INFO-2d: the scaled previews (OQ-612) may not get worse than the counts measured with the
+# picture's further sprite sets (OQ-712); a lower count is progress, a higher one fails.
+PREVIEW_MAX = {801: 5911, 1301: 5279, 1302: 8428, 501: 5325, 807: 8209, 805: 4506, 809: 6436,
+               1023: 7799, 1001: 5057, 810: 7768}
 
 
 def main() -> int:
@@ -67,6 +71,9 @@ def main() -> int:
             failures.append(f"{type_id}: name/figures/chrome differ {r}")
         if type_id in PREVIEW_PROVEN and res["bad"]:
             failures.append(f"{type_id}: the proven preview rule differs in {r['preview']} px")
+        if type_id in PREVIEW_MAX and r["preview"] > PREVIEW_MAX[type_id]:
+            failures.append(f"{type_id}: preview differs in {r['preview']} px, more than the "
+                            f"{PREVIEW_MAX[type_id]} measured (UI-INFO-2d)")
     if failures:
         print("FAILURES:")
         for f in failures:

@@ -16650,3 +16650,38 @@ at `c73325f5`.
 READY FOR REVIEW.
 
 **UI-PRODBAR-1 B addendum (the 98 against 93):** the 5 tests the `--select` regex lists but the B-02 main run (93) does not hold are exactly the 5 `--require-test` oracle tests (`live_screen_matches_oracle`, `ui_dynamic_draw_check`, `info_panel_gog_compare`, `selected_house_pixel_check`, `ui_panels_match_gog`). The gate runs each in its own one-test call before the main selection, and all 5 passed there (`COUNTS: selected=1 executed=1 failed=0`, log lines 38-171). So 93 + 5 = 98, nothing was dropped, and there was no rerun.
+
+## UI-INFO-2d — OBJECTPOS in formats, arrows on placed pictures, the preview's further sprite sets — 2026-11-17 — READY FOR REVIEW
+
+Branch `task/UI-INFO-2d` (base `1a6f5ef5`, packet `f6eb90fd`); step 1 `db01efbc`, step 3 `0d8a9daa`.
+
+**Step 1: OBJECTPOS in formats.** New `anno::formats::objectpos` (`ObjectPos::parse` -> `Result`, `to_bytes`, `conpo2()`): sub-records of a 6-byte name, a u16 size and the data; CONPO2 decoded to (x3, y3, side), every other sub-record and odd side bytes kept raw (AnnoGame loader 0x10009e3e..0x10009edf). `src/app` now works on the decoded list only (`info_preview::entrance_arrows(const ObjectPos&)`). Tests: synthetic, malformed, and `objectpos corpus` (426 records byte-identical; 184 CONPO2, 852 arrows, never two per type; side 215 kept on 261 and 1571; CONPOS kept on 1542; names FIRE 281, SCHUSS 102, WPLANE 60, AUSPOS 15, HIMAP 11). Spec: `docs/formats/anlagen.md` "OBJECTPOS". anno-dump does not print OBJECTPOS, so no agree case applies; the Python oracle (`ui_layout.anlagen_entrance_arrows`) gave the same counts. Failure proof: CONPO2 name test inverted -> 2 cases fail (`with_conpo2`, `arrows`, synthetic, odd sides; `cache/gates/failure-proof-step1.log`), restored.
+
+**Step 2: arrows on a placed building's picture - skipped.** The rebuild has no panel that shows a placed building's picture: the selected-house panel draws a fixed portrait (`house_portrait`, Pioniere.tex), not a View 0x1001d760 picture; no production or other building panel exists. When one is built it should call `info_preview` (OQ-736 maps the 8 other callers).
+
+**Step 3: the further sprite sets (OQ-712).** Read: type set slots +0x244 (16 bytes: display object, x, height, y; property 0x17 0x1000c13b), slot 0xa0 (0x1000b8c0) = sets whose display object's slot 0x60 is 0, 0xa4 (0x1000ba10) = the others (tHausAnim 0x100046f0 returns its frame time), 0x1001d000 draws 0xa0, 0xa4, then 0xa8; offsets turned with the footprint (jump table 0x1000b9f4); the height adds to the caller's point (0x1000b9b2). Measured: the set prefix's f32 at bytes 4..15 as (x, height, y) - best of eight readings (OQ-750). C++ `info_preview` (`SetPart`, `turn_offset`, `project_raised`) and the reference `preview_set_parts` do it. GOG preview px before -> after: 801 6 317 -> 5 911, 1301 5 402 -> 5 279 (flag), 1302 8 477 -> 8 428 (flag), 1023 10 263 -> 7 799; all others unchanged, stalls 0. `info_panel_gog_compare` now fails if a scaled type exceeds these counts. Failure proof: reference with one set slot -> 801, 1301, 1302, 1023 exceed their bounds (`cache/gates/failure-proof-step3.log`), restored. Window = reference: `info_panel_pixel_check` exact for 801, 1301, 1302, 2520.
+
+**Gates.** MSVC Release, game files, the UI shot variables, `run_selected.py --jobs 8` over `^anno_formats_tests\.`, the info preview/hud/ui/construction `anno_app_tests` cases, `^viewer_wiring_ui_` and the oracle tests (all required): step 1 `selected=119 executed=119 failed=0 skipped=0` PASS (`cache/gates/ui-info-2d-01.log`); step 3 `selected=120 executed=120 failed=0 skipped=0` PASS (`ui-info-2d-02.log`). Build: `anno_formats_tests anno_app_tests anno1503 anno_ui_mock`, no warnings. clang-format 23.1.3 clean. `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`: GCC 13 and Clang 18, with and without GPU (420 / 85 files): all clean (`cache/gates/unix-warnings-2d.log`).
+
+| Requirement | Positive proof | Counterexample | Evidence | Disposition |
+|---|---|---|---|---|
+| OBJECTPOS read in formats, round trip | 426 byte-identical, counts | inverted name test fails | objectpos tests | pending |
+| Preview pixels unchanged by step 1 | stalls 0 px, pixel check exact | - | gate 01 | pending |
+| Placed pictures carry arrows | n/a: no such panel | - | step 2 note | skipped |
+| Further sets composed, no type worse | 4 types better, rest equal | one-slot reference exceeds bounds | gog compare, unit test | pending |
+
+**Owner test.** `anno1503 --play data\maps\lan5.txt --construction-menu on --game-dir E:\anno1503\game\app --layout data\ui`: B, public tab, Markthaupthaus - the flag above the right side of the roof, as in `c7`, at every turn; the Kontor's flag; the forester's fence. The placed farm's panel with its arrows cannot be tested yet (no such panel).
+
+**NOT_RUN.** WSL sanitizer lane and the full suites (orchestrator's); GPU window capture (shared draw path); the live-window look (reference renders checked).
+
+**Decisions and reasoning.**
+- `conpo2()` keeps the last CONPO2 (the loader re-allocates +0x22c per CONPO2); no type has two.
+- The app skips side > 3 and CONPOS for drawing; formats keeps them.
+- No anno-dump command added for OBJECTPOS (the packet's agree step is conditional on one).
+- Set offsets from the prefix by measurement (OQ-750), not from code; draw order and turn from code.
+- Four set slots kept as a named constant with its address (the original's count), both in C++ and the reference.
+- Per-type no-worse bounds added to the GOG compare, as the packet's "no type may get worse".
+
+**OQs.** OQ-711 resolved (8 directions, AnnoDisplay 0x10005cb0) and OQ-713 closed (no ghost arrows), both from BUILDINGS-REF-1 part C; OQ-712 resolved; OQ-750 new. OQ-725 and OQ-755 unused.
+
+**For BUILDINGSOBJECTS (part C).** (1) The arrow data now lives in `anno::formats::objectpos` with a byte-identical writer; corpus: 426 OBJECTPOS records, sub-record names and counts as above. (2) Part C 1.2: the CONPOS loader writes byte 1 and then 0 to the y slot and never writes the side byte (a heap buffer), so "side left 0" is not guaranteed. (3) Part C 4: the rebuild has no placed-building picture yet; the selected-house panel's portrait is not a composer picture. (4) The picture also composes the type's further sprite sets (slots +0x244, 0xa0 still / 0xa4 animated), drawn before the arrows; the offsets' source is OQ-750.

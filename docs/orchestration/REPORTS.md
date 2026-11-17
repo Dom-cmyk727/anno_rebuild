@@ -15117,3 +15117,59 @@ The source was restored from the saved copy and rebuilt before the gate.
 - Bit 3 is read already (a no-op today), so the sim packet for code 3 needs no window change.
 
 READY FOR REVIEW.
+
+### UI-HARVEST-ICON-1 stage C (docs only): the "no road" tests, 2026-11-17
+
+Both functions are read instruction by instruction (`docs/re/ui.md` §11.6, evidence row E16). OQ-720 is
+narrowed and stays open. No build, no test.
+
+**Findings.**
+- **Candidates** come from the shared callback `0x100722d0`. The enumerator is the city building index
+  `0x1002dfc0` → `0x10023ea0`, kind `0xa` (the production and market lists). A building is a candidate
+  when its PRODTYPE is 33-64, or when its **input** 0 or 1 equals the goods asked for. The callback
+  stores the squared distance between footprint centres.
+- **Code 1 test `0x10071f40`:**
+  - the rectangle is the type's radius;
+  - no candidate → -1, the code stays 1;
+  - else one land walk search (world searcher `0xc00`, callback `0x10054240`, first goal stops) with
+    the building's own carrier figure, from its entrances to every candidate's entrance goals;
+  - no path → 0, which makes code 3.
+- **Code 2 test `0x10072390`:**
+  - candidates within a fixed **24 tiles** whose input is this building's output, or the 33-64 block;
+  - sorted nearest first;
+  - for each, a search with the **candidate's** carrier from the candidate's entrances to this
+    building's goals;
+  - none reaches it → 0, which makes code 3.
+- **Self-match (new, D + L):** the calling production building is enumerated too, and in the code-1
+  test it matches its own input, at distance 0, with its goals on the search's starts. If the searcher
+  answers "found" for a start on a goal, **a due "raw material missing" never becomes "no road"** in
+  the original. The road icon would then come only from "storage full". This is the one open point that
+  decides how code 3 behaves (OQ-720 a).
+
+**Can the rebuild's existing road graph answer it?** Yes (L, from the code reading):
+- `sim::search` (`walk_search.hpp`) is the ported land walk searcher, with starts, goals, a rectangle
+  and a `Stop` callback;
+- `transport.cpp` already runs the same pattern for the cart and the carrier (`entrance_points`,
+  candidate goals);
+- the candidate set is a city query over the production and market lists.
+
+Nothing new is needed in the road graph.
+
+**Sim proposal (for the orchestrator).**
+1. The start-on-goal read: about 1 h, docs. The ported `sim::search` may answer it directly: does a
+   start that is also a goal count as reached?
+2. The sim packet, 3-4 h:
+   - `Status::NoRoad = 3`;
+   - the two predicates (the type-radius rectangle and the 24-tile one, nearest-first order) as callers
+     of `sim::search`;
+   - the rewrite in `StatusTracker::report` via a caller-supplied predicate;
+   - tests: a full-store workshop whose market and consumers are cut off by water → 3, a connected one
+     → 2; the missing-input case as step 1 decides;
+   - the save and checksum note: a new value of an existing field.
+
+The window already maps bit 3 to figure 1571 (stage B), so no UI change follows.
+
+**HE check for later:** a weaver with sheep farms but no road between them; and a full-store workshop
+whose market is cut off. Does the road icon appear in each case?
+
+READY FOR REVIEW.

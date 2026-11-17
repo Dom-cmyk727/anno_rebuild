@@ -169,6 +169,14 @@ says who is doing what, where the work is, and what it waits on.
   order?", the owner answered "Yes". They run in the UI lane, then UI-RANGE-1. Also, asked "Delete the public
   task branch with the data table after landing, and recreate it clean?", the owner answered "Yes, clean it
   up": `task/BUILDINGS-REF-1` is recreated as one clean commit.
+- **UNITS-REF-1 dispatched** 2026-11-17 on the owner's request: "I want the same kind of research on any movable
+  unit, I.e. movable by the player and the Ai, like ships, soldiers, cannons, scouts etc And also movable units
+  that are NOT movable by the player like wildlife, birds (birds landing on ships when they stay still),
+  civilians, workers. What done looks like: a concise report that is double checked on gog and HE data and code
+  containing ALL ingame units that will be used as reference for the project called UNITS.md".
+  - It goes to the HE/GOG research session (`he-vs-gog-production-wor`, which did RE-HE-PRODUCTION-1).
+  - Docs only: `docs/UNITS.md` in BUILDINGSOBJECTS.md's form; the per-figure inventory comes from a `tools/`
+    generator into `cache/`, never committed. OQ-751 onwards.
 - **[MAC-HEAVY-1](tasks/mac-heavy-1.md) written** 2026-11-17 for the Mac executor, on the owner's request
   ("I also need a new mac job. This can be more comprehensive once this time, it may contain CPU and or RAM
   heavy test jobs"). Released when the owner pastes the prompt, after GATE-RUN ui-tabs-b. Verification of

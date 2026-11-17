@@ -14850,155 +14850,149 @@ landing candidate's own build): both pass, run directly with `python3 -I tools/l
 
 READY FOR REVIEW.
 
-## RENDER-DIRECT-1b — the resident atlas pages, built on the CPU and proven texel-exact — READY FOR REVIEW (task/RENDER-DIRECT-1b, from `origin/task/RENDER-DIRECT-1a` `5fb98192`, merged `origin/main` `09315620`, head `88cf59c5`)
+## RENDER-DIRECT-1b — the resident atlas pages, built on the CPU, proven texel-exact, every gate green — READY FOR REVIEW (task/RENDER-DIRECT-1b, from `origin/task/RENDER-DIRECT-1a` `5fb98192`, merged `origin/main` `09315620` then `4dfdd9b7`, head `c550124f`)
 
 **The unit and its interface.** New `anno_render` unit `src/render/include/anno/render/atlas_pages.hpp`,
 `src/render/src/atlas_pages.cpp`: `build_atlas_pages(frames, page_size, padding, threads) -> AtlasPages`.
 `AtlasFrameInput{id, image}` in, one call to the existing `AtlasResidency::ensure`/`place` for packing (no
 second packer), then per-frame texel work on `threads` workers. `AtlasPages{level0, level1, placements,
-oversized}`: `level0`/`level1` are `page_size`²/`(page_size/2)`² RGBA8 buffers per layer; `placements` gives
-each frame's layer/x/y/width/height at both levels; `oversized` names any frame `ensure` could not place at
-all (never dropped silently). Nothing here is read by any render path yet (RENDER-DIRECT-1c uploads and
-draws from these pages) - confirmed by file list, not just the header comment's own claim (below).
+oversized, duplicate_ids}`: `level0`/`level1` are `page_size`²/`(page_size/2)`² RGBA8 buffers per layer;
+`placements` gives each frame's layer/x/y/width/height at both levels; `oversized`/`duplicate_ids` name
+anything not placed, never dropped silently. Nothing here is read by any render path yet (RENDER-DIRECT-1c
+uploads and draws from these pages).
 
 **Rounding rules, each cited.** Premultiply: `c' = (c·a + 127) / 255` per channel, integer, half up
-(`premultiply_pixel`, `atlas_pages.hpp:67-74`) - no existing integer premultiply rule was found elsewhere
-to reuse (`sea::unpremultiply`, `sea.cpp:823`, is the only other premultiply-related code, float-valued and
-the reverse operation). Dilation: every slot texel outside the frame copies the nearest frame texel, clamped
-to the edge, premultiplied the same way (`premultiplied_clamped`/`write_level0`, `atlas_pages.cpp:34-61`).
-One mip level: each level-1 texel is the 2×2 box of level 0, summed per channel and rounded half up,
-`(s + 2) / 4` (`write_level1`, `atlas_pages.cpp:67-86`).
+(`premultiply_pixel`) - round to nearest for every input, since 255 is odd and no product lands on a half
+(review, confirmed). Dilation: every slot texel outside the frame copies the nearest frame texel, clamped
+to the edge, premultiplied the same way. One mip level: each level-1 texel is the 2×2 box of level 0,
+summed per channel and rounded half up, `(s + 2) / 4`.
 
-**Thread safety, not asserted but reasoned and proven.** Every slot's width/height is rounded up to the
-next even number before packing (`round_up_even`, `atlas_pages.cpp:14-16`); since the shelf packer places
-slots edge-to-edge from `(0,0)` and a sum of even numbers is even, every slot's own origin is also even, so
-the page-wide mip grid never has to average texels from two different frames' slots at a boundary - the
-one fact that makes per-frame worker threads safe with no shared lock on the per-texel path
-(`build_atlas_pages`'s worker lambda, `atlas_pages.cpp:142-163`). Proven, not just argued:
-`atlas_pages_test.cpp`'s thread-count-independence case hashes (FNV-1a) the same frame set built at 1 and
-at several worker counts and checks the hashes are equal.
+**Thread safety, reasoned and proven.** Every slot's width/height is rounded up to the next even number
+before packing, so every slot's own origin is also even and the page-wide mip grid never has to average
+texels from two different frames' slots at a boundary - the fact that makes per-frame worker threads safe
+with no shared lock on the per-texel path. Proven by a hash-equality test (1 vs. 8 threads, 200 synthetic
+frames and, separately, a duplicated-id case).
 
 **Step 1, the budget default.** `cb_atlas_budget_bytes`'s 256 MiB non-discrete default is now 384 MiB
-(OQ-096). The default-and-clamp logic is its own pure function, `atlas_budget_bytes_before_sprite
-(atlas_budget_mb, adapter_type, max_layers, layer_bytes)` (`gpu.hpp`), called by `cb_atlas_budget_bytes`
-(`gpu.cpp`) rather than inlined. `gpu_test.cpp`'s new case ("the default, the override and the layer clamp
-...", 9/9 assertions) opens no GPU device.
+(OQ-096); the default-and-clamp logic is `atlas_budget_bytes_before_sprite(atlas_budget_mb, adapter_type,
+max_layers, layer_bytes)` (`gpu.hpp`), a pure function `cb_atlas_budget_bytes` (`gpu.cpp`) calls. 9/9
+assertions, no GPU device opened.
 
-**Step 4, the texel-exact proof, three outcomes.**
-1. **Synthetic** (`atlas_pages_test.cpp`, no game files): 1×1, odd sizes, a frame exactly filling a page,
-   alpha 0/255 edges, an oversized-frame case, the thread-hash case above. 6 `TEST_CASE`s, **106/106
-   assertions**.
-2. **Game files** (`atlas_pages_corpus_test.cpp`, `heavy` suite): `Scenes/0010SingleEndlos/
-   02_1024_easy_128.sze` (1a's own worst scene) and `Scenes/0100Kampagne01/S01_01_01.sze` (the campaign
-   scene), each group, static+water (via `FrameTable::intern_building` + `SpriteCache`, the real
-   `assets::building::to_rgba` decode path) and the scenario's start-unit figures (via `FrameTable::intern`
-   + `FrameKey::unit`). Every 7th frame's whole rectangle (both corners, dilation included) plus one mip
-   texel, sampled against the source image directly. **3,148/3,148 assertions, 0 failures.**
-3. **`data/maps/lan5.txt`, the packet's third named scene, NOT covered by the game-file test** - a
-   deliberate deviation, reasoned not assumed: `app::load_play`/`load_placed_scene` builds a whole
-   `sim::World` (the `sim_load` stack, a type registry) just to get picture inputs from a fixed map,
-   measured (via `--atlas-build`) at **about 85 s** of app-layer load time on top of the atlas build itself
-   (12.8 s) - disproportionate for a unit test whose job is texel-exactness, not exercising the play-loading
-   path. Not a hard layering rule (`anno_render_gpu_tests` already links `anno_app_core` for its own tests) -
-   a proportionality call, named as such in the test file and in `atlas.md` §9. `lan5.txt`'s own build cost
-   is measured instead (step 5, below).
+**Step 4, the texel-exact proof, every frame, every scene the packet names.**
+- **Synthetic** (`atlas_pages_test.cpp`): 1×1, odd sizes, a frame exactly filling a page, alpha 0/255
+  edges, the thread-hash case, a duplicated-id case (review F3), a case asserting the mip rectangle fields
+  directly on an even- and an odd-sized frame (review F4). 8 `TEST_CASE`s, **120/120 assertions**.
+- **Game files**, split by what each scene needs to load (orchestrator, after F2): `Scenes/0010SingleEndlos/
+  02_1024_easy_128.sze` and `Scenes/0100Kampagne01/S01_01_01.sze` stay in `anno_render_tests`
+  (`atlas_pages_corpus_test.cpp`); `data/maps/lan5.txt` moved to `anno_app_tests`
+  (`atlas_pages_lan5_test.cpp`) - a fixed map needs `app::load_play`/`load_placed_scene`, and
+  `anno_render_tests` must not depend on `anno_app_core` to stay below it (`anno_render_gpu_tests`'s own
+  link is the one, pre-existing exception, not a precedent to extend). The frame-gathering and the checker
+  (`collect_static_water`, `check_pages_against_source`) live in one shared header,
+  `anno/test/atlas_pages_check.hpp` (`src/test_support`, header-only - test_support's own library gets no
+  render/assets dependency), included by both binaries instead of copied. **Every frame, every level-0
+  texel of its own rectangle, and every texel of its own mip rectangle checked against the decoder
+  directly** (review F2: an earlier revision sampled every 7th frame and excluded `lan5.txt` on a
+  proportionality call that turned out to rest on an unreleased Debug build's own timing - both reverted;
+  the deviation should have gone to the orchestrator before being built, not reported afterward). Native
+  MSVC Release, `ANNO1503_GAME_DIR` set: the two `.sze` scenes **50,755,526/50,755,526 assertions**;
+  `lan5.txt` **39,965,981/39,965,981 assertions**.
 
-**No frame found unequal.** 0 failures across both proof outcomes.
+**No frame found unequal.** 0 failures across every proof case above.
 
-**A dangling-buffer bug, found twice, same class, both in this task's own new test code (no instance found
-anywhere else in `src/` or `tools/` - exhaustively grepped every call site of `FigurenHeader::parse`,
-`AnlagenFile::parse`, `sze::Scene::parse`, `insel::islands`, `TexFile::parse` across the whole tree; the
-only other direct `parse(read_all(...))` nestings are in `fixed_map_test.cpp`/`ship_manifest_test.cpp` x2/
-`route_world_test.cpp`, safe because `FixedMap`/`Manifest` are our own text formats that copy everything
-into owned fields during parse, confirmed by reading both structs).** First: `sze::Scene::parse(read_all
-(sze_file))` fed a temporary straight into `parse()`; `formats::sze::Scene` holds spans into it, not a
-copy, so later reads were on freed memory. Second, found while debugging the first's fix: `fig::
-FigurenHeader::parse(read_all(dir / "FigurenHeader.dat"))`, same pattern - `formats::figuren::Entry` holds
-spans too. Both fixed by binding a named buffer first. Confirmed under AddressSanitizer (clean) and the
-plain build (same assertion count) after the fix. Neither is in engine code, so no separate fix commit was
-needed beyond this branch's own test file.
+**A dangling-buffer bug, found twice, same class, both in this task's own new test code.** First:
+`sze::Scene::parse(read_all(sze_file))` fed a temporary straight into `parse()`; `formats::sze::Scene` holds
+spans into it, not a copy. Second, while debugging the first: `fig::FigurenHeader::parse(read_all(dir /
+"FigurenHeader.dat"))`, same pattern - `formats::figuren::Entry` holds spans too. Both fixed by binding a
+named buffer first; confirmed under AddressSanitizer and the plain build. Exhaustively grepped every call
+site of `FigurenHeader::parse`/`AnlagenFile::parse`/`sze::Scene::parse`/`insel::islands`/`TexFile::parse`
+across `src/` and `tools/`: no other instance anywhere, in engine code or otherwise.
 
-**Step 5, the bench table (`bench_frame --atlas-build <scene|-> out.tsv`).** Reports wall time split into
-**collect** (decode+dedup, sequential) and **pack** (`build_atlas_pages`, parallel over `threads`), each
-with process-wide CPU time (`cpu_time_ms`), the real byte cost with the one mip level actually built, and
-peak process memory. The full 519-scene corpus was not run (would spoil the orchestrator's own PC timing,
-tens of minutes to hours sequentially); instead, a 20-scene subset the orchestrator set: the top 10 by
-RENDER-DIRECT-1a's own `atlas_report.tsv` `pack_bytes` (groups 0+1+2, 2048 px/2 px/one_level) plus the 10
-rows nearest the sorted median index (259 of 519). 16 threads, WSL/dev build:
+**Step 5, the bench table (`bench_frame --atlas-build <scene|-> out.tsv`), Release numbers (review F1).**
+The first numbers were measured on the `dev`/WSL preset, which is `CMAKE_BUILD_TYPE` Debug
+(`CMakePresets.json:10`) against `docs/perf/README.md`'s own Release convention - a real mistake, caught
+before this branch's first push could be trusted. Rerun on the native `msvc` Release build, the same
+20-scene subset (the orchestrator's own selection: 1a's `atlas_report.tsv`, top 10 by `pack_bytes` for
+groups 0+1+2 at 2048 px/2 px/one_level, plus the 10 rows nearest the sorted median index of 519) plus
+`single38.sze` and `lan5.txt`. **The byte columns matched the Debug run exactly - 200 fields compared
+across the 20-scene subset, 0 mismatches (F1's own free consistency check).** Every wall-time number below
+is the Release figure, about 19-24x faster than the retired Debug numbers on the same scenes (e.g.
+`endless02.sze` 27.45 s -> 1.30 s; `lan5.txt` 12.84 s build / 1m37s wall (app-layer load included) -> 0.70
+s total) - the scale of the Debug/Release mistake, not a tuning result:
 
-| | static+water (the Static-class budget's own figure) | figures | total wall | collect | pack |
+| | static+water bytes (the Static-class budget's own figure) | figures bytes | total wall | collect | pack |
 |---|---|---|---|---|---|
-| worst 10 | 280.0-360.0 MiB | 20.0 MiB (every scene, 1 page) | 16.4-27.5 s | 14.7-25.4 s | 1.3-1.9 s |
-| median 10 | 80.0-140.0 MiB | 0 (no start units on these `.scp` templates) | 3.5-6.5 s | 3.1-5.9 s | 0.36-0.59 s |
+| worst 10 | 280.0-360.0 MiB | 20.0 MiB (every scene, 1 page) | 0.84-1.30 s | 0.76-1.20 s | 0.068-0.100 s |
+| median 10 | 80.0-140.0 MiB | 0 (no start units on these `.scp` templates) | 0.18-0.36 s | 0.15-0.32 s | 0.022-0.038 s |
 
-Plus `Scenes/0201SingleAddOn/single38.sze` (1a's own worst start-unit scene, outside both buckets): 293.6
-MiB static+water, 20.0 MiB figures, 16.7 s. `data/maps/lan5.txt`: 180.0 MiB static+water, figures n/a, 12.8
-s build (1m37s wall including the app-layer load, step 4's own finding).
+**Finding, confirmed in Release: `collect` dominates, not `pack`, 85.3-92.4% of static wall time** (median
+90.1%) across all 22 scenes - the same shape as the retired Debug numbers (88-94%, median 90.8%): the
+balance between the two phases does not depend on optimisation level, even though the absolute times do
+(both sped up by roughly the same factor). `pack` is genuinely parallel (`static_cpu_ms` still exceeds
+wall time on every scene) but too small a share to matter. Not fixed here (step 5's "no blind
+optimisation"): named as a RENDER-DIRECT-1c finding - `FrameTable`/`SpriteCache` are already thread-safe
+(`shared_mutex`, both), the same primitives `build_atlas_pages`'s own worker split already uses, so
+`collect`'s per-island/per-group traversal could be split the same way with no new synchronization design.
 
-**Finding: `collect` dominates, not `pack`, 88-94% of static wall time on every one of the 20 scenes**
-(median 90.8%). `pack` is genuinely parallel (`static_cpu_ms` exceeds wall by 16-26%, implying ~3.0-3.95x
-effective speedup on the pack phase alone) but too small a share to matter. Not fixed here (step 5's "no
-blind optimisation"): named as a RENDER-DIRECT-1c finding instead - `FrameTable` and `SpriteCache` are
-already thread-safe (`shared_mutex`, both), the same primitives `build_atlas_pages`'s own worker split
-already uses, so `collect`'s per-island/per-group traversal could be split the same way with no new
-synchronization design.
+**Review F5, resolved: the iGPU's own adjacent-pair case, from real decoded pages - both pairs hold, no
+finding for the owner.** `--atlas-build` now also builds groups {0,1} and {1,2} separately per scene
+(`collect_static_water_groups`, generalised from an all-three-groups-only helper to take any group list).
+Worst pair 0+1: **340.0 MiB** (`endless02.sze`) against the iGPU's 384 MiB - **44 MiB headroom**, matching
+1a's own sizing-only estimate for this quantity almost exactly (same figure, a different specific scene).
+Worst pair 1+2: only **100.0 MiB** (`01_1024_easy_256.sze`). Neither pair exceeds 384 MiB anywhere measured.
 
-**Against the decided budgets: no finding, both hold, with a named scope boundary** (orchestrator's review:
-a "total" that sums two separate residency classes checks nothing real). The worst *measured* static+water
-across all 22 scenes is **360.0 MiB** (`endless02.sze`, 18 pages, groups 0+1+2 combined) - **152 MiB of
-headroom** under the 4090's 512 MiB, matching 1a's own sizing-only estimate for this quantity closely
-(same worst figure, a different specific scene - real packing varies a page either way vs. the estimate).
-This step did **not** re-measure the iGPU's adjacent-pair case (0+1 or 1+2) against its 384 MiB with real
-decoded data - only the all-three-groups set was built (matching the 4090's own check) - so 1a's 340 MiB
-pair estimate (44 MiB headroom) stays unconfirmed by this task, named as a boundary, not assumed closed.
+**Peak process memory**, Release, across all 22 scenes: **1,645,867,008 bytes (1,569.6 MiB, `endless02.sze`)**
+worst, 545.0 MiB (`D_080x080_0016_2B_Afrika.scp`) least - **higher** than the retired Debug run's own worst
+(967 MiB, the same scene): plausible and not investigated further - Release finishes about 20x faster, so
+more of the run's own transient allocations are live at the same instant rather than freed between them.
 
 **Separately, own commit: `play_gpu_test.cpp:75`'s `MESSAGE` streamed a `const char* adapter_name` raw,
-printing its address instead of its text ("no adapter named 0x1054...") - an obvious bug (orchestrator),
-fixed with `std::string(adapter_name)`. Only instance of the pattern in that file.**
+printing its address instead of its text - fixed with `std::string(adapter_name)`.**
 
 **No render-path or draw-call change.** Touched: `atlas_pages.hpp/.cpp` (new), `atlas_pages_test.cpp`/
-`atlas_pages_corpus_test.cpp` (new), `gpu.hpp`/`gpu.cpp` (the budget default extraction only), `gpu_test.cpp`
-(new case), `bench_frame/main.cpp` (`--atlas-build`), `play_gpu_test.cpp` (the `MESSAGE` fix), docs. Nothing
-under any shader, draw call or compositor function changed; `git diff` against the task's base confirms
-this.
+`atlas_pages_corpus_test.cpp` (new/revised), `atlas_pages_lan5_test.cpp` (new, `anno_app_tests`),
+`atlas_pages_check.hpp` (new, `src/test_support`, header-only), `gpu.hpp`/`gpu.cpp` (the budget default
+extraction only), `gpu_test.cpp` (new case), `bench_frame/main.cpp` (`--atlas-build`), `play_gpu_test.cpp`
+(the `MESSAGE` fix), docs. Nothing under any shader, draw call or compositor function changed.
 
 **Decisions and reasoning.**
-- Reused `AtlasResidency::ensure`/`place` for the real build, not a second packer: one packing
-  implementation for both sizing (1a) and building (1b) to drift from.
+- Reused `AtlasResidency::ensure`/`place` for the real build, not a second packer.
 - Rounded every slot's own size up to even before packing (not after) so the thread-safety invariant holds
-  by construction, not by a runtime check.
-- Excluded `lan5.txt` from the game-file texel test on a measured proportionality call (85 s app-layer load
-  vs 12.8 s atlas build), not an unverified layering claim - checked that `anno_render_gpu_tests` already
-  links `anno_app_core` before deciding this was about cost, not architecture.
-- Ran the orchestrator's 20-scene subset instead of the full corpus, named with its exact selection rule
-  (ranked by 1a's own `pack_bytes`) so the two buckets are reproducible, not hand-picked.
-- Reported `static_collect_ms`/`static_pack_ms`/`static_cpu_ms` separately (not just a combined `static_ms`)
-  specifically so the collect-vs-pack question could be answered from real numbers, not inferred from one
-  total.
-- Separated static+water bytes from figures bytes in the bench table after the orchestrator's review found
-  the combined "total" checked against no real budget - the two residency classes are never summed by the
-  code either.
+  by construction.
+- Moved the Debug/Release mistake's fix (F1) and the architecture fix (F2's file split) ahead of trusting
+  any number in this report, rather than reporting Debug figures with a caveat: a caveat a reader skims
+  past is not the same protection as a number that was never wrong in the first place.
+- Generalised `collect_static_water_all_groups` to `collect_static_water_groups(scene, groups, ...)` (an
+  explicit group list) for F5, rather than writing a second, pair-specific function: one implementation for
+  "all three groups" and "one adjacent pair" to drift from.
+- A missing named scenario file (game directory set) or a missing `lan5.txt` (repo checkout) is now a
+  `FAIL` with its path, not a skip - CLAUDE.md's own rule, caught by the CI evidence preflight's
+  classified-skip-message self-test before this branch's first push, fixed before the second.
+- Ran the orchestrator's 20-scene subset, not the full corpus, named with its exact selection rule so the
+  two buckets are reproducible, not hand-picked; the F1/F5 rerun used the identical subset for a clean
+  before/after comparison.
 
 **Gates.**
 - clang-format 23.1.3: clean on every touched file.
-- WSL GCC 13 / Clang 18 `-Werror`, whole tree, after merging `origin/main` (`09315620`, brings UNIX-WARN-1):
-  **clean on all four configurations** (GCC/Clang, viewer+GPU on and off; the pre-existing
-  `extensions_test.cpp` `ANNO_EXTENSION_ORACLE_FILE` failure RENDER-DIRECT-1a's own report noted is gone,
-  fixed by UNIX-WARN-1, not by this task).
-- `anno_render_tests` (synthetic + game-file atlas pages, the residency test already present): all pass,
-  confirmed again after the merge and after clang-format.
-- `anno_render_gpu_tests`' budget-default case (`gpu_test.cpp`, no GPU device opened): 9/9.
-- `anno_render_gpu_tests` on the RTX 4090 (`ANNO_GPU_ADAPTER=RTX`): **PENDING, not executed against real
-  hardware.** Run against the WSL/Linux dev build by mistake: the log shows "ANNO_GPU_ADAPTER=RTX matches
-  no adapter; using the default" throughout, falling back to WSL's own software adapter ("llvmpipe (LLVM
-  19.1.1, 256 bits) (Vulkan)"), not the Windows host's RTX 4090 - WSL's Vulkan loader does not expose it
-  under that name. Killed (still running, 37+ minutes) once the orchestrator asked for the PC to go quiet
-  for the owner's recording. The real gate needs the native MSVC build, after the recording: build
-  `task/RENDER-DIRECT-1b` with the `msvc` preset, then `anno_render_gpu_tests` from `build/msvc` with
-  `ANNO_GPU_ADAPTER=RTX`, confirming the log names "NVIDIA GeForce RTX 4090" before trusting the result
-  (orchestrator's own instruction - a run that lands on llvmpipe or any other fallback is no result).
-- NOT_RUN: the native MSVC build/tests (this task's own work was done entirely from the WSL/dev build and
-  native headers under `build/dev`, never `build/msvc`, for build speed; the task's own CMake/code changes
-  are platform-neutral - no MSVC-specific code touched - but this is not itself MSVC evidence).
+- WSL GCC 13 / Clang 18 `-Werror`, whole tree, after both `origin/main` merges (brings UNIX-WARN-1 and
+  LAYER-CHECK-1): clean on all four configurations (GCC/Clang, viewer+GPU on and off) - the pre-existing
+  `extensions_test.cpp` failure RENDER-DIRECT-1a's own report noted is gone (UNIX-WARN-1, not this task).
+- `layer_check_contract`/`layer_check_self_test` (LAYER-CHECK-1, new to this branch via the second merge):
+  both pass.
+- `anno_render_tests`: the 8 synthetic cases (120/120) plus the two `.sze` game-file scenes
+  (50,755,526/50,755,526), native MSVC Release.
+- `anno_app_tests`: the `lan5.txt` case (39,965,981/39,965,981), native MSVC Release.
+- `anno_render_gpu_tests`' budget-default case (no GPU device opened): 9/9.
+- **The RTX 4090 gate: run, confirmed on real hardware.** `anno_render_gpu_tests` from `build/msvc`,
+  `ANNO_GPU_ADAPTER=RTX`. The log names "NVIDIA GeForce RTX 4090 (Vulkan)" throughout (checked on the
+  single case that prints it first, then the whole run). **119/119 test cases, 2,450,492/2,450,492
+  assertions, 0 failed.** (An earlier attempt on the WSL/Linux build never reached the real adapter at all
+  - "ANNO_GPU_ADAPTER=RTX matches no adapter; using the default", falling back to WSL's own software
+  Vulkan adapter - killed once noticed, not a result, not repeated here.)
+- CI preflight (`python3 -I tools/test/run_selected.py --preflight-only`, the exact CI step): PASS, after
+  the skip-vs-fail fix above (the orchestrator's earlier CI run on `c7a1e77b` had caught the original
+  wording before this fix).
+- `--atlas-build`'s F1/F5 rerun ran alone on this PC, as asked, once the owner's recording was done and the
+  orchestrator released the machine.
 
 READY FOR REVIEW.

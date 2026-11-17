@@ -7,6 +7,7 @@ add_library(anno_app_core
   src/commands_file.cpp
   src/construction_menu.cpp
   src/selection.cpp
+  src/status_bar.cpp
   src/dev_feedback.cpp
   src/dev_session.cpp
   src/dev_input.cpp
@@ -90,7 +91,7 @@ if(ANNO_BUILD_TESTS)
     tests/opening_ui_test.cpp tests/opening_test.cpp tests/ship_motion_test.cpp
     tests/ui_layout_test.cpp tests/ui_transform_test.cpp tests/ui_construction_eligibility_test.cpp
     tests/construction_menu_test.cpp tests/inspect_building_test.cpp tests/selection_test.cpp
-    tests/minimap_test.cpp tests/hud_tabs_test.cpp)
+    tests/minimap_test.cpp tests/hud_tabs_test.cpp tests/status_bar_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   target_compile_definitions(anno_app_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic"
@@ -281,16 +282,17 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_ui_subtabs PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
-      # UI-WINDOW-1 fix round R2/R4: the status bar counters (centred city, else the first).
-      add_test(NAME viewer_wiring_ui_counters_centred
+      # UI-STATUS-1 B: the status bar shows the island under the cursor (docs/re/ui.md 5.6;
+      # replaces UI-WINDOW-1 R2/R4's ui_counters_centred, the view-centre rule).
+      add_test(NAME viewer_wiring_ui_status_island
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
-                $<TARGET_FILE:anno1503> ui_counters_centred
+                $<TARGET_FILE:anno1503> ui_status_island
                 --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
                 --app-arg --construction-menu --app-arg on
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
-      set_tests_properties(viewer_wiring_ui_counters_centred PROPERTIES
+      set_tests_properties(viewer_wiring_ui_status_island PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
-      # UI-WINDOW-1 fix round R4: no city yet (the ship-start opening): the counters are hidden.
+      # UI-WINDOW-1 fix round R4, UI-STATUS-1 B: no city yet (the ship-start opening): gold only.
       add_test(NAME viewer_wiring_ui_counters_before_founding
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
                 $<TARGET_FILE:anno1503> ui_counters_before_founding

@@ -13,9 +13,18 @@ element baumat_wood pos 192 735 size 30 30 file toolgfx/statusbar.tex access STA
 element baumat_bricks pos 252 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_BAUMAT tex_id 38 segment 2 anchor bottom method sprite-sad shot r2_construction_public
 element baumat_marble pos 312 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_BAUMAT tex_id 39 segment 3 anchor bottom method sprite-sad shot r2_construction_public
 element einwohner pos 401 733 size 38 35 file toolgfx/statusbar.tex access STATUSBAR_EINWOHNER tex_id 53 anchor bottom method sprite-sad shot r2_construction_public
-element rosh_46 pos 547 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 46 segment 6 anchor bottom method sprite-sad shot hud_idle_running
-element rosh_48 pos 587 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 48 segment 8 anchor bottom method sprite-sad shot hud_idle_running
-element rosh_51 pos 627 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 51 segment 11 anchor bottom method sprite-sad shot hud_idle_running
+# UI-STATUS-1 B: the four ROSHTOFFE slots of the fertility row (AnnoFrame 0x10063a17..0x10063a61:
+# x = 547 + 40k, y = the bar row + 2; docs/re/ui.md 5.6). tex_id is STATUSBAR_ROSHTOFFE's id 40 =
+# segment 0; the live window draws tex_id + the segment the island under the cursor gives (its
+# climate, status_bar.hpp). `segment` is the segment the oracle shots show in that slot: every GOG
+# shot shows a NORD island's row, 6, 8, 11 (sprite-sad on hud_idle_running, tex ids 46, 48, 51);
+# slot 3 (667, only DSCHUNGEL islands fill it) is on no shot. The original's green bar
+# STATUSBAR_BALKEN (5 x 29 at x + 25 in each slot, 0x100656b0) is a named placeholder, not drawn:
+# its length comes from island property 11, which the sim does not hold (OQ-702).
+element rosh_0 pos 547 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 40 segment 6 anchor bottom method sprite-sad shot hud_idle_running
+element rosh_1 pos 587 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 40 segment 8 anchor bottom method sprite-sad shot hud_idle_running
+element rosh_2 pos 627 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 40 segment 11 anchor bottom method sprite-sad shot hud_idle_running
+element rosh_3 pos 667 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 40 anchor bottom method code
 element fragezeichen pos 746 733 size 34 35 file toolgfx/statusbar.tex access STATUSBAR_FRAGEZEICHEN tex_id 1 anchor after-statusbar method sprite-sad shot hud_idle_running
 element weltkarte pos 779 0 size 245 248 file toolgfx/fenster.tex access WELTKARTE tex_id 2 anchor right method sprite-sad shot hud_idle_running
 # UI-MINIMAP-1 fix F1: the scroll's rolled left end, fenster.tex id 3 (34 x 47, the texture after

@@ -7,6 +7,14 @@
 resize 1024 768
 wait frames 5
 look 1140 516
+# UI-STATUS-1 B: the status bar shows the island under the cursor (docs/re/ui.md 5.6): the
+# pointer on the developer city's NORD island gives the counters and the fertility row (6, 8, 11)
+# the oracle shots draw; the clicks below put it on chrome, where the bar keeps that tile.
+wait frames 5
+hover-land 1130 516
+wait frames 5
+expect fact hud.counters == materials+residents
+expect fact hud.fertility == 6,8,11
 screenshot hud_idle_live
 key b
 wait frames 5

@@ -143,23 +143,20 @@ struct BuildingInspection {
 inspect_building(const sim::World& world, sim::CityRef city, sim::TileXY tile);
 
 /// What the window reads. Not a World.
-/// UI-WINDOW-1 fix round R2: one of the local player's cities as the HUD's status bar shows it
-/// (the city on the island the view is centred on, else the first; docs/re/ui.md 5.2). Read on the
-/// sim thread at publication from existing read-only accessors only: World::islands(), the island's
-/// tile rectangle (TileLayer::x0/y0/width/height), City::owner/number/stock and
+/// UI-WINDOW-1 fix round R2, UI-STATUS-1 B: a city whose figures the status bar can show
+/// (docs/re/ui.md 5.6): a city of the local player (its materials and residents), or another
+/// player's city that knows the local player (City::player_mask; its residents only, AnnoFrame
+/// 0x10009b5b..0x10009b84). Read on the sim thread at publication from existing read-only
+/// accessors only: World::islands(), City::owner/number/stock/player_mask and
 /// World::city_population. No state, stream, hash or draw changes.
 struct CityCounters {
     sim::CityRef city;
-    /// The island's tile rectangle in world tiles.
-    std::int32_t island_x0 = 0, island_y0 = 0;
-    std::uint32_t island_w = 0, island_h = 0;
-    /// The city's goods stock (8.8 tons per goods number) and its population.
+    /// A city of the local player.
+    bool own = false;
+    /// The city's goods stock (8.8 tons per goods number); empty for another player's city (the
+    /// original never shows a foreign city's materials).
     std::vector<std::uint32_t> goods;
     std::optional<std::int64_t> population;
-    [[nodiscard]] bool island_contains(std::int64_t x, std::int64_t y) const {
-        return x >= island_x0 && y >= island_y0 && x < std::int64_t{island_x0} + island_w &&
-               y < std::int64_t{island_y0} + island_h;
-    }
 };
 
 struct PlaySnapshot {
@@ -217,9 +214,13 @@ struct PlaySnapshot {
     /// draw change - it wraps `residents_at_or_above`'s own existing aggregate for a `CityRef`).
     /// nullopt when the player has no city yet, matching `money`/`goods`/`eligibility` above.
     std::optional<std::int64_t> population;
-    /// UI-WINDOW-1 fix round R2: every city of the local player, in (island, city) order. Null
-    /// when the player has none.
+    /// UI-WINDOW-1 fix round R2, UI-STATUS-1 B: every city of the local player and every other
+    /// player's city that knows the local player, in (island, city) order (CityCounters). Null
+    /// when there is none.
     std::shared_ptr<const std::vector<CityCounters>> cities;
+    /// UI-STATUS-1 B: the runner's local player (set_local_player), whose cities and discovered
+    /// islands the status bar asks about.
+    std::uint32_t local_player = 0;
     /// UI-MINIMAP-1 B2: every island's tile owners and cities (territory_view.hpp), taken at
     /// publication from read-only accessors (World::islands, TileLayer::owner, City number, owner
     /// and player_mask, SimConfig::neutral_owner). The same object is republished while the
@@ -247,8 +248,11 @@ struct PlaySnapshot {
                                                   std::optional<sim::PlayerId> local);
 
 /// UI-MINIMAP-1 B2: the territory of `world` (TerritoryView, version 0). Read-only; O(island
-/// tiles + cities).
-[[nodiscard]] TerritoryView collect_territory_view(const sim::World& world);
+/// tiles + cities). UI-STATUS-1 B: each island's land test (TerritoryIsland::land) is taken from
+/// `previous` when it holds the same island (index, rectangle, terrain digest), so it is computed
+/// once per terrain, not per publication; without it, from the island's height column.
+[[nodiscard]] TerritoryView collect_territory_view(const sim::World& world,
+                                                   const TerritoryView* previous = nullptr);
 
 /// UI-MINIMAP-1 B2: the figures the minimap may mark: every ship (a figure with a navigation
 /// state and no parent, the same set OpeningView::ships lists) as list 1, the original's SCHIFF

@@ -26,6 +26,7 @@
 #include <anno/sim/placement.hpp>
 #include <anno/sim/reject.hpp>
 #include <anno/sim/replay.hpp>
+#include <anno/sim/terrain_view.hpp>
 #include <anno/sim/types.hpp>
 #include <anno/sim_load/fixed_map.hpp>
 #include <anno/sim_load/original_registry.hpp>
@@ -947,27 +948,33 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
     refresh_territory();
     next->territory = territory_;
     next->map_figures = std::make_shared<const std::vector<MapFigure>>(collect_map_figures(world_));
-    // UI-WINDOW-1 fix round R2/R4: the local player's cities, in (island, city) order, for the
-    // status bar: it shows the city on the island the view is centred on, else the first of these
-    // (the owner's "Always show my city", 2026-11-14). Read-only accessors only (CityCounters's own
-    // comment); the cost is measured with ANNO_PUBLISH_STATS.
-    if (developer_city_) {
+    // UI-WINDOW-1 fix round R2, UI-STATUS-1 B: the cities whose figures the status bar can show,
+    // in (island, city) order: the local player's (materials and residents) and every other
+    // player's city that knows the local player (residents only; docs/re/ui.md 5.6). Which one
+    // shows is the window's choice for the tile under its cursor (status_bar.hpp). Read-only
+    // accessors only (CityCounters's own comment); the cost is measured with ANNO_PUBLISH_STATS.
+    next->local_player = local_player_.v;
+    {
         auto cities = std::make_shared<std::vector<CityCounters>>();
         for (const auto& island : world_.islands()) {
             if (!island) {
                 continue;
             }
             for (const std::optional<sim::City>& city : island->cities) {
-                if (!city || city->owner != local_player_) {
+                if (!city) {
+                    continue;
+                }
+                const bool own = city->owner == local_player_;
+                if (!own && !std::binary_search(city->player_mask.begin(), city->player_mask.end(),
+                                                local_player_)) {
                     continue;
                 }
                 CityCounters c;
                 c.city = sim::CityRef{island->index, city->number};
-                c.island_x0 = island->tiles.x0();
-                c.island_y0 = island->tiles.y0();
-                c.island_w = island->tiles.width();
-                c.island_h = island->tiles.height();
-                c.goods = city->stock.stock;
+                c.own = own;
+                if (own) {
+                    c.goods = city->stock.stock;
+                }
                 c.population = world_.city_population(c.city);
                 cities->push_back(std::move(c));
             }
@@ -1195,7 +1202,7 @@ void PlayRunner::fill_inspection(PlaySnapshot& next) {
 }
 
 void PlayRunner::refresh_territory() {
-    TerritoryView now = collect_territory_view(world_);
+    TerritoryView now = collect_territory_view(world_, territory_.get());
     if (territory_ && territory_->same_content(now)) {
         return;
     }
@@ -1251,15 +1258,17 @@ MinimapOwnerRule minimap_owner_rule(const PlayLoad& load, const fs::path& file,
     return rule;
 }
 
-TerritoryView collect_territory_view(const sim::World& world) {
+TerritoryView collect_territory_view(const sim::World& world, const TerritoryView* previous) {
     TerritoryView out;
     out.neutral_owner = world.config().neutral_owner;
+    out.climate_mask = world.config().links.raw_climate_mask;
     for (const auto& island : world.islands()) {
         if (!island) {
             continue;
         }
         const sim::TileLayer& tiles = island->tiles;
         TerritoryIsland t;
+        t.index = island->index.v;
         t.x0 = tiles.x0();
         t.y0 = tiles.y0();
         t.w = tiles.width();
@@ -1281,6 +1290,44 @@ TerritoryView collect_territory_view(const sim::World& world) {
                 c.known_by.push_back(p.v);
             }
             t.cities.push_back(std::move(c));
+        }
+        // UI-STATUS-1 B: the status bar's fertility row (TerritoryIsland's comments).
+        t.climate = island->climate;
+        for (const sim::PlayerId p : island->players_present) {
+            t.discovered_by.push_back(p.v);
+        }
+        for (const TerritoryCity& c : t.cities) {
+            t.discovered_by.push_back(c.owner);
+        }
+        std::sort(t.discovered_by.begin(), t.discovered_by.end());
+        t.discovered_by.erase(std::unique(t.discovered_by.begin(), t.discovered_by.end()),
+                              t.discovered_by.end());
+        t.terrain_digest = island->terrain ? island->terrain->digest : 0;
+        if (previous != nullptr) {
+            for (const TerritoryIsland& p : previous->islands) {
+                if (p.index == t.index && p.x0 == t.x0 && p.y0 == t.y0 && p.w == t.w &&
+                    p.h == t.h && p.terrain_digest == t.terrain_digest) {
+                    t.land = p.land;
+                    break;
+                }
+            }
+        }
+        const bool reused = previous != nullptr && t.land != nullptr;
+        if (!reused) {
+            const sim::VertexGrid grid = sim::VertexGrid::of(*island);
+            if (grid.ok()) {
+                auto land =
+                    std::make_shared<std::vector<std::uint8_t>>(static_cast<std::size_t>(n));
+                for (std::uint32_t y = 0; y < t.h; ++y) {
+                    for (std::uint32_t x = 0; x < t.w; ++x) {
+                        // The vertex (x, y) of the tile, its north-west corner (island slot
+                        // +0x98, AnnoWelt 0x10084c20: row stride W + 1).
+                        const auto h = grid.at(std::int64_t{t.x0} + x, std::int64_t{t.y0} + y);
+                        (*land)[std::size_t{y} * t.w + x] = h && *h > 0 ? 1 : 0;
+                    }
+                }
+                t.land = std::move(land);
+            }
         }
         out.islands.push_back(std::move(t));
     }

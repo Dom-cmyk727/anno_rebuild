@@ -795,9 +795,15 @@ def compose_screen(layout_dir: str, screen: str, game_dir: str) -> "object":
         blit_el("baumat_bricks")
         blit_el("baumat_marble")
     blit_el("fragezeichen")
-    blit_el("rosh_46")
-    blit_el("rosh_48")
-    blit_el("rosh_51")
+    # UI-STATUS-1 B: the fertility row as the oracle shots show it - each slot's own `segment`
+    # (hud.txt rosh_<k>: the NORD row 6, 8, 11 of every GOG shot), drawn as tex_id + segment; a
+    # slot without one is on no shot (docs/re/ui.md 5.6).
+    k = 0
+    while f"rosh_{k}" in by_name:
+        slot = by_name[f"rosh_{k}"]
+        if "segment" in slot:
+            blit_el(slot["name"], int(slot.get("tex_id", "0")) + int(slot["segment"]))
+        k += 1
     if spec["kind"] == "construction":
         blit_el("einwohner")
     blit_el("zoom_plus")

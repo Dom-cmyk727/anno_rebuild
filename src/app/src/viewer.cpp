@@ -27,6 +27,7 @@
 #include <anno/app/section_overlap.hpp>
 #include <anno/app/selection.hpp>
 #include <anno/app/ship_motion.hpp>
+#include <anno/app/status_bar.hpp>
 #include <anno/app/ui_mock.hpp>
 #include <anno/app/ui_transform.hpp>
 #include <anno/app/window_capture.hpp>
@@ -807,12 +808,22 @@ class Viewer {
     /// sub-tab each view shows (hud_tabs.hpp; docs/re/ui.md 5.4), built from hud.txt; empty when
     /// there is no HUD layout or its views do not parse (the error is printed once).
     std::optional<HudTabs> hud_tabs_;
-    /// Whether the last frame drew the status bar's city counters (the `hud.counters` fact, R2).
-    bool hud_counters_shown_ = false;
+    /// The groups the last frame's status bar drew (the `hud.counters` fact; UI-STATUS-1 B).
+    StatusCounters hud_counters_ = StatusCounters::Gold;
     /// And which city they showed (the `hud.counters.city` fact, fix round R4).
     std::optional<sim::CityRef> hud_counters_city_;
     /// Whether any frame drew the HUD yet (the fact says "not drawn" until then, R4).
     bool hud_counters_drawn_ = false;
+    /// UI-STATUS-1 B (status_bar.hpp, docs/re/ui.md 5.6): the map tile under the cursor, kept
+    /// while the pointer is over chrome or outside the window (OQ-700: the original's cursor keeps
+    /// its last map tile, as the History Edition frames suggest); the pick for it; the fertility
+    /// row with its pending hide (the window's clock, never sim time).
+    std::optional<sim::TileXY> status_tile_;
+    StatusPick status_pick_;
+    FertilityRow fertility_row_;
+    /// Re-reads the cursor's map tile from the last drawn frame and updates the pick and the row:
+    /// every frame, before the status bar is drawn (AnnoFrame 0x10005a10 -> 0x100052a0).
+    void update_status_bar();
     /// Shows view `view` at the sub-tab it showed last (a main-tab press), closing the
     /// construction menu first.
     void select_hud_view(const std::string& view);
@@ -881,10 +892,10 @@ class Viewer {
         bool selected_house = false;
         /// The city the status bar's counters show (fix round R4), nullopt when hidden.
         std::optional<sim::CityRef> counters_city;
+        /// The groups the status bar's counters show (UI-STATUS-1 B).
+        StatusCounters counters_groups = StatusCounters::Gold;
     };
     [[nodiscard]] ConstructionHudInputs construction_hud_inputs() const;
-    /// The world tile under the drawable's centre (the status bar's centred island, R2).
-    [[nodiscard]] std::optional<sim::TileXY> centre_tile() const;
     /// The scripted session (ViewerHooks::script), the frames drawn and the loop's start for it.
     DevScript* script_ = nullptr;
     PublicationHold* hold_ = nullptr;
@@ -3063,9 +3074,16 @@ void Viewer::script_tick() {
     // facts either; removing the extra call closes the gap structurally, not by timing.
     st.facts["selection.clicks"] = std::to_string(selection_clicks_);
     st.facts["ui.press"] = ui_press_ ? "1" : "0";
-    st.facts["hud.counters"] = !hud_counters_drawn_  ? "not drawn"
-                               : hud_counters_shown_ ? "shown"
-                                                     : "hidden";
+    // UI-STATUS-1 B: the groups the last frame's status bar drew ("gold", "residents",
+    // "materials+residents"), the cursor's map tile, its island and its territory's city, and the
+    // fertility row's segments (status_bar.hpp).
+    st.facts["hud.counters"] =
+        hud_counters_drawn_ ? status_counters_name(hud_counters_) : std::string("not drawn");
+    st.facts["hud.status.tile"] = status_tile_text(status_pick_.tile);
+    st.facts["hud.status.island"] = status_island_text(status_pick_);
+    st.facts["hud.status.city"] = status_city_text(status_pick_.city);
+    st.facts["hud.fertility"] = fertility_text(fertility_row_.shown());
+    st.facts["hud.fertility.pending"] = fertility_row_.hide_at() ? "yes" : "no";
     st.facts["hud.counters.city"] = hud_counters_city_
                                         ? std::to_string(hud_counters_city_->island.v) + ":" +
                                               std::to_string(hud_counters_city_->city.v)
@@ -3767,8 +3785,9 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
         ui_transform(static_cast<int>(w), static_cast<int>(h), ui_scale_, ui_rule_);
     if (construction_menu_ != nullptr && ui_t.ui_w > 0 && ui_t.ui_h > 0) {
         const auto ui_start = Clock::now();
+        update_status_bar();
         const auto in = construction_hud_inputs();
-        hud_counters_shown_ = in.counters.tools.has_value() || in.counters.residents.has_value();
+        hud_counters_ = in.counters_groups;
         hud_counters_city_ = in.counters_city;
         hud_counters_drawn_ = true;
         // UI-INFO-1: the armed type's name, preview, costs and upkeep (live registry).
@@ -3931,25 +3950,41 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
 }
 #endif
 
-std::optional<sim::TileXY> Viewer::centre_tile() const {
-    // The world tile under the drawable's centre at sea level (render::pick_ray at kSeaLevel, the
-    // first step of FrameProjection::pick), from the last frame drawn: which island the view is
-    // centred on. Sea level rather than the ground: an island's rectangle is all that is asked.
-    if (!pointer_frame_ || !pointer_frame_->scene) {
-        return std::nullopt;
+void Viewer::update_status_bar() {
+    // UI-STATUS-1 B (docs/re/ui.md 5.6): the map tile under the cursor, re-read every frame from
+    // the last drawn frame (the pointer may stand still while the camera moves under it), and kept
+    // while the pointer is over chrome or outside the window (OQ-700).
+    if (cursor_ && pointer_frame_ && !ui_hit_at(cursor_->first, cursor_->second).chrome) {
+        if (const auto p = pick_point(*pointer_frame_, cursor_->first, cursor_->second)) {
+            status_tile_ = p->tile;
+        }
     }
-    const PointerFrame& f = *pointer_frame_;
-    const auto point = render::scene_point(f.map, f.drawable_w / 2.0, f.drawable_h / 2.0);
-    if (!point) {
-        return std::nullopt;
+    const auto snapshot = play_ != nullptr ? play_->runner().snapshot() : nullptr;
+    if (snapshot == nullptr || snapshot->territory == nullptr) {
+        status_pick_ = StatusPick{};
+        status_pick_.tile = status_tile_;
+        fertility_row_.update(status_pick_, 0);
+        return;
     }
-    const auto sea = render::pick_ray(point->first, point->second, f.geometry,
-                                      static_cast<double>(render::kSeaLevel));
-    if (!sea) {
-        return std::nullopt;
+    StatusBarRule rule;
+    rule.slots =
+        construction_menu_ != nullptr ? fertility_slot_count(construction_menu_->hud()) : 0;
+    // An armed building (the building tool on, a type selected, not demolishing): its footprint
+    // centred on the cursor tile, for the corner rule over island land outside every territory.
+    std::optional<sim::TileRect> armed;
+    if (status_tile_ && dev_ != nullptr && dev_->enabled() && dev_->input().selected() &&
+        !dev_->input().demolish_mode()) {
+        if (const auto e = dev_->input().footprint_extent(*status_tile_)) {
+            armed = sim::TileRect{static_cast<std::int32_t>(e->x0),
+                                  static_cast<std::int32_t>(e->y0), e->w, e->h};
+        }
     }
-    return sim::TileXY{static_cast<std::int32_t>(std::floor(sea->u1)),
-                       static_cast<std::int32_t>(std::floor(sea->v1))};
+    status_pick_ =
+        pick_status(*snapshot->territory, status_tile_, snapshot->local_player, armed, rule);
+    const auto now_ms = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now().time_since_epoch())
+            .count());
+    fertility_row_.update(status_pick_, now_ms, rule);
 }
 
 Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
@@ -3963,42 +3998,46 @@ Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
     // H2: the live numbers (goods_tools_ etc. resolved once, constructor; this file's own member
     // comment). Goods are 8.8 fixed-point tons (PlaySnapshot::goods's own doc comment) - sim::kTon
     // (production.hpp) is the 256 that separates the whole-ton bits from the fractional ones; a
-    // display counter only ever needs the whole tons. eligibility is null exactly when there is
-    // no city yet (its own doc comment says so, "matching money/goods above") - money/goods
-    // themselves are plain fields (0, not nullopt) in that case, so eligibility's nullness is the
-    // real "has a city" signal.
+    // display counter only ever needs the whole tons (the original divides by 256 toward zero,
+    // AnnoFrame 0x10009c08..0x10009c6c). eligibility is null exactly when there is no city yet;
+    // the gold counter keeps that gate (PlaySnapshot::money is filled only with a city).
     const bool has_city = snapshot != nullptr && snapshot->eligibility != nullptr;
-    // UI-WINDOW-1 fix round R4 (owner decision 2026-11-14, "Always show my city"; docs/re/ui.md
-    // 5.2): the five counters (tools, wood, bricks, marble, residents) show on every screen while
-    // the local player owns a city - the city on the island the view is centred on when it holds
-    // one of the player's cities, else the player's first city in (island, city) order (the one
-    // PlaySnapshot::goods follows). Hidden only before the first founding. The original's own
-    // rule over open sea and foreign islands is not evidenced (OQ-622).
-    const CityCounters* centred = nullptr;
-    if (has_city && snapshot->cities && !snapshot->cities->empty()) {
-        if (const auto tile = centre_tile()) {
-            for (const CityCounters& c : *snapshot->cities) {
-                if (c.island_contains(tile->x, tile->y)) {
-                    centred = &c;
-                    break;
-                }
+    // UI-STATUS-1 B (docs/re/ui.md 5.6; the owner chose the original, OQ-703): the counters follow
+    // the city whose territory holds the tile under the cursor (update_status_bar): a city of the
+    // local player shows its four materials and its residents, another player's city that knows
+    // the local player only its residents, anything else gold only. Replaces R4's "Always show my
+    // city" and the view-centre point.
+    const CityCounters* shown = nullptr;
+    StatusCounters groups = StatusCounters::Gold;
+    if (snapshot != nullptr && snapshot->cities && status_pick_.counters_city) {
+        for (const CityCounters& c : *snapshot->cities) {
+            if (c.city == *status_pick_.counters_city) {
+                shown = &c;
+                break;
             }
         }
-        if (centred == nullptr) {
-            centred = &snapshot->cities->front();
+        if (shown != nullptr) {
+            groups = status_pick_.counters;
+            if (groups == StatusCounters::MaterialsResidents && !shown->own) {
+                groups = StatusCounters::Residents; // never a foreign city's materials
+            }
         }
     }
+    const bool materials = groups == StatusCounters::MaterialsResidents;
     auto whole_tons = [&](std::optional<sim::GoodsId> id) -> std::optional<std::uint32_t> {
-        if (centred == nullptr || !id || *id >= centred->goods.size())
+        if (!materials || shown == nullptr || !id || *id >= shown->goods.size())
             return std::nullopt;
-        return centred->goods[*id] / sim::kTon;
+        return shown->goods[*id] / sim::kTon;
     };
     HudCounters counters{has_city ? std::optional<std::int64_t>(snapshot->money) : std::nullopt,
                          whole_tons(goods_tools_),
                          whole_tons(goods_wood_),
                          whole_tons(goods_bricks_),
                          whole_tons(goods_marble_),
-                         centred != nullptr ? centred->population : std::nullopt};
+                         shown != nullptr && groups != StatusCounters::Gold
+                             ? std::optional<std::int64_t>(shown->population.value_or(0))
+                             : std::nullopt,
+                         fertility_row_.shown()};
     // ADR 0004 row 18 (W4-NEXT-2 K): draw only once the sim's own answer for the selected
     // building, not the click itself, confirms it is a house - selection.hpp's own doc comment
     // ("the answer selects it... every later answer re-checks the building's id").
@@ -4006,8 +4045,13 @@ Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
                                 snapshot->inspection != nullptr &&
                                 snapshot->inspection->id == selection_.selected->id &&
                                 snapshot->inspection->kind == "House";
-    return {spec, std::move(counters), snapshot, selected_house,
-            centred != nullptr ? std::optional<sim::CityRef>(centred->city) : std::nullopt};
+    return {spec,
+            std::move(counters),
+            snapshot,
+            selected_house,
+            shown != nullptr && groups != StatusCounters::Gold ? std::optional(shown->city)
+                                                               : std::nullopt,
+            groups};
 }
 
 void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::Rect view) {
@@ -4067,8 +4111,9 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         // see its own comment). Timed on its own (not folded into "render other") so the cache's
         // effect is measurable per CLAUDE.md's "measure every performance change".
         const auto ui_start = Clock::now();
+        update_status_bar();
         const auto in = construction_hud_inputs();
-        hud_counters_shown_ = in.counters.tools.has_value() || in.counters.residents.has_value();
+        hud_counters_ = in.counters_groups;
         hud_counters_city_ = in.counters_city;
         hud_counters_drawn_ = true;
         // UI-INFO-1: the armed type's name, preview, costs and upkeep (live registry).

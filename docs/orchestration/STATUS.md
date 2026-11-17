@@ -91,6 +91,24 @@ says who is doing what, where the work is, and what it waits on.
     water as the camera stopped.
   - So the zoom does not meet the owner's rule yet. RENDER-DIRECT removes stand-ins and dissolves.
   - Window move and resize kept drawing at 64-72 fps during the held drag.
+- **[MAC-HEAVY-1](tasks/mac-heavy-1.md) written** 2026-11-17 for the Mac executor, on the owner's request
+  ("I also need a new mac job. This can be more comprehensive once this time, it may contain CPU and or RAM
+  heavy test jobs"). Released when the owner pastes the prompt, after GATE-RUN ui-tabs-b. Verification of
+  `main` only, with a time box per stage:
+  - the whole game-file suite under ASan and UBSan;
+  - every doctest binary whole in default and three shuffled orders;
+  - the full suite three times for flakes;
+  - the long opt-in runs;
+  - `anno-sim-replay population` invariants over every `.sze` at 0-600 game seconds, release against asan
+    byte for byte;
+  - the RENDER-DIRECT-1a atlas report compared across platforms.
+- **UI lane, 2026-11-17:**
+  - **UI-STATUS-1** (the status bar for the island under the cursor, the owner's rule from `ui_6.mp4`) was
+    written and its stage A started on the owner's "Yes, write it" in the UI lane's session. OQ-700..709
+    are reserved for it.
+  - **UI-MINIMAP-2** (the magnifier's last minus reaches the wheel's furthest zoom-out): asked "Go for the
+    UI lane's UI-MINIMAP-2 (magnifier zooms out as far as the wheel)?", the owner answered "Yes, go".
+    Released on `task/UI-MINIMAP-2` (`1d766083`). Its builds wait until the PC is free.
 - **The owner decided OQ-096 and OQ-096b** 2026-11-17. Asked "Raise it to 384 MiB, one mipmap level on both
   cards (my recommendation)", against keeping 256 MiB with no mips on the iGPU or deciding on a build, the
   owner answered "your recommendation". So `atlas_budget_mb` defaults to 512 MiB discrete and 384 MiB

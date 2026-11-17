@@ -15044,3 +15044,89 @@ Order: ISLAND-CROPS-1 1b, S2a → S2b and S4 in parallel; then S3; then stage B 
 NOT_RUN as before.
 
 READY FOR REVIEW.
+
+## UI-PRODBAR-1 stage B (B1 + B3a) — the fertility indicator, app side, behind its named placeholder — READY FOR REVIEW
+
+Branch `task/UI-PRODBAR-1`. UI lane, read-only app work: **no sim change**. The packet's "Stage B (released
+2026-11-17)" section has the scope. OQ-726 (the nibble-grid rebuild trigger) was split out of OQ-715 first,
+at `c73325f5`.
+
+**What landed:**
+- **`src/app/{include/anno/app,src}/fertility_indicator.*`:** pure functions for the rule of `docs/re/ui.md`
+  4.1. It reads only the type registry the app already has (`input_goods`, `head_raw[0x28..0x29]`,
+  `action_radius` = HEAD[0x11]) and the island rectangle. It contains:
+  - **`FertilityGates`:** the original's five gates in its order: preview valid `B+0x2e4`, last ghost,
+    `[B+0x48] < [B+0x50]`, registry lookup, projection. The projection is tested after the count, as at
+    `0x10047de0`.
+  - **`fertility_crop_object`:** input 0 in `0x38..0x4b` and HEAD u16 `[0x28]` != 0.
+  - **`fertility_row_half_widths`:** the midpoint-circle loop in the original's unsigned 32-bit arithmetic
+    and its signed loop compare, plus the r ≤ 3 widening.
+  - **`fertility_area`:** centre cells, up/down rows in the original's order, clamp to the island,
+    footprint left out.
+  - **`fertility_value`:** trunc.
+  - **`FertilityTileSource`:** the two sim tests. The placement test runs only where the crop is not dry.
+  - **`fertility_decision`** and **`fertility_label`**.
+  - **`load_fertility_frames`:** figure 1557, through the existing `load_figure_facings`.
+  - **`blend_fertility_frame`:** a CPU blend with clipping.
+- **The viewer:** it has no tile source, so the decision stops at the named placeholder
+  `fertility-indicator-needs-sim` (OQ-715) and **nothing is drawn**. The new fact `tool.fertility` reports
+  it (`none`, `gate:<name>`, `not-eligible`, the placeholder, or `frame <k>`). Comments mark both preview
+  draw sites (GPU overlay, CPU blend) as the place the bar goes once a source exists.
+- **The window's gate inputs** (an adaptation; the rebuild has no `B+0x2e4`):
+  - preview valid = the window's `PlacementKnowledge` does not refuse;
+  - last ghost = always (one ghost);
+  - rect non-empty = the footprint extent has tiles;
+  - type found = the armed type;
+  - projected = a drawn pointer frame.
+
+**Acceptance table**
+
+| Requirement | Positive proof | Negative control / failure proof | Evidence | Disposition |
+|---|---|---|---|---|
+| Disc = the original's table and order | r 3/4/5 tables; 3 × 3 counts r1 0, r2 16, r3 36, r4 52, r5 88; centre (11, 21) | not the 11 × 11 square (112) nor the grown footprint (160); corner (6, 16) out, (6, 21) in | `fertility indicator: row half-widths…`, `…disc tile counts…` | pending |
+| Even footprint, rotation, clamp | 4 × 3 → 40 (36 + 4); rotation 1 uses 3 × 4; clamped = unclamped filtered | — | `…two-cell centre…`, `…clamps the disc` | pending |
+| trunc(10·good/N) | 59/88 → 6, 87/88 → 9, N = 0 → 0 | **mutation run:** rounding instead of trunc fails 2 assertions (59/88, 87/88) | `…the value is trunc(10 times good / N)` | pending |
+| Building check | 801 → 104, 811 → 712, 807 → 1 (Anlagen.dat); range ends `0x38`/`0x4b` | 810 (in range, object 0) and 805 (out of range) refused; **mutation run:** accepting object 0 fails 3 assertions (synthetic fisher, Anlagen 810, decision NotEligible) | `…which types show it…`, `…801 shows it…` | pending |
+| Gates | each of the five closed alone → `gate:<name>`; projection closed after the count (N = 88) | an earlier gate stops before the count (N = 0) | `…every gate closes the bar on its own` | pending |
+| Placeholder | null source → `fertility-indicator-needs-sim`; not-eligible wins over it | — | `…named placeholder` | pending |
+| Count with a source | hand count 48 of 88 → frame 5; placement asked 48 times (only where not dry) | — | `…hand-counted frame` | pending |
+| Sprite | figure 1557: 11 facings × 3 groups, 54 × 12, anchor (27, 12); consecutive frames differ | — | `…the sprite is figure 1557…` | pending |
+
+**Failure proof (executed):**
+- **Mutation:** `fertility_value` rounding, and the object-0 check removed, both at once.
+- **Result:** 12 cases, 4 failed, 5 assertions failed, each named above.
+- **Restore:** reverted and rebuilt; 12/12 pass.
+
+**Gates run:**
+- **Build:** `cmake --preset msvc`, then `cmake --build --preset msvc`: clean, no warnings.
+- **clang-format 23.1.3:** the four changed C++ files are clean.
+- **Focused gate:** `run_selected.py --jobs 8`, log `cache\gates\ui-prodbar-1-B-02.log`.
+  - **Verdict:** **PASS**, selected 93, executed 93, failed 0, empty 0, skipped 0, incomplete 0, sanitizer
+    lines 0.
+  - **Selection:**
+    - the 12 fertility cases;
+    - the hud/ui/selection/construction `anno_app_tests`;
+    - `^viewer_wiring_`;
+    - the oracle tests as required tests: `live_screen_matches_oracle`, `ui_dynamic_draw_check`,
+      `info_panel_gog_compare`, `selected_house_pixel_check`, `ui_panels_match_gog`.
+  - **Run 01 failed in preflight:** a `*` in one test name, which CheckTestNames refuses. The case was
+    renamed, and run 02 is the evidence.
+- **WSL `check_unix_warnings.sh`:** GCC 13 and Clang 18, viewer with and without GPU: all clean, negative
+  controls caught. It ran before the two test-name string edits (names only).
+
+**NOT_RUN:**
+- the full suite (only changed lanes, owner rule);
+- macOS;
+- a visible bar: none can show until the sim's tile source exists;
+- B3b, the pixel check against HE (after S2-S4 and OQ-716).
+
+**Decisions and reasoning:**
+- The crop-object climate replacement (registry `+0x7c`, table `0x1002137c`) is **not** in the app. The tile
+  source receives HEAD[0x28] as is, because the critic's review moved that resolver into sim S3 (no second
+  source of truth). With the forester's 104 it never changes anything.
+- I added the `tool.fertility` fact but no new viewer_wiring script. With no source it can only ever read
+  the placeholder or a gate. A script checking it belongs to the packet that adds the source.
+- The sprite is loaded through `load_figure_facings` with 11 "facings". That is the existing loader's rule
+  (`facings[k]` = frame k of each group), so no new decode path was needed.
+
+READY FOR REVIEW.

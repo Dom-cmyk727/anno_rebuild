@@ -80,9 +80,17 @@ if(ANNO_HAVE_WGPU)
   if(ANNO_BUILD_TESTS)
     add_executable(anno_render_gpu_tests tests/main.cpp tests/gpu_test.cpp
       tests/gpu_chunk_build_test.cpp tests/play_gpu_test.cpp tests/picture_gpu_test.cpp
-      tests/preview_gpu_test.cpp tests/atlas_upload_test.cpp)
+      tests/preview_gpu_test.cpp tests/atlas_upload_test.cpp tests/adapter_memory_diag_test.cpp)
     target_link_libraries(anno_render_gpu_tests PRIVATE anno_render_gpu anno_app_core
       anno_test_support doctest::doctest)
+    if(WIN32)
+      # RENDER-DIRECT-1d: adapter_memory_diag_test.cpp reads DXGI_ADAPTER_DESC's own
+      # DedicatedVideoMemory/DedicatedSystemMemory/SharedSystemMemory - wgpu's own
+      # WGPUAdapterInfo exposes no memory sizes at all (webgpu.h), so this is the OS/API's own
+      # report, read directly, diagnostic-only (this test binary already needs no portability
+      # below Windows+Linux per CLAUDE.md's own target list, and the file itself is Windows-only).
+      target_link_libraries(anno_render_gpu_tests PRIVATE dxgi)
+    endif()
     # Our own synthetic files (fixtures/synthetic): a scene without islands. ANNO_REPO_DIR
     # (as anno_app_tests, src/app/CMakeLists.txt): atlas_upload_test.cpp's own data/maps/lan5.txt.
     target_compile_definitions(anno_render_gpu_tests PRIVATE

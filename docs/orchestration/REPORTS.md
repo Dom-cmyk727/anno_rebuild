@@ -15222,3 +15222,38 @@ adapter).
   indicative, not required for this round.
 
 READY FOR REVIEW.
+
+## RENDER-DIRECT-1d — the Radeon's real allocation ceiling, measured and diagnosed — READY FOR REVIEW (task/RENDER-DIRECT-1d, from `origin/task/RENDER-DIRECT-1c` `f148638e`, new worktree)
+
+**Scope, as the packet asked: measurement and diagnosis only.** No production code changed; OQ-096b's 384 MiB non-discrete default is NOT touched. One new file, `src/render/tests/adapter_memory_diag_test.cpp` (`anno_render_gpu_tests`), answering the orchestrator's three questions about RENDER-DIRECT-1c review F1/F2's Radeon finding (`endless02.sze`'s real pair, 356,515,840 bytes, fits the calculated 402,653,184-byte budget but the real device still refuses the single 17-layer texture: "Not enough memory left").
+
+**Question 1, answered: a single-resource ceiling, not the heap's own total capacity - but small enough that even one of the two groups alone can exceed it.** `endless02.sze`'s pair uploaded as two SEPARATE per-group textures: group 1 (4 layers, 83,886,080 bytes/80.0 MiB) allocated; group 0 (14 layers, 293,601,280 bytes/280.0 MiB) was refused even on its own. Splitting the pair by zoom group is not always enough to make a resident set fit.
+
+**Question 2, answered: DXGI's own memory facts** (`DXGI_ADAPTER_DESC`/`IDXGIAdapter1::GetDesc1`, matched to the already-opened wgpu adapter by `vendorID`/`deviceID` - `WGPUAdapterInfo`/webgpu.h has no memory-size fields at all):
+
+| Adapter | DedicatedVideoMemory | DedicatedSystemMemory | SharedSystemMemory |
+|---|---|---|---|
+| RTX 4090 | 25,310,527,488 B (24,138.0 MiB) | 0 | 16,704,471,040 B (15,930.6 MiB) |
+| Radeon iGPU | 488,390,656 B (465.8 MiB) | 0 | 16,704,471,040 B (15,930.6 MiB, same shared pool) |
+
+**Question 3, answered: the real single-resource ceiling, found by bisecting the layer count of a single 2048×2048 texture array with RENDER-DIRECT-1c's own error-scope detection: 12 layers (251,658,240 bytes, 240.0 MiB) allocate on the Radeon; 13 layers (272,629,760 bytes, 260.0 MiB) are refused.** Consistent with question 1 (group 1 at 80.0 MiB well under, group 0 at 280.0 MiB well over), and about **52% of the 465.8 MiB `DedicatedVideoMemory`** DXGI reports for this adapter (question 2) - a real allocator-level restriction, not simply "the dedicated VRAM is smaller than the budget."
+
+**For the owner, prepared not decided: `docs/open-questions.md` OQ-691.** OQ-096b's 384 MiB non-discrete default is well above the real ~240 MiB single-resource ceiling found on this adapter. Three non-exclusive options, none implemented: (a) lower the non-discrete default below the real per-resource ceiling; (b) split any resident set above a configured per-resource size into more than one texture at upload time (a stage 2/3 upload-granularity design, separate from the *total* budget number); (c) measure the real ceiling at runtime per-adapter instead of hardcoding a number that is specific to this PC's Radeon/driver/Vulkan combination on 2026-11-17 and may not transfer elsewhere.
+
+**Gates.**
+- clang-format 23.1.3: clean.
+- WSL GCC 13 / Clang 18 `-Werror`, whole tree, all four configurations: clean.
+- `anno_render_gpu_tests`, native MSVC Release, `ANNO_GPU_ADAPTER=RTX`, full suite: **134/134 test cases, 80,512,071/80,512,071 assertions, 0 failed** (131 pre-existing plus this file's own 3 diagnostic cases - the DXGI case runs both adapters by name within itself).
+- `anno_render_gpu_tests`, native MSVC Release, every Radeon-named case (`--test-case=*Radeon*`, default adapter selection): **8/8 test cases, 38,095,019/38,095,019 assertions, 0 failed**.
+- CI preflight: PASS.
+- No quiet slot needed or requested, per the packet's own note (allocation outcomes, not timings).
+
+**Decisions and reasoning.**
+- Tolerated a real device refusal as a reportable finding, not a hard test failure, for both the per-group split (question 1) and the bisection's own expected refusals (question 3's `layers_allocate` just returns a bool) - following RENDER-DIRECT-1c review F1/F2's own precedent: a real, named device outcome is data for the owner, not a bug in the proof, as long as it is the SPECIFIC named refusal expected (checked where it matters) and not some other, unexplained failure.
+- Built the bisection's probe pages as all-zero dummy buffers (`dummy_pages`) rather than real decoded scene frames: allocation-size testing needs only the right byte counts, and a real-frame version would have made every bisection step as slow as a full scene decode for no added evidence.
+- Called `wait_idle` after every bisection probe so a released texture's memory has a chance to be reclaimed before the next attempt - without it, back-to-back allocate/release cycles could show stale pressure and report a falsely low ceiling.
+- Duplicated `on_named_adapter`/`read_all`/`load_scene_direct` from `atlas_upload_test.cpp` rather than sharing them: both files already duplicate small per-binary helpers by this project's own established convention (`atlas_upload_test.cpp`'s own doc comment on `load_scene_direct`), and a new header for helpers only two files in one binary use would be more machinery than the ~30 lines it replaces.
+- Added DXGI as a Windows-only diagnostic dependency of the test binary only (not of `anno_render_gpu`/`anno_render`), guarded by `#if defined(_WIN32)`/`#ifdef WIN32` in both the CMakeLists.txt link and the source file - wgpu's own `WGPUAdapterInfo` has no memory-size fields to read instead, and this question is explicitly about what the OS/API expose, which on this project's Windows dev host means DXGI.
+- Did not touch OQ-096b's default or design a split-upload path: both are the owner's call (the packet's own "don't change the default. Prepare the options and numbers"), recorded as OQ-691 rather than acted on.
+
+READY FOR REVIEW.

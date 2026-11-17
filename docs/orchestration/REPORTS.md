@@ -16084,3 +16084,96 @@ determinism cases all pass unchanged. **No visible change in any existing test m
   not a question.
 
 READY FOR REVIEW.
+
+## ISLAND-CROPS-1 stage 1b — the island's crop list in the World — READY FOR REVIEW
+
+Branch `task/ISLAND-CROPS-1`, on 1a `4bebe08e`. Commits: `8f1fb74d` feat(sim), `ce885392` test(sim)
+(cases and hand transcriptions), `28c7c227` test(sim) (oracle, goldens, legacy fixture), `dd584141`
+docs, then this report. Versioning as accepted by the orchestrator (2026-11-17): section bases
+header 2 and islands 2, global `kStateHashVersion` 139 unchanged (state.md §9.7, ADR 0006 item 4).
+
+**What changed:**
+- `SimConfig::crops` (`CropTables`, header section base 2): `mask_first_goods` 0x38 (AnnoWelt
+  `0x10089933`), `mask_bits` 32 (the dword `+0xac`, `0x1008cbdf`), `base_goods` {0x38, 0x3B, 0x44,
+  0x45, 0x46, 0x47} = 0xF009 (`0x10089897`, AnnoScene `0x100085a2`), `anbau_first/last_goods`
+  0x38..0x44 (`0x100898dc`, `0x1008992c`), `anbau_name_cap` 13 (`0x10089954`); `validate()`, and
+  `links.raw_kinds <= crops.mask_bits`.
+- `Island::crops` (islands section base 2, after `players_present`): ascending unique goods ids;
+  `validate_island` checks the set. `IslandSpec::crops` optional: no ANBAU record = the constructor
+  value 0xFFFFFFFF (`0x1008cbdf`) = ids 0x38..0x57.
+- Loader (`island_crops`, scenario_formats.cpp): base set unless climate 0, then each name via
+  `goods_by_name` inside the ANBAU range, at most 13 names (unknown counted). Unknown name: new warning
+  `UnknownCropName`, text says the original skips silently (`0x10089931` -> `0x10089943`). Second
+  record refused "twice (ADAPTATION: the original keeps the last record)".
+- INSELLNK: base set + `0x38 + k` per raw mark (AnnoScene `0x100085a2`-`0x100085cf`, unconditional);
+  `LinkRawMaterials` removed (its slot in the kind list is `UnknownCropName`). Fixed maps get the
+  base set (their marks are not link marks; fixed-map.md).
+- No reader: production, AI and UI do not read the field (D2 reads it later).
+- Docs: state.md §3.2 (write table, order, adaptation), §9.3 island line, §9.7; insel.md loader edge
+  cases; OQ-708 updated (mostly answered), OQ-709 new (bits 13-31 readers); fixed-map.md.
+
+**Changed fixtures, each with its reason (all moved by the header/islands section bytes; no
+behaviour change, no reader exists):**
+- `fixtures/synthetic/sim/pins.txt`: 50 pins moved. Oracle-owned, hand-copied from
+  `tools/sim_stream.py` (now transcribing CropTables and the constructor crop list): empty_world,
+  g0_step1/100/1000, g1_players_step100/700, s5_islands_create/step100/city_created/locked_create,
+  s6_g1_create/step100 (empty_registry unchanged). Self-baselines re-recorded by `pins.py regen`:
+  k3_tick2450/2500/59950/60000/60050/70000, leather_changed_command, leather_checkpoint_0..8,
+  leather_end, m2_found_session, p1_g7_create, s10_g2_end, s11_g3_checkpoints/end,
+  s12_g4_checkpoints/end, s13_g5_checkpoints/end, s7_g1_mp_checkpoints/mp_end/sp_end,
+  supply_tick110000/150000/190000/270000/310000/350000/430000, t24_g6_checkpoints/end.
+- `fixtures/synthetic/sim/current/`: g2.log, g3.log, g4.log, g5.log, g6.log, cargo_load.log,
+  cargo_load_wrong.log, cargo_unload.log, cargo_unload_wrong.log, m2_found.log, m2_found_wrong.log,
+  loop_checkpoints.txt (embedded saves and hashes), scenario_corpus.txt (create hashes; UnknownRecord
+  minus one per ANBAU scope; LinkRawMaterials column -> UnknownCropName=0).
+- New `fixtures/synthetic/sim/legacy139s1/` (g2.log, g2.save, README): the outgoing current/g2.log
+  (global 139, every section base 1), refused by a new identity test with "section header: base
+  version 1 is not supported (this build reads 2)".
+- The historical `fixtures/synthetic/sim/scenario_corpus.txt` is unchanged; the test maps its rows
+  (`with_decoded_crops`).
+
+**Corpus (P):** 50 scenarios with links: 668 INSEL5 islands with an ANBAU list, 229 link islands
+holding the base set plus only raw-mark goods (350 mark goods beyond the base), 0 unknown names,
+0 islands left at the constructor value.
+
+**Gate (this PC, msvc Release, tree = the committed heads):**
+- build: exit 0, no warnings; clang-format 23.1.3 clean on all changed C++ files.
+- `python -I tools/sim_stream.py --check`: goldens agree.
+- `python -I tools/pins.py check --area sim --jobs 8` (sim suite, replay, population_oracles_agree,
+  integration_stream_reference_*, highmap_digest_reference_agrees): `selected=1711 executed=1690
+  failed=0 empty=0 skipped=21 (opt-in=18, other=3)`, ctest 100 % of executed; VERDICT FAIL only for
+  the 3 known "other" skips: the ship-start symlink rows ("Dem Client fehlt ein erforderliches
+  Recht": this account cannot create symlinks; same as earlier reports). Log
+  `cache/gates/island-crops-1b-01.log`.
+- `run_selected.py` formats lanes + `anno_dump_agrees_with_python` + the crop sim cases, required the
+  crop corpus, ANBAU corpus and agree tests: `selected=95 executed=95 failed=0`, PASS. Log
+  `cache/gates/island-crops-1b-02.log`.
+- WSL `check_unix_warnings.sh` (after the other session's run ended, pgrep empty): exit 0; GCC 13.3
+  and Clang 18.1.3, 417 files with viewer+GPU and 83 without GPU, all clean; both negative controls
+  failed as expected. Log `cache/gates/island-crops-1b-unixwarn.log`.
+
+**Failure proof:** with the INSELLNK assignment removed locally (`s.spec.islands.back().crops = ...`),
+4 of 6 selected tests fail: `scenario links resolve ...` (2 assertions), `scenario links with raw
+materials ...` (2, the base+0x3E set and the 0xF049 word), `fixed map: the loader builds ...`
+(REQUIRE crops), and the crop corpus case. Restored, rebuilt: 6/6 pass. Never committed. Logs
+`cache/gates/island-crops-1b-failure-proof.log`, `cache/gates/island-crops-1b-restored.log`.
+
+| Acceptance (stage 1b) | Result |
+|---|---|
+| Field as ordered goods-id set, config with original defaults and addresses | done |
+| Sources: ANBAU (climate-0 base), no record (constructor value), INSELLNK (base + marks) | done |
+| Unknown-name warning cites the original's silence | done |
+| 13-name cap from config, unknown names counted | done |
+| Second ANBAU record: ADAPTATION in code and docs | done |
+| Word test vs the original for a template and an INSELLNK island | done |
+| Save round trip, hash change only in islands, section base bump, legacy refusal | done |
+| Every changed golden listed with its reason | above |
+| Sim lanes and changed fixtures | 1690/1690 executed pass (3 known symlink skips) |
+| check_unix_warnings | clean |
+| Mac full game-file run, CI | NOT_RUN here (orchestrator) |
+
+**Decisions and reasoning:**
+- Bits 13-31 are kept as goods ids (faithful word); OQ-709 says readers decide.
+- The INFO climate is read first whatever the record order (all shipped islands have INFO first).
+- `UnknownCropName` reuses `LinkRawMaterials`' position in the kind list so the corpus rows keep their
+  column order.

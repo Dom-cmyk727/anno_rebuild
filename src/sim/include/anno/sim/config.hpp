@@ -262,6 +262,48 @@ struct LinkTables {
     [[nodiscard]] std::string validate() const;
 };
 
+/// ISLAND-CROPS-1 (header section base 2): island property 11 (AnnoWelt island +0xac), the
+/// island's crop list, as the original's u32 bit mask. Bit b of the mask names goods id
+/// `mask_first_goods + b`; the sim stores the ids, never the word (Island::crops). The writers
+/// (docs/formats/insel.md "ANBAU", docs/sim/state.md §3.2):
+/// - the island constructor stores 0xFFFFFFFF, every bit (D AnnoWelt 0x1008cbdf); an island
+///   without an ANBAU record keeps it;
+/// - the ANBAU loader stores the base set, or nothing when the climate byte is 0 (D
+///   0x10089885-0x10089897), then ORs one bit per listed name found among the goods
+///   `anbau_first_goods..anbau_last_goods` (D 0x100898dc-0x1008993d), for at most
+///   `anbau_name_cap` names (D 0x10089954);
+/// - a new game's INSELLNK placement stores the base set OR the drawn raw marks, mark k = bit k
+///   (D AnnoScene 0x100085a2-0x100085cf, unconditionally).
+struct CropTables {
+    /// The goods id of bit 0 (D 0x10089933: `lea ecx, [ebp - 0x38]`; 0x38 = GETREIDE).
+    std::uint32_t mask_first_goods = 0x38;
+    /// The width of the original's mask (+0xac is a dword: D 0x1008cbdf, 0x1008993d). The
+    /// constructor value names every goods id `mask_first_goods .. + mask_bits - 1`. At most 32
+    /// (a raw mark k is the shift count of `1 << k`, AnnoScene 0x100085bb).
+    std::uint32_t mask_bits = 32;
+    /// The base set, the bits of 0xF009 as goods ids: GETREIDE 0x38, FLACHSBAUM 0x3B, KARTOFFEL
+    /// 0x44, and bits 13-15 = 0x45..0x47 (GRAS, BAUM, FISCH by the goods table; what the readers
+    /// do with them is OQ-709). D AnnoWelt 0x10089897, AnnoScene 0x100085a2. Ascending unique,
+    /// inside the mask.
+    std::vector<std::uint32_t> base_goods = {0x38, 0x3b, 0x44, 0x45, 0x46, 0x47};
+    /// The goods whose names the ANBAU loader looks for (D 0x100898dc `mov ebp, 0x38`,
+    /// 0x1008992c `cmp ebp, 0x44`): GETREIDE .. KARTOFFEL. Inside the mask.
+    std::uint32_t anbau_first_goods = 0x38;
+    std::uint32_t anbau_last_goods = 0x44;
+    /// The names the loader reads at most, unknown and empty ones included (D 0x10089954
+    /// `cmp eax, 0xc; jle`). Non-zero.
+    std::uint32_t anbau_name_cap = 13;
+
+    /// Empty when valid, else one message naming the field.
+    [[nodiscard]] std::string validate() const;
+    /// Whether `goods` has a bit in the mask.
+    [[nodiscard]] bool in_mask(std::uint32_t goods) const {
+        return goods >= mask_first_goods && goods - mask_first_goods < mask_bits;
+    }
+    /// The constructor value 0xFFFFFFFF as goods ids: every id of the mask, ascending.
+    [[nodiscard]] std::vector<std::uint32_t> constructor_goods() const;
+};
+
 /// ECON-BOOK-1 immutable role dimensions. Defaults are the original name table
 /// AnnoGame10024ca0 and three tax columns; mods may supply more names/columns.
 struct EconomyConfig {
@@ -474,6 +516,8 @@ struct SimConfig {
     /// validate() requires at least 1.
     std::uint32_t house_type_stride = 20;
     EconomyConfig economy;
+    /// ISLAND-CROPS-1 (header section base 2): island property 11, the crop list (CropTables).
+    CropTables crops;
 
     /// docs/sim/state.md §3.1. Empty when valid, else one message naming the
     /// first offending field ("SimConfig.building_div: must be non-zero").

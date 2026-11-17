@@ -1,0 +1,177 @@
+{
+  "comparisons": [
+    {
+      "case": "supply-leather",
+      "release": [
+        {
+          "k": 0,
+          "farms_built": 0,
+          "tanneries_built": 0,
+          "buildings": 76,
+          "ticks": 100000,
+          "made": 1344,
+          "taken": 754,
+          "store": 555
+        },
+        {
+          "k": 8,
+          "farms_built": 8,
+          "tanneries_built": 3,
+          "buildings": 87,
+          "ticks": 100000,
+          "made": 1344,
+          "taken": 754,
+          "store": 555
+        },
+        {
+          "k": 16,
+          "farms_built": 12,
+          "tanneries_built": 0,
+          "buildings": 88,
+          "ticks": 100000,
+          "made": 1344,
+          "taken": 754,
+          "store": 555
+        },
+        {
+          "k": 32,
+          "farms_built": 12,
+          "tanneries_built": 0,
+          "buildings": 88,
+          "ticks": 100000,
+          "made": 1344,
+          "taken": 754,
+          "store": 555
+        }
+      ],
+      "asan": [
+        {
+          "k": 0,
+          "farms_built": 0,
+          "tanneries_built": 0,
+          "buildings": 76,
+          "ticks": 100000,
+          "made": 1344,
+          "taken": 754,
+          "store": 555
+        },
+        {
+          "k": 8,
+          "farms_built": 8,
+          "tanneries_built": 3,
+          "buildings": 87,
+          "ticks": 100000,
+          "made": 1344,
+          "taken": 754,
+          "store": 555
+        },
+        {
+          "k": 16,
+          "farms_built": 12,
+          "tanneries_built": 0,
+          "buildings": 88,
+          "ticks": 100000,
+          "made": 1344,
+          "taken": 754,
+          "store": 555
+        },
+        {
+          "k": 32,
+          "farms_built": 12,
+          "tanneries_built": 0,
+          "buildings": 88,
+          "ticks": 100000,
+          "made": 1344,
+          "taken": 754,
+          "store": 555
+        }
+      ],
+      "equal_deterministic_counters": true,
+      "excluded_measurement_fields": [
+        "setup_ms",
+        "run_ms",
+        "us_per_tick",
+        "wall_ms"
+      ]
+    },
+    {
+      "case": "supply-farm",
+      "release": [
+        {
+          "farms": 1,
+          "searches": 1565,
+          "scanned": 76685,
+          "candidates": 3,
+          "popped": 28,
+          "cuts": 2
+        },
+        {
+          "farms": 8,
+          "searches": 12751,
+          "scanned": 624799,
+          "candidates": 3,
+          "popped": 28,
+          "cuts": 2
+        },
+        {
+          "farms": 15,
+          "searches": 23936,
+          "scanned": 1172864,
+          "candidates": 3,
+          "popped": 28,
+          "cuts": 2
+        },
+        {
+          "farms": 22,
+          "searches": 35123,
+          "scanned": 1721027,
+          "candidates": 3,
+          "popped": 28,
+          "cuts": 2
+        }
+      ],
+      "asan": [
+        {
+          "farms": 1,
+          "searches": 1565,
+          "scanned": 76685,
+          "candidates": 3,
+          "popped": 28,
+          "cuts": 2
+        },
+        {
+          "farms": 8,
+          "searches": 12751,
+          "scanned": 624799,
+          "candidates": 3,
+          "popped": 28,
+          "cuts": 2
+        },
+        {
+          "farms": 15,
+          "searches": 23936,
+          "scanned": 1172864,
+          "candidates": 3,
+          "popped": 28,
+          "cuts": 2
+        },
+        {
+          "farms": 22,
+          "searches": 35123,
+          "scanned": 1721027,
+          "candidates": 3,
+          "popped": 28,
+          "cuts": 2
+        }
+      ],
+      "equal_deterministic_counters": true,
+      "excluded_measurement_fields": [
+        "setup_ms",
+        "run_ms",
+        "us_per_tick",
+        "wall_ms"
+      ]
+    }
+  ],
+  "transport": "Both configurations fail before measurements at World::create: script offset 475 unsupported action SET_DIPLOMACY; no counter comparison is possible."
+}

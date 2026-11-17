@@ -1,0 +1,475 @@
+{
+  "scope": "Published report evidence; no original game contents or raw task logs.",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "2192391c82c25f67e2105c6064b0e11924aa0c289c9f59faec2280609a1c84b5",
+      "bytes": 5726
+    },
+    {
+      "path": "acceptance.md",
+      "sha256": "7f0fae44323e97ddd34f0f560beebddc3910ae68d99d989ebcc1e79d58203285",
+      "bytes": 2291
+    },
+    {
+      "path": "atlas_report.tsv",
+      "sha256": "d752e056722f9654b1d3f3d11d397af2b9537c01822e0ad57c25df7d9bec3a5c",
+      "bytes": 4360754
+    },
+    {
+      "path": "corpus.md",
+      "sha256": "cbdeb518514f30b63fa4887d4097da636f2d2b611c9ce5bca04bf71401fbefcb",
+      "bytes": 7698
+    },
+    {
+      "path": "dispatch.json",
+      "sha256": "510a494bf9e705f6263bd64ee69fefbef4e1f20199a17dd44d3846b20fc2945f",
+      "bytes": 190
+    },
+    {
+      "path": "duration-metadata-note.json",
+      "sha256": "62a8c8afa7c974a17c56bac847860ff71cc01863904c689bd239df7034c7dca4",
+      "bytes": 725
+    },
+    {
+      "path": "executable-identities.json",
+      "sha256": "3444f58b50a77a969f414ee7af5909bec792ea855a504100a0a0526c474036ac",
+      "bytes": 5980
+    },
+    {
+      "path": "findings.json",
+      "sha256": "5f1ca23fadc896ad1c48841d387f52b9679fba4c664be0f99e2e8274f3d70284",
+      "bytes": 72357
+    },
+    {
+      "path": "findings.md",
+      "sha256": "9f2cfc3eaa65cdb4a721c583d317dc1765f616a8e66a02319c0a324557f6954f",
+      "bytes": 8120
+    },
+    {
+      "path": "gate-receipts.md",
+      "sha256": "e4c4813962b330132cf180f52f2b5444d4903d0d60d38311af67e16b119a01cb",
+      "bytes": 9798
+    },
+    {
+      "path": "gpu-observation.json",
+      "sha256": "c57e8c8570bed533d0e222c1123e4ec7dd905c5e7b7ed2db89ec30b2df608968",
+      "bytes": 706
+    },
+    {
+      "path": "host.json",
+      "sha256": "5e7a7f3d98402baa286f09ee859411b54636d35f178028cf42b8d2e6346fc61f",
+      "bytes": 2230
+    },
+    {
+      "path": "logger-note.json",
+      "sha256": "f0c5ba94a58f67535de1abdd288027ff88b61e4ce6578376398604d2d6e1105a",
+      "bytes": 491
+    },
+    {
+      "path": "logs.json",
+      "sha256": "029ebb8742e401d7adf9e7340e0e4edfdbb37b6666fc0188fa1e7c4b7b1a26f5",
+      "bytes": 131483
+    },
+    {
+      "path": "methods.md",
+      "sha256": "c27bed9678b71929849f306ab1d30c1a57e51e1401e3138bd8be97a57f2247ed",
+      "bytes": 7089
+    },
+    {
+      "path": "nav-scale/config.txt",
+      "sha256": "f984b0c4113b9069cbe764ddced08871bfdda7f94f245c68c83d8f08e97f14e2",
+      "bytes": 407
+    },
+    {
+      "path": "nav-scale/raw-samples.json",
+      "sha256": "7d0f53ad8aa6a9623d7a23eb4ade0cb0f7b905f32d9d6fb585c350527390ea47",
+      "bytes": 239
+    },
+    {
+      "path": "nav-scale/summary.csv",
+      "sha256": "97879ba19057d7ad0d59293e08f7c503e2ca9e2d7e27e96d91a8a38964961834",
+      "bytes": 4842
+    },
+    {
+      "path": "opt-ins.md",
+      "sha256": "30acad0e32af9f1be237c224d302d16b018fb202222bd644576e520036c13ce1",
+      "bytes": 5010
+    },
+    {
+      "path": "orchestration/1168f7ba9df5baeb8b949a07737fba0843214a8e7a05251343a78d503771a7c7-whole_binary.py",
+      "sha256": "1168f7ba9df5baeb8b949a07737fba0843214a8e7a05251343a78d503771a7c7",
+      "bytes": 4942
+    },
+    {
+      "path": "orchestration/audit_gate.py",
+      "sha256": "a75f9c3c45b7b373c65162420bb046d2754bf5b37fa5603bc9348fdc3418b8f4",
+      "bytes": 5006
+    },
+    {
+      "path": "orchestration/b502f64011521acf54d94d095355099af4be9d41307d0257752a7f2f2a53cccf-whole_binary.py",
+      "sha256": "b502f64011521acf54d94d095355099af4be9d41307d0257752a7f2f2a53cccf",
+      "bytes": 4910
+    },
+    {
+      "path": "orchestration/common.py",
+      "sha256": "c7093d03e9463844f3892a6d9695c84d3f8ce6e039dc7102bf7f7137407883f4",
+      "bytes": 5620
+    },
+    {
+      "path": "orchestration/compare_stage3.py",
+      "sha256": "8185fedd099248335a935f2456af2b7755d45246b63867c36f123b268b3a4461",
+      "bytes": 2106
+    },
+    {
+      "path": "orchestration/finalize_stage2.py",
+      "sha256": "def88a8023aef178a2bda0d80edf5503fa68e74982a66cc27da96fa09d7456b2",
+      "bytes": 3047
+    },
+    {
+      "path": "orchestration/finalize_stage4.py",
+      "sha256": "a8d54f2d9daa8afc21d9d3aa3dc204ed36d4637655ac9131dce5f5e61886198c",
+      "bytes": 3004
+    },
+    {
+      "path": "orchestration/finalize_stage5-before-refusal-prelude-fix.py",
+      "sha256": "0bbbbcfebb08ca682c8263a4d0694d72e0a7ad51a9389d787649a86dab397737",
+      "bytes": 5215
+    },
+    {
+      "path": "orchestration/finalize_stage5.py",
+      "sha256": "fe06372fff8ab0676aa8e4c49887d18f04c57e8f52d3f4e4ccf89a1c8ef8891e",
+      "bytes": 5471
+    },
+    {
+      "path": "orchestration/harness.py",
+      "sha256": "d6d2ec022ed66dc16af9dbb3bcf97fae56488fa3d9d6393ff06816a1c6a88b2e",
+      "bytes": 1616
+    },
+    {
+      "path": "orchestration/population_command.py",
+      "sha256": "59e1424aaeefc3a313469da95e0d2630bfb8bc69611e187b71b781af0395b794",
+      "bytes": 1964
+    },
+    {
+      "path": "orchestration/stage2-registry/commands.json",
+      "sha256": "7a831929743b1deb235ac23e3b8588ef4b17ad674eff7d643c92200d9069245f",
+      "bytes": 27248
+    },
+    {
+      "path": "orchestration/stage2-registry/register.cmake",
+      "sha256": "8d28fb9e4ba0e9d6d18ab83e7b48865e4b414b780af5f41b850dcbd4ce2367fe",
+      "bytes": 27708
+    },
+    {
+      "path": "orchestration/stage3_round.py",
+      "sha256": "a7893840d354b388f34f890b1765c10d7dd1044f53b7ba1f350f79a815c66780",
+      "bytes": 847
+    },
+    {
+      "path": "orchestration/stage4_case.py",
+      "sha256": "2b9493a9c452fa8463d5a1fbb6219a5cb25707ae70ac94c8f7c8f729bb7a43e6",
+      "bytes": 2039
+    },
+    {
+      "path": "orchestration/stage4_plan-before-scope-clarifications.py",
+      "sha256": "052a87142bafb032cee73c987e8e66141ab2bc8f6617fcc279d62fec6a9830fc",
+      "bytes": 3947
+    },
+    {
+      "path": "orchestration/stage5-asan-registry/commands.json",
+      "sha256": "e61823a9bd4de920017fe93c1ede80b3fdc41575786659c9abe59c7b00b8759c",
+      "bytes": 72990
+    },
+    {
+      "path": "orchestration/stage5-asan-registry/register.cmake",
+      "sha256": "478d62179993e1df21cb8b4f0033ca48c0757bb48a93849dda0a07ba8f8e75c8",
+      "bytes": 73370
+    },
+    {
+      "path": "orchestration/stage5-release-registry/commands.json",
+      "sha256": "e360179e8f6d73ee0a84b8d9a290a3d2dfc3dd41ac0dbfe76a7cfbaad9acdb84",
+      "bytes": 73590
+    },
+    {
+      "path": "orchestration/stage5-release-registry/register.cmake",
+      "sha256": "9ae40f47a0a7d5c2dc81ce26961f5eb1f3b0ac3d45c02648772f3f57cd84bdea",
+      "bytes": 73970
+    },
+    {
+      "path": "orchestration/stage5_batch.py",
+      "sha256": "5739b804ecd6bce739353acc58cd0f92cd849f92ee8625c7f6cad5dcc54176f4",
+      "bytes": 1913
+    },
+    {
+      "path": "orchestration/stage5_prepare.py",
+      "sha256": "f6052f6b7d003787ebc59566d98ddbbcb75cafb062cec4fc4983930e8a61883c",
+      "bytes": 1256
+    },
+    {
+      "path": "orchestration/stage6.py",
+      "sha256": "93d897bf419ed3ee81bece1dc40b2aaa4f4bc798d1eba11807fd6f482e97eb5c",
+      "bytes": 2971
+    },
+    {
+      "path": "orchestration/start_stage1.py",
+      "sha256": "229cd40ed24a577d42a3f9f5ba9006171719333fe7077eb96232e1b998c3a2d5",
+      "bytes": 1359
+    },
+    {
+      "path": "orchestration/start_stage2.py",
+      "sha256": "b3242c15a95ba759c4e15f5523855a656c1add9ad9134c4c432ed7b165ef5fb1",
+      "bytes": 1568
+    },
+    {
+      "path": "orchestration/whole_binary.py",
+      "sha256": "1168f7ba9df5baeb8b949a07737fba0843214a8e7a05251343a78d503771a7c7",
+      "bytes": 4942
+    },
+    {
+      "path": "order-matrix.md",
+      "sha256": "3d54e2137cad76eb3738c3e61f7a92ea5e6bbe2f55bb1a50112f884e3de65322",
+      "bytes": 2773
+    },
+    {
+      "path": "population-release-houses.txt",
+      "sha256": "7f2023c505398bd7191f3786633255cb277338de150cc52b7592218e2170e7ce",
+      "bytes": 12458
+    },
+    {
+      "path": "population-release-plain.txt",
+      "sha256": "dd55b241544d1063fbe300729c7c5baa4f4e3e38e19fde82b2cd91fc9a01e19a",
+      "bytes": 12469
+    },
+    {
+      "path": "sanitizer-environment.json",
+      "sha256": "5aad1c891888882bcbcf518c348deadfedd4098f60c14e50daa8e9b9e114edf2",
+      "bytes": 381
+    },
+    {
+      "path": "stage0.json",
+      "sha256": "f260073b1d6d2ff5a173054580de477b24c6acd998800bf90e71058b5d9c00f2",
+      "bytes": 259
+    },
+    {
+      "path": "stage1-build-audit.json",
+      "sha256": "9fe4a06d7f9cfb0483af0bea70b2202ebd5bbfd1d301a89c01c47f810146bccc",
+      "bytes": 4642
+    },
+    {
+      "path": "stage1-findings.json",
+      "sha256": "43a3c7e9d4ddd3101739ec32c5ac6caf7fc1af5e59bc89ae4a8469168cff15d2",
+      "bytes": 1971
+    },
+    {
+      "path": "stage1-minimap-isolated-outcomes.json",
+      "sha256": "1085cc085d85e07e2ca90fb6792217561c312a730fc7b0a6956ceb3f7d994eb5",
+      "bytes": 808
+    },
+    {
+      "path": "stage1-outcomes.json",
+      "sha256": "23276b4d85529487f439d7a6408d50d966f764f9e733a4f5cc4b0e1c0ff7287e",
+      "bytes": 610249
+    },
+    {
+      "path": "stage1.initial-metadata.json",
+      "sha256": "7783898faaa711e49a690ca480b8b99ded431851f425cb87b0e9d455e89a07f8",
+      "bytes": 9609
+    },
+    {
+      "path": "stage1.json",
+      "sha256": "1ad61fe3c5ae3797737c0454baa19d8806c024e7609423eb76d8d50074f60614",
+      "bytes": 13729
+    },
+    {
+      "path": "stage2-matrix.json",
+      "sha256": "1c7fb92a8307bbed5e0494e32a4c8858d73aa9daca7bb0cda78b74786ec0dca5",
+      "bytes": 1009941
+    },
+    {
+      "path": "stage2-reconciliation.json",
+      "sha256": "b8da451cc4312c0c6228afc7d4e3fe0c25b6934818b9f3dbc870ef1a3b4368f6",
+      "bytes": 2002
+    },
+    {
+      "path": "stage2.json",
+      "sha256": "405fdbf2931e456abb4fecf8196b923fa0d38c3041fc11d1412dedd37fac8ddb",
+      "bytes": 6540
+    },
+    {
+      "path": "stage3-comparison.json",
+      "sha256": "637640bd643b5c5a3c648bbccc86350b60295e16580eee36395105edc1f84b6b",
+      "bytes": 9137
+    },
+    {
+      "path": "stage3-full-01-outcomes.json",
+      "sha256": "2b345b79774e8fe621725e0dad2c200d1dd4145d7f7f81f5bb6cbb4cb7fe2f05",
+      "bytes": 607318
+    },
+    {
+      "path": "stage3-full-02-outcomes.json",
+      "sha256": "593097119b56fdd0478f3c4f72ba2f0da00c973d562bde53ddabf46a27bbc6b3",
+      "bytes": 607318
+    },
+    {
+      "path": "stage3-full-03-outcomes.json",
+      "sha256": "9aea852d57d12e71a3f9d7651367048ce43e19712ea7e7b65c750afc58d7d35c",
+      "bytes": 607318
+    },
+    {
+      "path": "stage3.json",
+      "sha256": "1d31ef126934f3ee2bfa9b9eca9d1d3906b0198adcbbeb3c6e90817adee968f4",
+      "bytes": 6598
+    },
+    {
+      "path": "stage4-asan-supply-farm-outcomes.json",
+      "sha256": "6827d0fad663c4d6207dbb076fb1245b989f08330c1de5f79e1a071496df10d5",
+      "bytes": 873
+    },
+    {
+      "path": "stage4-asan-supply-leather-outcomes.json",
+      "sha256": "935785fa8477b5cca83693d31678eaaf153f11c248611d1af505be9d35320bc3",
+      "bytes": 1200
+    },
+    {
+      "path": "stage4-asan-transport-outcomes.json",
+      "sha256": "f3e105ae9f6d5825c4d2d7298fd4b9ddf65b89875fed92d4f33822d9366f4147",
+      "bytes": 3037
+    },
+    {
+      "path": "stage4-counter-comparison.json",
+      "sha256": "7659c9fef603112c3487f6bfb87577be0ba1c4b95320d440daa128cf99dc67b9",
+      "bytes": 3903
+    },
+    {
+      "path": "stage4-preflight.json",
+      "sha256": "14f3311847ef230b207428861a7db94b02b70c384412c7d6e584be30ded9ff21",
+      "bytes": 6361
+    },
+    {
+      "path": "stage4-release-iron-corpus-outcomes.json",
+      "sha256": "5fd71fdd21b909e2bff42fb27cf4c2423bd85308859ccb9ef9f6bca90bfdcc27",
+      "bytes": 1176
+    },
+    {
+      "path": "stage4-release-iron-survey-outcomes.json",
+      "sha256": "1e7b549c0c478d8d5d692c997e16bd21c7d0ca0e086b187a664ffd918e1105e9",
+      "bytes": 826
+    },
+    {
+      "path": "stage4-release-nav-outcomes.json",
+      "sha256": "1f9bf1980d06c3f190253d494001605664d25409190e7c526590cedb5be5357b",
+      "bytes": 822
+    },
+    {
+      "path": "stage4-release-play-outcomes.json",
+      "sha256": "9ff1c595979b4f60e98ad91c074ffd355cbc8617fb841b3b0dd978c2560c1622",
+      "bytes": 874
+    },
+    {
+      "path": "stage4-release-progression-probe-outcomes.json",
+      "sha256": "be960d713147f9e8155ba6e8556ee17b0ef921eb6191502a851c0dd4b542cc62",
+      "bytes": 857
+    },
+    {
+      "path": "stage4-release-progression-ship-outcomes.json",
+      "sha256": "97bc3890e904b9ac60e24fcf3eb8e6a4f3eb057d3498a9b1ea4f8021f8bac07c",
+      "bytes": 871
+    },
+    {
+      "path": "stage4-release-progression-towns-outcomes.json",
+      "sha256": "17a6dd0fd0361838119cea298510a5b5ab552c8de9d4e7417b552e5764753ed6",
+      "bytes": 874
+    },
+    {
+      "path": "stage4-release-supply-farm-outcomes.json",
+      "sha256": "1904f45d2ce6c4b296311d0c68eeff7eef08c4b3d0640206acafeb85b3b5a999",
+      "bytes": 876
+    },
+    {
+      "path": "stage4-release-supply-leather-outcomes.json",
+      "sha256": "3fe92660e3bcff3c1cba244acb5a1e308d1253db4522e51308df3d6c721edce6",
+      "bytes": 875
+    },
+    {
+      "path": "stage4-release-transport-outcomes.json",
+      "sha256": "2765265b4f59553a3d1e9a8670e50df471fe7114c7ce51a5d4910a793bc43117",
+      "bytes": 3040
+    },
+    {
+      "path": "stage4-scope-clarifications.json",
+      "sha256": "4f55ad17066083acf2253d8db6b4f28a75dd768ba47ae2c1349575ef0ac40797",
+      "bytes": 630
+    },
+    {
+      "path": "stage4-summary.json",
+      "sha256": "bd890c91d52b094e63d7528b1c3e45820176c56114939f637415d98c019d6f2d",
+      "bytes": 78781
+    },
+    {
+      "path": "stage4.json",
+      "sha256": "5061ee7d764c939d093898b7f52033cea26558343f21b7e8542572570f99953e",
+      "bytes": 30033
+    },
+    {
+      "path": "stage5-asan-outcomes.json",
+      "sha256": "dc71faf9d7df8dc5f3904b98d3f73b4fdb8f6416489ba62b56648167be36fa00",
+      "bytes": 331893
+    },
+    {
+      "path": "stage5-asan-selection.json",
+      "sha256": "7e51e5631ad6655c4ff24aca90a16da9e2e7f647beaa4dccfce3143be17c013b",
+      "bytes": 2367
+    },
+    {
+      "path": "stage5-classification-note.json",
+      "sha256": "c95e26cbf7cf8984f26591d955c4c461061062d71e0cf8721420f19cc758b1ef",
+      "bytes": 801
+    },
+    {
+      "path": "stage5-game-input-manifest.json",
+      "sha256": "99b4583d10b9a5891ad1b93ceb7f8dcbc902cccceff8a535aefe8fe19c7ad7e1",
+      "bytes": 94841
+    },
+    {
+      "path": "stage5-host-preflight.json",
+      "sha256": "2a1414e2deea16f0040f27473171d9bb7fa488b31a55716e425c60af7a1f4ad3",
+      "bytes": 2254
+    },
+    {
+      "path": "stage5-release-outcomes.json",
+      "sha256": "d463525dc55eebb122df1f741e53947f1df3a58901299e679ee6a7c89057cc51",
+      "bytes": 309724
+    },
+    {
+      "path": "stage5-release-selection.json",
+      "sha256": "232b0468bdf2e10b6af5f61dc024b93eece078cb19b0309e74fe7ba376c5bf96",
+      "bytes": 2370
+    },
+    {
+      "path": "stage5-scenes.json",
+      "sha256": "701ff4dafec388376ac812033114fbd0435b0b461a93a472e59472dcb71e2b46",
+      "bytes": 1756
+    },
+    {
+      "path": "stage5-summary.json",
+      "sha256": "8162d6711b8d53e045cba565dcc342b4cfaa015ae378bdc2bc2583f0faffc0ee",
+      "bytes": 341735
+    },
+    {
+      "path": "stage5.json",
+      "sha256": "e3177fe40790882145635bbd49b1daac63f42643cfa9b5d43d6f11e54976f3b9",
+      "bytes": 10369
+    },
+    {
+      "path": "stage6-atlas-summary.json",
+      "sha256": "9bffeb7dbb63bb19175d299034c90e151f9795f862c41c9d86e12e46e58a8c70",
+      "bytes": 2614
+    },
+    {
+      "path": "stage6.json",
+      "sha256": "ebd4aa5663ddb11803032871dc78a6772d4d5a4475249e7afcabadc7c02ede09",
+      "bytes": 1753
+    }
+  ]
+}

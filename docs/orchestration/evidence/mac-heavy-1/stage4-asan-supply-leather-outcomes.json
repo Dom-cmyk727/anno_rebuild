@@ -1,0 +1,33 @@
+{
+  "raw_log": "cache/mac-heavy-1/stage4-asan-supply-leather.raw.log",
+  "raw_sha256": "0b8e6108218f958d0dffc31ebce25458ef1dc3d31e02b133e33fb8689fc7e761",
+  "receipts": [
+    "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+    "VERDICT: PASS",
+    "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+    "VERDICT: PASS",
+    "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+  ],
+  "cases": [
+    {
+      "number": "2714",
+      "name": "picture_matrix_contract",
+      "status": "Passed",
+      "doctest_cases": null,
+      "prerequisites": []
+    },
+    {
+      "number": "1641",
+      "name": "anno_sim_tests.synthetic mechanics fixture: Release scale against unrelated content (opt-in measure)",
+      "status": "Passed",
+      "doctest_cases": 1,
+      "prerequisites": []
+    }
+  ],
+  "failures": [],
+  "memory_refusal_candidates": [],
+  "bad_alloc_retries": [],
+  "sanitizer_reports": [],
+  "coordinator_observations": [],
+  "reader_sha256": "a75f9c3c45b7b373c65162420bb046d2754bf5b37fa5603bc9348fdc3418b8f4"
+}

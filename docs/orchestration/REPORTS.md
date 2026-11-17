@@ -14849,3 +14849,63 @@ landing candidate's own build): both pass, run directly with `python3 -I tools/l
   silently inheriting someone else's justification.
 
 READY FOR REVIEW.
+
+## 2026-11-17 — MAC-HEAVY-1 — READY FOR REVIEW
+
+- Tested main `4dfdd9b7ce51b9ad04970da0b247294345f05ac7`, tree `e218b8f5dae9e7e133e8f803618ba6e14d355286`; source clean throughout local stages.
+- Branch `task/MAC-HEAVY-1`: report/evidence only; independent review pending with the orchestrator.
+- Prerequisite ui-tabs-b was reported first: `004a26f4b83390ed7e90bdff83cb128d488246d0`, tree `7ab5576f42bea16e7aa882bc48a3474ee1252964`, ancestor exit 0; 2731 executed passes / 44 skips / 0 failed; warning exit 0.
+- Host: Apple M5 Max / 18 logical / 48 GiB / macOS 27.0.1 / Apple Clang 21; Metal. CMake 3.31.10, Ninja 1.13.2; initial load 1.609/3.382/4.094, about 1.5 TiB free.
+- Environment: ANNO1503_GAME_DIR real files, ANNO_TEST_THREADS=4; ASan uses MB_PER_THREAD=2048, detect_leaks=0:halt_on_error=1, UBSAN print_stacktrace=1:halt_on_error=1. Each opt-in adds only its named switch; exact values in evidence/README.
+- Stage 0: frozen host/source record, 203.082 s; compat-4 coordinator state retained, no competing workload observed.
+- Stage 1: ASan/UBSan build and full gate, 3118.817 s; one minimap assertion, no sanitizer report. Isolated same-binary jobs-1 probe passed; original failure retained.
+- Stage 2: 4931.089 s; 36 whole-process operations, 32 passes / 4 failures. Native visits: 10083 passes / 5 failures / 124 prerequisite skips; 48 filter exclusions separate. Exact prefixes/order and binary hashes retained.
+- Stage 3: 6662.897 s; three serial full Release runs passed (2150.691 / 2145.445 / 2147.567 s); no differing full-name/prerequisite outcome.
+- Stage 4: 861.821 s; 13 opt-in selections, 11 passes / 2 transport failures. Both refuse SET_DIPLOMACY offset 475 before measurement; supply non-timing counters match Release/ASan. Case wall/RSS/assertions in opt-ins.md.
+- Stage 5: 335.062 s; 50 maps, both modes in both builds, full selection. Per mode: 11 clean four-checkpoint runs / 39 loader refusals / 0 invariant failures or crashes. All 100 native stdout/stderr/exit tuples byte-identical; no subset used.
+- Stage 6: 234.243 s; atlas 519 loaded / 0 refused, 24912 scene rows + 3 figure rows + 1 eligibility row. Byte-column SHA256 `f9f1cc5d0ec61c1ff58890de66c5912c3a43beb9f8f5175b58ab69c386893af6`.
+- Every stage stayed inside its box; no timeouts, memory refusals or bad_alloc retries. Required picture contracts passed.
+
+Main receipts below are verbatim; every required-contract and individual opt-in receipt, log path and SHA256 is in [gate-receipts.md](evidence/mac-heavy-1/gate-receipts.md).
+
+```text
+COUNTS: selected=2762 executed=2718 failed=1 empty=0 skipped=43 (required-asset=0 platform=9 opt-in=29 gpu=2 other=3) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+COUNTS: selected=36 executed=32 failed=4 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+COUNTS: selected=2761 executed=2718 failed=0 empty=0 skipped=43 (required-asset=0 platform=9 opt-in=29 gpu=2 other=3) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=2761 executed=2718 failed=0 empty=0 skipped=43 (required-asset=0 platform=9 opt-in=29 gpu=2 other=3) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=2761 executed=2718 failed=0 empty=0 skipped=43 (required-asset=0 platform=9 opt-in=29 gpu=2 other=3) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=100 executed=22 failed=78 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+COUNTS: selected=100 executed=22 failed=78 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+```
+
+| Finding kind | Test / first evidence | Reproducibility / command evidence |
+|---|---|---|
+| Sanitizer-context assertion | MH-001 minimap controls: tile_w 42, expected 84, line 88 | Full ASan failure; isolated ASan PASS, Release repeats PASS; exact commands/logs in findings.md |
+| Order, known | MH-002 scene_reclaim_test.cpp:57, completed == before | Render default failed; known packet issue, preserved |
+| Order | MH-003 publish frame-held shutdown, :783 payload baseline/in_flight | App default and seed 1 failed; seeds 2/3 passed |
+| Order | MH-004 ownership frame-held generation, :517 same predicate | Seed 1 failed; other orders passed |
+| Order | MH-005 older-version recovery, :402 commit 0 expected 1 | Seed 2 failed; other orders passed |
+| Opt-in failure | MH-006 transport, scenario_test.cpp:1042 World::create refused SET_DIPLOMACY | Release and ASan; neither 150000-tick workload reached |
+
+The [findings](evidence/mac-heavy-1/findings.md) contain full native test names, first evidence, commands, log hashes and ordered prefixes. Timing/root causes remain unproved; no fix is included.
+
+Decisions and reasoning:
+- Bind existing whole binaries and CLI commands in private source-free CTest registries to retain the mandatory canonical gate; actual normal-build executables are used.
+- Preserve existing component scopes in opt-ins; use the unchanged strict normal loader for the corpus, with no projection or script suppression.
+- Count native prerequisite returns separately from framework passes and filter exclusions; keep all failed originals nonzero.
+- Correct report readers against preserved data, never rerun valid work for logging: Stage 1 environment-header view, Stage 2 duration metadata, Stage 5 template-prelude refusal classification are documented.
+- Keep actual scale sizes: K=32 built 12 farms/0 tanneries, not the requested 32/32. Play turns are ten 10 ms substeps; timing/progress limits are explicit.
+- Publish only own-number outputs/TSV and evidence. Raw logs stay in cache with content-addressed copies and SHA256 index; game files remain read-only.
+
+NOT_RUN: LeakSanitizer (unsupported host, capability probe retained); Windows/HE execution and cross-platform population/atlas comparison; packet-excluded diagnostic opt-ins and older-coordinator runs. The two transport measurement bodies were blocked by their recorded failures.
+- GPU timing tests executed; the cost-source MESSAGE prints a pointer instead of its label, so that diagnostic alone cannot identify timing source. No assertion was weakened.
+- [Evidence overview and host](evidence/mac-heavy-1/README.md), [acceptance scope](evidence/mac-heavy-1/acceptance.md), [logs and SHA256s](evidence/mac-heavy-1/logs.json), [methods/limits](evidence/mac-heavy-1/methods.md).
+- Hosted CI status for the pushed report head will be supplied in the chat handover; no local native gate is rerun after this report-only commit.
+- QUESTIONs: none requiring a new gameplay decision in this verification packet. Findings remain for orchestrator triage.

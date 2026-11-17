@@ -1,0 +1,800 @@
+{
+  "stage": 4,
+  "started": "2026-11-17T14:36:24.006389+01:00",
+  "started_unix": 1794922584.0065181,
+  "deadline_unix": 1794936984.0065181,
+  "box_seconds": 14400,
+  "source": {
+    "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+    "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+    "status": ""
+  },
+  "commands": [
+    {
+      "name": "stage4-release-iron-corpus",
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/release",
+        "--select",
+        "^anno_sim_tests\\.iron\\ mine:\\ no\\ fallback\\ on\\ the\\ original\\ scenes\\ \\(opt\\-in\\ corpus\\)$",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--jobs",
+        "1",
+        "--timeout",
+        "14400",
+        "--log",
+        "cache/mac-heavy-1/stage4-release-iron-corpus.raw.log"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_IRON_CORPUS": "1",
+        "ANNO_TEST_THREADS": "4"
+      },
+      "started": "2026-11-17T14:36:24.076275+01:00",
+      "log": "cache/mac-heavy-1/stage4-release-iron-corpus.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 42424,
+      "exit": 0,
+      "finished": "2026-11-17T14:36:34.185824+01:00",
+      "wall_seconds": 10.109633922576904,
+      "log_sha256": "07d1b048662580e877d17ecb3188140fe67ea8d0c5c175e9695adee6f49b75f7",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "required_contract_passed": true,
+      "raw_log": "cache/mac-heavy-1/stage4-release-iron-corpus.raw.log",
+      "raw_sha256": "a05174b6e8b1548aaa448811104d58bda0666303778d75aad4a1258fae862d0b",
+      "log_view": "cache/mac-heavy-1/stage4-release-iron-corpus.log",
+      "log_view_sha256": "8d964c2d049dbac4ef2338d026eb1430c283e7505d2e1d5658dc377568bb5c58",
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ]
+    },
+    {
+      "name": "stage4-release-iron-survey",
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/release",
+        "--select",
+        "^anno_sim_tests\\.iron\\ mine:\\ site\\ survey\\ \\(opt\\-in\\ measure\\)$",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--jobs",
+        "1",
+        "--timeout",
+        "14400",
+        "--log",
+        "cache/mac-heavy-1/stage4-release-iron-survey.raw.log",
+        "--skip-auto-contract"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_IRON_SURVEY": "1",
+        "ANNO_TEST_THREADS": "4"
+      },
+      "started": "2026-11-17T14:38:23.376413+01:00",
+      "log": "cache/mac-heavy-1/stage4-release-iron-survey.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 42982,
+      "exit": 0,
+      "finished": "2026-11-17T14:38:26.433586+01:00",
+      "wall_seconds": 3.057392120361328,
+      "log_sha256": "98833f5962fa3dba094222f14875ef126ca79c14b912ac6fd0e72da66fb6d687",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "required_contract_passed": false,
+      "raw_log": "cache/mac-heavy-1/stage4-release-iron-survey.raw.log",
+      "raw_sha256": "bd924b1a0936ed0d1319456789d444dab0f76b71b57aa87fbc31cfd0fe75242d",
+      "log_view": "cache/mac-heavy-1/stage4-release-iron-survey.log",
+      "log_view_sha256": "eff17d2ac54da0b89ffa95207eb69041ec7652e9f297a0d2c1985d7e8e531b81",
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ]
+    },
+    {
+      "name": "stage4-release-progression-ship",
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/release",
+        "--select",
+        "^anno_sim_tests\\.progression\\ gaps\\ N:\\ ship\\-start\\ settlement\\ for\\ 300\\ game\\ seconds\\ \\(opt\\-in\\ measure\\)$",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--jobs",
+        "1",
+        "--timeout",
+        "14400",
+        "--log",
+        "cache/mac-heavy-1/stage4-release-progression-ship.raw.log",
+        "--skip-auto-contract"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_PROGRESSION_GAPS": "1",
+        "ANNO_TEST_THREADS": "4"
+      },
+      "started": "2026-11-17T14:39:25.116691+01:00",
+      "log": "cache/mac-heavy-1/stage4-release-progression-ship.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 43104,
+      "exit": 0,
+      "finished": "2026-11-17T14:39:29.185415+01:00",
+      "wall_seconds": 4.06897497177124,
+      "log_sha256": "a37323a9f01a0c483ce901d363f7166fdb145f471dbc6e409efc7246be564aaf",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "required_contract_passed": false,
+      "raw_log": "cache/mac-heavy-1/stage4-release-progression-ship.raw.log",
+      "raw_sha256": "45fe579867f77004513327d975233178bc9c21c7f88a83858a90d7a8625b2456",
+      "log_view": "cache/mac-heavy-1/stage4-release-progression-ship.log",
+      "log_view_sha256": "c6ffe08e35b99db6d9087cb9332ff480f8f1d91a914216e6c9a4b1f3d8b0575a",
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ]
+    },
+    {
+      "name": "stage4-release-progression-towns",
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/release",
+        "--select",
+        "^anno_sim_tests\\.progression\\ gaps\\ N:\\ endless02\\ and\\ S01_07_01\\ for\\ 300\\ game\\ seconds\\ \\(opt\\-in\\ measure\\)$",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--jobs",
+        "1",
+        "--timeout",
+        "14400",
+        "--log",
+        "cache/mac-heavy-1/stage4-release-progression-towns.raw.log",
+        "--skip-auto-contract"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_PROGRESSION_GAPS": "1",
+        "ANNO_TEST_THREADS": "4"
+      },
+      "started": "2026-11-17T14:40:20.759582+01:00",
+      "log": "cache/mac-heavy-1/stage4-release-progression-towns.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 43223,
+      "exit": 0,
+      "finished": "2026-11-17T14:40:26.843937+01:00",
+      "wall_seconds": 6.08459997177124,
+      "log_sha256": "5831cdb12080dbadce15b025a6d402b75cc82428e9169528b78d420ab3135141",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "required_contract_passed": false,
+      "raw_log": "cache/mac-heavy-1/stage4-release-progression-towns.raw.log",
+      "raw_sha256": "499bd2c2be1cc3130169d2a6b0713d3fecd7c1f3bbab043afcf3e2ab481bc063",
+      "log_view": "cache/mac-heavy-1/stage4-release-progression-towns.log",
+      "log_view_sha256": "3ce3c564cad728bea8cfe9850cf84253955397883dabd3a4de2834a8fb374bbc",
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ]
+    },
+    {
+      "name": "stage4-release-progression-probe",
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/release",
+        "--select",
+        "^anno_sim_tests\\.progression\\ K3:\\ probe\\ of\\ the\\ first\\ upgrade\\ tick\\ \\(opt\\-in\\ measure\\)$",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--jobs",
+        "1",
+        "--timeout",
+        "14400",
+        "--log",
+        "cache/mac-heavy-1/stage4-release-progression-probe.raw.log",
+        "--skip-auto-contract"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_PROGRESSION_PROBE": "1",
+        "ANNO_TEST_THREADS": "4"
+      },
+      "started": "2026-11-17T14:41:07.106004+01:00",
+      "log": "cache/mac-heavy-1/stage4-release-progression-probe.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 43339,
+      "exit": 0,
+      "finished": "2026-11-17T14:41:09.154466+01:00",
+      "wall_seconds": 2.0487112998962402,
+      "log_sha256": "470e42b2b0f188464175e6567e7f9e4ee1938295e2abbb1222dab61c35ec6658",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "required_contract_passed": false,
+      "raw_log": "cache/mac-heavy-1/stage4-release-progression-probe.raw.log",
+      "raw_sha256": "f539fb258d6b53842eeed341ba6622e8557185214a267f5d57ed8de333f5ce49",
+      "log_view": "cache/mac-heavy-1/stage4-release-progression-probe.log",
+      "log_view_sha256": "df943795e79c6cad59ae7535c119e98eaecad1ed20f52dd697e83dafe838ad23",
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ]
+    },
+    {
+      "name": "stage4-release-supply-leather",
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/release",
+        "--select",
+        "^anno_sim_tests\\.synthetic\\ mechanics\\ fixture:\\ Release\\ scale\\ against\\ unrelated\\ content\\ \\(opt\\-in\\ measure\\)$",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--jobs",
+        "1",
+        "--timeout",
+        "14400",
+        "--log",
+        "cache/mac-heavy-1/stage4-release-supply-leather.raw.log",
+        "--skip-auto-contract"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_SIM_SUPPLY_SCALE": "1",
+        "ANNO_TEST_THREADS": "4"
+      },
+      "started": "2026-11-17T14:41:43.744704+01:00",
+      "log": "cache/mac-heavy-1/stage4-release-supply-leather.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 43423,
+      "exit": 0,
+      "finished": "2026-11-17T14:41:46.797323+01:00",
+      "wall_seconds": 3.0528409481048584,
+      "log_sha256": "a5f5762f9c479afb256923f57e76aac8516b6256f8b68875030202bb0aacc9a0",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "required_contract_passed": false,
+      "raw_log": "cache/mac-heavy-1/stage4-release-supply-leather.raw.log",
+      "raw_sha256": "a4cabbafd1370b8ac0fbcd74ee588ad534dd1148e91c48632c82a83b2e143fe5",
+      "log_view": "cache/mac-heavy-1/stage4-release-supply-leather.log",
+      "log_view_sha256": "ec3284c16c46f983a80a21f316f4756d4e21127734c014dcdfce3ad198508d45",
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ]
+    },
+    {
+      "name": "stage4-release-supply-farm",
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/release",
+        "--select",
+        "^anno_sim_tests\\.resilience:\\ harvest\\ search\\ work\\ against\\ unrelated\\ farms\\ \\(opt\\-in\\ measure,\\ Release\\ samples\\)$",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--jobs",
+        "1",
+        "--timeout",
+        "14400",
+        "--log",
+        "cache/mac-heavy-1/stage4-release-supply-farm.raw.log",
+        "--skip-auto-contract"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_SIM_SUPPLY_SCALE": "1",
+        "ANNO_TEST_THREADS": "4"
+      },
+      "started": "2026-11-17T14:42:56.246430+01:00",
+      "log": "cache/mac-heavy-1/stage4-release-supply-farm.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 43580,
+      "exit": 0,
+      "finished": "2026-11-17T14:42:58.298761+01:00",
+      "wall_seconds": 2.0525448322296143,
+      "log_sha256": "7093b030f7ea97923f5370617d93cd9fc88a93a5cb76fd516cb81e89aed428b1",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "required_contract_passed": false,
+      "raw_log": "cache/mac-heavy-1/stage4-release-supply-farm.raw.log",
+      "raw_sha256": "0dac11e43b23c2e2a2ba93ce77a89095c9f9356328bdf3e0bc3140a1d2534115",
+      "log_view": "cache/mac-heavy-1/stage4-release-supply-farm.log",
+      "log_view_sha256": "544a7d457b84e69183f0beed3cd2c4a84771d648e73511ce97c822d437d3deac",
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ]
+    },
+    {
+      "name": "stage4-release-transport",
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/release",
+        "--select",
+        "^anno_sim_tests\\.transport\\ search\\ statistics\\ \\(ANNO_SIM_TRANSPORT_STATS\\)$",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--jobs",
+        "1",
+        "--timeout",
+        "14400",
+        "--log",
+        "cache/mac-heavy-1/stage4-release-transport.raw.log",
+        "--skip-auto-contract"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_SIM_TRANSPORT_STATS": "1",
+        "ANNO_TEST_THREADS": "4"
+      },
+      "started": "2026-11-17T14:43:58.352977+01:00",
+      "log": "cache/mac-heavy-1/stage4-release-transport.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 43705,
+      "exit": 1,
+      "finished": "2026-11-17T14:44:00.407125+01:00",
+      "wall_seconds": 2.054388999938965,
+      "log_sha256": "0f6cd17867a31ec20bdccf79e312229524bab68158b8259a5ce1b593d25b49d7",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "required_contract_passed": false,
+      "raw_log": "cache/mac-heavy-1/stage4-release-transport.raw.log",
+      "raw_sha256": "2c17771ee0473b1d8defb2a61bfd48f49cd4751a623ab7cf19fa3bb9456318a6",
+      "log_view": "cache/mac-heavy-1/stage4-release-transport.log",
+      "log_view_sha256": "54d21e2cae536bcef20a056e3fc6b3abcac17eff39760764ab4ac9fc5f1cec7d",
+      "receipts": [
+        "COUNTS: selected=1 executed=0 failed=1 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: FAIL failed tests",
+        "GATE_END {\"status\": 1, \"ctest_rc\": 8}"
+      ]
+    },
+    {
+      "name": "stage4-release-nav",
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/release",
+        "--select",
+        "^anno_sim_tests\\.nav\\ scale\\ measurements\\ \\(ANNO_SIM_NAV_SCALE\\)$",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--jobs",
+        "1",
+        "--timeout",
+        "14400",
+        "--log",
+        "cache/mac-heavy-1/stage4-release-nav.raw.log",
+        "--skip-auto-contract"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_SIM_NAV_SCALE": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/nav-scale",
+        "ANNO_TEST_THREADS": "4"
+      },
+      "started": "2026-11-17T14:44:55.719245+01:00",
+      "log": "cache/mac-heavy-1/stage4-release-nav.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 43827,
+      "exit": 0,
+      "finished": "2026-11-17T14:44:57.777397+01:00",
+      "wall_seconds": 2.0584030151367188,
+      "log_sha256": "77de65d4332a6873e255ffce3433f4739c8853130de567615f0ab94967769d3e",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "required_contract_passed": false,
+      "raw_log": "cache/mac-heavy-1/stage4-release-nav.raw.log",
+      "raw_sha256": "35cb807e0e235667cb61fceb3b478365a08d2a852ed84cfdaf7a6a9cad3621a3",
+      "log_view": "cache/mac-heavy-1/stage4-release-nav.log",
+      "log_view_sha256": "d749a17dd0b5ac34d7e4e502d2e47fde5a48f565f1fc8e7ea8baa57e0e5c002a",
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ]
+    },
+    {
+      "name": "stage4-release-play",
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/release",
+        "--select",
+        "^anno_app_tests\\.play:\\ ms\\ per\\ 100\\ ms\\ turn,\\ original\\ vs\\ living,\\ measured\\ \\(PLAY\\-LIVE\\-1a\\ Do\\ item\\ 6,\\ opt\\-in\\ measure\\)$",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--jobs",
+        "1",
+        "--timeout",
+        "14400",
+        "--log",
+        "cache/mac-heavy-1/stage4-release-play.raw.log",
+        "--skip-auto-contract"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_PLAY_LIVE_TIMING": "1",
+        "ANNO_TEST_THREADS": "4"
+      },
+      "started": "2026-11-17T14:46:08.763607+01:00",
+      "log": "cache/mac-heavy-1/stage4-release-play.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 43969,
+      "exit": 0,
+      "finished": "2026-11-17T14:46:13.838606+01:00",
+      "wall_seconds": 5.075232982635498,
+      "log_sha256": "772271b73f0e36a2a8be8d5d20d8889d6aa01102955fc8ae840abc0ead1dae9b",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "required_contract_passed": false,
+      "raw_log": "cache/mac-heavy-1/stage4-release-play.raw.log",
+      "raw_sha256": "1ca993ad53f2770c28b947acf231d549d3df84a3746616e16fb9021da7297ed0",
+      "log_view": "cache/mac-heavy-1/stage4-release-play.log",
+      "log_view_sha256": "d77d042e11e5f824d2b8a23d4ee81f7f1c0859a7cadcacd4ab4e6f4f06ac069f",
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ]
+    },
+    {
+      "name": "stage4-asan-supply-leather",
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/asan",
+        "--select",
+        "^anno_sim_tests\\.synthetic\\ mechanics\\ fixture:\\ Release\\ scale\\ against\\ unrelated\\ content\\ \\(opt\\-in\\ measure\\)$",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--jobs",
+        "1",
+        "--timeout",
+        "14400",
+        "--log",
+        "cache/mac-heavy-1/stage4-asan-supply-leather.raw.log"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_SIM_SUPPLY_SCALE": "1",
+        "ANNO_TEST_MB_PER_THREAD": "2048",
+        "ANNO_TEST_THREADS": "4",
+        "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+      },
+      "started": "2026-11-17T14:46:55.048560+01:00",
+      "log": "cache/mac-heavy-1/stage4-asan-supply-leather.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 44080,
+      "exit": 0,
+      "finished": "2026-11-17T14:47:22.333996+01:00",
+      "wall_seconds": 27.28566884994507,
+      "log_sha256": "159820416db80fd55d6838ab4d74d3751f2fb726f5162ac00bbc324092f3cd0d",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "required_contract_passed": true,
+      "raw_log": "cache/mac-heavy-1/stage4-asan-supply-leather.raw.log",
+      "raw_sha256": "0b8e6108218f958d0dffc31ebce25458ef1dc3d31e02b133e33fb8689fc7e761",
+      "log_view": "cache/mac-heavy-1/stage4-asan-supply-leather.log",
+      "log_view_sha256": "008a73d88afda2ff7b40651b33128895c1eaf461a17432582b54bc5fc1e26550",
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ]
+    },
+    {
+      "name": "stage4-asan-supply-farm",
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/asan",
+        "--select",
+        "^anno_sim_tests\\.resilience:\\ harvest\\ search\\ work\\ against\\ unrelated\\ farms\\ \\(opt\\-in\\ measure,\\ Release\\ samples\\)$",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--jobs",
+        "1",
+        "--timeout",
+        "14400",
+        "--log",
+        "cache/mac-heavy-1/stage4-asan-supply-farm.raw.log",
+        "--skip-auto-contract"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_SIM_SUPPLY_SCALE": "1",
+        "ANNO_TEST_MB_PER_THREAD": "2048",
+        "ANNO_TEST_THREADS": "4",
+        "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+      },
+      "started": "2026-11-17T14:48:13.076511+01:00",
+      "log": "cache/mac-heavy-1/stage4-asan-supply-farm.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 44560,
+      "exit": 0,
+      "finished": "2026-11-17T14:48:16.122676+01:00",
+      "wall_seconds": 3.0464000701904297,
+      "log_sha256": "41d980637405f5a150017c6cb995d322b9ab868cf10723305e10cd95f489caa2",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "required_contract_passed": false,
+      "raw_log": "cache/mac-heavy-1/stage4-asan-supply-farm.raw.log",
+      "raw_sha256": "095ced21bcf955bf34e3cf744c73d5ddb96de72e9c2c552c26f6a518cd857c67",
+      "log_view": "cache/mac-heavy-1/stage4-asan-supply-farm.log",
+      "log_view_sha256": "d59b8ed4f3f1684900981f4c0ebf7375fe615e666cc76b98c45406de37130a69",
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ]
+    },
+    {
+      "name": "stage4-asan-transport",
+      "command": [
+        "/usr/bin/time",
+        "-l",
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/asan",
+        "--select",
+        "^anno_sim_tests\\.transport\\ search\\ statistics\\ \\(ANNO_SIM_TRANSPORT_STATS\\)$",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--jobs",
+        "1",
+        "--timeout",
+        "14400",
+        "--log",
+        "cache/mac-heavy-1/stage4-asan-transport.raw.log",
+        "--skip-auto-contract"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_SIM_TRANSPORT_STATS": "1",
+        "ANNO_TEST_MB_PER_THREAD": "2048",
+        "ANNO_TEST_THREADS": "4",
+        "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+      },
+      "started": "2026-11-17T14:49:00.693593+01:00",
+      "log": "cache/mac-heavy-1/stage4-asan-transport.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 44672,
+      "exit": 1,
+      "finished": "2026-11-17T14:49:04.765510+01:00",
+      "wall_seconds": 4.072151184082031,
+      "log_sha256": "c1d54404150bc5e6171bcb9731c416dfe21bd2d8ae9ce0585166f038435a9a2c",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "required_contract_passed": false,
+      "raw_log": "cache/mac-heavy-1/stage4-asan-transport.raw.log",
+      "raw_sha256": "e544b357e2038a25f0df82179c02a5cba79a08f0c3e465489897ffffcb785f61",
+      "log_view": "cache/mac-heavy-1/stage4-asan-transport.log",
+      "log_view_sha256": "7d9250a5c21aa88500cb420bbfa1077cd61311fecd7e76cd6ac07fbec7220414",
+      "receipts": [
+        "COUNTS: selected=1 executed=0 failed=1 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: FAIL failed tests",
+        "GATE_END {\"status\": 1, \"ctest_rc\": 8}"
+      ]
+    }
+  ],
+  "status": "completed_with_findings",
+  "finished": "2026-11-17T14:50:45.827489+01:00",
+  "wall_seconds": 861.8211009502411,
+  "source_after": {
+    "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+    "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+    "status": ""
+  }
+}

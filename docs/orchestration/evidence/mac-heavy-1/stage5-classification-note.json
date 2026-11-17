@@ -1,0 +1,10 @@
+{
+  "issue": "Initial wrapper metadata checked startswith(refused) on all stdout, missing the CLI island templates prelude.",
+  "correction": "Final reader checks each preserved stdout line for the exact refused: or create refused: prefix, retaining wrapper_load_refused_initial. Native stdout/stderr/result files and canonical exits/verdicts remain unchanged. The same original wrapper is used for both configurations. No rerun for this correction.",
+  "native_example": [
+    "island templates 429",
+    "refused: players[7].SCHIFF[0].PRIVAT.CREW.ENTRY[0].PRIVAT.ESEL.TASK: unsupported unit record/state"
+  ],
+  "old_reader_sha256": "0bbbbcfebb08ca682c8263a4d0694d72e0a7ad51a9389d787649a86dab397737",
+  "corrected_reader_sha256": "fe06372fff8ab0676aa8e4c49887d18f04c57e8f52d3f4e4ccf89a1c8ef8891e"
+}

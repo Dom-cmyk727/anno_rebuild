@@ -1,0 +1,39 @@
+{
+  "cache": {
+    "ANNO_BUILD_GPU:BOOL": "ON",
+    "ANNO_BUILD_TESTS:BOOL": "ON",
+    "ANNO_BUILD_VIEWER:BOOL": "ON",
+    "ANNO_DUMP_PORTED_COMMANDS:STRING": "chunks,tex,inc,colors,figuren,frames,anlagen,insel,sze,keyed,texte,zei,bigbrother,walk-tables,fixed-map",
+    "ANNO_HEAVY_TEST_PROCESSORS:STRING": "4",
+    "ANNO_REQUIRE_LINT:BOOL": "OFF",
+    "ANNO_SANITIZE:BOOL": "ON",
+    "ANNO_SYSTEM_SDL:BOOL": "OFF",
+    "ANNO_TEST_PEAK_MEMORY:BOOL": "OFF",
+    "ANNO_WARNINGS_AS_ERRORS:BOOL": "ON",
+    "CMAKE_BUILD_TYPE:STRING": "Debug",
+    "CMAKE_CXX_COMPILER:FILEPATH": "/Library/Developer/CommandLineTools/usr/bin/c++",
+    "CMAKE_CXX_FLAGS_DEBUG:STRING": "-O1 -g",
+    "ANNO_HAVE_WNO_C2Y:INTERNAL": "1"
+  },
+  "selected_compile_commands": [
+    {
+      "file": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/render/src/gpu.cpp",
+      "command": "/Library/Developer/CommandLineTools/usr/bin/c++ -I/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/render/include -I/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/assets/include -I/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/formats/include -isystem /Users/dom/.codex/worktrees/gate-run-eb11f0c6/anno1503/build/release/_deps/wgpu_native-src/include -O1 -g -std=c++20 -arch arm64 -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow -Wnon-virtual-dtor -Wold-style-cast -Wcast-align -Wnull-dereference -ffp-contract=off -Werror -fsanitize=address,undefined,float-cast-overflow -fno-omit-frame-pointer -o src/render/CMakeFiles/anno_render_gpu.dir/src/gpu.cpp.o -c /Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/render/src/gpu.cpp"
+    },
+    {
+      "file": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/app/src/viewer.cpp",
+      "command": "/Library/Developer/CommandLineTools/usr/bin/c++ -DANNO_VIEWER_GPU -DANNO_WITH_VIEWER -I/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/app/include -I/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/render/include -I/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/assets/include -I/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/formats/include -I/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/sim_load/include -I/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/sim/include -isystem /Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/asan/_deps/sdl3-build/include-revision -isystem /Users/dom/.codex/worktrees/gate-run-eb11f0c6/anno1503/build/release/_deps/sdl3-src/include -isystem /Users/dom/.codex/worktrees/gate-run-eb11f0c6/anno1503/build/release/_deps/wgpu_native-src/include -O1 -g -std=c++20 -arch arm64 -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow -Wnon-virtual-dtor -Wold-style-cast -Wcast-align -Wnull-dereference -ffp-contract=off -Werror -fsanitize=address,undefined,float-cast-overflow -fno-omit-frame-pointer -o src/app/CMakeFiles/anno1503.dir/src/viewer.cpp.o -c /Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/app/src/viewer.cpp"
+    },
+    {
+      "file": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/sim/src/sim.cpp",
+      "command": "/Library/Developer/CommandLineTools/usr/bin/c++ -I/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/sim/include -I/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/formats/include -O1 -g -std=c++20 -arch arm64 -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow -Wnon-virtual-dtor -Wold-style-cast -Wcast-align -Wnull-dereference -ffp-contract=off -Werror -fsanitize=address,undefined,float-cast-overflow -fno-omit-frame-pointer -fno-sanitize-recover=all -o src/sim/CMakeFiles/anno_sim.dir/src/sim.cpp.o -c /Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/sim/src/sim.cpp"
+    }
+  ],
+  "coordinator_observations": [
+    "274: [anno-test memory] coordinator build=ec80ebec97126c7d compat=4 incarnation=609da06f741239a2 pid=92448 port=47631 shared meter=internal t=1794908120537",
+    "273: [anno-test memory] coordinator build=ec80ebec97126c7d compat=4 incarnation=609da06f741239a2 pid=92448 port=47631 shared meter=internal t=1794908120640",
+    "339: [anno-test memory] coordinator build=ec80ebec97126c7d compat=4 incarnation=609da06f741239a2 pid=92448 port=47631 shared meter=internal t=1794908161971"
+  ],
+  "compile_commands_sha256": "e20130b3ee92d0b88a4d25115fb914bb04624fcb0d4ed7713607c4aef01bd9eb",
+  "external_dependencies": "wgpu-native prebuilt and third-party SDL are not claimed fully instrumented; project targets use anno_target_defaults."
+}

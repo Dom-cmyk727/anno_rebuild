@@ -1,0 +1,53 @@
+{
+  "stage": 6,
+  "started": "2026-11-17T14:56:34.705390+01:00",
+  "started_unix": 1794923794.705513,
+  "deadline_unix": 1794927394.705513,
+  "box_seconds": 3600,
+  "source": {
+    "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+    "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+    "status": ""
+  },
+  "commands": [
+    {
+      "name": "stage6-atlas",
+      "command": [
+        "build/release/src/tools/bench_frame/bench_frame",
+        "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "-",
+        "--atlas-report",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/atlas_report.tsv"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_TEST_THREADS": "4"
+      },
+      "started": "2026-11-17T14:56:34.772798+01:00",
+      "log": "cache/mac-heavy-1/stage6-atlas.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 46862,
+      "exit": 0,
+      "finished": "2026-11-17T15:00:28.845252+01:00",
+      "wall_seconds": 234.0725598335266,
+      "log_sha256": "2395ad2a994c33fedb3c57c432a590c8a21725dac8828d21ec72ac1862e70af3",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      }
+    }
+  ],
+  "status": "completed",
+  "finished": "2026-11-17T15:00:28.948275+01:00",
+  "wall_seconds": 234.2427818775177,
+  "source_after": {
+    "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+    "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+    "status": ""
+  }
+}

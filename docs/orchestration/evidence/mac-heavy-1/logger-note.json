@@ -1,0 +1,6 @@
+{
+  "finding": "Initial private logger matched ANNO_ and omitted ANNO1503_GAME_DIR from its header, although environment() sets and passes it correctly.",
+  "action": "Cache helper now includes all ANNO-prefixed names for later stages. Do not restart valid running work. At stage-1 terminal preserve raw logs and produce complete environment-prefixed views with game path included.",
+  "production_files_changed": false,
+  "game_dir": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app"
+}

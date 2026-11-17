@@ -1,0 +1,16 @@
+{
+  "recorded": "2026-11-17T14:50:45.883986+01:00",
+  "load_average": [
+    2.4814453125,
+    2.787109375,
+    2.93408203125
+  ],
+  "disk": {
+    "total": 1995165736960,
+    "used": 326906400768,
+    "free": 1668259336192
+  },
+  "vm_stat": "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                                   397054.\nPages active:                                 443712.\nPages inactive:                               512434.\nPages speculative:                             24814.\nPages throttled:                                   0.\nPages wired down:                             279185.\nPages purgeable:                                5239.\n\"Translation faults\":                     2526931931.\nPages copy-on-write:                       147443245.\nPages zero filled:                        2659694796.\nPages reactivated:                          29059277.\nPages purged:                               30846424.\nFile-backed pages:                            514282.\nAnonymous pages:                              466678.\nPages stored in compressor:                  1818565.\nPages occupied by compressor:                1427942.\nDecompressions:                             15797251.\nCompressions:                               30632749.\nPageins:                                    24094858.\nPageouts:                                       8542.\nSwapins:                                        5329.\nSwapouts:                                     709400.\nPages tagged:                                 114993.\nPages tagged resident:                         99906.\nPages tagged compressed:                       15087.\nPages tag-storage:                             98304.\nPages tag-storage holding tags:                 5606.\nPages tag-storage free:                         2528.\nPages tag-storage non-tag pageable:            90083.\nPages tag-storage non-tag wired:                   8.\nBytes of compressed tags:                    2112960.\nTagged compressions:                          427866.\nTagged decompressions:                        355858.\n",
+  "active_test_processes": [],
+  "note": "Filtered test workload sample only; no unrelated owner process command lines published."
+}

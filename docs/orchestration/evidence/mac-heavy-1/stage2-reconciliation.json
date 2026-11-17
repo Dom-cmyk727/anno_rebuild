@@ -1,0 +1,22 @@
+{
+  "scope": "Native case visits across all 36 operations, not unique tests or canonical outer COUNTS. Original gate verdict remains FAIL.",
+  "whole_operations": 36,
+  "native_framework_case_visits": 10212,
+  "native_executed_pass_visits": 10083,
+  "native_failed_case_visits": 5,
+  "native_prerequisite_skip_visits": 124,
+  "filter_excluded_visits": 48,
+  "row_arithmetic_consistent": true,
+  "all_case_order_lengths_match_framework": true,
+  "binary_hashes_unchanged_across_orders": {
+    "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/test_support/anno_test_support_tests": "fc25c7e1f6c70b3b7ca6843ea57f85373cf0722c383f01c458711469839c39a0",
+    "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/formats/anno_formats_tests": "f9305b54d40cca5cdf094ea7c8e91e959d8435da3468d7bab435f884af7b0512",
+    "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/assets/anno_assets_tests": "62d25c2a62d3119f1b97a2afd5c75adc3c5894db3f36974f15e5c756a31b4033",
+    "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render/anno_render_tests": "c512ae85c31a4e7d9b35c162f5771a512e416ca5adb821bac7556156ec5ace4a",
+    "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render/anno_render_gpu_tests": "88b11d78f7570b8d261572aee060ae40dac0f0527d814c30051faeb590013532",
+    "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app/anno_app_tests": "c49afb2fa712b374ea6ee9c7a6e440309ffdad46537594159b15a509b7fba4ac",
+    "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app/anno_app_alloc_tests": "b55f3f2ed6bac102846d7b5a03ff1e9064fc318b60562c0338562163a5f06421",
+    "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app/anno_app_input_tests": "5a8beb7a6d40e6c4411be08528c9c26e09856792287a4e90c3a57fada64840a1",
+    "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/sim/anno_sim_tests": "35784741da88a594ca707d264a730ddae8cdde71433daf9462d0205538c03cfe"
+  }
+}

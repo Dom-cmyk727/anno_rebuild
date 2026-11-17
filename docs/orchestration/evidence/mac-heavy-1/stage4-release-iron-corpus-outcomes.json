@@ -1,0 +1,33 @@
+{
+  "raw_log": "cache/mac-heavy-1/stage4-release-iron-corpus.raw.log",
+  "raw_sha256": "a05174b6e8b1548aaa448811104d58bda0666303778d75aad4a1258fae862d0b",
+  "receipts": [
+    "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+    "VERDICT: PASS",
+    "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+    "VERDICT: PASS",
+    "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+  ],
+  "cases": [
+    {
+      "number": "2713",
+      "name": "picture_matrix_contract",
+      "status": "Passed",
+      "doctest_cases": null,
+      "prerequisites": []
+    },
+    {
+      "number": "1568",
+      "name": "anno_sim_tests.iron mine: no fallback on the original scenes (opt-in corpus)",
+      "status": "Passed",
+      "doctest_cases": 1,
+      "prerequisites": []
+    }
+  ],
+  "failures": [],
+  "memory_refusal_candidates": [],
+  "bad_alloc_retries": [],
+  "sanitizer_reports": [],
+  "coordinator_observations": [],
+  "reader_sha256": "a75f9c3c45b7b373c65162420bb046d2754bf5b37fa5603bc9348fdc3418b8f4"
+}

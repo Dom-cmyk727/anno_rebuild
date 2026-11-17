@@ -1,0 +1,71 @@
+{
+  "cpu": {
+    "exit": 0,
+    "stdout": "Apple M5 Max\n",
+    "stderr": ""
+  },
+  "logical_cores": {
+    "exit": 0,
+    "stdout": "18\n",
+    "stderr": ""
+  },
+  "ram_bytes": {
+    "exit": 0,
+    "stdout": "51539607552\n",
+    "stderr": ""
+  },
+  "free_disk": {
+    "exit": 0,
+    "stdout": "Filesystem      Size    Used   Avail Capacity iused ifree %iused  Mounted on\n/dev/disk3s5   1.8Ti   263Gi   1.5Ti    15%    1.5M   16G    0%   /System/Volumes/Data\n",
+    "stderr": ""
+  },
+  "macos": {
+    "exit": 0,
+    "stdout": "ProductName:\t\tmacOS\nProductVersion:\t\t27.0.1\nBuildVersion:\t\t26A434\n",
+    "stderr": ""
+  },
+  "clang": {
+    "exit": 0,
+    "stdout": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin27.0.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin\n",
+    "stderr": ""
+  },
+  "cmake": {
+    "exit": 0,
+    "stdout": "cmake version 3.31.10\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n",
+    "stderr": ""
+  },
+  "ninja": {
+    "exit": 0,
+    "stdout": "1.13.2.git.kitware.jobserver-pipe-1\n",
+    "stderr": ""
+  },
+  "coordinator_listener": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  "recorded_at": "2026-11-17T10:30:47.548495+01:00",
+  "load_average": [
+    1.609375,
+    3.3818359375,
+    4.09326171875
+  ],
+  "base": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+  "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+  "inherited_ANNO": {},
+  "coordinator_at_start": "not running: no listener or daemon process observed",
+  "coordinator_source_compat": 4,
+  "most_recent_observed_coordinator": "ec80ebec97126c7d / compat 4 / pid 61958 in ui-tabs-b; no longer running",
+  "stage_environment_plan": {
+    "baseline": {
+      "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+      "ANNO_TEST_THREADS": "4"
+    },
+    "stage1_extra": {
+      "ANNO_TEST_MB_PER_THREAD": "2048"
+    },
+    "stage4_extra": "one explicit opt-in switch per run; exact values recorded in each log"
+  },
+  "ui_tabs_b_report": "/Users/dom/.codex/worktrees/gate-run-ui-tabs-b/anno1503/cache/gate-run-ui-tabs-b/handoff.md",
+  "privacy_note": "Unrelated process command lines excluded from publication."
+}

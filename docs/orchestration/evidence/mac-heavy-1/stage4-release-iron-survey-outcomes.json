@@ -1,0 +1,24 @@
+{
+  "raw_log": "cache/mac-heavy-1/stage4-release-iron-survey.raw.log",
+  "raw_sha256": "bd924b1a0936ed0d1319456789d444dab0f76b71b57aa87fbc31cfd0fe75242d",
+  "receipts": [
+    "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+    "VERDICT: PASS",
+    "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+  ],
+  "cases": [
+    {
+      "number": "1559",
+      "name": "anno_sim_tests.iron mine: site survey (opt-in measure)",
+      "status": "Passed",
+      "doctest_cases": 1,
+      "prerequisites": []
+    }
+  ],
+  "failures": [],
+  "memory_refusal_candidates": [],
+  "bad_alloc_retries": [],
+  "sanitizer_reports": [],
+  "coordinator_observations": [],
+  "reader_sha256": "a75f9c3c45b7b373c65162420bb046d2754bf5b37fa5603bc9348fdc3418b8f4"
+}

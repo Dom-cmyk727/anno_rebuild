@@ -1,0 +1,263 @@
+{
+  "stage": 1,
+  "started": "2026-11-17T10:30:47.639822+01:00",
+  "started_unix": 1794907847.639932,
+  "deadline_unix": 1794929447.639932,
+  "box_seconds": 21600,
+  "source": {
+    "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+    "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+    "status": ""
+  },
+  "commands": [
+    {
+      "name": "stage1-probe-build",
+      "command": [
+        "/usr/bin/clang++",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined,float-cast-overflow",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/asan-capability.cpp",
+        "-o",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/asan-capability"
+      ],
+      "environment": {
+        "ANNO_TEST_MB_PER_THREAD": "2048",
+        "ANNO_TEST_THREADS": "4",
+        "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+      },
+      "started": "2026-11-17T10:30:47.704768+01:00",
+      "log": "cache/mac-heavy-1/stage1-probe-build.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 83581,
+      "exit": 0,
+      "finished": "2026-11-17T10:30:48.747871+01:00",
+      "wall_seconds": 1.043184757232666,
+      "log_sha256": "000b67a30106318b850ea1c1b93056e37d07791abc89de9d0d5f59e8047e1b3d",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      }
+    },
+    {
+      "name": "stage1-lsan-capability",
+      "command": [
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/asan-capability"
+      ],
+      "environment": {
+        "ANNO_TEST_MB_PER_THREAD": "2048",
+        "ANNO_TEST_THREADS": "4",
+        "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+      },
+      "started": "2026-11-17T10:30:48.847372+01:00",
+      "log": "cache/mac-heavy-1/stage1-lsan-capability.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 83600,
+      "exit": -6,
+      "finished": "2026-11-17T10:30:49.891597+01:00",
+      "wall_seconds": 1.044292688369751,
+      "log_sha256": "a5636dc4aa560f7a9f1d2199b0e7233ecc2e94be8cf63370131bd676594ddf30",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      }
+    },
+    {
+      "name": "stage1-configure",
+      "command": [
+        "cmake",
+        "--preset",
+        "asan",
+        "-DFETCHCONTENT_SOURCE_DIR_DOCTEST=/Users/dom/.codex/worktrees/whale-re-1c/anno1503/build/dev/_deps/doctest-src",
+        "-DFETCHCONTENT_SOURCE_DIR_SDL3=/Users/dom/.codex/worktrees/gate-run-eb11f0c6/anno1503/build/release/_deps/sdl3-src",
+        "-DFETCHCONTENT_SOURCE_DIR_WGPU_NATIVE=/Users/dom/.codex/worktrees/gate-run-eb11f0c6/anno1503/build/release/_deps/wgpu_native-src"
+      ],
+      "environment": {
+        "ANNO_TEST_MB_PER_THREAD": "2048",
+        "ANNO_TEST_THREADS": "4",
+        "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+      },
+      "started": "2026-11-17T10:30:49.974096+01:00",
+      "log": "cache/mac-heavy-1/stage1-configure.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 83637,
+      "exit": 0,
+      "finished": "2026-11-17T10:31:03.114693+01:00",
+      "wall_seconds": 13.140661001205444,
+      "log_sha256": "086008e0a3b2fcd34a9871a3b732c207edb0b56f8a8843882320a98ed603cb08",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      }
+    },
+    {
+      "name": "stage1-build",
+      "command": [
+        "cmake",
+        "--build",
+        "--preset",
+        "asan",
+        "--parallel",
+        "8"
+      ],
+      "environment": {
+        "ANNO_TEST_MB_PER_THREAD": "2048",
+        "ANNO_TEST_THREADS": "4",
+        "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+      },
+      "started": "2026-11-17T10:31:03.218550+01:00",
+      "log": "cache/mac-heavy-1/stage1-build.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 88510,
+      "exit": 0,
+      "finished": "2026-11-17T10:33:58.730290+01:00",
+      "wall_seconds": 175.51180911064148,
+      "log_sha256": "6cef92b2d2f6fd1ea59169ce6d4af5bc81bf71bd340aa1fc8a7ddbfcf1de3d21",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      }
+    },
+    {
+      "name": "stage1-full-01",
+      "command": [
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/asan",
+        "--select",
+        ".",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--jobs",
+        "8",
+        "--timeout",
+        "10800",
+        "--log",
+        "cache/mac-heavy-1/stage1-full-01.raw.log"
+      ],
+      "environment": {
+        "ANNO_TEST_MB_PER_THREAD": "2048",
+        "ANNO_TEST_THREADS": "4",
+        "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+      },
+      "started": "2026-11-17T10:33:58.823401+01:00",
+      "log": "cache/mac-heavy-1/stage1-full-01.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 90301,
+      "exit": 1,
+      "finished": "2026-11-17T11:17:19.105365+01:00",
+      "wall_seconds": 2600.2821481227875,
+      "log_sha256": "b84f242bb13b0118ab6e57fe6e015bfacb6af548b85e50083bcef2626e3c1a12",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "raw_log": "cache/mac-heavy-1/stage1-full-01.raw.log",
+      "raw_sha256": "7416af17c5b16413c96d38562dd83e859b19a092937ecc3c96d999f333dc9d3e",
+      "log_view": "cache/mac-heavy-1/stage1-full-01.log",
+      "log_view_sha256": "315f84af641fff9d3ee92a4923f430f4fb12120f9129d3e67221e000d1ca714e",
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "COUNTS: selected=2762 executed=2718 failed=1 empty=0 skipped=43 (required-asset=0 platform=9 opt-in=29 gpu=2 other=3) incomplete=0 sanitizer_lines=0",
+        "VERDICT: FAIL failed tests",
+        "GATE_END {\"status\": 1, \"ctest_rc\": 8}"
+      ]
+    },
+    {
+      "name": "stage1-minimap-isolated-01",
+      "command": [
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/asan",
+        "--select",
+        "^viewer_wiring_ui_minimap_controls$",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--jobs",
+        "1",
+        "--timeout",
+        "10800",
+        "--skip-auto-contract",
+        "--log",
+        "cache/mac-heavy-1/stage1-minimap-isolated-01.raw.log"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_TEST_MB_PER_THREAD": "2048",
+        "ANNO_TEST_THREADS": "4",
+        "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+      },
+      "started": "2026-11-17T11:20:26.870426+01:00",
+      "log": "cache/mac-heavy-1/stage1-minimap-isolated-01.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 115,
+      "exit": 0,
+      "finished": "2026-11-17T11:20:38.005331+01:00",
+      "wall_seconds": 11.135826349258423,
+      "log_sha256": "35f47cd7909c2039f26f20b14f05ff6d2184aa2f70872950cc2cadbf6ba178fb",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "raw_log": "cache/mac-heavy-1/stage1-minimap-isolated-01.raw.log",
+      "raw_sha256": "72ef9febb548a70594b0db20a76018a829270114938f2003cc6cf9ba11abbb52",
+      "log_view": "cache/mac-heavy-1/stage1-minimap-isolated-01.log",
+      "log_view_sha256": "651a464ff902830f4d7ab7c4f390a601203ecbb0fd46e43d4a17748b62ffe51c",
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ]
+    }
+  ],
+  "status": "awaiting_final_audit"
+}

@@ -1,0 +1,179 @@
+{
+  "stage": 3,
+  "started": "2026-11-17T12:45:05.408992+01:00",
+  "started_unix": 1794915905.409108,
+  "deadline_unix": 1794926705.409108,
+  "box_seconds": 10800,
+  "source": {
+    "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+    "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+    "status": ""
+  },
+  "commands": [
+    {
+      "name": "stage3-full-01",
+      "command": [
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/release",
+        "--select",
+        ".",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--log",
+        "cache/mac-heavy-1/stage3-full-01.raw.log"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_TEST_THREADS": "4"
+      },
+      "started": "2026-11-17T12:45:05.478523+01:00",
+      "log": "cache/mac-heavy-1/stage3-full-01.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 16106,
+      "exit": 0,
+      "finished": "2026-11-17T13:20:56.169190+01:00",
+      "wall_seconds": 2150.690804004669,
+      "log_sha256": "19d7c8f4c8b340e4b879199d21cdf04f74e4d8cb64d24b59d431738e9fb606c0",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "raw_log": "cache/mac-heavy-1/stage3-full-01.raw.log",
+      "raw_sha256": "874ac301a674fef3f14901c7f8d7cb31a5d93e5a22f399c2cef7c8a742f31fc2",
+      "log_view": "cache/mac-heavy-1/stage3-full-01.log",
+      "log_view_sha256": "d60826b575845b13e9795a6d3884c2d9d6bb2f546ba15b6276aac87a5161ae04",
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "COUNTS: selected=2761 executed=2718 failed=0 empty=0 skipped=43 (required-asset=0 platform=9 opt-in=29 gpu=2 other=3) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ]
+    },
+    {
+      "name": "stage3-full-02",
+      "command": [
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/release",
+        "--select",
+        ".",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--log",
+        "cache/mac-heavy-1/stage3-full-02.raw.log"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_TEST_THREADS": "4"
+      },
+      "started": "2026-11-17T13:23:00.753298+01:00",
+      "log": "cache/mac-heavy-1/stage3-full-02.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 24980,
+      "exit": 0,
+      "finished": "2026-11-17T13:58:46.197807+01:00",
+      "wall_seconds": 2145.444741010666,
+      "log_sha256": "ae1ce97f202651005ca0323a1d1a070bcdf8d6b8b923a3e2b540359e8d342579",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "raw_log": "cache/mac-heavy-1/stage3-full-02.raw.log",
+      "raw_sha256": "fbb03d3f13f04e8ec789eace48adb0b687be8a2a966ff68b0b05af0845cda9c8",
+      "log_view": "cache/mac-heavy-1/stage3-full-02.log",
+      "log_view_sha256": "87d2af69819371f97c4c1a504eab00779afc3995585bfbf33cd4051c598d453c",
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "COUNTS: selected=2761 executed=2718 failed=0 empty=0 skipped=43 (required-asset=0 platform=9 opt-in=29 gpu=2 other=3) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ]
+    },
+    {
+      "name": "stage3-full-03",
+      "command": [
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/release",
+        "--select",
+        ".",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--log",
+        "cache/mac-heavy-1/stage3-full-03.raw.log"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_TEST_THREADS": "4"
+      },
+      "started": "2026-11-17T13:59:48.225247+01:00",
+      "log": "cache/mac-heavy-1/stage3-full-03.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 33645,
+      "exit": 0,
+      "finished": "2026-11-17T14:35:35.791684+01:00",
+      "wall_seconds": 2147.5667362213135,
+      "log_sha256": "9f026c17d892e2c1570d04349a9635297a4e68496c645ac38f6d3c64c9d3383f",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "raw_log": "cache/mac-heavy-1/stage3-full-03.raw.log",
+      "raw_sha256": "334cb19a33eaf3f28fc03138ba0e9d48260d5006c83d5d1afbc9f6341ebdebfd",
+      "log_view": "cache/mac-heavy-1/stage3-full-03.log",
+      "log_view_sha256": "1d9654cb608670107f83dde3c8973512e810d071193542fbf1fdac804ef79dd1",
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "COUNTS: selected=2761 executed=2718 failed=0 empty=0 skipped=43 (required-asset=0 platform=9 opt-in=29 gpu=2 other=3) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ]
+    }
+  ],
+  "status": "completed",
+  "last_round": 3,
+  "finished": "2026-11-17T14:36:08.305955+01:00",
+  "wall_seconds": 6662.896966934204,
+  "source_after": {
+    "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+    "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+    "status": ""
+  }
+}

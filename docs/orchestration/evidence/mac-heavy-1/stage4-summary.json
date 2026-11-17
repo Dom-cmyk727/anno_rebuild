@@ -1,0 +1,1529 @@
+{
+  "scope": "Individual opt-ins; gate wall, native case wall and maximum-resident-set-size field distinguished. Preflight says which results are asserted and which are printed. No PASS is inferred for a prerequisite return.",
+  "rows": [
+    {
+      "operation": "stage4-release-iron-corpus",
+      "preset": "release",
+      "preflight": {
+        "id": "iron-corpus",
+        "variable": "ANNO_IRON_CORPUS",
+        "value": "1",
+        "test": "anno_sim_tests.iron mine: no fallback on the original scenes (opt-in corpus)",
+        "source": "iron_mine_test.cpp:722",
+        "assertion_scope": "Explicit ActorFreeComponent/import-only, 300 advance(100) calls per loaded scene. Asserts loaded > 0 and fallbacks == 0; initialization result and advance fault are not asserted; does not prove all 50 gameplay imports.",
+        "release": true,
+        "asan": false
+      },
+      "command_metadata": {
+        "name": "stage4-release-iron-corpus",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "python3",
+          "-I",
+          "tools/test/run_selected.py",
+          "--build-dir",
+          "build/release",
+          "--select",
+          "^anno_sim_tests\\.iron\\ mine:\\ no\\ fallback\\ on\\ the\\ original\\ scenes\\ \\(opt\\-in\\ corpus\\)$",
+          "--asset-policy",
+          "required",
+          "--allow-skip",
+          "gpu",
+          "--allow-skip",
+          "other",
+          "--jobs",
+          "1",
+          "--timeout",
+          "14400",
+          "--log",
+          "cache/mac-heavy-1/stage4-release-iron-corpus.raw.log"
+        ],
+        "environment": {
+          "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+          "ANNO_IRON_CORPUS": "1",
+          "ANNO_TEST_THREADS": "4"
+        },
+        "started": "2026-11-17T14:36:24.076275+01:00",
+        "log": "cache/mac-heavy-1/stage4-release-iron-corpus.console.log",
+        "source_before": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "pid": 42424,
+        "exit": 0,
+        "finished": "2026-11-17T14:36:34.185824+01:00",
+        "wall_seconds": 10.109633922576904,
+        "log_sha256": "07d1b048662580e877d17ecb3188140fe67ea8d0c5c175e9695adee6f49b75f7",
+        "source_after": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "required_contract_passed": true,
+        "raw_log": "cache/mac-heavy-1/stage4-release-iron-corpus.raw.log",
+        "raw_sha256": "a05174b6e8b1548aaa448811104d58bda0666303778d75aad4a1258fae862d0b",
+        "log_view": "cache/mac-heavy-1/stage4-release-iron-corpus.log",
+        "log_view_sha256": "8d964c2d049dbac4ef2338d026eb1430c283e7505d2e1d5658dc377568bb5c58",
+        "receipts": [
+          "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+          "VERDICT: PASS",
+          "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+          "VERDICT: PASS",
+          "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+        ]
+      },
+      "native_outcome": {
+        "number": "1568",
+        "name": "anno_sim_tests.iron mine: no fallback on the original scenes (opt-in corpus)",
+        "status": "Passed",
+        "doctest_cases": 1,
+        "prerequisites": []
+      },
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ],
+      "memory_refusal_candidates": [],
+      "bad_alloc_retries": [],
+      "sanitizer_reports": [],
+      "native_result": "Passed",
+      "peak_rss_as_reported": 1414643712,
+      "rss_scope": "Darwin /usr/bin/time -l maximum resident set size wrapping the selected gate; max child, not concurrent aggregate; field retained in native reported units.",
+      "canonical_case_wall_seconds": 3.94,
+      "measurement_lines": [],
+      "framework_summary": [
+        "[doctest] test cases: 1 | 1 passed | 0 failed | 1654 skipped",
+        "[doctest] assertions: 3 | 3 passed | 0 failed |"
+      ]
+    },
+    {
+      "operation": "stage4-release-iron-survey",
+      "preset": "release",
+      "preflight": {
+        "id": "iron-survey",
+        "variable": "ANNO_IRON_SURVEY",
+        "value": "1",
+        "test": "anno_sim_tests.iron mine: site survey (opt-in measure)",
+        "source": "iron_mine_test.cpp:268",
+        "assertion_scope": "Setup/world advances require no fault and construction eligibility is required; site locations/counts are printed, no site-count or latency assertion.",
+        "release": true,
+        "asan": false
+      },
+      "command_metadata": {
+        "name": "stage4-release-iron-survey",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "python3",
+          "-I",
+          "tools/test/run_selected.py",
+          "--build-dir",
+          "build/release",
+          "--select",
+          "^anno_sim_tests\\.iron\\ mine:\\ site\\ survey\\ \\(opt\\-in\\ measure\\)$",
+          "--asset-policy",
+          "required",
+          "--allow-skip",
+          "gpu",
+          "--allow-skip",
+          "other",
+          "--jobs",
+          "1",
+          "--timeout",
+          "14400",
+          "--log",
+          "cache/mac-heavy-1/stage4-release-iron-survey.raw.log",
+          "--skip-auto-contract"
+        ],
+        "environment": {
+          "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+          "ANNO_IRON_SURVEY": "1",
+          "ANNO_TEST_THREADS": "4"
+        },
+        "started": "2026-11-17T14:38:23.376413+01:00",
+        "log": "cache/mac-heavy-1/stage4-release-iron-survey.console.log",
+        "source_before": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "pid": 42982,
+        "exit": 0,
+        "finished": "2026-11-17T14:38:26.433586+01:00",
+        "wall_seconds": 3.057392120361328,
+        "log_sha256": "98833f5962fa3dba094222f14875ef126ca79c14b912ac6fd0e72da66fb6d687",
+        "source_after": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "required_contract_passed": false,
+        "raw_log": "cache/mac-heavy-1/stage4-release-iron-survey.raw.log",
+        "raw_sha256": "bd924b1a0936ed0d1319456789d444dab0f76b71b57aa87fbc31cfd0fe75242d",
+        "log_view": "cache/mac-heavy-1/stage4-release-iron-survey.log",
+        "log_view_sha256": "eff17d2ac54da0b89ffa95207eb69041ec7652e9f297a0d2c1985d7e8e531b81",
+        "receipts": [
+          "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+          "VERDICT: PASS",
+          "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+        ]
+      },
+      "native_outcome": {
+        "number": "1559",
+        "name": "anno_sim_tests.iron mine: site survey (opt-in measure)",
+        "status": "Passed",
+        "doctest_cases": 1,
+        "prerequisites": []
+      },
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ],
+      "memory_refusal_candidates": [],
+      "bad_alloc_retries": [],
+      "sanitizer_reports": [],
+      "native_result": "Passed",
+      "peak_rss_as_reported": 528482304,
+      "rss_scope": "Darwin /usr/bin/time -l maximum resident set size wrapping the selected gate; max child, not concurrent aggregate; field retained in native reported units.",
+      "canonical_case_wall_seconds": 1.51,
+      "measurement_lines": [
+        "Test command: /Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/sim/anno_sim_tests \"--test-case=iron mine: site survey (opt-in measure)\"",
+        "ORE 527,273 amount 2000",
+        "ORE 530,278 amount 2000",
+        "ORE 530,288 amount 2000",
+        "ORE 531,290 amount 2000",
+        "ORE 375,353 amount 2000",
+        "ORE 379,361 amount 2000",
+        "ORE 255,465 amount 2000",
+        "ORE 253,472 amount 2000",
+        "ORE 260,475 amount 2000",
+        "ORE 264,477 amount 2000"
+      ],
+      "framework_summary": [
+        "[doctest] test cases:    1 |    1 passed | 0 failed | 1654 skipped",
+        "[doctest] assertions: 1007 | 1007 passed | 0 failed |"
+      ]
+    },
+    {
+      "operation": "stage4-release-progression-ship",
+      "preset": "release",
+      "preflight": {
+        "id": "progression-ship",
+        "variable": "ANNO_PROGRESSION_GAPS",
+        "value": "1",
+        "test": "anno_sim_tests.progression gaps N: ship-start settlement for 300 game seconds (opt-in measure)",
+        "source": "founding_assets_test.cpp:5317",
+        "assertion_scope": "Public sail/found/unload/build/road setup asserted. 300 advance(1000), no fault each. Asserts zero houses and clean invariants; prints stocks and exhaustion, no upgrade requirement.",
+        "release": true,
+        "asan": false
+      },
+      "command_metadata": {
+        "name": "stage4-release-progression-ship",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "python3",
+          "-I",
+          "tools/test/run_selected.py",
+          "--build-dir",
+          "build/release",
+          "--select",
+          "^anno_sim_tests\\.progression\\ gaps\\ N:\\ ship\\-start\\ settlement\\ for\\ 300\\ game\\ seconds\\ \\(opt\\-in\\ measure\\)$",
+          "--asset-policy",
+          "required",
+          "--allow-skip",
+          "gpu",
+          "--allow-skip",
+          "other",
+          "--jobs",
+          "1",
+          "--timeout",
+          "14400",
+          "--log",
+          "cache/mac-heavy-1/stage4-release-progression-ship.raw.log",
+          "--skip-auto-contract"
+        ],
+        "environment": {
+          "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+          "ANNO_PROGRESSION_GAPS": "1",
+          "ANNO_TEST_THREADS": "4"
+        },
+        "started": "2026-11-17T14:39:25.116691+01:00",
+        "log": "cache/mac-heavy-1/stage4-release-progression-ship.console.log",
+        "source_before": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "pid": 43104,
+        "exit": 0,
+        "finished": "2026-11-17T14:39:29.185415+01:00",
+        "wall_seconds": 4.06897497177124,
+        "log_sha256": "a37323a9f01a0c483ce901d363f7166fdb145f471dbc6e409efc7246be564aaf",
+        "source_after": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "required_contract_passed": false,
+        "raw_log": "cache/mac-heavy-1/stage4-release-progression-ship.raw.log",
+        "raw_sha256": "45fe579867f77004513327d975233178bc9c21c7f88a83858a90d7a8625b2456",
+        "log_view": "cache/mac-heavy-1/stage4-release-progression-ship.log",
+        "log_view_sha256": "c6ffe08e35b99db6d9087cb9332ff480f8f1d91a914216e6c9a4b1f3d8b0575a",
+        "receipts": [
+          "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+          "VERDICT: PASS",
+          "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+        ]
+      },
+      "native_outcome": {
+        "number": "1323",
+        "name": "anno_sim_tests.progression gaps N: ship-start settlement for 300 game seconds (opt-in measure)",
+        "status": "Passed",
+        "doctest_cases": 1,
+        "prerequisites": []
+      },
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ],
+      "memory_refusal_candidates": [],
+      "bad_alloc_retries": [],
+      "sanitizer_reports": [],
+      "native_result": "Passed",
+      "peak_rss_as_reported": 599048192,
+      "rss_scope": "Darwin /usr/bin/time -l maximum resident set size wrapping the selected gate; max child, not concurrent aggregate; field retained in native reported units.",
+      "canonical_case_wall_seconds": 2.68,
+      "measurement_lines": [
+        "PROGRESSION town=ship_start ticks=236000 game_seconds=300 house_updates=1 city_booking=1 cities=1 houses=0,0,0,0,0 wood_88=2688 tools_88=0",
+        "PROGRESSION build_goods=41 name=WERKZEUG start_88=0 end_88=0 exhausted=1",
+        "PROGRESSION build_goods=42 name=HOLZ start_88=0 end_88=2688 exhausted=0",
+        "PROGRESSION build_goods=43 name=ZIEGEL start_88=0 end_88=0 exhausted=1",
+        "PROGRESSION build_goods=44 name=MAMOR start_88=0 end_88=0 exhausted=1",
+        "PROGRESSION build_goods=45 name=UNUSED start_88=0 end_88=0 exhausted=1"
+      ],
+      "framework_summary": [
+        "[doctest] test cases:    1 |    1 passed | 0 failed | 1654 skipped",
+        "[doctest] assertions: 5505 | 5505 passed | 0 failed |"
+      ]
+    },
+    {
+      "operation": "stage4-release-progression-towns",
+      "preset": "release",
+      "preflight": {
+        "id": "progression-towns",
+        "variable": "ANNO_PROGRESSION_GAPS",
+        "value": "1",
+        "test": "anno_sim_tests.progression gaps N: endless02 and S01_07_01 for 300 game seconds (opt-in measure)",
+        "source": "population_live_canary_test.cpp:1650",
+        "assertion_scope": "Explicit actor-free loader plus original_component::import_only for both towns (population_live_canary_test.cpp:107-123). Script INIT required if still pending, 3000 advance(100), no fault each; rules and clean invariants asserted. Reports needs/producers/population/accounts/stocks, no upgrade requirement. Not proof of full scenario gameplay import.",
+        "release": true,
+        "asan": false
+      },
+      "command_metadata": {
+        "name": "stage4-release-progression-towns",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "python3",
+          "-I",
+          "tools/test/run_selected.py",
+          "--build-dir",
+          "build/release",
+          "--select",
+          "^anno_sim_tests\\.progression\\ gaps\\ N:\\ endless02\\ and\\ S01_07_01\\ for\\ 300\\ game\\ seconds\\ \\(opt\\-in\\ measure\\)$",
+          "--asset-policy",
+          "required",
+          "--allow-skip",
+          "gpu",
+          "--allow-skip",
+          "other",
+          "--jobs",
+          "1",
+          "--timeout",
+          "14400",
+          "--log",
+          "cache/mac-heavy-1/stage4-release-progression-towns.raw.log",
+          "--skip-auto-contract"
+        ],
+        "environment": {
+          "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+          "ANNO_PROGRESSION_GAPS": "1",
+          "ANNO_TEST_THREADS": "4"
+        },
+        "started": "2026-11-17T14:40:20.759582+01:00",
+        "log": "cache/mac-heavy-1/stage4-release-progression-towns.console.log",
+        "source_before": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "pid": 43223,
+        "exit": 0,
+        "finished": "2026-11-17T14:40:26.843937+01:00",
+        "wall_seconds": 6.08459997177124,
+        "log_sha256": "5831cdb12080dbadce15b025a6d402b75cc82428e9169528b78d420ab3135141",
+        "source_after": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "required_contract_passed": false,
+        "raw_log": "cache/mac-heavy-1/stage4-release-progression-towns.raw.log",
+        "raw_sha256": "499bd2c2be1cc3130169d2a6b0713d3fecd7c1f3bbab043afcf3e2ab481bc063",
+        "log_view": "cache/mac-heavy-1/stage4-release-progression-towns.log",
+        "log_view_sha256": "3ce3c564cad728bea8cfe9850cf84253955397883dabd3a4de2834a8fb374bbc",
+        "receipts": [
+          "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+          "VERDICT: PASS",
+          "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+        ]
+      },
+      "native_outcome": {
+        "number": "1741",
+        "name": "anno_sim_tests.progression gaps N: endless02 and S01_07_01 for 300 game seconds (opt-in measure)",
+        "status": "Passed",
+        "doctest_cases": 1,
+        "prerequisites": []
+      },
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ],
+      "memory_refusal_candidates": [],
+      "bad_alloc_retries": [],
+      "sanitizer_reports": [],
+      "native_result": "Passed",
+      "peak_rss_as_reported": 528515072,
+      "rss_scope": "Darwin /usr/bin/time -l maximum resident set size wrapping the selected gate; max child, not concurrent aggregate; field retained in native reported units.",
+      "canonical_case_wall_seconds": 4.82,
+      "measurement_lines": [
+        "PROGRESSION need_group=0 group_name=Pioneers goods=26 name=NAHRUNG force=1 menge=41 bau_first=0",
+        "PROGRESSION producer_goods=26 producer_type=805 class=9 tick=0 stage=0 research=0 inputs=137:FLEISCHTIER,",
+        "PROGRESSION producer_goods=26 producer_type=809 class=7 tick=6 stage=0 research=0 inputs=68:KARTOFFEL,69:GRAS,",
+        "PROGRESSION producer_goods=26 producer_type=810 class=4 tick=3 stage=0 research=0 inputs=71:FISCH,",
+        "PROGRESSION producer_goods=26 producer_type=1004 class=1 tick=1 stage=12 research=0 inputs=14:MEHL,",
+        "PROGRESSION producer_goods=26 producer_type=1018 class=1 tick=1 stage=5 research=0 inputs=12:FLEISCH,",
+        "PROGRESSION producer_goods=26 producer_type=1310 class=15 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=26 producer_type=3006 class=15 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=26 producer_type=3009 class=15 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=26 producer_type=3011 class=4 tick=3 stage=0 research=0 inputs=69:GRAS,",
+        "PROGRESSION producer_goods=26 producer_type=3013 class=4 tick=3 stage=0 research=0 inputs=69:GRAS,",
+        "PROGRESSION producer_goods=26 producer_type=3104 class=4 tick=3 stage=0 research=0 inputs=69:GRAS,",
+        "PROGRESSION producer_goods=26 producer_type=3105 class=15 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=26 producer_type=3210 class=15 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=26 producer_type=3213 class=4 tick=3 stage=0 research=0 inputs=69:GRAS,",
+        "PROGRESSION producer_goods=26 producer_type=3311 class=15 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=26 producer_type=3313 class=4 tick=3 stage=0 research=0 inputs=69:GRAS,",
+        "PROGRESSION producer_goods=26 producer_type=3406 class=15 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=26 producer_type=3416 class=4 tick=3 stage=0 research=0 inputs=69:GRAS,",
+        "PROGRESSION producer_goods=26 producer_type=3505 class=4 tick=3 stage=0 research=0 inputs=72:EISFISCH,",
+        "PROGRESSION producer_goods=26 producer_type=3510 class=4 tick=3 stage=0 research=0 inputs=71:FISCH,",
+        "PROGRESSION producer_goods=26 producer_type=3511 class=15 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=26 producer_type=3600 class=15 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=26 producer_type=3610 class=4 tick=3 stage=0 research=0 inputs=69:GRAS,",
+        "PROGRESSION producer_goods=26 producer_type=3702 class=4 tick=3 stage=0 research=0 inputs=69:GRAS,",
+        "PROGRESSION producer_goods=26 producer_type=3709 class=15 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=26 producer_type=3856 class=15 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=26 producer_type=3872 class=7 tick=6 stage=0 research=0 inputs=60:ZUCKERROHR,69:GRAS,",
+        "PROGRESSION producer_goods=26 producer_type=3978 class=4 tick=3 stage=0 research=0 inputs=71:FISCH,",
+        "PROGRESSION producer_goods=26 producer_type=3980 class=15 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_count goods=26 count=29",
+        "PROGRESSION need_group=0 group_name=Pioneers goods=27 name=LEDER force=1 menge=16 bau_first=0",
+        "PROGRESSION producer_goods=27 producer_type=1023 class=1 tick=1 stage=0 research=0 inputs=18:TIERHAEUTE,",
+        "PROGRESSION producer_goods=27 producer_type=1314 class=15 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_count goods=27 count=2",
+        "PROGRESSION need_group=0 group_name=Pioneers goods=33 name=STOFFE force=0 menge=16 bau_first=0",
+        "PROGRESSION producer_goods=33 producer_type=1001 class=1 tick=1 stage=0 research=0 inputs=9:WOLLE,",
+        "PROGRESSION producer_goods=33 producer_type=1005 class=1 tick=1 stage=31 research=50 inputs=9:WOLLE,",
+        "PROGRESSION producer_goods=33 producer_type=1314 class=15 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_count goods=33 count=3",
+        "PROGRESSION need_group=0 group_name=Pioneers goods=28 name=SALZ force=0 menge=8 bau_first=3",
+        "PROGRESSION producer_goods=28 producer_type=1022 class=1 tick=1 stage=3 research=0 inputs=3:SALZSTEIN,",
+        "PROGRESSION producer_goods=28 producer_type=1310 class=15 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_count goods=28 count=2",
+        "PROGRESSION need_group=0 group_name=Pioneers goods=76 name=WIRTSHAUS force=0 menge=16 bau_first=2",
+        "PROGRESSION producer_goods=76 producer_type=1335 class=16 tick=9 stage=2 research=0 inputs=29:ALKOHOL,",
+        "PROGRESSION producer_goods=76 producer_type=1336 class=16 tick=9 stage=17 research=0 inputs=29:ALKOHOL,",
+        "PROGRESSION producer_count goods=76 count=2",
+        "PROGRESSION need_group=0 group_name=Pioneers goods=82 name=KAPELLE force=0 menge=41 bau_first=3",
+        "PROGRESSION producer_goods=82 producer_type=1320 class=17 tick=0 stage=3 research=0 inputs=none",
+        "PROGRESSION producer_goods=82 producer_type=3002 class=17 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=82 producer_type=3004 class=17 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=82 producer_type=3110 class=17 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=82 producer_type=3201 class=17 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=82 producer_type=3202 class=17 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=82 producer_type=3308 class=17 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=82 producer_type=3404 class=17 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=82 producer_type=3516 class=17 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=82 producer_type=3603 class=17 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=82 producer_type=3705 class=17 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=82 producer_type=3958 class=17 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_goods=82 producer_type=3973 class=17 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_count goods=82 count=13",
+        "PROGRESSION need_group=1 group_name=Settlers goods=26 name=NAHRUNG force=1 menge=37 bau_first=0",
+        "PROGRESSION need_group=1 group_name=Settlers goods=27 name=LEDER force=1 menge=12 bau_first=0",
+        "PROGRESSION need_group=1 group_name=Settlers goods=33 name=STOFFE force=1 menge=20 bau_first=0",
+        "PROGRESSION need_group=1 group_name=Settlers goods=28 name=SALZ force=1 menge=8 bau_first=3",
+        "PROGRESSION need_group=1 group_name=Settlers goods=30 name=TABAKWAREN force=0 menge=16 bau_first=6",
+        "PROGRESSION producer_goods=30 producer_type=1008 class=1 tick=1 stage=6 research=0 inputs=11:TABAK,",
+        "PROGRESSION producer_goods=30 producer_type=1315 class=15 tick=0 stage=6 research=0 inputs=none",
+        "PROGRESSION producer_count goods=30 count=2",
+        "PROGRESSION need_group=1 group_name=Settlers goods=31 name=GEWUERZE force=0 menge=16 bau_first=6",
+        "PROGRESSION producer_goods=31 producer_type=812 class=4 tick=3 stage=6 research=0 inputs=58:GEWUERZBAUM,",
+        "PROGRESSION producer_goods=31 producer_type=1315 class=15 tick=0 stage=6 research=0 inputs=none",
+        "PROGRESSION producer_goods=31 producer_type=3012 class=4 tick=3 stage=0 research=0 inputs=58:GEWUERZBAUM,",
+        "PROGRESSION producer_goods=31 producer_type=3102 class=22 tick=8 stage=0 research=0 inputs=58:GEWUERZBAUM,",
+        "PROGRESSION producer_goods=31 producer_type=3109 class=4 tick=3 stage=0 research=0 inputs=58:GEWUERZBAUM,",
+        "PROGRESSION producer_count goods=31 count=5",
+        "PROGRESSION need_group=1 group_name=Settlers goods=76 name=WIRTSHAUS force=1 menge=20 bau_first=2",
+        "PROGRESSION need_group=1 group_name=Settlers goods=82 name=KAPELLE force=1 menge=41 bau_first=3",
+        "PROGRESSION need_group=1 group_name=Settlers goods=80 name=SCHULE force=0 menge=20 bau_first=5",
+        "PROGRESSION producer_goods=80 producer_type=1346 class=19 tick=0 stage=5 research=0 inputs=none",
+        "PROGRESSION producer_count goods=80 count=1",
+        "PROGRESSION need_group=1 group_name=Settlers goods=83 name=KIRCHE force=0 menge=41 bau_first=9",
+        "PROGRESSION producer_goods=83 producer_type=1321 class=17 tick=0 stage=9 research=0 inputs=none",
+        "PROGRESSION producer_goods=83 producer_type=1325 class=17 tick=0 stage=9 research=0 inputs=none",
+        "PROGRESSION producer_count goods=83 count=2",
+        "PROGRESSION need_group=2 group_name=Citizens goods=26 name=NAHRUNG force=1 menge=37 bau_first=0",
+        "PROGRESSION need_group=2 group_name=Citizens goods=33 name=STOFFE force=1 menge=20 bau_first=0",
+        "PROGRESSION need_group=2 group_name=Citizens goods=28 name=SALZ force=1 menge=10 bau_first=3",
+        "PROGRESSION need_group=2 group_name=Citizens goods=30 name=TABAKWAREN force=1 menge=16 bau_first=6",
+        "PROGRESSION need_group=2 group_name=Citizens goods=31 name=GEWUERZE force=1 menge=16 bau_first=6",
+        "PROGRESSION need_group=2 group_name=Citizens goods=35 name=LAMPENOEL force=0 menge=8 bau_first=14",
+        "PROGRESSION producer_goods=35 producer_type=1028 class=1 tick=1 stage=14 research=0 inputs=22:WALSPECK,",
+        "PROGRESSION producer_goods=35 producer_type=1317 class=15 tick=0 stage=14 research=0 inputs=none",
+        "PROGRESSION producer_count goods=35 count=2",
+        "PROGRESSION need_group=2 group_name=Citizens goods=34 name=SEIDESTOFFE force=0 menge=16 bau_first=13",
+        "PROGRESSION producer_goods=34 producer_type=1009 class=1 tick=1 stage=13 research=0 inputs=20:SEIDE,21:FARBSTOFFE,",
+        "PROGRESSION producer_goods=34 producer_type=1318 class=15 tick=0 stage=13 research=0 inputs=none",
+        "PROGRESSION producer_count goods=34 count=2",
+        "PROGRESSION need_group=2 group_name=Citizens goods=76 name=WIRTSHAUS force=1 menge=20 bau_first=2",
+        "PROGRESSION need_group=2 group_name=Citizens goods=83 name=KIRCHE force=1 menge=41 bau_first=9",
+        "PROGRESSION need_group=2 group_name=Citizens goods=80 name=SCHULE force=1 menge=31 bau_first=5",
+        "PROGRESSION need_group=2 group_name=Citizens goods=77 name=BADEHAUS force=0 menge=41 bau_first=14",
+        "PROGRESSION producer_goods=77 producer_type=1377 class=17 tick=0 stage=14 research=0 inputs=none",
+        "PROGRESSION producer_count goods=77 count=1",
+        "PROGRESSION need_group=2 group_name=Citizens goods=81 name=HOCHSCHULE force=0 menge=41 bau_first=13",
+        "PROGRESSION producer_goods=81 producer_type=1347 class=19 tick=0 stage=13 research=0 inputs=none",
+        "PROGRESSION producer_goods=81 producer_type=1379 class=19 tick=0 stage=13 research=0 inputs=none",
+        "PROGRESSION producer_count goods=81 count=2",
+        "PROGRESSION need_group=3 group_name=Merchants goods=26 name=NAHRUNG force=1 menge=37 bau_first=0",
+        "PROGRESSION need_group=3 group_name=Merchants goods=28 name=SALZ force=1 menge=10 bau_first=3",
+        "PROGRESSION need_group=3 group_name=Merchants goods=30 name=TABAKWAREN force=1 menge=16 bau_first=6",
+        "PROGRESSION need_group=3 group_name=Merchants goods=31 name=GEWUERZE force=1 menge=16 bau_first=6",
+        "PROGRESSION need_group=3 group_name=Merchants goods=35 name=LAMPENOEL force=1 menge=8 bau_first=14",
+        "PROGRESSION need_group=3 group_name=Merchants goods=33 name=STOFFE force=1 menge=12 bau_first=0",
+        "PROGRESSION need_group=3 group_name=Merchants goods=34 name=SEIDESTOFFE force=1 menge=25 bau_first=13",
+        "PROGRESSION need_group=3 group_name=Merchants goods=76 name=WIRTSHAUS force=1 menge=16 bau_first=2",
+        "PROGRESSION need_group=3 group_name=Merchants goods=83 name=KIRCHE force=1 menge=41 bau_first=9",
+        "PROGRESSION need_group=3 group_name=Merchants goods=81 name=HOCHSCHULE force=1 menge=41 bau_first=13",
+        "PROGRESSION need_group=3 group_name=Merchants goods=77 name=BADEHAUS force=1 menge=41 bau_first=14",
+        "PROGRESSION need_group=4 group_name=Aristocrats goods=26 name=NAHRUNG force=1 menge=37 bau_first=0",
+        "PROGRESSION need_group=4 group_name=Aristocrats goods=36 name=KLEIDUNG force=1 menge=29 bau_first=19",
+        "PROGRESSION producer_goods=36 producer_type=1027 class=1 tick=1 stage=16 research=0 inputs=33:STOFFE,38:PELZE,",
+        "PROGRESSION producer_goods=36 producer_type=1318 class=15 tick=0 stage=13 research=0 inputs=none",
+        "PROGRESSION producer_goods=36 producer_type=3979 class=22 tick=8 stage=0 research=0 inputs=27:LEDER,33:STOFFE,",
+        "PROGRESSION producer_goods=36 producer_type=3980 class=15 tick=0 stage=0 research=0 inputs=none",
+        "PROGRESSION producer_count goods=36 count=4",
+        "PROGRESSION need_group=4 group_name=Aristocrats goods=37 name=SCHMUCK force=0 menge=12 bau_first=19",
+        "PROGRESSION producer_goods=37 producer_type=1039 class=1 tick=1 stage=19 research=0 inputs=2:GOLD,4:EDELSTEINE,",
+        "PROGRESSION producer_goods=37 producer_type=1313 class=15 tick=0 stage=22 research=0 inputs=none",
+        "PROGRESSION producer_goods=37 producer_type=3010 class=1 tick=1 stage=0 research=0 inputs=4:EDELSTEINE,",
+        "PROGRESSION producer_goods=37 producer_type=3410 class=1 tick=1 stage=0 research=0 inputs=2:GOLD,",
+        "PROGRESSION producer_count goods=37 count=4",
+        "PROGRESSION need_group=4 group_name=Aristocrats goods=39 name=WEIN force=0 menge=20 bau_first=19",
+        "PROGRESSION producer_goods=39 producer_type=822 class=4 tick=3 stage=19 research=0 inputs=62:WEINTRAUBEN,",
+        "PROGRESSION producer_goods=39 producer_type=1316 class=15 tick=0 stage=22 research=0 inputs=none",
+        "PROGRESSION producer_count goods=39 count=2",
+        "PROGRESSION need_group=4 group_name=Aristocrats goods=83 name=KIRCHE force=1 menge=41 bau_first=9",
+        "PROGRESSION need_group=4 group_name=Aristocrats goods=77 name=BADEHAUS force=1 menge=41 bau_first=14",
+        "PROGRESSION need_group=4 group_name=Aristocrats goods=78 name=THEATER force=1 menge=41 bau_first=21",
+        "PROGRESSION producer_goods=78 producer_type=1376 class=17 tick=0 stage=21 research=0 inputs=none",
+        "PROGRESSION producer_count goods=78 count=1",
+        "PROGRESSION need_group=4 group_name=Aristocrats goods=85 name=PARK force=1 menge=41 bau_first=21",
+        "PROGRESSION producer_goods=85 producer_type=1386 class=17 tick=0 stage=21 research=0 inputs=none",
+        "PROGRESSION producer_count goods=85 count=1",
+        "PROGRESSION town=endless02 ticks=150000 game_seconds=300 house_updates=1 city_booking=1 cities=7",
+        "PROGRESSION group=0 name=Pioneers houses=108 at_cap=106 predicates=food:13,goods:72,infrastructure:5,materials:18,",
+        "PROGRESSION group=1 name=Settlers houses=51 at_cap=47 predicates=food:31,goods:20,",
+        "PROGRESSION group=2 name=Citizens houses=0 at_cap=0 predicates=absent",
+        "PROGRESSION group=3 name=Merchants houses=0 at_cap=0 predicates=absent",
+        "PROGRESSION group=4 name=Aristocrats houses=0 at_cap=0 predicates=absent",
+        "PROGRESSION build_goods=41 name=WERKZEUG start_88=61440 end_88=49302 exhausted=0",
+        "PROGRESSION build_goods=42 name=HOLZ start_88=82432 end_88=38572 exhausted=0",
+        "PROGRESSION build_goods=43 name=ZIEGEL start_88=67840 end_88=70986 exhausted=0",
+        "PROGRESSION build_goods=44 name=MAMOR start_88=12800 end_88=12800 exhausted=0",
+        "PROGRESSION build_goods=45 name=UNUSED start_88=0 end_88=0 exhausted=1",
+        "PROGRESSION town=S01_07_01 ticks=150000 game_seconds=300 house_updates=1 city_booking=1 cities=14",
+        "PROGRESSION group=0 name=Pioneers houses=50 at_cap=50 predicates=food:2,goods:47,infrastructure:1,",
+        "PROGRESSION group=1 name=Settlers houses=3 at_cap=1 predicates=food:2,goods:1,",
+        "PROGRESSION group=2 name=Citizens houses=64 at_cap=47 predicates=food:42,goods:22,",
+        "PROGRESSION group=3 name=Merchants houses=41 at_cap=11 predicates=food:41,",
+        "PROGRESSION group=4 name=Aristocrats houses=0 at_cap=0 predicates=absent",
+        "PROGRESSION build_goods=41 name=WERKZEUG start_88=117760 end_88=127224 exhausted=0",
+        "PROGRESSION build_goods=42 name=HOLZ start_88=122112 end_88=180118 exhausted=0",
+        "PROGRESSION build_goods=43 name=ZIEGEL start_88=93696 end_88=113213 exhausted=0",
+        "PROGRESSION build_goods=44 name=MAMOR start_88=22528 end_88=22528 exhausted=0",
+        "PROGRESSION build_goods=45 name=UNUSED start_88=0 end_88=0 exhausted=1"
+      ],
+      "framework_summary": [
+        "[doctest] test cases:    1 |    1 passed | 0 failed | 1654 skipped",
+        "[doctest] assertions: 7604 | 7604 passed | 0 failed |"
+      ]
+    },
+    {
+      "operation": "stage4-release-progression-probe",
+      "preset": "release",
+      "preflight": {
+        "id": "progression-probe",
+        "variable": "ANNO_PROGRESSION_PROBE",
+        "value": "1",
+        "test": "anno_sim_tests.progression K3: probe of the first upgrade tick (opt-in measure)",
+        "source": "population_progression_test.cpp:130-135,181-193,346-383; tutorial_town.hpp:59-74",
+        "assertion_scope": "Explicit actor-free Tutorial loader with the complete supported INIT required (no import_only script removal here). Public real-house build setup is asserted. Session::advance_to requires no fault every 100 ms. Prints first walker/transition through nominal tick 70000; no assertion that a transition must occur or be an upgrade.",
+        "release": true,
+        "asan": false
+      },
+      "command_metadata": {
+        "name": "stage4-release-progression-probe",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "python3",
+          "-I",
+          "tools/test/run_selected.py",
+          "--build-dir",
+          "build/release",
+          "--select",
+          "^anno_sim_tests\\.progression\\ K3:\\ probe\\ of\\ the\\ first\\ upgrade\\ tick\\ \\(opt\\-in\\ measure\\)$",
+          "--asset-policy",
+          "required",
+          "--allow-skip",
+          "gpu",
+          "--allow-skip",
+          "other",
+          "--jobs",
+          "1",
+          "--timeout",
+          "14400",
+          "--log",
+          "cache/mac-heavy-1/stage4-release-progression-probe.raw.log",
+          "--skip-auto-contract"
+        ],
+        "environment": {
+          "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+          "ANNO_PROGRESSION_PROBE": "1",
+          "ANNO_TEST_THREADS": "4"
+        },
+        "started": "2026-11-17T14:41:07.106004+01:00",
+        "log": "cache/mac-heavy-1/stage4-release-progression-probe.console.log",
+        "source_before": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "pid": 43339,
+        "exit": 0,
+        "finished": "2026-11-17T14:41:09.154466+01:00",
+        "wall_seconds": 2.0487112998962402,
+        "log_sha256": "470e42b2b0f188464175e6567e7f9e4ee1938295e2abbb1222dab61c35ec6658",
+        "source_after": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "required_contract_passed": false,
+        "raw_log": "cache/mac-heavy-1/stage4-release-progression-probe.raw.log",
+        "raw_sha256": "f539fb258d6b53842eeed341ba6622e8557185214a267f5d57ed8de333f5ce49",
+        "log_view": "cache/mac-heavy-1/stage4-release-progression-probe.log",
+        "log_view_sha256": "df943795e79c6cad59ae7535c119e98eaecad1ed20f52dd697e83dafe838ad23",
+        "receipts": [
+          "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+          "VERDICT: PASS",
+          "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+        ]
+      },
+      "native_outcome": {
+        "number": "1742",
+        "name": "anno_sim_tests.progression K3: probe of the first upgrade tick (opt-in measure)",
+        "status": "Passed",
+        "doctest_cases": 1,
+        "prerequisites": []
+      },
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ],
+      "memory_refusal_candidates": [],
+      "bad_alloc_retries": [],
+      "sanitizer_reports": [],
+      "native_result": "Passed",
+      "peak_rss_as_reported": 524451840,
+      "rss_scope": "Darwin /usr/bin/time -l maximum resident set size wrapping the selected gate; max child, not concurrent aggregate; field retained in native reported units.",
+      "canonical_case_wall_seconds": 0.65,
+      "measurement_lines": [
+        "K3PROBE first tavern walker at tick 46700",
+        "K3PROBE first transition at tick 60000 upgrade record yes tick 60000 from 501 to 521 draw 2661 idx 1"
+      ],
+      "framework_summary": [
+        "[doctest] test cases:    1 |    1 passed | 0 failed | 1654 skipped",
+        "[doctest] assertions: 1208 | 1208 passed | 0 failed |"
+      ]
+    },
+    {
+      "operation": "stage4-release-supply-leather",
+      "preset": "release",
+      "preflight": {
+        "id": "supply-leather",
+        "variable": "ANNO_SIM_SUPPLY_SCALE",
+        "value": "1",
+        "test": "anno_sim_tests.synthetic mechanics fixture: Release scale against unrelated content (opt-in measure)",
+        "source": "leather_fixture_test.cpp:521",
+        "assertion_scope": "Synthetic workloads K=0,8,16,32, 100000 ticks; setup, no-fault advances, unaccounted hides/made/loaded zero asserted. Actual built counts/times printed, not performance guarantees.",
+        "release": true,
+        "asan": true
+      },
+      "command_metadata": {
+        "name": "stage4-release-supply-leather",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "python3",
+          "-I",
+          "tools/test/run_selected.py",
+          "--build-dir",
+          "build/release",
+          "--select",
+          "^anno_sim_tests\\.synthetic\\ mechanics\\ fixture:\\ Release\\ scale\\ against\\ unrelated\\ content\\ \\(opt\\-in\\ measure\\)$",
+          "--asset-policy",
+          "required",
+          "--allow-skip",
+          "gpu",
+          "--allow-skip",
+          "other",
+          "--jobs",
+          "1",
+          "--timeout",
+          "14400",
+          "--log",
+          "cache/mac-heavy-1/stage4-release-supply-leather.raw.log",
+          "--skip-auto-contract"
+        ],
+        "environment": {
+          "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+          "ANNO_SIM_SUPPLY_SCALE": "1",
+          "ANNO_TEST_THREADS": "4"
+        },
+        "started": "2026-11-17T14:41:43.744704+01:00",
+        "log": "cache/mac-heavy-1/stage4-release-supply-leather.console.log",
+        "source_before": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "pid": 43423,
+        "exit": 0,
+        "finished": "2026-11-17T14:41:46.797323+01:00",
+        "wall_seconds": 3.0528409481048584,
+        "log_sha256": "a5f5762f9c479afb256923f57e76aac8516b6256f8b68875030202bb0aacc9a0",
+        "source_after": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "required_contract_passed": false,
+        "raw_log": "cache/mac-heavy-1/stage4-release-supply-leather.raw.log",
+        "raw_sha256": "a4cabbafd1370b8ac0fbcd74ee588ad534dd1148e91c48632c82a83b2e143fe5",
+        "log_view": "cache/mac-heavy-1/stage4-release-supply-leather.log",
+        "log_view_sha256": "ec3284c16c46f983a80a21f316f4756d4e21127734c014dcdfce3ad198508d45",
+        "receipts": [
+          "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+          "VERDICT: PASS",
+          "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+        ]
+      },
+      "native_outcome": {
+        "number": "1641",
+        "name": "anno_sim_tests.synthetic mechanics fixture: Release scale against unrelated content (opt-in measure)",
+        "status": "Passed",
+        "doctest_cases": 1,
+        "prerequisites": []
+      },
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ],
+      "memory_refusal_candidates": [],
+      "bad_alloc_retries": [],
+      "sanitizer_reports": [],
+      "native_result": "Passed",
+      "peak_rss_as_reported": 529301504,
+      "rss_scope": "Darwin /usr/bin/time -l maximum resident set size wrapping the selected gate; max child, not concurrent aggregate; field retained in native reported units.",
+      "canonical_case_wall_seconds": 1.23,
+      "measurement_lines": [
+        "SCALE k=0 farms_built=0 tanneries_built=0 buildings=76 setup_ms=3.1 run_ms=137.4 ticks=100000 us_per_tick=1.37 made=1344 taken=754 store=555",
+        "SCALE k=8 farms_built=8 tanneries_built=3 buildings=87 setup_ms=3.6 run_ms=165.5 ticks=100000 us_per_tick=1.66 made=1344 taken=754 store=555",
+        "SCALE k=16 farms_built=12 tanneries_built=0 buildings=88 setup_ms=4.3 run_ms=170.4 ticks=100000 us_per_tick=1.70 made=1344 taken=754 store=555",
+        "SCALE k=32 farms_built=12 tanneries_built=0 buildings=88 setup_ms=4.1 run_ms=174.4 ticks=100000 us_per_tick=1.74 made=1344 taken=754 store=555"
+      ],
+      "framework_summary": [
+        "[doctest] test cases:    1 |    1 passed | 0 failed | 1654 skipped",
+        "[doctest] assertions: 8713 | 8713 passed | 0 failed |"
+      ]
+    },
+    {
+      "operation": "stage4-release-supply-farm",
+      "preset": "release",
+      "preflight": {
+        "id": "supply-farm",
+        "variable": "ANNO_SIM_SUPPLY_SCALE",
+        "value": "1",
+        "test": "anno_sim_tests.resilience: harvest search work against unrelated farms (opt-in measure, Release samples)",
+        "source": "small_farm_resilience_test.cpp:735;417",
+        "assertion_scope": "Synthetic K=0,7,14,21 unrelated farms; World::create required, 8000 advance(100) each = nominally 400000 ticks; actual clock progress is not asserted. This opt-in only prints deterministic counters/wall time; no no-fault/invariant/counter assertion in run_unrelated.",
+        "release": true,
+        "asan": true
+      },
+      "command_metadata": {
+        "name": "stage4-release-supply-farm",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "python3",
+          "-I",
+          "tools/test/run_selected.py",
+          "--build-dir",
+          "build/release",
+          "--select",
+          "^anno_sim_tests\\.resilience:\\ harvest\\ search\\ work\\ against\\ unrelated\\ farms\\ \\(opt\\-in\\ measure,\\ Release\\ samples\\)$",
+          "--asset-policy",
+          "required",
+          "--allow-skip",
+          "gpu",
+          "--allow-skip",
+          "other",
+          "--jobs",
+          "1",
+          "--timeout",
+          "14400",
+          "--log",
+          "cache/mac-heavy-1/stage4-release-supply-farm.raw.log",
+          "--skip-auto-contract"
+        ],
+        "environment": {
+          "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+          "ANNO_SIM_SUPPLY_SCALE": "1",
+          "ANNO_TEST_THREADS": "4"
+        },
+        "started": "2026-11-17T14:42:56.246430+01:00",
+        "log": "cache/mac-heavy-1/stage4-release-supply-farm.console.log",
+        "source_before": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "pid": 43580,
+        "exit": 0,
+        "finished": "2026-11-17T14:42:58.298761+01:00",
+        "wall_seconds": 2.0525448322296143,
+        "log_sha256": "7093b030f7ea97923f5370617d93cd9fc88a93a5cb76fd516cb81e89aed428b1",
+        "source_after": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "required_contract_passed": false,
+        "raw_log": "cache/mac-heavy-1/stage4-release-supply-farm.raw.log",
+        "raw_sha256": "0dac11e43b23c2e2a2ba93ce77a89095c9f9356328bdf3e0bc3140a1d2534115",
+        "log_view": "cache/mac-heavy-1/stage4-release-supply-farm.log",
+        "log_view_sha256": "544a7d457b84e69183f0beed3cd2c4a84771d648e73511ce97c822d437d3deac",
+        "receipts": [
+          "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+          "VERDICT: PASS",
+          "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+        ]
+      },
+      "native_outcome": {
+        "number": "2453",
+        "name": "anno_sim_tests.resilience: harvest search work against unrelated farms (opt-in measure, Release samples)",
+        "status": "Passed",
+        "doctest_cases": 1,
+        "prerequisites": []
+      },
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ],
+      "memory_refusal_candidates": [],
+      "bad_alloc_retries": [],
+      "sanitizer_reports": [],
+      "native_result": "Passed",
+      "peak_rss_as_reported": 36388864,
+      "rss_scope": "Darwin /usr/bin/time -l maximum resident set size wrapping the selected gate; max child, not concurrent aggregate; field retained in native reported units.",
+      "canonical_case_wall_seconds": 0.25,
+      "measurement_lines": [
+        "SCALE farms=1 searches=1565 scanned=76685 candidates=3 popped=28 cuts=2 wall_ms=10.5",
+        "SCALE farms=8 searches=12751 scanned=624799 candidates=3 popped=28 cuts=2 wall_ms=43.0",
+        "SCALE farms=15 searches=23936 scanned=1172864 candidates=3 popped=28 cuts=2 wall_ms=78.6",
+        "SCALE farms=22 searches=35123 scanned=1721027 candidates=3 popped=28 cuts=2 wall_ms=112.8"
+      ],
+      "framework_summary": [
+        "[doctest] test cases: 1 | 1 passed | 0 failed | 1654 skipped",
+        "[doctest] assertions: 8 | 8 passed | 0 failed |"
+      ]
+    },
+    {
+      "operation": "stage4-release-transport",
+      "preset": "release",
+      "preflight": {
+        "id": "transport",
+        "variable": "ANNO_SIM_TRANSPORT_STATS",
+        "value": "1",
+        "test": "anno_sim_tests.transport search statistics (ANNO_SIM_TRANSPORT_STATS)",
+        "source": "scenario_test.cpp:947",
+        "assertion_scope": "Explicit actor-free load of S01_07_01 and single36; requires parse and World::create, not no-fault/invariants or movement success. 3000 advance(100)=150000 ticks; prints snapshots at 0,30000,150000 and run counters/frontier.",
+        "release": true,
+        "asan": true
+      },
+      "command_metadata": {
+        "name": "stage4-release-transport",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "python3",
+          "-I",
+          "tools/test/run_selected.py",
+          "--build-dir",
+          "build/release",
+          "--select",
+          "^anno_sim_tests\\.transport\\ search\\ statistics\\ \\(ANNO_SIM_TRANSPORT_STATS\\)$",
+          "--asset-policy",
+          "required",
+          "--allow-skip",
+          "gpu",
+          "--allow-skip",
+          "other",
+          "--jobs",
+          "1",
+          "--timeout",
+          "14400",
+          "--log",
+          "cache/mac-heavy-1/stage4-release-transport.raw.log",
+          "--skip-auto-contract"
+        ],
+        "environment": {
+          "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+          "ANNO_SIM_TRANSPORT_STATS": "1",
+          "ANNO_TEST_THREADS": "4"
+        },
+        "started": "2026-11-17T14:43:58.352977+01:00",
+        "log": "cache/mac-heavy-1/stage4-release-transport.console.log",
+        "source_before": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "pid": 43705,
+        "exit": 1,
+        "finished": "2026-11-17T14:44:00.407125+01:00",
+        "wall_seconds": 2.054388999938965,
+        "log_sha256": "0f6cd17867a31ec20bdccf79e312229524bab68158b8259a5ce1b593d25b49d7",
+        "source_after": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "required_contract_passed": false,
+        "raw_log": "cache/mac-heavy-1/stage4-release-transport.raw.log",
+        "raw_sha256": "2c17771ee0473b1d8defb2a61bfd48f49cd4751a623ab7cf19fa3bb9456318a6",
+        "log_view": "cache/mac-heavy-1/stage4-release-transport.log",
+        "log_view_sha256": "54d21e2cae536bcef20a056e3fc6b3abcac17eff39760764ab4ac9fc5f1cec7d",
+        "receipts": [
+          "COUNTS: selected=1 executed=0 failed=1 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+          "VERDICT: FAIL failed tests",
+          "GATE_END {\"status\": 1, \"ctest_rc\": 8}"
+        ]
+      },
+      "native_outcome": {
+        "number": "2056",
+        "name": "anno_sim_tests.transport search statistics (ANNO_SIM_TRANSPORT_STATS)",
+        "status": "Failed",
+        "doctest_cases": 1,
+        "prerequisites": [],
+        "first_evidence": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/sim/tests/scenario_test.cpp:1042: FATAL ERROR: REQUIRE( w.ok() ) is NOT correct!",
+        "tail": [
+          "===============================================================================",
+          "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/sim/tests/scenario_test.cpp:947:",
+          "TEST CASE:  transport search statistics (ANNO_SIM_TRANSPORT_STATS)",
+          "",
+          "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/sim/tests/scenario_test.cpp:1042: FATAL ERROR: REQUIRE( w.ok() ) is NOT correct!",
+          "  values: REQUIRE( false )",
+          "  logged: script offset 475: unsupported action: SET_DIPLOMACY",
+          "",
+          "===============================================================================",
+          "[doctest] test cases: 1 | 0 passed | 1 failed | 1654 skipped",
+          "[doctest] assertions: 4 | 3 passed | 1 failed |",
+          "[doctest] Status: FAILURE!"
+        ]
+      },
+      "receipts": [
+        "COUNTS: selected=1 executed=0 failed=1 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: FAIL failed tests",
+        "GATE_END {\"status\": 1, \"ctest_rc\": 8}"
+      ],
+      "memory_refusal_candidates": [],
+      "bad_alloc_retries": [],
+      "sanitizer_reports": [],
+      "native_result": "Failed",
+      "peak_rss_as_reported": 526516224,
+      "rss_scope": "Darwin /usr/bin/time -l maximum resident set size wrapping the selected gate; max child, not concurrent aggregate; field retained in native reported units.",
+      "canonical_case_wall_seconds": 0.49,
+      "measurement_lines": [],
+      "framework_summary": [
+        "[doctest] test cases: 1 | 0 passed | 1 failed | 1654 skipped",
+        "[doctest] assertions: 4 | 3 passed | 1 failed |"
+      ]
+    },
+    {
+      "operation": "stage4-release-nav",
+      "preset": "release",
+      "preflight": {
+        "id": "nav",
+        "variable": "ANNO_SIM_NAV_SCALE",
+        "value": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/nav-scale",
+        "test": "anno_sim_tests.nav scale measurements (ANNO_SIM_NAV_SCALE)",
+        "source": "nav_scale_test.cpp:388;203;286",
+        "assertion_scope": "Synthetic 16 configs with nav and idle = 32 runs. Requires valid world, clean start/end invariants, public move admission, locality quotas/index rules, equal work/delays across unrelated F/I, artifact write success. Latency metrics only printed/written, not bounded by assertions.",
+        "release": true,
+        "asan": false
+      },
+      "command_metadata": {
+        "name": "stage4-release-nav",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "python3",
+          "-I",
+          "tools/test/run_selected.py",
+          "--build-dir",
+          "build/release",
+          "--select",
+          "^anno_sim_tests\\.nav\\ scale\\ measurements\\ \\(ANNO_SIM_NAV_SCALE\\)$",
+          "--asset-policy",
+          "required",
+          "--allow-skip",
+          "gpu",
+          "--allow-skip",
+          "other",
+          "--jobs",
+          "1",
+          "--timeout",
+          "14400",
+          "--log",
+          "cache/mac-heavy-1/stage4-release-nav.raw.log",
+          "--skip-auto-contract"
+        ],
+        "environment": {
+          "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+          "ANNO_SIM_NAV_SCALE": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/nav-scale",
+          "ANNO_TEST_THREADS": "4"
+        },
+        "started": "2026-11-17T14:44:55.719245+01:00",
+        "log": "cache/mac-heavy-1/stage4-release-nav.console.log",
+        "source_before": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "pid": 43827,
+        "exit": 0,
+        "finished": "2026-11-17T14:44:57.777397+01:00",
+        "wall_seconds": 2.0584030151367188,
+        "log_sha256": "77de65d4332a6873e255ffce3433f4739c8853130de567615f0ab94967769d3e",
+        "source_after": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "required_contract_passed": false,
+        "raw_log": "cache/mac-heavy-1/stage4-release-nav.raw.log",
+        "raw_sha256": "35cb807e0e235667cb61fceb3b478365a08d2a852ed84cfdaf7a6a9cad3621a3",
+        "log_view": "cache/mac-heavy-1/stage4-release-nav.log",
+        "log_view_sha256": "d749a17dd0b5ac34d7e4e502d2e47fde5a48f565f1fc8e7ea8baa57e0e5c002a",
+        "receipts": [
+          "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+          "VERDICT: PASS",
+          "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+        ]
+      },
+      "native_outcome": {
+        "number": "1667",
+        "name": "anno_sim_tests.nav scale measurements (ANNO_SIM_NAV_SCALE)",
+        "status": "Passed",
+        "doctest_cases": 1,
+        "prerequisites": []
+      },
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ],
+      "memory_refusal_candidates": [],
+      "bad_alloc_retries": [],
+      "sanitizer_reports": [],
+      "native_result": "Passed",
+      "peak_rss_as_reported": 36339712,
+      "rss_scope": "Darwin /usr/bin/time -l maximum resident set size wrapping the selected gate; max child, not concurrent aggregate; field retained in native reported units.",
+      "canonical_case_wall_seconds": 0.58,
+      "measurement_lines": [
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/sim/tests/nav_scale_test.cpp:443: MESSAGE: wrote 32 runs to /Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/nav-scale"
+      ],
+      "framework_summary": [
+        "[doctest] test cases:      1 |      1 passed | 0 failed | 1654 skipped",
+        "[doctest] assertions: 161732 | 161732 passed | 0 failed |"
+      ]
+    },
+    {
+      "operation": "stage4-release-play",
+      "preset": "release",
+      "preflight": {
+        "id": "play",
+        "variable": "ANNO_PLAY_LIVE_TIMING",
+        "value": "1",
+        "test": "anno_app_tests.play: ms per 100 ms turn, original vs living, measured (PLAY-LIVE-1a Do item 6, opt-in measure)",
+        "source": "app/tests/play_test.cpp:434; app/src/play.cpp:390-392,477-480,651; sim/include/anno/sim/clock.hpp:70",
+        "assertion_scope": "Requires Trade file, load_play success and runner substep_ms == 10. PlayRunner::run_n(1) executes one turn of 10 such substeps, nominally 100 ms (the test name is correct). Four map/profile workloads of 1000 turns; p50/p95 are measurements, with no latency threshold, output/progress or no-fault assertion. run_n stops early on simulation_error, and the test does not assert that field.",
+        "release": true,
+        "asan": false
+      },
+      "command_metadata": {
+        "name": "stage4-release-play",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "python3",
+          "-I",
+          "tools/test/run_selected.py",
+          "--build-dir",
+          "build/release",
+          "--select",
+          "^anno_app_tests\\.play:\\ ms\\ per\\ 100\\ ms\\ turn,\\ original\\ vs\\ living,\\ measured\\ \\(PLAY\\-LIVE\\-1a\\ Do\\ item\\ 6,\\ opt\\-in\\ measure\\)$",
+          "--asset-policy",
+          "required",
+          "--allow-skip",
+          "gpu",
+          "--allow-skip",
+          "other",
+          "--jobs",
+          "1",
+          "--timeout",
+          "14400",
+          "--log",
+          "cache/mac-heavy-1/stage4-release-play.raw.log",
+          "--skip-auto-contract"
+        ],
+        "environment": {
+          "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+          "ANNO_PLAY_LIVE_TIMING": "1",
+          "ANNO_TEST_THREADS": "4"
+        },
+        "started": "2026-11-17T14:46:08.763607+01:00",
+        "log": "cache/mac-heavy-1/stage4-release-play.console.log",
+        "source_before": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "pid": 43969,
+        "exit": 0,
+        "finished": "2026-11-17T14:46:13.838606+01:00",
+        "wall_seconds": 5.075232982635498,
+        "log_sha256": "772271b73f0e36a2a8be8d5d20d8889d6aa01102955fc8ae840abc0ead1dae9b",
+        "source_after": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "required_contract_passed": false,
+        "raw_log": "cache/mac-heavy-1/stage4-release-play.raw.log",
+        "raw_sha256": "1ca993ad53f2770c28b947acf231d549d3df84a3746616e16fb9021da7297ed0",
+        "log_view": "cache/mac-heavy-1/stage4-release-play.log",
+        "log_view_sha256": "d77d042e11e5f824d2b8a23d4ee81f7f1c0859a7cadcacd4ab4e6f4f06ac069f",
+        "receipts": [
+          "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+          "VERDICT: PASS",
+          "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+        ]
+      },
+      "native_outcome": {
+        "number": "804",
+        "name": "anno_app_tests.play: ms per 100 ms turn, original vs living, measured (PLAY-LIVE-1a Do item 6, opt-in measure)",
+        "status": "Passed",
+        "doctest_cases": 1,
+        "prerequisites": []
+      },
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ],
+      "memory_refusal_candidates": [],
+      "bad_alloc_retries": [],
+      "sanitizer_reports": [],
+      "native_result": "Passed",
+      "peak_rss_as_reported": 539000832,
+      "rss_scope": "Darwin /usr/bin/time -l maximum resident set size wrapping the selected gate; max child, not concurrent aggregate; field retained in native reported units.",
+      "canonical_case_wall_seconds": 3.88,
+      "measurement_lines": [
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/app/tests/play_test.cpp:479: MESSAGE: fixed map, original, 1000 turns: p50 0.527625 ms, p95 0.644875 ms",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/app/tests/play_test.cpp:479: MESSAGE: fixed map, living, 1000 turns: p50 0.537917 ms, p95 0.638625 ms",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/app/tests/play_test.cpp:479: MESSAGE: 02Trade01.sze, original, 1000 turns: p50 0.107125 ms, p95 0.294459 ms",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/app/tests/play_test.cpp:479: MESSAGE: 02Trade01.sze, living, 1000 turns: p50 0.110042 ms, p95 0.40025 ms"
+      ],
+      "framework_summary": [
+        "[doctest] test cases: 1 | 1 passed | 0 failed | 325 skipped",
+        "[doctest] assertions: 9 | 9 passed | 0 failed |"
+      ]
+    },
+    {
+      "operation": "stage4-asan-supply-leather",
+      "preset": "asan",
+      "preflight": {
+        "id": "supply-leather",
+        "variable": "ANNO_SIM_SUPPLY_SCALE",
+        "value": "1",
+        "test": "anno_sim_tests.synthetic mechanics fixture: Release scale against unrelated content (opt-in measure)",
+        "source": "leather_fixture_test.cpp:521",
+        "assertion_scope": "Synthetic workloads K=0,8,16,32, 100000 ticks; setup, no-fault advances, unaccounted hides/made/loaded zero asserted. Actual built counts/times printed, not performance guarantees.",
+        "release": true,
+        "asan": true
+      },
+      "command_metadata": {
+        "name": "stage4-asan-supply-leather",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "python3",
+          "-I",
+          "tools/test/run_selected.py",
+          "--build-dir",
+          "build/asan",
+          "--select",
+          "^anno_sim_tests\\.synthetic\\ mechanics\\ fixture:\\ Release\\ scale\\ against\\ unrelated\\ content\\ \\(opt\\-in\\ measure\\)$",
+          "--asset-policy",
+          "required",
+          "--allow-skip",
+          "gpu",
+          "--allow-skip",
+          "other",
+          "--jobs",
+          "1",
+          "--timeout",
+          "14400",
+          "--log",
+          "cache/mac-heavy-1/stage4-asan-supply-leather.raw.log"
+        ],
+        "environment": {
+          "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+          "ANNO_SIM_SUPPLY_SCALE": "1",
+          "ANNO_TEST_MB_PER_THREAD": "2048",
+          "ANNO_TEST_THREADS": "4",
+          "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+          "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+        },
+        "started": "2026-11-17T14:46:55.048560+01:00",
+        "log": "cache/mac-heavy-1/stage4-asan-supply-leather.console.log",
+        "source_before": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "pid": 44080,
+        "exit": 0,
+        "finished": "2026-11-17T14:47:22.333996+01:00",
+        "wall_seconds": 27.28566884994507,
+        "log_sha256": "159820416db80fd55d6838ab4d74d3751f2fb726f5162ac00bbc324092f3cd0d",
+        "source_after": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "required_contract_passed": true,
+        "raw_log": "cache/mac-heavy-1/stage4-asan-supply-leather.raw.log",
+        "raw_sha256": "0b8e6108218f958d0dffc31ebce25458ef1dc3d31e02b133e33fb8689fc7e761",
+        "log_view": "cache/mac-heavy-1/stage4-asan-supply-leather.log",
+        "log_view_sha256": "008a73d88afda2ff7b40651b33128895c1eaf461a17432582b54bc5fc1e26550",
+        "receipts": [
+          "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+          "VERDICT: PASS",
+          "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+          "VERDICT: PASS",
+          "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+        ]
+      },
+      "native_outcome": {
+        "number": "1641",
+        "name": "anno_sim_tests.synthetic mechanics fixture: Release scale against unrelated content (opt-in measure)",
+        "status": "Passed",
+        "doctest_cases": 1,
+        "prerequisites": []
+      },
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ],
+      "memory_refusal_candidates": [],
+      "bad_alloc_retries": [],
+      "sanitizer_reports": [],
+      "native_result": "Passed",
+      "peak_rss_as_reported": 1954349056,
+      "rss_scope": "Darwin /usr/bin/time -l maximum resident set size wrapping the selected gate; max child, not concurrent aggregate; field retained in native reported units.",
+      "canonical_case_wall_seconds": 4.92,
+      "measurement_lines": [
+        "SCALE k=0 farms_built=0 tanneries_built=0 buildings=76 setup_ms=13.9 run_ms=388.9 ticks=100000 us_per_tick=3.89 made=1344 taken=754 store=555",
+        "SCALE k=8 farms_built=8 tanneries_built=3 buildings=87 setup_ms=16.4 run_ms=509.1 ticks=100000 us_per_tick=5.09 made=1344 taken=754 store=555",
+        "SCALE k=16 farms_built=12 tanneries_built=0 buildings=88 setup_ms=19.6 run_ms=530.9 ticks=100000 us_per_tick=5.31 made=1344 taken=754 store=555",
+        "SCALE k=32 farms_built=12 tanneries_built=0 buildings=88 setup_ms=23.9 run_ms=531.2 ticks=100000 us_per_tick=5.31 made=1344 taken=754 store=555"
+      ],
+      "framework_summary": [
+        "[doctest] test cases:    1 |    1 passed | 0 failed | 1654 skipped",
+        "[doctest] assertions: 8713 | 8713 passed | 0 failed |"
+      ]
+    },
+    {
+      "operation": "stage4-asan-supply-farm",
+      "preset": "asan",
+      "preflight": {
+        "id": "supply-farm",
+        "variable": "ANNO_SIM_SUPPLY_SCALE",
+        "value": "1",
+        "test": "anno_sim_tests.resilience: harvest search work against unrelated farms (opt-in measure, Release samples)",
+        "source": "small_farm_resilience_test.cpp:735;417",
+        "assertion_scope": "Synthetic K=0,7,14,21 unrelated farms; World::create required, 8000 advance(100) each = nominally 400000 ticks; actual clock progress is not asserted. This opt-in only prints deterministic counters/wall time; no no-fault/invariant/counter assertion in run_unrelated.",
+        "release": true,
+        "asan": true
+      },
+      "command_metadata": {
+        "name": "stage4-asan-supply-farm",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "python3",
+          "-I",
+          "tools/test/run_selected.py",
+          "--build-dir",
+          "build/asan",
+          "--select",
+          "^anno_sim_tests\\.resilience:\\ harvest\\ search\\ work\\ against\\ unrelated\\ farms\\ \\(opt\\-in\\ measure,\\ Release\\ samples\\)$",
+          "--asset-policy",
+          "required",
+          "--allow-skip",
+          "gpu",
+          "--allow-skip",
+          "other",
+          "--jobs",
+          "1",
+          "--timeout",
+          "14400",
+          "--log",
+          "cache/mac-heavy-1/stage4-asan-supply-farm.raw.log",
+          "--skip-auto-contract"
+        ],
+        "environment": {
+          "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+          "ANNO_SIM_SUPPLY_SCALE": "1",
+          "ANNO_TEST_MB_PER_THREAD": "2048",
+          "ANNO_TEST_THREADS": "4",
+          "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+          "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+        },
+        "started": "2026-11-17T14:48:13.076511+01:00",
+        "log": "cache/mac-heavy-1/stage4-asan-supply-farm.console.log",
+        "source_before": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "pid": 44560,
+        "exit": 0,
+        "finished": "2026-11-17T14:48:16.122676+01:00",
+        "wall_seconds": 3.0464000701904297,
+        "log_sha256": "41d980637405f5a150017c6cb995d322b9ab868cf10723305e10cd95f489caa2",
+        "source_after": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "required_contract_passed": false,
+        "raw_log": "cache/mac-heavy-1/stage4-asan-supply-farm.raw.log",
+        "raw_sha256": "095ced21bcf955bf34e3cf744c73d5ddb96de72e9c2c552c26f6a518cd857c67",
+        "log_view": "cache/mac-heavy-1/stage4-asan-supply-farm.log",
+        "log_view_sha256": "d59b8ed4f3f1684900981f4c0ebf7375fe615e666cc76b98c45406de37130a69",
+        "receipts": [
+          "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+          "VERDICT: PASS",
+          "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+        ]
+      },
+      "native_outcome": {
+        "number": "2453",
+        "name": "anno_sim_tests.resilience: harvest search work against unrelated farms (opt-in measure, Release samples)",
+        "status": "Passed",
+        "doctest_cases": 1,
+        "prerequisites": []
+      },
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ],
+      "memory_refusal_candidates": [],
+      "bad_alloc_retries": [],
+      "sanitizer_reports": [],
+      "native_result": "Passed",
+      "peak_rss_as_reported": 246562816,
+      "rss_scope": "Darwin /usr/bin/time -l maximum resident set size wrapping the selected gate; max child, not concurrent aggregate; field retained in native reported units.",
+      "canonical_case_wall_seconds": 1.26,
+      "measurement_lines": [
+        "SCALE farms=1 searches=1565 scanned=76685 candidates=3 popped=28 cuts=2 wall_ms=45.1",
+        "SCALE farms=8 searches=12751 scanned=624799 candidates=3 popped=28 cuts=2 wall_ms=213.1",
+        "SCALE farms=15 searches=23936 scanned=1172864 candidates=3 popped=28 cuts=2 wall_ms=383.5",
+        "SCALE farms=22 searches=35123 scanned=1721027 candidates=3 popped=28 cuts=2 wall_ms=554.9"
+      ],
+      "framework_summary": [
+        "[doctest] test cases: 1 | 1 passed | 0 failed | 1654 skipped",
+        "[doctest] assertions: 8 | 8 passed | 0 failed |"
+      ]
+    },
+    {
+      "operation": "stage4-asan-transport",
+      "preset": "asan",
+      "preflight": {
+        "id": "transport",
+        "variable": "ANNO_SIM_TRANSPORT_STATS",
+        "value": "1",
+        "test": "anno_sim_tests.transport search statistics (ANNO_SIM_TRANSPORT_STATS)",
+        "source": "scenario_test.cpp:947",
+        "assertion_scope": "Explicit actor-free load of S01_07_01 and single36; requires parse and World::create, not no-fault/invariants or movement success. 3000 advance(100)=150000 ticks; prints snapshots at 0,30000,150000 and run counters/frontier.",
+        "release": true,
+        "asan": true
+      },
+      "command_metadata": {
+        "name": "stage4-asan-transport",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "python3",
+          "-I",
+          "tools/test/run_selected.py",
+          "--build-dir",
+          "build/asan",
+          "--select",
+          "^anno_sim_tests\\.transport\\ search\\ statistics\\ \\(ANNO_SIM_TRANSPORT_STATS\\)$",
+          "--asset-policy",
+          "required",
+          "--allow-skip",
+          "gpu",
+          "--allow-skip",
+          "other",
+          "--jobs",
+          "1",
+          "--timeout",
+          "14400",
+          "--log",
+          "cache/mac-heavy-1/stage4-asan-transport.raw.log",
+          "--skip-auto-contract"
+        ],
+        "environment": {
+          "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+          "ANNO_SIM_TRANSPORT_STATS": "1",
+          "ANNO_TEST_MB_PER_THREAD": "2048",
+          "ANNO_TEST_THREADS": "4",
+          "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+          "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+        },
+        "started": "2026-11-17T14:49:00.693593+01:00",
+        "log": "cache/mac-heavy-1/stage4-asan-transport.console.log",
+        "source_before": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "pid": 44672,
+        "exit": 1,
+        "finished": "2026-11-17T14:49:04.765510+01:00",
+        "wall_seconds": 4.072151184082031,
+        "log_sha256": "c1d54404150bc5e6171bcb9731c416dfe21bd2d8ae9ce0585166f038435a9a2c",
+        "source_after": {
+          "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+          "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+          "status": ""
+        },
+        "required_contract_passed": false,
+        "raw_log": "cache/mac-heavy-1/stage4-asan-transport.raw.log",
+        "raw_sha256": "e544b357e2038a25f0df82179c02a5cba79a08f0c3e465489897ffffcb785f61",
+        "log_view": "cache/mac-heavy-1/stage4-asan-transport.log",
+        "log_view_sha256": "7d9250a5c21aa88500cb420bbfa1077cd61311fecd7e76cd6ac07fbec7220414",
+        "receipts": [
+          "COUNTS: selected=1 executed=0 failed=1 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+          "VERDICT: FAIL failed tests",
+          "GATE_END {\"status\": 1, \"ctest_rc\": 8}"
+        ]
+      },
+      "native_outcome": {
+        "number": "2056",
+        "name": "anno_sim_tests.transport search statistics (ANNO_SIM_TRANSPORT_STATS)",
+        "status": "Failed",
+        "doctest_cases": 1,
+        "prerequisites": [],
+        "first_evidence": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/sim/tests/scenario_test.cpp:1042: FATAL ERROR: REQUIRE( w.ok() ) is NOT correct!",
+        "tail": [
+          "===============================================================================",
+          "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/sim/tests/scenario_test.cpp:947:",
+          "TEST CASE:  transport search statistics (ANNO_SIM_TRANSPORT_STATS)",
+          "",
+          "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/sim/tests/scenario_test.cpp:1042: FATAL ERROR: REQUIRE( w.ok() ) is NOT correct!",
+          "  values: REQUIRE( false )",
+          "  logged: script offset 475: unsupported action: SET_DIPLOMACY",
+          "",
+          "===============================================================================",
+          "[doctest] test cases: 1 | 0 passed | 1 failed | 1654 skipped",
+          "[doctest] assertions: 4 | 3 passed | 1 failed |",
+          "[doctest] Status: FAILURE!"
+        ]
+      },
+      "receipts": [
+        "COUNTS: selected=1 executed=0 failed=1 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: FAIL failed tests",
+        "GATE_END {\"status\": 1, \"ctest_rc\": 8}"
+      ],
+      "memory_refusal_candidates": [],
+      "bad_alloc_retries": [],
+      "sanitizer_reports": [],
+      "native_result": "Failed",
+      "peak_rss_as_reported": 673005568,
+      "rss_scope": "Darwin /usr/bin/time -l maximum resident set size wrapping the selected gate; max child, not concurrent aggregate; field retained in native reported units.",
+      "canonical_case_wall_seconds": 2.48,
+      "measurement_lines": [],
+      "framework_summary": [
+        "[doctest] test cases: 1 | 0 passed | 1 failed | 1654 skipped",
+        "[doctest] assertions: 4 | 3 passed | 1 failed |"
+      ]
+    }
+  ]
+}

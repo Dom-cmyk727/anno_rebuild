@@ -1,0 +1,670 @@
+{
+  "actual_source": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503",
+  "records": [
+    {
+      "name": "whole_00_anno_test_support_tests_default",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/test_support/anno_test_support_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/test_support",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_00_anno_test_support_tests_default",
+        "--mode",
+        "default"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/test_support"
+    },
+    {
+      "name": "whole_00_anno_test_support_tests_1",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/test_support/anno_test_support_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/test_support",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_00_anno_test_support_tests_1",
+        "--mode",
+        "1"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/test_support"
+    },
+    {
+      "name": "whole_00_anno_test_support_tests_2",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/test_support/anno_test_support_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/test_support",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_00_anno_test_support_tests_2",
+        "--mode",
+        "2"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/test_support"
+    },
+    {
+      "name": "whole_00_anno_test_support_tests_3",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/test_support/anno_test_support_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/test_support",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_00_anno_test_support_tests_3",
+        "--mode",
+        "3"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/test_support"
+    },
+    {
+      "name": "whole_01_anno_formats_tests_default",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/formats/anno_formats_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/formats",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_01_anno_formats_tests_default",
+        "--mode",
+        "default"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/formats"
+    },
+    {
+      "name": "whole_01_anno_formats_tests_1",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/formats/anno_formats_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/formats",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_01_anno_formats_tests_1",
+        "--mode",
+        "1"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/formats"
+    },
+    {
+      "name": "whole_01_anno_formats_tests_2",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/formats/anno_formats_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/formats",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_01_anno_formats_tests_2",
+        "--mode",
+        "2"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/formats"
+    },
+    {
+      "name": "whole_01_anno_formats_tests_3",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/formats/anno_formats_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/formats",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_01_anno_formats_tests_3",
+        "--mode",
+        "3"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/formats"
+    },
+    {
+      "name": "whole_02_anno_assets_tests_default",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/assets/anno_assets_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/assets",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_02_anno_assets_tests_default",
+        "--mode",
+        "default"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/assets"
+    },
+    {
+      "name": "whole_02_anno_assets_tests_1",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/assets/anno_assets_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/assets",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_02_anno_assets_tests_1",
+        "--mode",
+        "1"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/assets"
+    },
+    {
+      "name": "whole_02_anno_assets_tests_2",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/assets/anno_assets_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/assets",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_02_anno_assets_tests_2",
+        "--mode",
+        "2"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/assets"
+    },
+    {
+      "name": "whole_02_anno_assets_tests_3",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/assets/anno_assets_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/assets",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_02_anno_assets_tests_3",
+        "--mode",
+        "3"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/assets"
+    },
+    {
+      "name": "whole_03_anno_render_tests_default",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render/anno_render_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_03_anno_render_tests_default",
+        "--mode",
+        "default"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render"
+    },
+    {
+      "name": "whole_03_anno_render_tests_1",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render/anno_render_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_03_anno_render_tests_1",
+        "--mode",
+        "1"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render"
+    },
+    {
+      "name": "whole_03_anno_render_tests_2",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render/anno_render_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_03_anno_render_tests_2",
+        "--mode",
+        "2"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render"
+    },
+    {
+      "name": "whole_03_anno_render_tests_3",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render/anno_render_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_03_anno_render_tests_3",
+        "--mode",
+        "3"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render"
+    },
+    {
+      "name": "whole_04_anno_render_gpu_tests_default",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render/anno_render_gpu_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_04_anno_render_gpu_tests_default",
+        "--mode",
+        "default"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render"
+    },
+    {
+      "name": "whole_04_anno_render_gpu_tests_1",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render/anno_render_gpu_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_04_anno_render_gpu_tests_1",
+        "--mode",
+        "1"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render"
+    },
+    {
+      "name": "whole_04_anno_render_gpu_tests_2",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render/anno_render_gpu_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_04_anno_render_gpu_tests_2",
+        "--mode",
+        "2"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render"
+    },
+    {
+      "name": "whole_04_anno_render_gpu_tests_3",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render/anno_render_gpu_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_04_anno_render_gpu_tests_3",
+        "--mode",
+        "3"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/render"
+    },
+    {
+      "name": "whole_05_anno_app_tests_default",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app/anno_app_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_05_anno_app_tests_default",
+        "--mode",
+        "default"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app"
+    },
+    {
+      "name": "whole_05_anno_app_tests_1",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app/anno_app_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_05_anno_app_tests_1",
+        "--mode",
+        "1"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app"
+    },
+    {
+      "name": "whole_05_anno_app_tests_2",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app/anno_app_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_05_anno_app_tests_2",
+        "--mode",
+        "2"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app"
+    },
+    {
+      "name": "whole_05_anno_app_tests_3",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app/anno_app_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_05_anno_app_tests_3",
+        "--mode",
+        "3"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app"
+    },
+    {
+      "name": "whole_06_anno_app_alloc_tests_default",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app/anno_app_alloc_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_06_anno_app_alloc_tests_default",
+        "--mode",
+        "default"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app"
+    },
+    {
+      "name": "whole_06_anno_app_alloc_tests_1",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app/anno_app_alloc_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_06_anno_app_alloc_tests_1",
+        "--mode",
+        "1"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app"
+    },
+    {
+      "name": "whole_06_anno_app_alloc_tests_2",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app/anno_app_alloc_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_06_anno_app_alloc_tests_2",
+        "--mode",
+        "2"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app"
+    },
+    {
+      "name": "whole_06_anno_app_alloc_tests_3",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app/anno_app_alloc_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_06_anno_app_alloc_tests_3",
+        "--mode",
+        "3"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app"
+    },
+    {
+      "name": "whole_07_anno_app_input_tests_default",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app/anno_app_input_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_07_anno_app_input_tests_default",
+        "--mode",
+        "default"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app"
+    },
+    {
+      "name": "whole_07_anno_app_input_tests_1",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app/anno_app_input_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_07_anno_app_input_tests_1",
+        "--mode",
+        "1"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app"
+    },
+    {
+      "name": "whole_07_anno_app_input_tests_2",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app/anno_app_input_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_07_anno_app_input_tests_2",
+        "--mode",
+        "2"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app"
+    },
+    {
+      "name": "whole_07_anno_app_input_tests_3",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app/anno_app_input_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_07_anno_app_input_tests_3",
+        "--mode",
+        "3"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/app"
+    },
+    {
+      "name": "whole_08_anno_sim_tests_default",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/sim/anno_sim_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/sim",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_08_anno_sim_tests_default",
+        "--mode",
+        "default"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/sim"
+    },
+    {
+      "name": "whole_08_anno_sim_tests_1",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/sim/anno_sim_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/sim",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_08_anno_sim_tests_1",
+        "--mode",
+        "1"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/sim"
+    },
+    {
+      "name": "whole_08_anno_sim_tests_2",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/sim/anno_sim_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/sim",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_08_anno_sim_tests_2",
+        "--mode",
+        "2"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/sim"
+    },
+    {
+      "name": "whole_08_anno_sim_tests_3",
+      "command": [
+        "python3",
+        "-I",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/whole_binary.py",
+        "--binary",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/sim/anno_sim_tests",
+        "--directory",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/sim",
+        "--output",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-children/whole_08_anno_sim_tests_3",
+        "--mode",
+        "3"
+      ],
+      "timeout": 7200,
+      "cwd": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/sim"
+    }
+  ],
+  "contract": {
+    "backtrace": 295,
+    "command": [
+      "/bin/bash",
+      "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/tools/bench/picture_matrix_test.sh",
+      "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/tools/bench_picture/bench_picture"
+    ],
+    "name": "picture_matrix_contract",
+    "properties": [
+      {
+        "name": "WORKING_DIRECTORY",
+        "value": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/build/release/src/tools/bench_picture"
+      }
+    ]
+  },
+  "config_only": true,
+  "tested_executables": "Previously built real Release/ASAN outputs; no targets built in this registry."
+}

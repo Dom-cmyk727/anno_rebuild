@@ -1,0 +1,8 @@
+seed=11
+advance_ms=100
+advances_per_config=1000
+world=512x512 open sea, 16x16 islands in an 8x8 grid from (240,240) pitch 32
+ships=nav_ship_registry type 1502 (speed q32 154618816, stamp radius 1280 q8)
+crew=3 scouts aboard ship 1 (constant)
+rules=default SimConfig; nav.plans_per_advance=4 unit_cap=64 run_cap=10 window_radius_tiles=1024
+orders: MoveCmd to (x+30 clamp 250, z) for the first `orders` ships

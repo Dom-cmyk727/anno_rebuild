@@ -1,0 +1,13 @@
+{
+  "source": "src/render/tests/gpu_test.cpp:2409",
+  "observed_log": "cache/mac-heavy-1/stage3-full-01.raw.log",
+  "adapter": "Apple M5 Max (Metal), timestamps yes",
+  "case_assertion_counts": {
+    "river_cost": 51,
+    "sea_pass": 10,
+    "frame_passes": 26
+  },
+  "diagnostic_example": "MESSAGE: cost source: 0x102c9ee0e",
+  "limitation": "The cost-source MESSAGE renders the conditional const-char pointer as an address, not a readable GPU timestamps / wall-clock fallback label. Tests executed and passed; the label alone cannot identify which source each quality measurement used. No code fix or extra GPU run made.",
+  "kind": "diagnostic observation, not a failed assertion or sanitizer report"
+}

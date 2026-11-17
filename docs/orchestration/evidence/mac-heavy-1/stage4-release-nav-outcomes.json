@@ -1,0 +1,24 @@
+{
+  "raw_log": "cache/mac-heavy-1/stage4-release-nav.raw.log",
+  "raw_sha256": "35cb807e0e235667cb61fceb3b478365a08d2a852ed84cfdaf7a6a9cad3621a3",
+  "receipts": [
+    "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+    "VERDICT: PASS",
+    "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+  ],
+  "cases": [
+    {
+      "number": "1667",
+      "name": "anno_sim_tests.nav scale measurements (ANNO_SIM_NAV_SCALE)",
+      "status": "Passed",
+      "doctest_cases": 1,
+      "prerequisites": []
+    }
+  ],
+  "failures": [],
+  "memory_refusal_candidates": [],
+  "bad_alloc_retries": [],
+  "sanitizer_reports": [],
+  "coordinator_observations": [],
+  "reader_sha256": "a75f9c3c45b7b373c65162420bb046d2754bf5b37fa5603bc9348fdc3418b8f4"
+}

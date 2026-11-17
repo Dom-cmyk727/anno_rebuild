@@ -1,0 +1,15 @@
+{
+  "changed_at": "2026-11-17T11:28:34.953365+01:00",
+  "scope": "Private result wall_seconds calculation only: capture child finish immediately rather than after reading its output. Native commands, predicates, case order and all production bytes unchanged.",
+  "versions": [
+    {
+      "label": "initial",
+      "sha256": "b502f64011521acf54d94d095355099af4be9d41307d0257752a7f2f2a53cccf"
+    },
+    {
+      "label": "duration-metadata",
+      "sha256": "1168f7ba9df5baeb8b949a07737fba0843214a8e7a05251343a78d503771a7c7"
+    }
+  ],
+  "report_timing_rule": "Use canonical CTest terminal duration uniformly for stage-2 per-operation wall times; retain both private reader versions and all raw native logs. No test rerun."
+}

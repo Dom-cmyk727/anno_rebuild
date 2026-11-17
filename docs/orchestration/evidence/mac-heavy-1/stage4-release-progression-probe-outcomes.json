@@ -1,0 +1,24 @@
+{
+  "raw_log": "cache/mac-heavy-1/stage4-release-progression-probe.raw.log",
+  "raw_sha256": "f539fb258d6b53842eeed341ba6622e8557185214a267f5d57ed8de333f5ce49",
+  "receipts": [
+    "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+    "VERDICT: PASS",
+    "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+  ],
+  "cases": [
+    {
+      "number": "1742",
+      "name": "anno_sim_tests.progression K3: probe of the first upgrade tick (opt-in measure)",
+      "status": "Passed",
+      "doctest_cases": 1,
+      "prerequisites": []
+    }
+  ],
+  "failures": [],
+  "memory_refusal_candidates": [],
+  "bad_alloc_retries": [],
+  "sanitizer_reports": [],
+  "coordinator_observations": [],
+  "reader_sha256": "a75f9c3c45b7b373c65162420bb046d2754bf5b37fa5603bc9348fdc3418b8f4"
+}

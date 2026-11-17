@@ -1,0 +1,111 @@
+{
+  "read_before_execution": "2026-11-17T11:54:35.991568+01:00",
+  "source": {
+    "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+    "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+    "status": ""
+  },
+  "cases": [
+    {
+      "id": "iron-corpus",
+      "variable": "ANNO_IRON_CORPUS",
+      "value": "1",
+      "test": "anno_sim_tests.iron mine: no fallback on the original scenes (opt-in corpus)",
+      "source": "iron_mine_test.cpp:722",
+      "assertion_scope": "Explicit ActorFreeComponent/import-only, 300 advance(100) calls per loaded scene. Asserts loaded > 0 and fallbacks == 0; initialization result and advance fault are not asserted; does not prove all 50 gameplay imports.",
+      "release": true,
+      "asan": false
+    },
+    {
+      "id": "iron-survey",
+      "variable": "ANNO_IRON_SURVEY",
+      "value": "1",
+      "test": "anno_sim_tests.iron mine: site survey (opt-in measure)",
+      "source": "iron_mine_test.cpp:268",
+      "assertion_scope": "Setup/world advances require no fault and construction eligibility is required; site locations/counts are printed, no site-count or latency assertion.",
+      "release": true,
+      "asan": false
+    },
+    {
+      "id": "progression-ship",
+      "variable": "ANNO_PROGRESSION_GAPS",
+      "value": "1",
+      "test": "anno_sim_tests.progression gaps N: ship-start settlement for 300 game seconds (opt-in measure)",
+      "source": "founding_assets_test.cpp:5317",
+      "assertion_scope": "Public sail/found/unload/build/road setup asserted. 300 advance(1000), no fault each. Asserts zero houses and clean invariants; prints stocks and exhaustion, no upgrade requirement.",
+      "release": true,
+      "asan": false
+    },
+    {
+      "id": "progression-towns",
+      "variable": "ANNO_PROGRESSION_GAPS",
+      "value": "1",
+      "test": "anno_sim_tests.progression gaps N: endless02 and S01_07_01 for 300 game seconds (opt-in measure)",
+      "source": "population_live_canary_test.cpp:1650",
+      "assertion_scope": "Explicit actor-free loader plus original_component::import_only for both towns (population_live_canary_test.cpp:107-123). Script INIT required if still pending, 3000 advance(100), no fault each; rules and clean invariants asserted. Reports needs/producers/population/accounts/stocks, no upgrade requirement. Not proof of full scenario gameplay import.",
+      "release": true,
+      "asan": false
+    },
+    {
+      "id": "progression-probe",
+      "variable": "ANNO_PROGRESSION_PROBE",
+      "value": "1",
+      "test": "anno_sim_tests.progression K3: probe of the first upgrade tick (opt-in measure)",
+      "source": "population_progression_test.cpp:130-135,181-193,346-383; tutorial_town.hpp:59-74",
+      "assertion_scope": "Explicit actor-free Tutorial loader with the complete supported INIT required (no import_only script removal here). Public real-house build setup is asserted. Session::advance_to requires no fault every 100 ms. Prints first walker/transition through nominal tick 70000; no assertion that a transition must occur or be an upgrade.",
+      "release": true,
+      "asan": false
+    },
+    {
+      "id": "supply-leather",
+      "variable": "ANNO_SIM_SUPPLY_SCALE",
+      "value": "1",
+      "test": "anno_sim_tests.synthetic mechanics fixture: Release scale against unrelated content (opt-in measure)",
+      "source": "leather_fixture_test.cpp:521",
+      "assertion_scope": "Synthetic workloads K=0,8,16,32, 100000 ticks; setup, no-fault advances, unaccounted hides/made/loaded zero asserted. Actual built counts/times printed, not performance guarantees.",
+      "release": true,
+      "asan": true
+    },
+    {
+      "id": "supply-farm",
+      "variable": "ANNO_SIM_SUPPLY_SCALE",
+      "value": "1",
+      "test": "anno_sim_tests.resilience: harvest search work against unrelated farms (opt-in measure, Release samples)",
+      "source": "small_farm_resilience_test.cpp:735;417",
+      "assertion_scope": "Synthetic K=0,7,14,21 unrelated farms; World::create required, 8000 advance(100) each = nominally 400000 ticks; actual clock progress is not asserted. This opt-in only prints deterministic counters/wall time; no no-fault/invariant/counter assertion in run_unrelated.",
+      "release": true,
+      "asan": true
+    },
+    {
+      "id": "transport",
+      "variable": "ANNO_SIM_TRANSPORT_STATS",
+      "value": "1",
+      "test": "anno_sim_tests.transport search statistics (ANNO_SIM_TRANSPORT_STATS)",
+      "source": "scenario_test.cpp:947",
+      "assertion_scope": "Explicit actor-free load of S01_07_01 and single36; requires parse and World::create, not no-fault/invariants or movement success. 3000 advance(100)=150000 ticks; prints snapshots at 0,30000,150000 and run counters/frontier.",
+      "release": true,
+      "asan": true
+    },
+    {
+      "id": "nav",
+      "variable": "ANNO_SIM_NAV_SCALE",
+      "value": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/nav-scale",
+      "test": "anno_sim_tests.nav scale measurements (ANNO_SIM_NAV_SCALE)",
+      "source": "nav_scale_test.cpp:388;203;286",
+      "assertion_scope": "Synthetic 16 configs with nav and idle = 32 runs. Requires valid world, clean start/end invariants, public move admission, locality quotas/index rules, equal work/delays across unrelated F/I, artifact write success. Latency metrics only printed/written, not bounded by assertions.",
+      "release": true,
+      "asan": false
+    },
+    {
+      "id": "play",
+      "variable": "ANNO_PLAY_LIVE_TIMING",
+      "value": "1",
+      "test": "anno_app_tests.play: ms per 100 ms turn, original vs living, measured (PLAY-LIVE-1a Do item 6, opt-in measure)",
+      "source": "app/tests/play_test.cpp:434; app/src/play.cpp:390-392,477-480,651; sim/include/anno/sim/clock.hpp:70",
+      "assertion_scope": "Requires Trade file, load_play success and runner substep_ms == 10. PlayRunner::run_n(1) executes one turn of 10 such substeps, nominally 100 ms (the test name is correct). Four map/profile workloads of 1000 turns; p50/p95 are measurements, with no latency threshold, output/progress or no-fault assertion. run_n stops early on simulation_error, and the test does not assert that field.",
+      "release": true,
+      "asan": false
+    }
+  ],
+  "rss_scope": "/usr/bin/time -l reported maximum resident set size; child maximum, not sum of simultaneous descendants."
+}

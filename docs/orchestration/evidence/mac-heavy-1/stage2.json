@@ -1,0 +1,180 @@
+{
+  "stage": 2,
+  "started": "2026-11-17T11:22:46.557284+01:00",
+  "started_unix": 1794910966.5574222,
+  "deadline_unix": 1794918166.5574222,
+  "box_seconds": 7200,
+  "source": {
+    "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+    "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+    "status": ""
+  },
+  "commands": [
+    {
+      "name": "stage2-release-configure",
+      "command": [
+        "cmake",
+        "--preset",
+        "release",
+        "-DFETCHCONTENT_SOURCE_DIR_DOCTEST=/Users/dom/.codex/worktrees/whale-re-1c/anno1503/build/dev/_deps/doctest-src",
+        "-DFETCHCONTENT_SOURCE_DIR_SDL3=/Users/dom/.codex/worktrees/gate-run-eb11f0c6/anno1503/build/release/_deps/sdl3-src",
+        "-DFETCHCONTENT_SOURCE_DIR_WGPU_NATIVE=/Users/dom/.codex/worktrees/gate-run-eb11f0c6/anno1503/build/release/_deps/wgpu_native-src"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_TEST_THREADS": "4"
+      },
+      "started": "2026-11-17T11:22:46.625445+01:00",
+      "log": "cache/mac-heavy-1/stage2-release-configure.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 462,
+      "exit": 0,
+      "finished": "2026-11-17T11:22:59.769103+01:00",
+      "wall_seconds": 13.143764972686768,
+      "log_sha256": "e37622e2556cbd970a85113e83589ab679e67356681e00e1eaf54b7d4284f01e",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      }
+    },
+    {
+      "name": "stage2-release-build",
+      "command": [
+        "cmake",
+        "--build",
+        "--preset",
+        "release",
+        "--parallel",
+        "8"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_TEST_THREADS": "4"
+      },
+      "started": "2026-11-17T11:22:59.872968+01:00",
+      "log": "cache/mac-heavy-1/stage2-release-build.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 5459,
+      "exit": 0,
+      "finished": "2026-11-17T11:24:34.745692+01:00",
+      "wall_seconds": 94.8727753162384,
+      "log_sha256": "65ffbc28722477316c089e951819d4ddb781c21800d52b6f775bb60d186ffc41",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      }
+    },
+    {
+      "name": "stage2-registry-configure",
+      "command": [
+        "cmake",
+        "-S",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503",
+        "-B",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-registry/build",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DANNO_BUILD_TESTS=OFF",
+        "-DANNO_BUILD_VIEWER=OFF",
+        "-DANNO_BUILD_GPU=OFF",
+        "-DCMAKE_PROJECT_INCLUDE=/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/stage2-registry/register.cmake"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_TEST_THREADS": "4"
+      },
+      "started": "2026-11-17T11:24:35.005463+01:00",
+      "log": "cache/mac-heavy-1/stage2-registry-configure.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 7149,
+      "exit": 0,
+      "finished": "2026-11-17T11:24:36.050288+01:00",
+      "wall_seconds": 1.0449142456054688,
+      "log_sha256": "8e43465beb1d9ce1d6ccaae7a12ab897e1eae31724bb94cfaf85a18afcb3bc84",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      }
+    },
+    {
+      "name": "stage2-whole-01",
+      "command": [
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "cache/mac-heavy-1/stage2-registry/build",
+        "--select",
+        "^whole_",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--jobs",
+        "1",
+        "--timeout",
+        "7200",
+        "--log",
+        "cache/mac-heavy-1/stage2-whole-01.raw.log"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_TEST_THREADS": "4"
+      },
+      "started": "2026-11-17T11:24:36.157615+01:00",
+      "log": "cache/mac-heavy-1/stage2-whole-01.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 7243,
+      "exit": 1,
+      "finished": "2026-11-17T12:43:56.288808+01:00",
+      "wall_seconds": 4760.131350040436,
+      "log_sha256": "91793f696d9a31a4467d91307d2586125939d1a92e250dd6910a6d1bea52d4d6",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "raw_log": "cache/mac-heavy-1/stage2-whole-01.raw.log",
+      "raw_sha256": "2828c5e57f1cc22f940e5b63956eb441bb5893d53bde7d5b2accb106c0bd9552",
+      "log_view": "cache/mac-heavy-1/stage2-whole-01.log",
+      "log_view_sha256": "335f105fee6e28678580819727733f8d508bf35e95957682a87f623f8665b9cd",
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "COUNTS: selected=36 executed=32 failed=4 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: FAIL failed tests",
+        "GATE_END {\"status\": 1, \"ctest_rc\": 8}"
+      ]
+    }
+  ],
+  "status": "completed_with_findings",
+  "finished": "2026-11-17T12:44:57.646721+01:00",
+  "wall_seconds": 4931.089421749115,
+  "source_after": {
+    "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+    "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+    "status": ""
+  }
+}

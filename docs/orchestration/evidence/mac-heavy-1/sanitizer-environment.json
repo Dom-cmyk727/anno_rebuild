@@ -1,0 +1,12 @@
+{
+  "probe_exit": -6,
+  "leak_sanitizer_active": false,
+  "unsupported_leak_sanitizer": true,
+  "effective_environment": {
+    "ANNO_TEST_MB_PER_THREAD": "2048",
+    "ANNO_TEST_THREADS": "4",
+    "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+    "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+  },
+  "probe_log": "cache/mac-heavy-1/stage1-lsan-capability.console.log"
+}

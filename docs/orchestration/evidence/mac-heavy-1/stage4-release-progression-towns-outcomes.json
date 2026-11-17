@@ -1,0 +1,24 @@
+{
+  "raw_log": "cache/mac-heavy-1/stage4-release-progression-towns.raw.log",
+  "raw_sha256": "499bd2c2be1cc3130169d2a6b0713d3fecd7c1f3bbab043afcf3e2ab481bc063",
+  "receipts": [
+    "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+    "VERDICT: PASS",
+    "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+  ],
+  "cases": [
+    {
+      "number": "1741",
+      "name": "anno_sim_tests.progression gaps N: endless02 and S01_07_01 for 300 game seconds (opt-in measure)",
+      "status": "Passed",
+      "doctest_cases": 1,
+      "prerequisites": []
+    }
+  ],
+  "failures": [],
+  "memory_refusal_candidates": [],
+  "bad_alloc_retries": [],
+  "sanitizer_reports": [],
+  "coordinator_observations": [],
+  "reader_sha256": "a75f9c3c45b7b373c65162420bb046d2754bf5b37fa5603bc9348fdc3418b8f4"
+}

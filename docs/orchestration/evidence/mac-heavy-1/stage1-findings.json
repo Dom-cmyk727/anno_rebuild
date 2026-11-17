@@ -1,0 +1,69 @@
+{
+  "source": {
+    "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+    "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+    "status": ""
+  },
+  "main_outcomes": "cache/mac-heavy-1/stage1-outcomes.json",
+  "main_gate": "FAIL: one assertion, no sanitizer reports",
+  "isolated_reproduction": "PASS: same binary/options, jobs 1; original full-load failure preserved",
+  "memory_refusals": 0,
+  "bad_alloc_retries": 0,
+  "sanitizer_reports": 0,
+  "leak_sanitizer": "NOT_RUN: safe probe reports unsupported platform",
+  "findings": [
+    {
+      "id": "MH-001",
+      "kind": "sanitizer configuration / assertion only",
+      "test": "viewer_wiring_ui_minimap_controls",
+      "first_evidence": "FAIL line 88 (expect): view.tile_w is '42', expected == 84",
+      "reproducible": "not established under full context; isolated reproduction passed",
+      "original_command": [
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/asan",
+        "--select",
+        ".",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--jobs",
+        "8",
+        "--timeout",
+        "10800",
+        "--log",
+        "cache/mac-heavy-1/stage1-full-01.raw.log"
+      ],
+      "isolated_command": [
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/asan",
+        "--select",
+        "^viewer_wiring_ui_minimap_controls$",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--jobs",
+        "1",
+        "--timeout",
+        "10800",
+        "--skip-auto-contract",
+        "--log",
+        "cache/mac-heavy-1/stage1-minimap-isolated-01.raw.log"
+      ],
+      "sanitizer_diagnostic": false,
+      "native_stderr_preserved": true,
+      "root_cause": "not established; verification only"
+    }
+  ]
+}

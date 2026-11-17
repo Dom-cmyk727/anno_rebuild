@@ -1,0 +1,10 @@
+{
+  "stage": 0,
+  "started_unix": 1794907644.4789448,
+  "finished": "2026-11-17T10:30:47.548495+01:00",
+  "wall_seconds": 203.08164024353027,
+  "box_seconds": 900,
+  "within_box": true,
+  "source_clean": true,
+  "host_record": "cache/mac-heavy-1/host.json"
+}

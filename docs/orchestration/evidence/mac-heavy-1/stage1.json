@@ -1,0 +1,335 @@
+{
+  "stage": 1,
+  "started": "2026-11-17T10:30:47.639822+01:00",
+  "started_unix": 1794907847.639932,
+  "deadline_unix": 1794929447.639932,
+  "box_seconds": 21600,
+  "source": {
+    "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+    "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+    "status": ""
+  },
+  "commands": [
+    {
+      "name": "stage1-probe-build",
+      "command": [
+        "/usr/bin/clang++",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined,float-cast-overflow",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/asan-capability.cpp",
+        "-o",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/asan-capability"
+      ],
+      "environment": {
+        "ANNO_TEST_MB_PER_THREAD": "2048",
+        "ANNO_TEST_THREADS": "4",
+        "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1",
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app"
+      },
+      "started": "2026-11-17T10:30:47.704768+01:00",
+      "log": "cache/mac-heavy-1/stage1-probe-build.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 83581,
+      "exit": 0,
+      "finished": "2026-11-17T10:30:48.747871+01:00",
+      "wall_seconds": 1.043184757232666,
+      "log_sha256": "000b67a30106318b850ea1c1b93056e37d07791abc89de9d0d5f59e8047e1b3d",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "environment_console_view": "cache/mac-heavy-1/stage1-probe-build.environment.console.log",
+      "environment_console_sha256": "afb5e04f832aeac34e1236e78942766b0cdd994689364ee56e2f1fdef7e19d05"
+    },
+    {
+      "name": "stage1-lsan-capability",
+      "command": [
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/cache/mac-heavy-1/asan-capability"
+      ],
+      "environment": {
+        "ANNO_TEST_MB_PER_THREAD": "2048",
+        "ANNO_TEST_THREADS": "4",
+        "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1",
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app"
+      },
+      "started": "2026-11-17T10:30:48.847372+01:00",
+      "log": "cache/mac-heavy-1/stage1-lsan-capability.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 83600,
+      "exit": -6,
+      "finished": "2026-11-17T10:30:49.891597+01:00",
+      "wall_seconds": 1.044292688369751,
+      "log_sha256": "a5636dc4aa560f7a9f1d2199b0e7233ecc2e94be8cf63370131bd676594ddf30",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "environment_console_view": "cache/mac-heavy-1/stage1-lsan-capability.environment.console.log",
+      "environment_console_sha256": "51ed5413a828d2d2f45e5ab194f279e57a057d875abd42c5a900499ea32a6a4a"
+    },
+    {
+      "name": "stage1-configure",
+      "command": [
+        "cmake",
+        "--preset",
+        "asan",
+        "-DFETCHCONTENT_SOURCE_DIR_DOCTEST=/Users/dom/.codex/worktrees/whale-re-1c/anno1503/build/dev/_deps/doctest-src",
+        "-DFETCHCONTENT_SOURCE_DIR_SDL3=/Users/dom/.codex/worktrees/gate-run-eb11f0c6/anno1503/build/release/_deps/sdl3-src",
+        "-DFETCHCONTENT_SOURCE_DIR_WGPU_NATIVE=/Users/dom/.codex/worktrees/gate-run-eb11f0c6/anno1503/build/release/_deps/wgpu_native-src"
+      ],
+      "environment": {
+        "ANNO_TEST_MB_PER_THREAD": "2048",
+        "ANNO_TEST_THREADS": "4",
+        "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1",
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app"
+      },
+      "started": "2026-11-17T10:30:49.974096+01:00",
+      "log": "cache/mac-heavy-1/stage1-configure.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 83637,
+      "exit": 0,
+      "finished": "2026-11-17T10:31:03.114693+01:00",
+      "wall_seconds": 13.140661001205444,
+      "log_sha256": "086008e0a3b2fcd34a9871a3b732c207edb0b56f8a8843882320a98ed603cb08",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "environment_console_view": "cache/mac-heavy-1/stage1-configure.environment.console.log",
+      "environment_console_sha256": "479d0761dc558d374910f052ac8261aa610db9ece032129f06984843b7a24e53"
+    },
+    {
+      "name": "stage1-build",
+      "command": [
+        "cmake",
+        "--build",
+        "--preset",
+        "asan",
+        "--parallel",
+        "8"
+      ],
+      "environment": {
+        "ANNO_TEST_MB_PER_THREAD": "2048",
+        "ANNO_TEST_THREADS": "4",
+        "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1",
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app"
+      },
+      "started": "2026-11-17T10:31:03.218550+01:00",
+      "log": "cache/mac-heavy-1/stage1-build.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 88510,
+      "exit": 0,
+      "finished": "2026-11-17T10:33:58.730290+01:00",
+      "wall_seconds": 175.51180911064148,
+      "log_sha256": "6cef92b2d2f6fd1ea59169ce6d4af5bc81bf71bd340aa1fc8a7ddbfcf1de3d21",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "environment_console_view": "cache/mac-heavy-1/stage1-build.environment.console.log",
+      "environment_console_sha256": "44934e545d370f45ca1e12a684c6202cd503b3d8c3675a3e6e3b52099a352147"
+    },
+    {
+      "name": "stage1-full-01",
+      "command": [
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/asan",
+        "--select",
+        ".",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--jobs",
+        "8",
+        "--timeout",
+        "10800",
+        "--log",
+        "cache/mac-heavy-1/stage1-full-01.raw.log"
+      ],
+      "environment": {
+        "ANNO_TEST_MB_PER_THREAD": "2048",
+        "ANNO_TEST_THREADS": "4",
+        "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1",
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app"
+      },
+      "started": "2026-11-17T10:33:58.823401+01:00",
+      "log": "cache/mac-heavy-1/stage1-full-01.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 90301,
+      "exit": 1,
+      "finished": "2026-11-17T11:17:19.105365+01:00",
+      "wall_seconds": 2600.2821481227875,
+      "log_sha256": "b84f242bb13b0118ab6e57fe6e015bfacb6af548b85e50083bcef2626e3c1a12",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "raw_log": "cache/mac-heavy-1/stage1-full-01.raw.log",
+      "raw_sha256": "7416af17c5b16413c96d38562dd83e859b19a092937ecc3c96d999f333dc9d3e",
+      "log_view": "cache/mac-heavy-1/stage1-full-01.log",
+      "log_view_sha256": "315f84af641fff9d3ee92a4923f430f4fb12120f9129d3e67221e000d1ca714e",
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "COUNTS: selected=2762 executed=2718 failed=1 empty=0 skipped=43 (required-asset=0 platform=9 opt-in=29 gpu=2 other=3) incomplete=0 sanitizer_lines=0",
+        "VERDICT: FAIL failed tests",
+        "GATE_END {\"status\": 1, \"ctest_rc\": 8}"
+      ],
+      "environment_console_view": "cache/mac-heavy-1/stage1-full-01.environment.console.log",
+      "environment_console_sha256": "fad621bdd80c10f8ea7400875eadc2bf548d74f4d15ac309f2b77018770612e0",
+      "complete_environment_log": "cache/mac-heavy-1/stage1-full-01.environment.log",
+      "complete_environment_log_sha256": "53f5ed05d04a4085b9a9e78c10f5c7c7b1e2868bac3bf0cb3b236d22b2ea4958"
+    },
+    {
+      "name": "stage1-minimap-isolated-01",
+      "command": [
+        "python3",
+        "-I",
+        "tools/test/run_selected.py",
+        "--build-dir",
+        "build/asan",
+        "--select",
+        "^viewer_wiring_ui_minimap_controls$",
+        "--asset-policy",
+        "required",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other",
+        "--jobs",
+        "1",
+        "--timeout",
+        "10800",
+        "--skip-auto-contract",
+        "--log",
+        "cache/mac-heavy-1/stage1-minimap-isolated-01.raw.log"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_TEST_MB_PER_THREAD": "2048",
+        "ANNO_TEST_THREADS": "4",
+        "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+      },
+      "started": "2026-11-17T11:20:26.870426+01:00",
+      "log": "cache/mac-heavy-1/stage1-minimap-isolated-01.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 115,
+      "exit": 0,
+      "finished": "2026-11-17T11:20:38.005331+01:00",
+      "wall_seconds": 11.135826349258423,
+      "log_sha256": "35f47cd7909c2039f26f20b14f05ff6d2184aa2f70872950cc2cadbf6ba178fb",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "raw_log": "cache/mac-heavy-1/stage1-minimap-isolated-01.raw.log",
+      "raw_sha256": "72ef9febb548a70594b0db20a76018a829270114938f2003cc6cf9ba11abbb52",
+      "log_view": "cache/mac-heavy-1/stage1-minimap-isolated-01.log",
+      "log_view_sha256": "651a464ff902830f4d7ab7c4f390a601203ecbb0fd46e43d4a17748b62ffe51c",
+      "receipts": [
+        "COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+        "VERDICT: PASS",
+        "GATE_END {\"status\": 0, \"ctest_rc\": 0}"
+      ],
+      "environment_console_view": "cache/mac-heavy-1/stage1-minimap-isolated-01.environment.console.log",
+      "environment_console_sha256": "2913d9c24b56628d57b269b405a57794f269c5e59aa426d5d8320b4f877b2fed",
+      "complete_environment_log": "cache/mac-heavy-1/stage1-minimap-isolated-01.environment.log",
+      "complete_environment_log_sha256": "f7152bba0a2387c915e0c0bb66808e2ee3f65ec9c21b20c09cdd1b8151cf2e06"
+    },
+    {
+      "name": "stage1-recorded-verdict-check",
+      "command": [
+        "python3",
+        "-I",
+        "tools/test/ctest_verdict.py",
+        "cache/mac-heavy-1/stage1-full-01.environment.log",
+        "--inventory",
+        "cache/mac-heavy-1/stage1-full-01.environment.log.inventory.json",
+        "--allow-skip",
+        "gpu",
+        "--allow-skip",
+        "other"
+      ],
+      "environment": {
+        "ANNO1503_GAME_DIR": "/Users/dom/Dev/anno1503-worktrees/anno1503/game/app",
+        "ANNO_TEST_MB_PER_THREAD": "2048",
+        "ANNO_TEST_THREADS": "4",
+        "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+      },
+      "started": "2026-11-17T11:22:45.309268+01:00",
+      "log": "cache/mac-heavy-1/stage1-recorded-verdict-check.console.log",
+      "source_before": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      },
+      "pid": 436,
+      "exit": 1,
+      "finished": "2026-11-17T11:22:46.358376+01:00",
+      "wall_seconds": 1.0493888854980469,
+      "log_sha256": "db334b614258b6697b6789d88c9bf413631b48f5b7fbc66c73ac0aea3cdb3c6c",
+      "source_after": {
+        "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+        "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+        "status": ""
+      }
+    }
+  ],
+  "status": "completed_with_findings",
+  "environment_header_correction": {
+    "original_metadata": "cache/mac-heavy-1/stage1.initial-metadata.json",
+    "original_metadata_sha256": "7783898faaa711e49a690ca480b8b99ded431851f425cb87b0e9d455e89a07f8",
+    "note": "Private initial filter omitted ANNO1503_GAME_DIR in headers only; child environment always set it. Complete prefixed views added; raw bytes and original metadata retained; no build/test rerun for logging."
+  },
+  "finished": "2026-11-17T11:22:46.456555+01:00",
+  "wall_seconds": 3118.816642999649,
+  "source_after": {
+    "head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+    "tree": "e218b8f5dae9e7e133e8f803618ba6e14d355286",
+    "status": ""
+  }
+}

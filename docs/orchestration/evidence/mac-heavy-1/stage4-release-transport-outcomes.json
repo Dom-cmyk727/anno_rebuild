@@ -1,0 +1,62 @@
+{
+  "raw_log": "cache/mac-heavy-1/stage4-release-transport.raw.log",
+  "raw_sha256": "2c17771ee0473b1d8defb2a61bfd48f49cd4751a623ab7cf19fa3bb9456318a6",
+  "receipts": [
+    "COUNTS: selected=1 executed=0 failed=1 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
+    "VERDICT: FAIL failed tests",
+    "GATE_END {\"status\": 1, \"ctest_rc\": 8}"
+  ],
+  "cases": [
+    {
+      "number": "2056",
+      "name": "anno_sim_tests.transport search statistics (ANNO_SIM_TRANSPORT_STATS)",
+      "status": "Failed",
+      "doctest_cases": 1,
+      "prerequisites": [],
+      "first_evidence": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/sim/tests/scenario_test.cpp:1042: FATAL ERROR: REQUIRE( w.ok() ) is NOT correct!",
+      "tail": [
+        "===============================================================================",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/sim/tests/scenario_test.cpp:947:",
+        "TEST CASE:  transport search statistics (ANNO_SIM_TRANSPORT_STATS)",
+        "",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/sim/tests/scenario_test.cpp:1042: FATAL ERROR: REQUIRE( w.ok() ) is NOT correct!",
+        "  values: REQUIRE( false )",
+        "  logged: script offset 475: unsupported action: SET_DIPLOMACY",
+        "",
+        "===============================================================================",
+        "[doctest] test cases: 1 | 0 passed | 1 failed | 1654 skipped",
+        "[doctest] assertions: 4 | 3 passed | 1 failed |",
+        "[doctest] Status: FAILURE!"
+      ]
+    }
+  ],
+  "failures": [
+    {
+      "number": "2056",
+      "name": "anno_sim_tests.transport search statistics (ANNO_SIM_TRANSPORT_STATS)",
+      "status": "Failed",
+      "doctest_cases": 1,
+      "prerequisites": [],
+      "first_evidence": "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/sim/tests/scenario_test.cpp:1042: FATAL ERROR: REQUIRE( w.ok() ) is NOT correct!",
+      "tail": [
+        "===============================================================================",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/sim/tests/scenario_test.cpp:947:",
+        "TEST CASE:  transport search statistics (ANNO_SIM_TRANSPORT_STATS)",
+        "",
+        "/Users/dom/.codex/worktrees/mac-heavy-1/anno1503/src/sim/tests/scenario_test.cpp:1042: FATAL ERROR: REQUIRE( w.ok() ) is NOT correct!",
+        "  values: REQUIRE( false )",
+        "  logged: script offset 475: unsupported action: SET_DIPLOMACY",
+        "",
+        "===============================================================================",
+        "[doctest] test cases: 1 | 0 passed | 1 failed | 1654 skipped",
+        "[doctest] assertions: 4 | 3 passed | 1 failed |",
+        "[doctest] Status: FAILURE!"
+      ]
+    }
+  ],
+  "memory_refusal_candidates": [],
+  "bad_alloc_retries": [],
+  "sanitizer_reports": [],
+  "coordinator_observations": [],
+  "reader_sha256": "a75f9c3c45b7b373c65162420bb046d2754bf5b37fa5603bc9348fdc3418b8f4"
+}

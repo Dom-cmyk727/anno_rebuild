@@ -1,0 +1,11 @@
+{
+  "scope": "Pre-execution source/caller review; no native arguments or test code changed.",
+  "corrections": [
+    "population scenario_spec uses explicit actor-free import-only component",
+    "small-farm schedule is nominal 400000 ticks, not asserted progress",
+    "play turn has 10 substeps of 10 ms = nominal 100 ms; name is correct; simulation_error is not asserted"
+  ],
+  "initial_plan_source_sha256": "052a87142bafb032cee73c987e8e66141ab2bc8f6617fcc279d62fec6a9830fc",
+  "final_plan_source_sha256": "2d253b0ba894e1543d6a4b0798c5310be368c78888913215f1b6daebbcde012a",
+  "authoritative_scopes": "stage4-preflight.json"
+}

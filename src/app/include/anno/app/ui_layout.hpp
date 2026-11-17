@@ -201,6 +201,14 @@ struct ConstructionLayout {
     [[nodiscard]] const ConstructionCell* cell(const std::string& category, int col, int row) const;
 };
 
+/// UI-BUILDCAT-1: the construction menu's category tab for `category`, hud.txt's element
+/// `viewbautab_<index - 1>` (construction.txt `index`, 1-based), or nullptr when hud.txt has none
+/// or it lacks a position or size. The tab count is construction.txt's category count, not a
+/// constant (View.dll 0x1002bb4f builds one 42 x 46 VIEWBAUTAB gadget per category; docs/re/ui.md
+/// section 2.4).
+[[nodiscard]] const UiElement* construction_category_tab(const HudLayout& hud,
+                                                         const ConstructionCategory& category);
+
 /// UI-WINDOW-1: where the 1024 x 768 reference layout lands in a UI layer of `ui_w` x `ui_h`
 /// pixels (at least the reference; ui_transform.hpp). Built by `place_hud` from hud.txt alone.
 struct UiPlacement {

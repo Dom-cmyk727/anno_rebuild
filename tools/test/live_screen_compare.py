@@ -71,6 +71,10 @@ HUD_NAMES = [
 CONSTRUCTION_EXTRA_NAMES = [
     "baumat_tools", "baumat_wood", "baumat_bricks", "baumat_marble", "einwohner", "plankegross",
     "abrissicon",
+    # UI-BUILDCAT-1: the category column (the open category's tab selected; the oracle draws it
+    # the same way, tools/ui_layout.py compose_screen).
+    "viewbautab_0", "viewbautab_1", "viewbautab_2", "viewbautab_3", "viewbautab_4",
+    "viewbautab_5", "viewbautab_6", "viewbautab_7",
 ]
 
 

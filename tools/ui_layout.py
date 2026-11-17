@@ -812,6 +812,14 @@ def compose_screen(layout_dir: str, screen: str, game_dir: str) -> "object":
                 blit_el(el["name"])
     if spec["kind"] == "construction":
         blit_el("plankegross")
+        # UI-BUILDCAT-1: the category column, one tab per category (hud.txt viewbautab_<index-1>),
+        # the open category's in frame_selected (View.dll 0x1002bb4f; docs/re/ui.md 2.4).
+        for cname, crec in con["categories"].items():
+            tab = by_name.get(f"viewbautab_{int(crec.get('index', '0')) - 1}")
+            if not tab:
+                continue
+            key = "frame_selected" if cname == spec["category"] else "frame_idle"
+            blit_el(tab["name"], int(tab.get(key, tab.get("tex_id", "0"))))
         blit_el("abrissicon", 659)
         ox = int(con["grid"].get("origin_x", 808))
         oy = int(con["grid"].get("origin_y", 305))

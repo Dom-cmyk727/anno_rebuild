@@ -693,6 +693,24 @@ void draw_panel(const HudLayout& hud, const UiMockSpec& screen, BlitEl&& blit_el
     }
 }
 
+/// UI-BUILDCAT-1: the construction menu's category column, one tab per construction.txt category
+/// (hud.txt `viewbautab_<index - 1>`, construction_category_tab), the open category's in its
+/// `frame_selected` and the others in `frame_idle` (View.dll 0x1002bb4f: VIEWBAUTAB + 2k idle, +1
+/// selected; docs/re/ui.md section 2.4). Shown with the grid and with the info/placement panel
+/// (r2_place_* shots). A category without a tab element draws nothing for it.
+template <typename BlitEl>
+void draw_category_tabs(const HudLayout& hud, const ConstructionLayout& construction,
+                        const std::string& open_category, BlitEl&& blit_el) {
+    for (const ConstructionCategory& cat : construction.categories) {
+        const UiElement* el = construction_category_tab(hud, cat);
+        if (el == nullptr)
+            continue;
+        const std::optional<int> frame =
+            cat.name == open_category ? el->frame_selected : el->frame_idle;
+        blit_el(el->name, frame ? frame : el->tex_id);
+    }
+}
+
 } // namespace
 
 std::string ui_panel_group(const HudLayout& hud, const UiMockSpec& screen) {
@@ -822,6 +840,9 @@ formats::Result<assets::Rgba, std::string> compose_screen(const HudLayout& hud,
 
     if (is_construction) {
         blit_el("plankegross");
+        draw_category_tabs(
+            hud, construction, screen.category,
+            [&](const std::string& name, std::optional<int> tid) { blit_el(name, tid); });
         blit_el("abrissicon", 659);
 
         const int ox = construction.grid.origin_x;
@@ -1023,6 +1044,9 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
 
     if (is_construction) {
         blit_el("plankegross");
+        draw_category_tabs(
+            hud, construction, screen.category,
+            [&](const std::string& name, std::optional<int> tid) { blit_el(name, tid); });
         if (placement_open) {
             // C1/C6: the building info/placement panel, drawn instead of the grid - the two
             // occupy the same screen region (this function's own doc comment) and
@@ -1266,6 +1290,9 @@ std::string draw_live_screen_rgba_into(
 
     if (is_construction) {
         blit_el("plankegross");
+        draw_category_tabs(
+            hud, construction, screen.category,
+            [&](const std::string& name, std::optional<int> tid) { blit_el(name, tid); });
         if (placement_open) {
             blit_el("info_panel");
             blit_el("infoexit");

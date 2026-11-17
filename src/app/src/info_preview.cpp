@@ -27,6 +27,9 @@ constexpr double kCos45 = 0.7071067811865476;
 constexpr double kSinTilt = 0.4928981922297840; // sin(42 pi / 256), Rx 0x10088c80 angle 0x2a
 constexpr double kProjX = kScale * kCos45;
 constexpr double kProjY = kScale * kCos45 * kSinTilt;
+/// UI-INFO-2d: screen y per tile of height, scale times cos(42 pi / 256).
+constexpr double kCosTilt = 0.8700869911087115;
+constexpr double kProjH = kScale * kCosTilt;
 
 struct Rect {
     int x0 = std::numeric_limits<int>::max(), y0 = std::numeric_limits<int>::max();
@@ -52,9 +55,22 @@ std::vector<Placed> parts(const Input& in, unsigned rotation) {
     if (r >= in.building.size() || in.building[r].image == nullptr)
         return out;
     const unsigned cw = r % 2 == 0 ? in.w : in.h, ch = r % 2 == 0 ? in.h : in.w;
-    const auto [bx, by] = project(cw / 2.0, ch / 2.0);
-    out.push_back(
-        {in.building[r].image, bx - in.building[r].anchor_x, by - in.building[r].anchor_y});
+    const double cx = cw / 2.0, cy = ch / 2.0;
+    // The sprite sets: set 0 then the further ones, the still ones (type slot 0xa0) before the
+    // animated ones (0xa4), each at the turned offset from the footprint centre.
+    std::vector<SetPart> sets;
+    sets.push_back(SetPart{in.building[r], 0.0, 0.0, 0.0, in.building_animated});
+    if (r < in.sets.size())
+        sets.insert(sets.end(), in.sets[r].begin(), in.sets[r].end());
+    for (const bool animated : {false, true}) {
+        for (const SetPart& s : sets) {
+            if (s.animated != animated || s.sprite.image == nullptr)
+                continue;
+            const auto [dx, dy] = turn_offset(s.x, s.y, r);
+            const auto [sx, sy] = project_raised(cx + dx, cy + dy, s.height);
+            out.push_back({s.sprite.image, sx - s.sprite.anchor_x, sy - s.sprite.anchor_y});
+        }
+    }
     if (in.arrow_frames.empty())
         return out;
     for (const EntranceArrow& a : in.arrows) {
@@ -81,6 +97,24 @@ std::vector<EntranceArrow> entrance_arrows(const formats::objectpos::ObjectPos& 
 
 std::pair<int, int> project(double x, double y) {
     return {static_cast<int>(kProjX * (y - x)), static_cast<int>(kProjY * (x + y))};
+}
+
+std::pair<int, int> project_raised(double x, double y, double height) {
+    return {static_cast<int>(kProjX * (y - x)),
+            static_cast<int>(kProjY * (x + y) - kProjH * height)};
+}
+
+std::pair<double, double> turn_offset(double x, double y, unsigned rotation) {
+    switch (rotation & 3U) {
+    case 0:
+        return {x, y};
+    case 1:
+        return {y, -x};
+    case 2:
+        return {-x, -y};
+    default:
+        return {-y, x};
+    }
 }
 
 ArrowPlace place_arrow(const EntranceArrow& arrow, unsigned w, unsigned h, unsigned rotation) {

@@ -1,8 +1,10 @@
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <fstream>
 #include <map>
 #include <memory>
+#include <tuple>
 
 #include <anno/app/hud_tabs.hpp>
 #include <anno/app/info_preview.hpp>
@@ -136,15 +138,18 @@ class TexCache {
     /// object draw 0x1001d760; Wine runner shots u2_2520_R1..R4 exact, docs/re/ui.md 2.5). The
     /// cache assumes one `anlagen` file per session (the scene's). UI-INFO-2b: with the frame's
     /// anchor, which places it in the composed picture.
+    /// UI-INFO-2d: `set` picks the entry's sprite set (0 = the building, as before).
     const info_preview::Sprite* preview_sprite(std::uint32_t id, std::uint8_t rotation,
-                                               const formats::anlagen::AnlagenFile& anlagen) {
-        const auto key = std::pair{id, rotation};
+                                               const formats::anlagen::AnlagenFile& anlagen,
+                                               std::size_t set_index = 0) {
+        const auto key = std::tuple{id, rotation, set_index};
         const auto it = previews_.find(key);
         if (it != previews_.end())
             return it->second ? &it->second->sprite : nullptr;
         std::optional<DecodedSprite> decoded;
-        if (const auto* entry = anlagen.entry(id); entry != nullptr && !entry->gfx.empty()) {
-            const auto& gfx = entry->gfx.front();
+        if (const auto* entry = anlagen.entry(id);
+            entry != nullptr && set_index < entry->gfx.size()) {
+            const auto& gfx = entry->gfx[set_index];
             for (const auto& set : gfx.frame_sets) {
                 if (set.group != 0)
                     continue;
@@ -219,6 +224,22 @@ class TexCache {
             else
                 in.building.push_back(*s);
         }
+        // UI-INFO-2d (OQ-712): the further sprite sets, up to the type's set slots.
+        if (complete) {
+            in.building_animated = set_animated(entry->gfx.front());
+            in.sets.resize(4);
+            const std::size_t n = std::min(entry->gfx.size(), kSetSlots);
+            for (std::size_t i = 1; i < n; ++i) {
+                const auto& gfx = entry->gfx[i];
+                const auto offset = set_offset(gfx);
+                for (std::uint8_t r = 0; r < 4; ++r) {
+                    if (const info_preview::Sprite* s = preview_sprite(id, r, anlagen, i)) {
+                        in.sets[r].push_back(info_preview::SetPart{*s, offset[0], offset[1],
+                                                                   offset[2], set_animated(gfx)});
+                    }
+                }
+            }
+        }
         if (complete && arrow_figure) {
             if (const auto record = entry->record("OBJECTPOS")) {
                 // A malformed record draws no arrows (none in the GOG file: objectpos corpus).
@@ -237,6 +258,31 @@ class TexCache {
     }
 
   private:
+    /// The type's sprite-set slots (+0x244, 4 of 16 bytes; AnnoGame.dll 0x1000bf4c..0x1000bf5e):
+    /// the original's own count, kept here because it bounds what the picture composes.
+    static constexpr std::size_t kSetSlots = 4;
+
+    /// A sprite set's offset from the footprint centre: the set prefix's f32 at bytes 4, 8, 12
+    /// (x, height, y in tiles); zero for a shorter prefix. Measured, not read from the loader
+    /// (OQ-750): it beats every other order on the GOG shots (docs/re/ui.md 2.5).
+    static std::array<double, 3> set_offset(const formats::figuren::GfxSet& gfx) {
+        std::array<double, 3> out{};
+        if (gfx.prefix.size() >= 16) {
+            for (std::size_t k = 0; k < 3; ++k)
+                out[k] = static_cast<double>(
+                    std::bit_cast<float>(formats::u32_le(gfx.prefix, 4 + 4 * k)));
+        }
+        return out;
+    }
+
+    /// Whether a sprite set is drawn in the animated list (type slot 0xa4): its display object is
+    /// a tHausAnim (prefix byte 2 = 9, or 10 for water; AnnoDisplay.dll factory 0x10025d30)
+    /// whose slot 0x60 (0x100046f0) returns a non-zero frame time (ANIM bytes 4..5).
+    static bool set_animated(const formats::figuren::GfxSet& gfx) {
+        const bool anim_kind = gfx.prefix.size() > 2 && (gfx.prefix[2] == 9 || gfx.prefix[2] == 10);
+        return anim_kind && render::animation(gfx).second != 0;
+    }
+
     struct DecodedSprite {
         std::unique_ptr<assets::Rgba> image;
         info_preview::Sprite sprite;
@@ -272,7 +318,8 @@ class TexCache {
     std::map<std::string, std::optional<LoadedFont>> fonts_;
     bool names_loaded_ = false;
     std::map<std::uint32_t, std::string> names_;
-    std::map<std::pair<std::uint32_t, std::uint8_t>, std::optional<DecodedSprite>> previews_;
+    std::map<std::tuple<std::uint32_t, std::uint8_t, std::size_t>, std::optional<DecodedSprite>>
+        previews_;
     std::map<std::uint16_t, std::unique_ptr<LoadedFigure>> figures_;
     std::map<std::pair<std::uint32_t, std::uint8_t>, std::optional<assets::Rgba>> canvases_;
     std::map<std::pair<std::string, int>, std::optional<assets::Rgba>> decoded_;

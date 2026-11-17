@@ -3557,9 +3557,10 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Resolved (BUILDINGS-REF-1, BUILDINGSOBJECTS part C 5, recorded in UI-INFO-2d):** 8 directions, the `tHausFigur` constructor default (AnnoDisplay.dll `0x10005cb0`: mask `+0x19` = 7, shift `+0x1a` = 1; frames per direction `+0x18` = 1 from the base `0x10005390`). Frame for arrow direction d = 2d, what the rebuild draws.
 - **How to resolve:** trace the property 0x13x writes for figure sets (the ANIM/BODY2 records) into tHausFigur.
 
-## OQ-712: The preview's other parts - further sprite sets, the a4 list and the type height (UI-INFO-2b, 2026-11-17; OPEN)
+## OQ-712: The preview's other parts - further sprite sets, the a4 list and the type height (UI-INFO-2b, 2026-11-17; RESOLVED UI-INFO-2d, offsets: OQ-750)
 - **Question:** View.dll 0x1001d000 walks three part lists of the type: slot 0xa0 and 0xa4 (AnnoGame 0x1000b8c0 / 0x1000ba10: the type's up to four sprite sets at +0x244, split by the set object's slot 0x60, each at the footprint centre plus the set prefix's (x, height, y) offset at prefix bytes 4..15, height plus the type's +0x288) and 0xa8 (the arrows). The rebuild draws set 0 and the arrows only.
 - **What we know:** among the GOG shots, 1301 and 1302 (a flag, set kind 9), 1023 (kind 9) and 801 (a second kind-2 set) have more sets; all four are scaled (OQ-612), so no exact check exists yet. Whether set 0 is always in the 0xa0 list and what +0x288 holds was not read.
+- **Resolved (UI-INFO-2d, 2026-11-17):** the slots, the split into 0xa0 (still) and 0xa4 (animated: the display object's slot 0x60, tHausAnim 0x100046f0) and the turn of the offsets are read (docs/re/ui.md 2.5); the 'type height' is the point's own height (0x1000b9b2 adds the caller's point y, 0 in the picture), not a type field. The rebuild composes every set. Which file bytes are the offsets is OQ-750.
 - **How to resolve:** read slot 0x60 of tHausGebaude/tHausAnim and the writer of type +0x288; compose the extra sets and compare the scaled shots once OQ-612's sampler is known, or capture an unscaled type with a second set.
 
 ## OQ-713: Whether the map ghost draws the same entrance arrows (UI-INFO-2b, 2026-11-17; CLOSED BUILDINGS-REF-1: no)
@@ -3572,3 +3573,8 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Question:** the eight `VIEWBAUTAB` gadgets (class 0xb0d, 42 x 46 at x 779, View.dll 0x1002bb4f: `push 0x2e; push 0x2a`) are drawn clipped to the 29 px column (779..807), but the rebuild hits them over the whole 42 px (779..820), so a click on grid column 0's first 13 px (808..820) switches the category instead of arming the cell (UI-INFO-2 QUESTION 2). Does the original's gadget hit test use the clipped rectangle?
 - **What we know:** only the gadget size and the drawn clip; the gadget class's hit test and the parent's clip were not read in UI-INFO-2b (time went to the entrance arrows). The rebuild is unchanged.
 - **How to resolve:** read class 0xb0d's hit-test slot and how the parent window clips child gadgets; or capture the original after a left click at (815, y) on grid column 0 of the public tab (a Wine-runner recipe is in the UI-INFO-2b report).
+
+## OQ-750: Where a sprite set's offset in the picture comes from (UI-INFO-2d, 2026-11-17; OPEN)
+- **Question:** the type's set slots hold (display object, x, height, y) (AnnoGame property 0x17, 0x1000c13b); who sends property 0x17 when Anlagen.dat is loaded, and from which bytes?
+- **What we know:** the set prefix's f32 at bytes 4, 8, 12 read as (x, height, y) gives the fewest differing pixels against the GOG preview shots of 801, 1301, 1302 and 1023 among eight orders and signs (27 417 px against 28 266 for the next); the prefix's bytes 0-1 are the set index and byte 2 the display kind (docs/re/annodisplay.md 7). The rebuild uses that reading (P, measured). The loader path from the prefix to property 0x17 was not read.
+- **How to resolve:** find the senders of property 0x17 (`push 0x17` before a type slot call) in AnnoGame's HAEUSER loader; or an unscaled GOG capture of a type with a second set.

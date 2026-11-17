@@ -144,3 +144,43 @@ TEST_CASE("info preview: one scale for the whole canvas") {
     // The taller side decides: 100 x 270 -> s = 2.
     CHECK(ip::scaled_size(100, 270, 135, 135) == std::pair{50U, 135U});
 }
+
+TEST_CASE("info preview: further sprite sets - turned offset, height and draw order (OQ-712)") {
+    CHECK(ip::turn_offset(1.0, 2.0, 0) == std::pair{1.0, 2.0});
+    CHECK(ip::turn_offset(1.0, 2.0, 1) == std::pair{2.0, -1.0});
+    CHECK(ip::turn_offset(1.0, 2.0, 2) == std::pair{-1.0, -2.0});
+    CHECK(ip::turn_offset(1.0, 2.0, 3) == std::pair{-2.0, 1.0});
+    // Height: 59.1633 cos(42 pi / 256) = 51.477 px per tile up; raised 1 tile at (0.5, 0.5):
+    // 20.621 - 51.477 = -30.86 -> -30 (toward zero).
+    CHECK(ip::project_raised(0.5, 0.5, 0.0) == ip::project(0.5, 0.5));
+    CHECK(ip::project_raised(0.5, 0.5, 1.0) == std::pair{0, -30});
+
+    // A 1 x 1 building of 10 x 10 (anchor 5, 5) and two 2 x 2 sets at the centre, height 0:
+    // an animated one (red 50) listed first and a still one (red 60) second. The still one is
+    // drawn first, the animated one over it.
+    const auto building = solid(10, 10, 100);
+    const auto anim = solid(2, 2, 50);
+    const auto still = solid(2, 2, 60);
+    ip::Input in;
+    for (int r = 0; r < 4; ++r) {
+        in.building.push_back({&building, 5, 5});
+        in.sets.push_back({ip::SetPart{{&anim, 1, 1}, 0.0, 0.0, 0.0, true},
+                           ip::SetPart{{&still, 1, 1}, 0.0, 0.0, 0.0, false}});
+    }
+    const auto c = ip::compose(in, 0);
+    REQUIRE(c.has_value());
+    CHECK(c->width == 10);
+    CHECK(red_at(*c, 4, 4) == 50); // the animated set on top
+    // A set offset 1 tile in x, raised 1 tile, at turn 0: point (1.5, 0.5, h 1):
+    // x = 41.835 * (0.5 - 1.5) = -41.8 -> -41, y = 20.621 * 2 - 51.477 = -10.2 -> -10.
+    in.sets.assign(4, {ip::SetPart{{&still, 0, 0}, 1.0, 1.0, 0.0, false}});
+    const auto d = ip::compose(in, 0);
+    REQUIRE(d.has_value());
+    // Building rect (-5, 15)-(5, 25) at every turn; the set at (-41, -10), (-41, -51), (41, -51),
+    // (41, -10): canvas 48 x 76. Turn 0's rect (-41, -10)-(5, 25) sits at origin
+    // (-41 + (46 - 48) / 2, -10 + (35 - 76) / 2) = (-42, -30): the set at (1, 20).
+    CHECK(d->width == 48);
+    CHECK(d->height == 76);
+    CHECK(red_at(*d, 1, 20) == 60);
+    CHECK(red_at(*d, 0, 20) == 0);
+}

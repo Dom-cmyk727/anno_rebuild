@@ -69,6 +69,11 @@ struct UiElement {
     /// `rotate_right` +1 (GOG View.dll click handlers 0x10030440 and 0x10030480, docs/re/ui.md
     /// section 2.5). Absent for every other element.
     std::optional<int> turn;
+    /// UI-INFO-2b: `figure <id>`, a FigurenHeader.dat entry the element draws: on
+    /// `info_preview_arrows`, the entrance arrows of the info panel's picture (1573, AnnoGame.dll
+    /// 0x1000bb60; docs/re/ui.md section 2.5). The bound 65535 is load_figure_facings' id type.
+    /// Absent for every other element.
+    std::optional<int> figure;
     /// UI-TABS-1 (docs/re/ui.md 5.4): `view <name>` on a main tab names the view it shows; on a
     /// sub-tab, with `subtab <k>`, the view whose column holds it (k counts from 0). `body
     /// <panel>` is the `panel` group sub-tab k shows. Empty / absent for every other element.

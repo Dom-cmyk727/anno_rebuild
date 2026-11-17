@@ -420,6 +420,13 @@ formats::Result<HudLayout, std::string> parse_hud_layout(const std::string& text
                     if (!v || *v == 0)
                         return fail(line_no, "turn: not a non-zero integer");
                     e.turn = v;
+                } else if (key == "figure") {
+                    if (!tok.more())
+                        return fail(line_no, "figure: missing value");
+                    const auto v = to_int(tok.take());
+                    if (!v || *v < 0 || *v > 0xFFFF)
+                        return fail(line_no, "figure: not a FigurenHeader id (0..65535)");
+                    e.figure = v;
                 } else if (key == "view" || key == "body") {
                     if (!tok.more())
                         return fail(line_no, key + ": missing value");

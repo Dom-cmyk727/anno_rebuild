@@ -1460,13 +1460,7 @@ def anlagen_names(game_dir: str) -> dict:
 _ANLAGEN_CACHE: dict = {}
 
 
-def anlagen_preview_rgba(game_dir: str, type_id: int, rotation: int = 0):
-    """(w, h, rgba) of Anlagen.dat type `type_id`'s sprite set 0, zoom group 0, at `rotation`
-    (pixels past the frame width kept, docs/formats/anlagen.md), or None. The frame is the first
-    animation step of rotation block `rotation`: `(rotation mod blocks) * n`, n = the set's ANIM
-    frames (u16 at 2, at least 1), blocks = frames / n (at least 1) - render::frame_index at time
-    0 and phase 0 (docs/render/iso.md "Frame"; UI-INFO-2, docs/re/ui.md section 2.5). Rotation 0
-    is frame 0, as before."""
+def _anlagen_tables(game_dir: str):
     import struct
 
     import figuren as fig
@@ -1490,7 +1484,21 @@ def anlagen_preview_rgba(game_dir: str, type_id: int, rotation: int = 0):
                 g, _cnt = struct.unpack_from("<II", p, 0)
                 vols[g] = p[8:]
         _ANLAGEN_CACHE[key] = (ents, tables, vols)
-    ents, tables, vols = _ANLAGEN_CACHE[key]
+    return _ANLAGEN_CACHE[key]
+
+
+def anlagen_preview_frame(game_dir: str, type_id: int, rotation: int = 0):
+    """(frame header dict, (w, h, rgba)) of Anlagen.dat type `type_id`'s sprite set 0, zoom group
+    0, at `rotation` (pixels past the frame width kept, docs/formats/anlagen.md), or None. The
+    frame is the first animation step of rotation block `rotation`: `(rotation mod blocks) * n`,
+    n = the set's ANIM frames (u16 at 2, at least 1), blocks = frames / n (at least 1) -
+    render::frame_index at time 0 and phase 0 (docs/render/iso.md "Frame"; UI-INFO-2,
+    docs/re/ui.md section 2.5). Rotation 0 is frame 0."""
+    import struct
+
+    import figuren as fig
+
+    ents, tables, vols = _anlagen_tables(game_dir)
     e = ents.get(type_id)
     if not e or not e["gfx"]:
         return None
@@ -1522,18 +1530,209 @@ def anlagen_preview_rgba(game_dir: str, type_id: int, rotation: int = 0):
         o = ((i // wide) * right + i % wide) * 4
         out[o:o + 3] = bytes(pal[p[0]])
         out[o + 3] = 255
-    return right, h, bytes(out)
+    return frame, (right, h, bytes(out))
+
+
+def anlagen_preview_rgba(game_dir: str, type_id: int, rotation: int = 0):
+    """(w, h, rgba) of anlagen_preview_frame, or None."""
+    got = anlagen_preview_frame(game_dir, type_id, rotation)
+    return got[1] if got else None
+
+
+def anlagen_entrance_arrows(game_dir: str, type_id: int) -> list[tuple[int, int, int]]:
+    """UI-INFO-2b: the type's entrance arrows, `(x3, y3, side)` per arrow, from the `CONPO2`
+    sub-record of its `OBJECTPOS` record (sub-records: a 6-byte name, a u16 size, the data; 3
+    bytes per arrow). AnnoGame.dll's loader reads CONPO2 into the type (0x10009e3e..0x10009edf:
+    count = size / 3 at +0x6b, records at +0x22c); x3/y3 count thirds of a tile from the
+    footprint's corner, side 0..3 is the footprint side (docs/re/ui.md 2.5). An arrow whose side
+    is not 0..3 is skipped (two types carry such bytes; the original reads past its side table
+    there). CONPOS (one type, 1542) is not read: the original's loader leaves its side byte
+    unset."""
+    import struct
+
+    ents, _tables, _vols = _anlagen_tables(game_dir)
+    e = ents.get(type_id)
+    if not e:
+        return []
+    op = next((rp for rn, rp in e["records"] if rn == "OBJECTPOS"), None)
+    out = []
+    i = 0
+    while op is not None and i + 8 <= len(op):
+        name = op[i:i + 6].split(b"\0")[0]
+        size = struct.unpack_from("<H", op, i + 6)[0]
+        data = op[i + 8:i + 8 + size]
+        if name == b"CONPO2":
+            for k in range(0, len(data) - 2, 3):
+                if data[k + 2] <= 3:
+                    out.append((data[k], data[k + 1], data[k + 2]))
+        i += 8 + size
+    return out
+
+
+_FIGUREN_CACHE: dict = {}
+
+
+def figure_frames(game_dir: str, figure: int) -> list:
+    """FigurenHeader.dat entry `figure`'s sprite set 0, zoom group 0: per frame (w, h, anchor_x,
+    anchor_y, rgba) in its own colour table, or [] when missing."""
+    import figuren as fig
+
+    key = (os.path.normcase(os.path.abspath(game_dir)), figure)
+    if key in _FIGUREN_CACHE:
+        return _FIGUREN_CACHE[key]
+    ents, _vols = fig.parse(open(os.path.join(game_dir, "FigurenHeader.dat"), "rb").read())
+    e = next((e for e in ents if e["id"] == figure), None)
+    out = []
+    if e and e["gfx"]:
+        fs = next((s for s in e["gfx"][0]["sets"] if s["group"] == 0), None)
+        parts = []
+        k = 0
+        while os.path.exists(os.path.join(game_dir, f"Figuren0{k:02}.dat")):
+            parts.append(os.path.join(game_dir, f"Figuren0{k:02}.dat"))
+            k += 1
+
+        def read(off: int, n: int) -> bytes:
+            got = b""
+            for path in parts:
+                size = os.path.getsize(path)
+                if off < size:
+                    with open(path, "rb") as fh:
+                        fh.seek(off)
+                        got += fh.read(min(n - len(got), size - off))
+                    off = 0
+                    if len(got) == n:
+                        break
+                else:
+                    off -= size
+            return got
+
+        for f in (fs["frames"] if fs else []):
+            px = fig.decode(fig.cstr(f["format"]), read(f["offset"], f["length"]), f["width"],
+                            f["height"])
+            pal = e["palettes"][f["palette"]]["rgb"]
+            buf = bytearray(f["width"] * f["height"] * 4)
+            for i, p in enumerate(px):
+                if p is not None:
+                    buf[i * 4:i * 4 + 3] = bytes(pal[p[0]])
+                    buf[i * 4 + 3] = 255
+            out.append((f["width"], f["height"], f["ax"], f["ay"], bytes(buf)))
+    _FIGUREN_CACHE[key] = out
+    return out
+
+
+def _f32(v: float) -> float:
+    import struct
+
+    return struct.unpack("<f", struct.pack("<f", v))[0]
+
+
+# UI-INFO-2b, AnnoGame.dll 0x1000bb60 (type slot +0xa8, the arrows' part list): the thirds table
+# 0x100217c4 holds k/3 rounded to 3 decimals as f32, the centring constant 0x10021a84 is 0.167,
+# the side table 0x10021828 moves an arrow half a tile out of side 0 (-x), 1 (+y), 2 (+x), 3 (-y).
+PREVIEW_SIXTH = _f32(0.167)
+PREVIEW_SIDE = ((-0.5, 0.0), (0.0, 0.5), (0.5, 0.0), (0.0, -0.5))
+# View.dll 0x10088af0: the preview camera, Ry(135 deg) Rx(42 pi / 256) scaled by 59.1633
+# (0x100a2790), as the map's (docs/render/iso.md): screen x per tile of (y - x), screen y per
+# tile of (x + y): 59.1633 cos 45 deg and 59.1633 sin 45 deg sin(42 pi / 256).
+PREVIEW_KX = _f32(59.1633) * 0.7071067811865476
+PREVIEW_KY = _f32(59.1633) * 0.7071067811865476 * 0.4928981922297840
+
+
+def preview_third(k: int) -> float:
+    return _f32(round(k / 3, 3))
+
+
+def preview_project(x: float, y: float) -> tuple[int, int]:
+    """Screen point of the world point (x, y) (tiles, height 0) in the preview, each coordinate
+    truncated toward zero (AnnoDisplay.dll 0x10030e10, called by the frame rectangle 0x1000ac80)."""
+    return int(PREVIEW_KX * (y - x)), int(PREVIEW_KY * (x + y))
+
+
+def preview_parts(game_dir: str, type_id: int, rotation: int, arrow_figure: int | None):
+    """[(x0, y0, (w, h, rgba))]: the preview's parts at `rotation` in draw order, the building
+    (anchor on the footprint centre) then its entrance arrows (AnnoGame.dll 0x1000bb60: per
+    arrow the footprint corner + third(x3) + 0.167 + side offset, turned with the footprint,
+    direction (rotation + side) & 3, frame ((direction << 2) >> shift) & mask of the arrow
+    figure, View.dll 0x1001d000 / AnnoDisplay.dll 0x100055b0), each at its projected point minus
+    its anchor (0x1000ac80). None without a building frame."""
+    got = anlagen_preview_frame(game_dir, type_id, rotation)
+    if got is None:
+        return None
+    frame, sprite = got
+    ents, _tables, _vols = _anlagen_tables(game_dir)
+    head = next((rp for rn, rp in ents[type_id]["records"] if rn == "HEAD"), b"\1\1")
+    w, h = head[0], head[1]
+    r = rotation & 3
+    cw, ch = (w, h) if r % 2 == 0 else (h, w)
+    bx, by = preview_project(cw / 2, ch / 2)
+    parts = [(bx - frame["ax"], by - frame["ay"], sprite)]
+    frames = figure_frames(game_dir, arrow_figure) if arrow_figure is not None else []
+    if frames:
+        mask = len(frames) - 1
+        shift = 0 if mask >= 15 else (2 if mask < 7 else 1)
+        for x3, y3, side in anlagen_entrance_arrows(game_dir, type_id):
+            u = preview_third(x3) + PREVIEW_SIXTH + PREVIEW_SIDE[side][0]
+            v = preview_third(y3) + PREVIEW_SIXTH + PREVIEW_SIDE[side][1]
+            x, y = ((u, v), (v, w - u), (w - u, h - v), (h - v, u))[r]
+            d = (r + side) & 3
+            fw, fh, ax, ay, rgba = frames[((d << 2) >> shift) & mask]
+            sx, sy = preview_project(x, y)
+            parts.append((sx - ax, sy - ay, (fw, fh, rgba)))
+    return parts
+
+
+def preview_canvas(game_dir: str, type_id: int, rotation: int, arrow_figure: int | None):
+    """(W, H, rgba): View.dll 0x1001d760 / 0x1001d870. W x H is the largest width and height of
+    the parts' rectangle over all four turns; the current turn's rectangle sits centred in it
+    (x0 + (x1 - x0 - W) / 2, halving toward zero, 0x1001da40..0x1001da82); parts drawn in order,
+    each pixel opaque, clipped to the canvas. None without a building frame."""
+    rects = []
+    for r in range(4):
+        ps = preview_parts(game_dir, type_id, r, arrow_figure)
+        if ps is None:
+            return None
+        rects.append((min(p[0] for p in ps), min(p[1] for p in ps),
+                      max(p[0] + p[2][0] for p in ps), max(p[1] + p[2][1] for p in ps)))
+    cw = max(b[2] - b[0] for b in rects)
+    chh = max(b[3] - b[1] for b in rects)
+    x0, y0, x1, y1 = rects[rotation & 3]
+    ox = x0 + int((x1 - x0 - cw) / 2)
+    oy = y0 + int((y1 - y0 - chh) / 2)
+    out = bytearray(cw * chh * 4)
+    for px, py, (sw, sh, buf) in preview_parts(game_dir, type_id, rotation, arrow_figure):
+        for yy in range(sh):
+            ty = py - oy + yy
+            if not 0 <= ty < chh:
+                continue
+            for xx in range(sw):
+                tx = px - ox + xx
+                o = (yy * sw + xx) * 4
+                if 0 <= tx < cw and buf[o + 3]:
+                    d = (ty * cw + tx) * 4
+                    out[d:d + 3] = buf[o:o + 3]
+                    out[d + 3] = 255
+    return cw, chh, bytes(out)
+
+
+def preview_scaled_size(w: int, h: int, bw: int, bh: int) -> tuple[int, int]:
+    """View.dll 0x1001db7f..0x1001dbfc: scale s = max(1, W / bw, H / bh) (the quotient kept as
+    f32), drawn size (trunc(W / s), trunc(H / s))."""
+    a = w / bw
+    b = _f32(h / bh)
+    s = _f32(a) if a > b else b
+    if not s > 1.0:
+        s = 1.0
+    return int(w / s), int(h / s)
 
 
 def preview_placeholder_fit(sprite, bw: int, bh: int):
-    """The PLACEHOLDER (not evidence), same as ui_mock.cpp preview_placeholder_fit: a sprite larger
-    than the box, nearest-neighbour to the largest fitting size (OQ-612). Precondition: the sprite
+    """Same as ui_mock.cpp preview_placeholder_fit: a canvas larger than the box drawn at the
+    original's size (preview_scaled_size, View.dll 0x1001db7f..0x1001dbfc; UI-INFO-2b) by nearest
+    neighbour - the sampling is the PLACEHOLDER (not evidence, OQ-612). Precondition: the canvas
     does not fit the box."""
     w, h, buf = sprite
-    if w * bh >= h * bw:
-        nw, nh = bw, max(1, h * bw // w)
-    else:
-        nw, nh = max(1, w * bh // h), bh
+    nw, nh = preview_scaled_size(w, h, bw, bh)
+    nw, nh = max(1, nw), max(1, nh)
     out = bytearray(nw * nh * 4)
     for y in range(nh):
         sy = y * h // nh
@@ -1609,12 +1808,16 @@ def compose_info_panel(layout_dir: str, game_dir: str, type_id: int, values: dic
         _blit_clipped(rgb, w, h, img, x, el["pos"][1], full)
     box = by_name["info_preview"]
     shadow = by_name["info_preview_shadow"]
-    sprite = anlagen_preview_rgba(game_dir, type_id, rotation)
+    arrows = by_name.get("info_preview_arrows", {}).get("figure")
+    # UI-INFO-2b: the building and its entrance arrows composed into one canvas sized over all
+    # four turns (preview_canvas, docs/re/ui.md 2.5).
+    sprite = preview_canvas(game_dir, type_id, rotation,
+                            int(arrows) if arrows is not None else None)
     if sprite is not None:
         bx, by = box["pos"]
         bw, bh = box["size"]
-        # Evidence-backed: a sprite that fits is drawn unscaled and centred (docs/re/ui.md 2.5);
-        # a larger one goes through the one placeholder (OQ-612).
+        # Evidence-backed: a canvas that fits is drawn unscaled and centred (docs/re/ui.md 2.5);
+        # a larger one at the original's size through the one placeholder sampler (OQ-612).
         fits = sprite[0] <= bw and sprite[1] <= bh
         fitted = sprite if fits else preview_placeholder_fit(sprite, bw, bh)
         x = bx + (bw - fitted[0]) // 2

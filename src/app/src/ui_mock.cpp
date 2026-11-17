@@ -2,8 +2,11 @@
 #include <array>
 #include <fstream>
 #include <map>
+#include <memory>
 
 #include <anno/app/hud_tabs.hpp>
+#include <anno/app/info_preview.hpp>
+#include <anno/app/loader.hpp>
 #include <anno/app/ui_mock.hpp>
 #include <anno/assets/building.hpp>
 #include <anno/assets/text.hpp>
@@ -131,14 +134,15 @@ class TexCache {
     /// cannot disagree; rotation 0 is frame 0, as before. Evidence: the GOG preview shows block
     /// (cursor turn) (View.dll 0x100302c0 passes (view turn + cursor property 5) & 3 to the
     /// object draw 0x1001d760; Wine runner shots u2_2520_R1..R4 exact, docs/re/ui.md 2.5). The
-    /// cache assumes one `anlagen` file per session (the scene's).
-    const assets::Rgba* preview_sprite(std::uint32_t id, std::uint8_t rotation,
-                                       const formats::anlagen::AnlagenFile& anlagen) {
+    /// cache assumes one `anlagen` file per session (the scene's). UI-INFO-2b: with the frame's
+    /// anchor, which places it in the composed picture.
+    const info_preview::Sprite* preview_sprite(std::uint32_t id, std::uint8_t rotation,
+                                               const formats::anlagen::AnlagenFile& anlagen) {
         const auto key = std::pair{id, rotation};
         const auto it = previews_.find(key);
         if (it != previews_.end())
-            return it->second ? &*it->second : nullptr;
-        std::optional<assets::Rgba> decoded;
+            return it->second ? &it->second->sprite : nullptr;
+        std::optional<DecodedSprite> decoded;
         if (const auto* entry = anlagen.entry(id); entry != nullptr && !entry->gfx.empty()) {
             const auto& gfx = entry->gfx.front();
             for (const auto& set : gfx.frame_sets) {
@@ -149,18 +153,95 @@ class TexCache {
                         set.frames.size(), render::animation(gfx), rotation, 0, 0);
                     if (k < set.frames.size()) {
                         auto r = assets::building::to_rgba(anlagen, *entry, 0, set.frames[k]);
-                        if (r.ok())
-                            decoded = std::move(r).value();
+                        if (r.ok()) {
+                            decoded.emplace();
+                            decoded->image = std::make_unique<assets::Rgba>(std::move(r).value());
+                            decoded->sprite = {decoded->image.get(), set.frames[k].anchor_x,
+                                               set.frames[k].anchor_y};
+                        }
                     }
                 }
                 break;
             }
         }
         const auto emplaced = previews_.emplace(key, std::move(decoded)).first;
+        return emplaced->second ? &emplaced->second->sprite : nullptr;
+    }
+
+    /// UI-INFO-2b: FigurenHeader entry `figure`'s sprite set 0, zoom group 0, one sprite per frame
+    /// (the entrance arrows' figure, data/ui/hud.txt `info_preview_arrows figure`), read once;
+    /// empty when the entry or its frames are missing.
+    const std::vector<info_preview::Sprite>& figure_frames(std::uint16_t figure) {
+        const auto it = figures_.find(figure);
+        if (it != figures_.end())
+            return it->second->sprites;
+        auto loaded = std::make_unique<LoadedFigure>();
+        // 16: the most view directions the original's figure frame rule has (dir16 with shift 0,
+        // info_preview::arrow_frame), so a figure of up to 16 frames is read whole.
+        constexpr std::uint32_t kMostDirections = 16;
+        auto facings = load_figure_facings(game_dir_, figure, kMostDirections, std::nullopt);
+        if (facings.ok()) {
+            loaded->facings = std::move(facings).value();
+            for (const auto& f : loaded->facings.facings) {
+                if (f.frames.empty() || !f.frames.front() || !f.frames.front()->image)
+                    break;
+                const auto& d = *f.frames.front();
+                // facings[k] is frame k mod n: stop where the frames repeat.
+                if (d.index != loaded->sprites.size())
+                    break;
+                loaded->sprites.push_back({d.image.get(), d.frame.anchor_x, d.frame.anchor_y});
+            }
+        }
+        return figures_.emplace(figure, std::move(loaded)).first->second->sprites;
+    }
+
+    /// UI-INFO-2b: the composed picture of Anlagen id `id` at `rotation` (info_preview::compose:
+    /// the building and, with `arrow_figure`, its CONPO2 entrance arrows), cached per (id,
+    /// rotation); nullptr without a building frame at every turn.
+    const assets::Rgba* preview_canvas(std::uint32_t id, std::uint8_t rotation,
+                                       const formats::anlagen::AnlagenFile& anlagen,
+                                       std::optional<std::uint16_t> arrow_figure) {
+        const auto key = std::pair{id, rotation};
+        const auto it = canvases_.find(key);
+        if (it != canvases_.end())
+            return it->second ? &*it->second : nullptr;
+        info_preview::Input in;
+        const auto* entry = anlagen.entry(id);
+        if (const auto fp = anlagen.footprint(id)) {
+            in.w = fp->first;
+            in.h = fp->second;
+        }
+        bool complete = entry != nullptr;
+        for (std::uint8_t r = 0; r < 4 && complete; ++r) {
+            const info_preview::Sprite* s = preview_sprite(id, r, anlagen);
+            if (s == nullptr)
+                complete = false;
+            else
+                in.building.push_back(*s);
+        }
+        if (complete && arrow_figure) {
+            if (const auto objectpos = entry->record("OBJECTPOS"))
+                in.arrows = info_preview::entrance_arrows(*objectpos);
+            if (!in.arrows.empty())
+                in.arrow_frames = figure_frames(*arrow_figure);
+        }
+        std::optional<assets::Rgba> canvas;
+        if (complete)
+            canvas = info_preview::compose(in, rotation);
+        const auto emplaced = canvases_.emplace(key, std::move(canvas)).first;
         return emplaced->second ? &*emplaced->second : nullptr;
     }
 
   private:
+    struct DecodedSprite {
+        std::unique_ptr<assets::Rgba> image;
+        info_preview::Sprite sprite;
+    };
+    struct LoadedFigure {
+        assets::unit::FacingSprites facings;
+        std::vector<info_preview::Sprite> sprites;
+    };
+
     const formats::tex::TexFile* file_of(const std::string& rel_path) {
         const auto it = files_.find(rel_path);
         if (it != files_.end())
@@ -187,7 +268,9 @@ class TexCache {
     std::map<std::string, std::optional<LoadedFont>> fonts_;
     bool names_loaded_ = false;
     std::map<std::uint32_t, std::string> names_;
-    std::map<std::pair<std::uint32_t, std::uint8_t>, std::optional<assets::Rgba>> previews_;
+    std::map<std::pair<std::uint32_t, std::uint8_t>, std::optional<DecodedSprite>> previews_;
+    std::map<std::uint16_t, std::unique_ptr<LoadedFigure>> figures_;
+    std::map<std::pair<std::uint32_t, std::uint8_t>, std::optional<assets::Rgba>> canvases_;
     std::map<std::pair<std::string, int>, std::optional<assets::Rgba>> decoded_;
 };
 
@@ -413,23 +496,19 @@ assets::Rgba render_info_text(const formats::zei::CharSet& font, const std::stri
 /// own silhouette, drawn first at the `info_preview_shadow` offset (docs/re/ui.md section 2.5).
 constexpr std::array<std::uint8_t, 3> kPreviewShadow = {66, 65, 66};
 
-/// UI-INFO-1, the PLACEHOLDER (not evidence): a preview sprite larger than the `bw` x `bh` box,
-/// scaled to the largest size that fits (integer arithmetic, aspect kept) by nearest neighbour.
-/// The original's scaler is unknown - no tested filter reproduces the scaled GOG previews
-/// (OQ-612). Every unproven step of the preview lives here and only here, so it can be kept,
-/// gated or replaced on its own. Precondition: the sprite does not fit the box.
+/// A preview canvas larger than the `bw` x `bh` box, drawn at the original's size
+/// (info_preview::scaled_size, View.dll 0x1001db7f..0x1001dbfc; UI-INFO-2b) by nearest neighbour.
+/// The sampling is the PLACEHOLDER (not evidence): the original's scaler is unknown - no tested
+/// filter reproduces the scaled GOG previews (OQ-612). Every unproven step of the preview lives
+/// here and only here, so it can be kept, gated or replaced on its own. Precondition: the canvas
+/// does not fit the box.
 assets::Rgba preview_placeholder_fit(const assets::Rgba& sprite, unsigned bw, unsigned bh) {
     const unsigned w = sprite.width, h = sprite.height;
     if (w == 0 || h == 0)
         return sprite;
-    unsigned nw = 0, nh = 0;
-    if (static_cast<std::uint64_t>(w) * bh >= static_cast<std::uint64_t>(h) * bw) {
-        nw = bw;
-        nh = std::max(1U, static_cast<unsigned>(static_cast<std::uint64_t>(h) * bw / w));
-    } else {
-        nh = bh;
-        nw = std::max(1U, static_cast<unsigned>(static_cast<std::uint64_t>(w) * bh / h));
-    }
+    auto [nw, nh] = info_preview::scaled_size(w, h, bw, bh);
+    nw = std::max(1U, nw);
+    nh = std::max(1U, nh);
     assets::Rgba out;
     out.width = static_cast<std::uint16_t>(nw);
     out.height = static_cast<std::uint16_t>(nh);
@@ -495,12 +574,20 @@ void draw_info_content(TexCache& cache, const HudLayout& hud, const UiPlacement&
     const UiElement* box = hud.element("info_preview");
     if (anlagen == nullptr || box == nullptr || !box->has_pos || !box->has_size)
         return;
-    const assets::Rgba* sprite = cache.preview_sprite(info.type.v, info.rotation, *anlagen);
+    // UI-INFO-2b: the building and its entrance arrows in one canvas sized over all four turns
+    // (info_preview::compose, docs/re/ui.md 2.5); the arrows' figure is layout data.
+    std::optional<std::uint16_t> arrow_figure;
+    if (const UiElement* arrows = hud.element("info_preview_arrows");
+        arrows != nullptr && arrows->figure)
+        arrow_figure = static_cast<std::uint16_t>(*arrows->figure);
+    const assets::Rgba* sprite =
+        cache.preview_canvas(info.type.v, info.rotation, *anlagen, arrow_figure);
     if (sprite == nullptr)
         return;
-    // Evidence-backed path: a sprite that fits the box is drawn unscaled and centred (the whole
-    // box exact on r2_info_dirt_road, f12_info_field_104, f12_info_field_708; docs/re/ui.md 2.5).
-    // A larger one goes through the one placeholder (preview_placeholder_fit, OQ-612).
+    // Evidence-backed path: a canvas that fits the box is drawn unscaled and centred (the whole
+    // box exact on r2_info_dirt_road, f12_info_field_104, f12_info_field_708 and, with arrows,
+    // f12_info_stall_1310 and f12_info_stall_1314; docs/re/ui.md 2.5). A larger one is drawn at
+    // the original's size through the one placeholder sampler (preview_placeholder_fit, OQ-612).
     const bool fits = sprite->width <= box->size_w && sprite->height <= box->size_h;
     assets::Rgba fitted =
         fits ? *sprite : preview_placeholder_fit(*sprite, box->size_w, box->size_h);

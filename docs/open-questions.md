@@ -873,12 +873,25 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Faithful default:** no look change while the budget holds.
 
 ## OQ-096: GPU-built chunks: the sprite atlas budget (new, T11 stage 0, C3)
-- **Status:** open, owner decides (a limit default)
+- **Status:** **decided by the owner 2026-11-17** (together with OQ-096b). Question asked: "Raise it
+  to 384 MiB, one mipmap level on both cards (my recommendation), against keeping 256 MiB with no
+  mips on the iGPU, or deciding later on a build." Owner's answer, verbatim: **"your
+  recommendation."** `GpuLimits::atlas_budget_mb` is **384 MiB on the integrated adapter** (was the
+  256 MiB proposed default), **512 MiB on the discrete adapter** (unchanged).
 - **Area:** render (GPU memory)
 - **What:** T11 keeps sprite frames resident on the GPU per scene (`docs/render/gpu-chunks.md` section 4). WebGPU reports no memory size, so the budget is a config value. Measured: every original scenario's frames for all three groups fit in 197 MiB (330 MiB estimated with enhanced water's smoothed copies); one chunk needs at most 7.8 MiB.
-- **Proposed default:** `GpuLimits::atlas_budget_mb` 512 on a discrete adapter, 256 on an integrated one, clamped to the device's texture array and buffer limits; above the budget the least recently used atlas layer is emptied, and a chunk whose frames cannot fit at all is built on the CPU and counted.
-- **Owner decides:** accept 512 / 256, or another rule (for example a share of the adapter's reported VRAM where a backend exposes it). Decide after the stage 2a owner check, when the measured resident MiB are in the perf README.
+- **Decided default:** `GpuLimits::atlas_budget_mb` 512 on a discrete adapter, **384** on an integrated one, clamped to the device's texture array and buffer limits; above the budget the least recently used atlas layer is emptied, and a chunk whose frames cannot fit at all is built on the CPU and counted.
 - **Faithful default:** no look-and-feel stake; the original keeps all sprites in system memory.
+
+## OQ-096b: The direct renderer's resident atlas: a mip level, and the iGPU budget's adjacent-group pair (RENDER-DIRECT-1a, 2026-11-17; DECIDED)
+- **Status:** **decided by the owner 2026-11-17**, together with OQ-096 (same question, same
+  answer, quoted there): one mip level on **both** the RTX 4090 and the integrated adapter, with
+  2 px padding; the integrated budget raised to 384 MiB (OQ-096) rather than kept at 256 MiB with
+  no mips.
+- **Area:** render (GPU memory), direct-rendering path (ADR 0007)
+- **What:** ADR 0007 keeps all three zoom groups' static+water atlases resident at once and draws the finer groups minified with mips (decisions 2, 3). Measured (`docs/render/atlas.md` §3-4, `bench_frame --atlas-report`, 519 scenes): at 2 px padding only one mip level is valid (a level *n* needs 2ⁿ px of padding or atlas neighbours bleed in; a full chain needs far more padding than any candidate measured), costing +25% over the base. The RTX 4090 (512 MiB) holds all three groups with one level at every candidate measured (worst: 360 MiB). At the original 256 MiB proposed default the iGPU did **not** hold the adjacent pair a zoom crosses for the worst scene found, `Scenes/0010SingleEndlos/02_1024_easy_128.sze` groups 0+1: 272 MiB at the cheapest candidate (2048 px page, 2 px padding, no mips), 16 MiB over; with one mip level, 340 MiB — **fits the 384 MiB decided default**, with 44 MiB headroom. All three groups together, one level: 360 MiB at worst, fitting the 4090's 512 MiB with 152 MiB headroom.
+- **Decided:** one mip level for the static+water atlas, on both adapters; the integrated budget raised to 384 MiB (OQ-096) rather than kept at 256 MiB with no mips, or decided later on a real build.
+- **Faithful default:** no look-and-feel stake for the budget; the mip level affects only the enhanced, non-original direct-rendering path's own zoom quality.
 
 ## OQ-100: Up to 8 players: how the world grows above 4 players (new, owner decision 2026-10-22, PLAN §0.6 / M4.1)
 - **Status:** **decided by the owner 2026-10-22** (all items: 1 as answered, 2-6 as recommended, 7 with a stricter floor of 99 %). Implementation: PLAN M4.1, spec `docs/sim/world-scaling.md`. The 99% floor is the later generator's rule. It is not the acceptance rule for the fixed-map ship starts (`fixed-map.md` §11, 2026-10-31).
@@ -3530,3 +3543,8 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **What we know:** the overview's `SPIELER_BILANZ_BK` (0.94 exact on `hud_idle_running`), the city view's `STADT_BILANZ_BK` and the options main page's icons are sub-tab 0's own (0.00-0.03 exact on the other pages); the crest `GRPLAYERSCHILDER` 1407 is the player view's on every page (1.00 on `f15_ship_list` and `f15_city_list`).
 - **Rebuild default (UI-TABS-1):** a placeholder page draws its view's column and crest and, in the options view, `OPTION_BACKGROUND`; nothing else (data/ui/hud.txt, `body` names the packet that fills it).
 - **How to resolve:** each page's builder (`ui-ships-diplomacy.md` 2.6-2.7, `ui-warehouse-trade.md`, `ui-options-mainmenu.md` 2.6) and its GOG shot.
+
+## OQ-690: Whether any static (Anlagen.dat) object is ever drawn in its owner's colour (RENDER-DIRECT-1a, 2026-11-17; OPEN)
+- **Question:** OQ-022 already confirms the COLORS record's `flag` 4 means `EffectsMulti`, a player-colour-variant palette kind, and names `Flagge01_01.PCX` (Anlagen.dat colour-table id 109) as a user of it. Today's code path never applies it to a placed object: `assets::building::to_rgba` (the static-frame decoder `iso.cpp`'s `SpriteCache::get` calls) has no colour parameter at all, and `assets::figure::player_coloured`/`recolour` are called only from `assets/src/unit.cpp` (live ships/soldiers), never from the static draw path. Does the *original* ever draw a static object (a flag, say) tinted by its owner's colour, or is `EffectsMulti` on `Flagge01_01.PCX` unused by placement (e.g. only reached through a UI icon, not a placed ANLAGEN object)? A decoder-level test (RENDER-DIRECT-1a's own `static_player_colour_eligibility`, `bench_frame/main.cpp`) found 40.6% of static frames have at least one pixel matching the green-dominance test `recolour` uses — but that test cannot distinguish ordinary green content (grass, trees, foliage) from a genuine player-colour marking, so it does not answer this question either way.
+- **What we know:** OQ-022's own kind=4/`Flagge01_01.PCX` finding (D: `AnnoGame.dll` `0x10004e60`); the static decode path's lack of a colour parameter (C: `iso.cpp:322`, `building.hpp`, `iso.hpp:276-277`).
+- **How to resolve:** check whether any `ANLAGEN` entry's `palette_ids` references colour table id 109 (or another `EffectsMulti`-kind table); if so, check whether the original ever renders that entry recoloured (Ghidra on the building-frame decoder/blitter in `AnnoDisplay.dll`, or a capture of a placed flag object across players in the original/History Edition).

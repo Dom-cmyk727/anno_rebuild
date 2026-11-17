@@ -203,7 +203,23 @@ This task added `src/render/include/anno/render/atlas_pages.hpp`, `src/render/sr
 
 **Device limits on this PC.** Neither adapter's `maxTextureArrayLayers` or `maxTextureDimension2D` came close to binding at `page_size = 2048` and the layer counts measured in §4/§9 (1-17): the same conclusion §4 already reached for the chunk/sprite atlas applies unchanged to this one, since it is the same two limits on the same two adapters.
 
-**Measurement (step 4).** PENDING - the orchestrator's own quiet-PC slot, asked for separately from this report; §11 is updated once it runs (VRAM bytes allocated for `lan5.txt` and `02_1024_easy_128.sze` against this document's own §4/§9 figures, `writeTexture` wall time through a queue fence, and readback time, on both adapters, in the `msvc` Release build).
+**Measurement (step 4).** Run in the `msvc` Release build, on the orchestrator's quiet-PC slot (both WSL compilers and every Windows build/test process confirmed absent first), `ANNO1503_GAME_DIR` set to the real game files; `measure_adapter` (`atlas_upload_test.cpp`) uploads each group's own page set, fences the queue before timing the upload, then reads every layer/level back. Per-layer device bytes are exactly `atlas_pages_bytes`'s own formula (`page_size²×4` for level 0 plus `(page_size/2)²×4` for the one mip level - 2048×2048×4 + 1024×1024×4 = 20,971,520 bytes/layer at `page_size = 2048`), so the totals below match §4/§9's own per-layer figure with no separate discrepancy to account for.
+
+`lan5.txt` (static+water, `resident_atlas_groups` decides how many of the 3 groups are resident):
+
+| Adapter | Groups resident | Layers | VRAM (upload only) | Upload (fenced) | Readback |
+|---|---|---|---|---|---|
+| RTX 4090 (discrete, all 3 groups) | 0, 1, 2 | 7 + 2 + 1 = 10 | 209,715,200 B (200.0 MiB) | 16.6314 + 4.1692 + 1.9395 = 22.74 ms | 98.9577 + 12.0131 + 6.0534 = 117.02 ms |
+| Radeon iGPU (the adjacent pair) | 0, 1 | 7 + 2 = 9 | 188,743,680 B (180.0 MiB) | 74.7652 + 3.4139 = 78.18 ms | 56.5183 + 13.6062 = 70.12 ms |
+
+`Scenes/0010SingleEndlos/02_1024_easy_128.sze`'s worst adjacent pair (groups 0+1, the 340 MiB *readback-proof* figure from §11's step 2/3 above is a different, larger combined page set over the same two groups' full frame lists; `measure_adapter` builds each group's own smaller page set separately here, so the bytes below are per-group, not that combined figure):
+
+| Adapter | Layers (per group) | VRAM (both groups, upload only) | Upload (fenced, both groups) | Readback (both groups) |
+|---|---|---|---|---|
+| RTX 4090 | 1 + 1 | 41,943,040 B (40.0 MiB) | 2.6904 + 1.927 = 4.62 ms | 5.9584 + 5.6927 = 11.65 ms |
+| Radeon iGPU | 1 + 1 | 41,943,040 B (40.0 MiB) | 1.5096 + 1.2475 = 2.76 ms | 8.7299 + 8.0199 = 16.75 ms |
+
+Neither device's `maxTextureArrayLayers`/`maxTextureDimension2D` bound at these layer counts (§11's own "Device limits on this PC" above). The Radeon's slower `lan5.txt` upload on its largest group (7 layers, 74.77 ms vs. the 4090's 16.63 ms) is consistent with its lower PCIe-less, shared-memory bandwidth as an integrated part; its readback for that same group (56.52 ms) is faster than the 4090's (98.96 ms), plausibly because `mapAsync` over a unified-memory heap avoids the 4090's discrete-VRAM copy-back. Both figures are wall time only (no correctness claim); the byte-exact and sample-exact proofs are §11's readback/sampling paragraphs above, run separately.
 
 ## 12. No render-path or draw-call change (RENDER-DIRECT-1c)
 

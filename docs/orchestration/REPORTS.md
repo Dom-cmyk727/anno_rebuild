@@ -12707,175 +12707,6 @@ READY FOR REVIEW.
 
 READY FOR REVIEW.
 
-## RENDER-DIRECT-1a — resident sprite atlases measured, layout fixed — READY FOR REVIEW (task/RENDER-DIRECT-1a, new worktree from `origin/main` `ac02d4a2`)
-
-**Command.** `bench_frame <game_dir> <file> --atlas-report out.tsv [--atlas-gpu-limits]` (a mode of
-`bench_frame`, not a second tool/implementation: reuses `load_any_scene`, `prepare_objects`,
-`animation`/`frame_index`, `AtlasResidency` directly). `<file>` "-" walks the whole corpus
-(`<game_dir>/Scenes` recursive + `data/maps/lan5.txt` + the 3 `ship-start-v2` candidates); any
-other `<file>` measures just that one scene. Full doc: `docs/render/atlas.md`.
-
-**Run.** 519 scenes (515 `.sze`/`.scp`, `lan5.txt`, 3 candidates), native MSVC, 0 refused, 7m12s
-wall. Worst case across every page/padding/mip combo: `01_1024_easy_256.sze` group 0, 268,435,456
-bytes (exactly 256 MiB — one of two combos hitting that number, named explicitly rather than used
-as "the" worst-case figure, since it is a round page count, not a tight measured need). Under the
-**recommended layout** (2048 px page, 2 px padding, no mips) the group-0 worst is a different
-scene, `02_1024_easy_128.sze`: 218,103,808 bytes (208 MiB), **48 MiB headroom inside the 256 MiB
-iGPU budget** (304 MiB headroom on the 4090's 512 MiB). Median (same layout, 1,557 scene×group
-rows): 16,777,216 bytes (16 MiB, one page). `lan5.txt` group 0: 117,440,512 bytes (7 pages).
-
-**Figures (whole FigurenHeader.dat, once):** group 0, 241,808 frames / 1,923.4 MiB — matches
-`sprite_fidelity_test.cpp`'s own oracle count exactly, a direct cross-check. Too large to keep
-resident (ADR 0007's own premise); `scene.units` (`load_scene` only, not `load_placed_scene` —
-`lan5.txt`/candidates report 0 for this reason, not because they have none) gives the few hundred
-KB to a few MB a scene actually needs, via `render::FrameKey::unit`, the frame table's own
-identity.
-
-**Player colours.** Static (Anlagen.dat): `SpriteCache::get`/`assets::building::to_rgba` have no
-colour parameter at all, and `player_coloured`/`recolour` are called only from
-`assets/src/unit.cpp` — 0 static frames are ever recoloured today, structurally, not by
-inspection of intent. Decoded anyway (not assumed): of 27,537 non-shadow Anlagen frames, **11,180
-(40.6 %) have at least one pixel** the decoder's own green-dominance test would match — 3,760,786
-of 102,530,209 pixels (3.67 %) — a real finding about the files, separate from the engine's
-current behaviour. Figures: 35,423 of 241,808 group-0 frames (69 of 368 entries, the 17
-player-coloured BEWOHNTYPE names). Two storage strategies measured (bytes each, not chosen): one
-coloured copy per colour a scene uses, vs. one uncoloured copy + a per-instance colour mask —
-both trivial against the headroom found; a performance/complexity trade-off, not a memory one.
-
-**GPU limits** (`--atlas-gpu-limits`, orchestrator's go asked for and given before opening a
-device): RTX 4090 (Vulkan) maxTextureDimension2D 32,768 / maxTextureArrayLayers 2,048 /
-maxBufferSize 1 TiB; Radeon iGPU (Vulkan) 16,384 / 8,192 / 2 GiB. Neither limit is binding for any
-candidate measured. (Correction caught in review: the "4090" adapter-match string is a number,
-and `pick_adapter` treats a numeric string as an index, never a name substring — it fell back to
-the default adapter, *loudly* (`adapter_from_env`, `wgpu.cpp:164-166`, printed to stderr, and the
-limits output names the adapter actually opened) — fixed to match by "RTX"/"Radeon".)
-
-**Layout chosen** (full reasons: `docs/render/atlas.md` §7): `AtlasResidency` (shelf, already
-specified, now proven by a one-shot `ensure()` call); page 2048 px; padding 2 px (fits with more
-headroom than 4 px; whether 2 px suffices 1c's real dilation kernel is for 1b/1c to confirm, not
-measured here); **no mip chain** for the static+water atlas — every mip-including candidate meets
-or exceeds the 256 MiB iGPU budget for some worst scene (table in `atlas.md` §3), while the chosen
-no-mip layout fits both budgets with headroom; the owner may still add mips on the 4090 alone
-(fits with headroom even with them) as a device-specific choice, not decided here. Figures kept in
-their own class (Static/Hot split, `gpu-chunks.md` 4.2), not mixed into the static+water budget.
-
-**Tests.** New `residency_test.cpp` case (no game files): hand-computed page counts for a
-padding-inflated synthetic set (4 unpadded 30x30 frames pack into 1 layer of 64; the same 4 with 2
-px padding need 4, since 34+34 no longer fits 64) plus an oversized-after-padding `Overflow`
-check. `anno_render_tests`: 212/213 (the one failure, `scene_reclaim_test.cpp:56`, reproduces
-identically — `CHECK(12 == 11)` — on unmodified `origin/main` `ac02d4a2` in a throwaway worktree,
-same command (`wsl -d Ubuntu -- anno_render_tests`, default order, right after `river_shade_test`'s
-last case): a pre-existing, order-dependent flake, not caused by this change).
-
-**Gates.** `clang-format` 23.1.3 clean on both changed files.
-`wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`: GCC 13 and Clang 18, viewer+GPU on, 413
-files, clean except the known pre-existing `src/sim/tests/extensions_test.cpp` failure
-(`ANNO_EXTENSION_ORACLE_FILE`, untouched by this task, reported in prior sessions' REPORTS); viewer
-without GPU, 80 files, clean on both compilers. MSVC Release build clean (warnings as errors).
-`git diff --stat origin/main -- src/` shows only `render/tests/residency_test.cpp` and
-`tools/bench_frame/main.cpp` — no render-path, digest or picture file touched.
-
-**NOT_RUN.** The whole-suite/game-file runs for other lanes (not reached by this change); macOS
-(no host here).
-
-**Decisions and reasoning.**
-- Reused `AtlasResidency`'s own `ensure()` as a one-shot full-corpus packer (huge budget, one
-  call) rather than simulating per-frame residency with eviction: the task asks for the real page
-  count a scene needs resident at once, not an LRU trace, and `ensure()`'s own tallest-first sort
-  already makes the result order-independent (existing `residency_test.cpp` case).
-- Enumerated every animation frame by calling `animation()`/`frame_index()` directly (their exact,
-  cited formula) instead of sampling many `time_ms` values through `place_prepared`: exact, not an
-  approximation that depends on choosing a "good enough" time range.
-- Mirrored `build_island_lists`'s enhanced-water exclusion (`kSurfAnlage`/`kRiverAnlagen`/
-  `kRiverFallAnlagen`) with the same public constants, rather than trusting a `WaterStyle`
-  parameter through `prepare_objects` (which does not take one): the exclusion lives in `Scene`,
-  not in `prepare_objects` itself.
-- `<file>` argument given real meaning (single-scene vs. "-" for the corpus) after review found
-  "ignored" unacceptable for a documented option — fixed, not just reworded.
-- Decoded the whole Anlagen.dat catalog for the player-colour pixel test via
-  `assets::building::to_rgba` (not `figure::decode`) after the first attempt failed every frame:
-  Anlagen entries carry `palette_ids` against the file-wide colour table, not the per-entry
-  `palettes` FigurenHeader.dat uses — `SpriteCache::get`'s own call site (`iso.cpp:322`) is the
-  evidence for which function is the real decode path.
-- Page size/padding/mip choices are driven by the measured worst-case fit against both GPUs'
-  budgets, not guessed; where a choice remains open (2 px sufficiency for 1c's dilation, mips on
-  the 4090 only), it is named as open rather than decided.
-
-**QUESTIONs:** OQ-096 (the 512 MiB/256 MiB budgets themselves) stays open, unchanged by this task.
-Whether 2 px padding is enough for 1c's real dilation/upload code is for 1b/1c to confirm.
-
-READY FOR REVIEW.
-
-## RENDER-DIRECT-1a addendum — the orchestrator's CHANGES REQUESTED review, resolved — READY FOR REVIEW (same branch, new commits)
-
-Review: `docs/orchestration/reviews/2026-11-17-render-direct-1a-review.md`, orch/board-next `8281cd4d`.
-Verdict quoted: **CHANGES REQUESTED**. The measurement itself (tool, test, corpus run) was accepted
-as it was; four findings (F1-F4) asked for document and summary-output changes. No new corpus run
-beyond the one already made: `--atlas-report` was extended to also sum the existing per-group
-frame sets (not re-walk scene objects), then run once more to produce the new rows.
-
-**F1 (the real budget check: all three groups, and the adjacent pair a zoom crosses) — ends in a
-QUESTION, as the packet allows.** `--atlas-report` now also writes, per scene, the packed bytes of
-groups 0+1+2, 0+1 and 1+2 (same candidates, same run). The RTX 4090 holds all three groups with
-one mip level at every candidate measured (worst 360 MiB of 512). The iGPU does **not** hold the
-adjacent pair for the worst scene found even with no mips at all:
-`Scenes/0010SingleEndlos/02_1024_easy_128.sze` groups 0+1 need 272 MiB (2048 px/2 px, the cheapest
-candidate) against its 256 MiB budget — 16 MiB over, every other candidate worse. QUESTION written
-in `atlas.md` §4 (scene, bytes, four options with their costs); not decided here, as instructed.
-
-**F2 (mips are the owner's decision, not a layout choice) — the full-chain candidate was wrong at
-this padding.** A mip level *n* needs 2ⁿ px of padding or atlas neighbours bleed in; 2 px supports
-exactly one level, not a chain (a real chain for a 2048 px page would need 2048 px of padding).
-Replaced the `full`/4/3 rows with `one_level`/+25% (`kOneMipLevelFactor`, code comment has the
-derivation); re-ran. `atlas.md` §7 now calls the mip level a proposal with the measured facts
-(the groups' own ≤2.1x mip ladder, the full-chain padding problem, each option's cost against
-both budgets), not a chosen layout value. Added OQ-096b next to OQ-096 for both open decisions
-(the mip level, and F1's budget QUESTION).
-
-**F3 (figures are start units only) — reworded, no "trivial" claim left.** Removed "figures do not
-change the fit conclusion" and the "a few hundred KB to a few MB" estimate. `atlas.md` §5 now says
-plainly that `scene.units` is the scenario file's own starting ships/soldiers, not a running game's
-carriers/residents/animals/added ships, which the loader cannot see; gives the one number this
-measurement can give (the measured maximum across the whole corpus: 3,401,840 bytes / 74 frames,
-`Scenes/0201SingleAddOn/single38.sze` group 0) and says the figure class needs its own evicting
-budget sized later, from a running game. §6's player-colour byte estimates are marked as resting
-on the same start-units measurement.
-
-**F4 (the 40.6% static-pixel finding is green matching green, not player colour) — rephrased.**
-`atlas.md` §6 now says plainly that the decoder's green-dominance test cannot be applied to static
-frames to find player colour (it matches ordinary grass/trees/painted parts just as readily), not
-that "a meaningful share of pixels would be recoloured". Added OQ-690 (whether any placed static
-object is ever drawn in the owner's colour through a different mechanism than this test can see,
-referencing OQ-022's own `Flagge01_01.PCX`/`EffectsMulti` finding) since OQ-022 itself does not
-cover that practical question.
-
-**Gates re-run after the code change:** `clang-format` clean; WSL GCC 13/Clang 18 `-Werror`, same
-413/80-file split, same pre-existing `extensions_test.cpp` failure (untouched by this task), no new
-one; native MSVC build clean; full 519-scene corpus re-run, 0 refused, 7m13s (same timing and
-per-group worst case as before, confirming the extension did not disturb the existing measurement).
-
-**Also noted:** the earlier TRACE-COLS-1-follow-up REPORTS heading used "ACCEPTED" on its own
-authority; the project's convention is to report "READY FOR REVIEW" and let the review's own
-verdict stand as quoted, not to declare acceptance in an executor's own heading. Will follow this
-from here on.
-
-READY FOR REVIEW.
-
-## RENDER-DIRECT-1a — the owner's decision on OQ-096/OQ-096b, recorded (docs only)
-
-The owner decided both OQ-096 (the atlas budget) and OQ-096b (the mip level) 2026-11-17, via the
-orchestrator: asked "Raise it to 384 MiB, one mipmap level on both cards (my recommendation),"
-against keeping 256 MiB with no mips on the iGPU or deciding later on a build; answer, verbatim,
-**"your recommendation."** Recorded, docs only, one commit: `docs/open-questions.md` (both OQs'
-status, with the question and answer quoted); `docs/render/atlas.md` §4 (the decision replaces the
-open QUESTION: the iGPU's adjacent-pair worst case, 340 MiB with one mip level, fits the decided
-384 MiB with 44 MiB headroom; all three groups fit the 4090's 512 MiB with 152 MiB headroom) and §7
-(the mip-level and budget rows now say "decided", not "open"); `docs/render/gpu-chunks.md` 4.3 rule
-6 and the section 9 `atlas_budget_mb` row (384 for the integrated default, citing the OQ). No code
-touched; RENDER-DIRECT-1b is written on this basis.
-
-READY FOR REVIEW.
-
 ## ZOOM-SMOOTH-2 — draw during the modal loop (move fixed; resize improved, not fully) — READY FOR REVIEW (task/ZOOM-SMOOTH-2, from `origin/main` `b9b8df23`, head `4713d3a6`)
 
 **The mechanism, verified against the pinned SDL (3.4.18, this build's own source, not the review's unpinned
@@ -14739,6 +14570,283 @@ READY FOR REVIEW.
 - Decisions: the GOG code over the R2 inference; Esc keeps the overview (no selection branch);
   `ui.tab` keeps R2 names; placeholders draw only measured chrome; the header plank is not drawn on
   any view (pre-existing since R2, noted in 5.4).
+
+READY FOR REVIEW.
+
+## RENDER-DIRECT-1a — resident sprite atlases measured, layout fixed — READY FOR REVIEW (task/RENDER-DIRECT-1a, new worktree from `origin/main` `ac02d4a2`)
+
+**Command.** `bench_frame <game_dir> <file> --atlas-report out.tsv [--atlas-gpu-limits]` (a mode of
+`bench_frame`, not a second tool/implementation: reuses `load_any_scene`, `prepare_objects`,
+`animation`/`frame_index`, `AtlasResidency` directly). `<file>` "-" walks the whole corpus
+(`<game_dir>/Scenes` recursive + `data/maps/lan5.txt` + the 3 `ship-start-v2` candidates); any
+other `<file>` measures just that one scene. Full doc: `docs/render/atlas.md`.
+
+**Run.** 519 scenes (515 `.sze`/`.scp`, `lan5.txt`, 3 candidates), native MSVC, 0 refused, 7m12s
+wall. Worst case across every page/padding/mip combo: `01_1024_easy_256.sze` group 0, 268,435,456
+bytes (exactly 256 MiB — one of two combos hitting that number, named explicitly rather than used
+as "the" worst-case figure, since it is a round page count, not a tight measured need). Under the
+**recommended layout** (2048 px page, 2 px padding, no mips) the group-0 worst is a different
+scene, `02_1024_easy_128.sze`: 218,103,808 bytes (208 MiB), **48 MiB headroom inside the 256 MiB
+iGPU budget** (304 MiB headroom on the 4090's 512 MiB). Median (same layout, 1,557 scene×group
+rows): 16,777,216 bytes (16 MiB, one page). `lan5.txt` group 0: 117,440,512 bytes (7 pages).
+
+**Figures (whole FigurenHeader.dat, once):** group 0, 241,808 frames / 1,923.4 MiB — matches
+`sprite_fidelity_test.cpp`'s own oracle count exactly, a direct cross-check. Too large to keep
+resident (ADR 0007's own premise); `scene.units` (`load_scene` only, not `load_placed_scene` —
+`lan5.txt`/candidates report 0 for this reason, not because they have none) gives the few hundred
+KB to a few MB a scene actually needs, via `render::FrameKey::unit`, the frame table's own
+identity.
+
+**Player colours.** Static (Anlagen.dat): `SpriteCache::get`/`assets::building::to_rgba` have no
+colour parameter at all, and `player_coloured`/`recolour` are called only from
+`assets/src/unit.cpp` — 0 static frames are ever recoloured today, structurally, not by
+inspection of intent. Decoded anyway (not assumed): of 27,537 non-shadow Anlagen frames, **11,180
+(40.6 %) have at least one pixel** the decoder's own green-dominance test would match — 3,760,786
+of 102,530,209 pixels (3.67 %) — a real finding about the files, separate from the engine's
+current behaviour. Figures: 35,423 of 241,808 group-0 frames (69 of 368 entries, the 17
+player-coloured BEWOHNTYPE names). Two storage strategies measured (bytes each, not chosen): one
+coloured copy per colour a scene uses, vs. one uncoloured copy + a per-instance colour mask —
+both trivial against the headroom found; a performance/complexity trade-off, not a memory one.
+
+**GPU limits** (`--atlas-gpu-limits`, orchestrator's go asked for and given before opening a
+device): RTX 4090 (Vulkan) maxTextureDimension2D 32,768 / maxTextureArrayLayers 2,048 /
+maxBufferSize 1 TiB; Radeon iGPU (Vulkan) 16,384 / 8,192 / 2 GiB. Neither limit is binding for any
+candidate measured. (Correction caught in review: the "4090" adapter-match string is a number,
+and `pick_adapter` treats a numeric string as an index, never a name substring — it fell back to
+the default adapter, *loudly* (`adapter_from_env`, `wgpu.cpp:164-166`, printed to stderr, and the
+limits output names the adapter actually opened) — fixed to match by "RTX"/"Radeon".)
+
+**Layout chosen** (full reasons: `docs/render/atlas.md` §7): `AtlasResidency` (shelf, already
+specified, now proven by a one-shot `ensure()` call); page 2048 px; padding 2 px (fits with more
+headroom than 4 px; whether 2 px suffices 1c's real dilation kernel is for 1b/1c to confirm, not
+measured here); **no mip chain** for the static+water atlas — every mip-including candidate meets
+or exceeds the 256 MiB iGPU budget for some worst scene (table in `atlas.md` §3), while the chosen
+no-mip layout fits both budgets with headroom; the owner may still add mips on the 4090 alone
+(fits with headroom even with them) as a device-specific choice, not decided here. Figures kept in
+their own class (Static/Hot split, `gpu-chunks.md` 4.2), not mixed into the static+water budget.
+
+**Tests.** New `residency_test.cpp` case (no game files): hand-computed page counts for a
+padding-inflated synthetic set (4 unpadded 30x30 frames pack into 1 layer of 64; the same 4 with 2
+px padding need 4, since 34+34 no longer fits 64) plus an oversized-after-padding `Overflow`
+check. `anno_render_tests`: 212/213 (the one failure, `scene_reclaim_test.cpp:56`, reproduces
+identically — `CHECK(12 == 11)` — on unmodified `origin/main` `ac02d4a2` in a throwaway worktree,
+same command (`wsl -d Ubuntu -- anno_render_tests`, default order, right after `river_shade_test`'s
+last case): a pre-existing, order-dependent flake, not caused by this change).
+
+**Gates.** `clang-format` 23.1.3 clean on both changed files.
+`wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`: GCC 13 and Clang 18, viewer+GPU on, 413
+files, clean except the known pre-existing `src/sim/tests/extensions_test.cpp` failure
+(`ANNO_EXTENSION_ORACLE_FILE`, untouched by this task, reported in prior sessions' REPORTS); viewer
+without GPU, 80 files, clean on both compilers. MSVC Release build clean (warnings as errors).
+`git diff --stat origin/main -- src/` shows only `render/tests/residency_test.cpp` and
+`tools/bench_frame/main.cpp` — no render-path, digest or picture file touched.
+
+**NOT_RUN.** The whole-suite/game-file runs for other lanes (not reached by this change); macOS
+(no host here).
+
+**Decisions and reasoning.**
+- Reused `AtlasResidency`'s own `ensure()` as a one-shot full-corpus packer (huge budget, one
+  call) rather than simulating per-frame residency with eviction: the task asks for the real page
+  count a scene needs resident at once, not an LRU trace, and `ensure()`'s own tallest-first sort
+  already makes the result order-independent (existing `residency_test.cpp` case).
+- Enumerated every animation frame by calling `animation()`/`frame_index()` directly (their exact,
+  cited formula) instead of sampling many `time_ms` values through `place_prepared`: exact, not an
+  approximation that depends on choosing a "good enough" time range.
+- Mirrored `build_island_lists`'s enhanced-water exclusion (`kSurfAnlage`/`kRiverAnlagen`/
+  `kRiverFallAnlagen`) with the same public constants, rather than trusting a `WaterStyle`
+  parameter through `prepare_objects` (which does not take one): the exclusion lives in `Scene`,
+  not in `prepare_objects` itself.
+- `<file>` argument given real meaning (single-scene vs. "-" for the corpus) after review found
+  "ignored" unacceptable for a documented option — fixed, not just reworded.
+- Decoded the whole Anlagen.dat catalog for the player-colour pixel test via
+  `assets::building::to_rgba` (not `figure::decode`) after the first attempt failed every frame:
+  Anlagen entries carry `palette_ids` against the file-wide colour table, not the per-entry
+  `palettes` FigurenHeader.dat uses — `SpriteCache::get`'s own call site (`iso.cpp:322`) is the
+  evidence for which function is the real decode path.
+- Page size/padding/mip choices are driven by the measured worst-case fit against both GPUs'
+  budgets, not guessed; where a choice remains open (2 px sufficiency for 1c's dilation, mips on
+  the 4090 only), it is named as open rather than decided.
+
+**QUESTIONs:** OQ-096 (the 512 MiB/256 MiB budgets themselves) stays open, unchanged by this task.
+Whether 2 px padding is enough for 1c's real dilation/upload code is for 1b/1c to confirm.
+
+READY FOR REVIEW.
+
+## RENDER-DIRECT-1a addendum — the orchestrator's CHANGES REQUESTED review, resolved — READY FOR REVIEW (same branch, new commits)
+
+Review: `docs/orchestration/reviews/2026-11-17-render-direct-1a-review.md`, orch/board-next `8281cd4d`.
+Verdict quoted: **CHANGES REQUESTED**. The measurement itself (tool, test, corpus run) was accepted
+as it was; four findings (F1-F4) asked for document and summary-output changes. No new corpus run
+beyond the one already made: `--atlas-report` was extended to also sum the existing per-group
+frame sets (not re-walk scene objects), then run once more to produce the new rows.
+
+**F1 (the real budget check: all three groups, and the adjacent pair a zoom crosses) — ends in a
+QUESTION, as the packet allows.** `--atlas-report` now also writes, per scene, the packed bytes of
+groups 0+1+2, 0+1 and 1+2 (same candidates, same run). The RTX 4090 holds all three groups with
+one mip level at every candidate measured (worst 360 MiB of 512). The iGPU does **not** hold the
+adjacent pair for the worst scene found even with no mips at all:
+`Scenes/0010SingleEndlos/02_1024_easy_128.sze` groups 0+1 need 272 MiB (2048 px/2 px, the cheapest
+candidate) against its 256 MiB budget — 16 MiB over, every other candidate worse. QUESTION written
+in `atlas.md` §4 (scene, bytes, four options with their costs); not decided here, as instructed.
+
+**F2 (mips are the owner's decision, not a layout choice) — the full-chain candidate was wrong at
+this padding.** A mip level *n* needs 2ⁿ px of padding or atlas neighbours bleed in; 2 px supports
+exactly one level, not a chain (a real chain for a 2048 px page would need 2048 px of padding).
+Replaced the `full`/4/3 rows with `one_level`/+25% (`kOneMipLevelFactor`, code comment has the
+derivation); re-ran. `atlas.md` §7 now calls the mip level a proposal with the measured facts
+(the groups' own ≤2.1x mip ladder, the full-chain padding problem, each option's cost against
+both budgets), not a chosen layout value. Added OQ-096b next to OQ-096 for both open decisions
+(the mip level, and F1's budget QUESTION).
+
+**F3 (figures are start units only) — reworded, no "trivial" claim left.** Removed "figures do not
+change the fit conclusion" and the "a few hundred KB to a few MB" estimate. `atlas.md` §5 now says
+plainly that `scene.units` is the scenario file's own starting ships/soldiers, not a running game's
+carriers/residents/animals/added ships, which the loader cannot see; gives the one number this
+measurement can give (the measured maximum across the whole corpus: 3,401,840 bytes / 74 frames,
+`Scenes/0201SingleAddOn/single38.sze` group 0) and says the figure class needs its own evicting
+budget sized later, from a running game. §6's player-colour byte estimates are marked as resting
+on the same start-units measurement.
+
+**F4 (the 40.6% static-pixel finding is green matching green, not player colour) — rephrased.**
+`atlas.md` §6 now says plainly that the decoder's green-dominance test cannot be applied to static
+frames to find player colour (it matches ordinary grass/trees/painted parts just as readily), not
+that "a meaningful share of pixels would be recoloured". Added OQ-690 (whether any placed static
+object is ever drawn in the owner's colour through a different mechanism than this test can see,
+referencing OQ-022's own `Flagge01_01.PCX`/`EffectsMulti` finding) since OQ-022 itself does not
+cover that practical question.
+
+**Gates re-run after the code change:** `clang-format` clean; WSL GCC 13/Clang 18 `-Werror`, same
+413/80-file split, same pre-existing `extensions_test.cpp` failure (untouched by this task), no new
+one; native MSVC build clean; full 519-scene corpus re-run, 0 refused, 7m13s (same timing and
+per-group worst case as before, confirming the extension did not disturb the existing measurement).
+
+**Also noted:** the earlier TRACE-COLS-1-follow-up REPORTS heading used "ACCEPTED" on its own
+authority; the project's convention is to report "READY FOR REVIEW" and let the review's own
+verdict stand as quoted, not to declare acceptance in an executor's own heading. Will follow this
+from here on.
+
+READY FOR REVIEW.
+
+## RENDER-DIRECT-1a — the owner's decision on OQ-096/OQ-096b, recorded (docs only)
+
+The owner decided both OQ-096 (the atlas budget) and OQ-096b (the mip level) 2026-11-17, via the
+orchestrator: asked "Raise it to 384 MiB, one mipmap level on both cards (my recommendation),"
+against keeping 256 MiB with no mips on the iGPU or deciding later on a build; answer, verbatim,
+**"your recommendation."** Recorded, docs only, one commit: `docs/open-questions.md` (both OQs'
+status, with the question and answer quoted); `docs/render/atlas.md` §4 (the decision replaces the
+open QUESTION: the iGPU's adjacent-pair worst case, 340 MiB with one mip level, fits the decided
+384 MiB with 44 MiB headroom; all three groups fit the 4090's 512 MiB with 152 MiB headroom) and §7
+(the mip-level and budget rows now say "decided", not "open"); `docs/render/gpu-chunks.md` 4.3 rule
+6 and the section 9 `atlas_budget_mb` row (384 for the integrated default, citing the OQ). No code
+touched; RENDER-DIRECT-1b is written on this basis.
+
+READY FOR REVIEW.
+
+## LAYER-CHECK-1 — a CTest test keeping formats/sim/sim_load free of app/render/SDL/GPU code — READY FOR REVIEW (task/LAYER-CHECK-1, new worktree from `origin/main` `ac02d4a2`)
+
+**The rule**, stated once in `tools/layer_check.py`'s own module docstring (docs cite it, do not
+copy it): `anno_formats` may include/link nothing above it; `anno_sim` may include/link
+`anno_formats`; `anno_sim_load` may include/link `anno_sim` (and so `anno_formats` transitively).
+Each library's own tests additionally get doctest and `anno/test/...` (the real namespace -
+`anno_test_support`'s headers live under `anno/test/`, not `anno/test_support/`, found and fixed
+after the first self-test run flagged every test file using it); `anno_sim`'s own tests also get
+`anno/sim_load/...` (CMake already links `anno_sim_tests` to `anno_sim_load` for the scenario
+corpus case). SDL, webgpu/wgpu, and `anno/render`/`anno/app`/`anno/assets`/`anno/net`/`anno/ui` are
+refused everywhere in the three libraries, code and tests alike.
+
+**The link list is read from CMake itself**: `file(GENERATE)` at the end of the root
+`CMakeLists.txt` (after all three `add_subdirectory` calls, so the targets already exist) writes
+`anno_formats`/`anno_sim`/`anno_sim_load`'s real `$<TARGET_PROPERTY:...,LINK_LIBRARIES>` into
+`layer_check_links.txt` in the build directory; `tools/layer_check.py --link-list` reads that file,
+never a hand-written copy of the graph.
+
+**The three outcomes of step 5, all confirmed:**
+- the real tree passes both checks (`layer_check_contract`, verified via `ctest -R layer_check -V`
+  after a configure-only `cmake --preset dev` in WSL, no build needed - both link_libraries and the
+  include scan are static/configure-time facts);
+- an injected `#include <SDL3/SDL.h>` in a synthetic sim source fails, naming the file and line
+  (`--self-test`'s `tree_self_test`);
+- a synthetic link list with `anno_render` under `anno_sim` fails (`--self-test`'s link-table
+  check).
+
+**Registered** as `layer_check_contract` and `layer_check_self_test`, both `LABELS "workflow"`, so
+every job that runs the other workflow tests (`test_verdict_contract` etc.) runs these on Windows,
+Linux and macOS alike - no per-platform gating needed, the check is pure Python over text files.
+
+**No violation found in the real tree.** No fix was needed; nothing beyond `CMakeLists.txt`,
+`tools/layer_check.py` and the `docs/testing/README.md` section was touched.
+
+**Gates.** `layer_check_contract`/`layer_check_self_test`: 2/2 passed (`ctest -R layer_check -V`,
+WSL, 4.3s total). No sim/formats/sim_load source touched, so `anno_sim_tests`/`anno_formats_tests`
+were not run (not reached by this change). No C++ touched, so `clang-format` is a no-op, noted
+rather than silently skipped.
+
+**Decisions and reasoning:**
+- Whitelist, not a blocklist, for the link check (`check_links`): a library may link only what the
+  table names, not "anything except the five named upper layers" - catches an unexpected future
+  link target the task's own five examples don't name, not just SDL/render/app/assets/net/ui.
+- `anno_sim`'s tests keep their existing `anno_sim_load` reach (CMake already wires it for the
+  scenario corpus case) rather than treating it as a violation to fix: the task's own step 1 names
+  this exact exception ("for the sim tests anno/sim_load").
+- `file(GENERATE)` placed after `add_subdirectory(src/sim_load)` (not earlier, where the other
+  workflow tests are registered): the generator expression needs the three targets to already
+  exist in CMake's model, even though its *value* resolves later, at the generate step.
+
+**NOT_RUN:** the full suite/other lanes (not reached by this change); macOS (no host here; the
+test is pure Python, expected to be platform-independent, unverified on that host).
+
+READY FOR REVIEW.
+
+## LAYER-CHECK-1 addendum — the orchestrator's CHANGES REQUESTED review, resolved — READY FOR REVIEW (same branch, new commits)
+
+Review: `docs/orchestration/reviews/2026-11-17-layer-check-1-review.md`, orch/board-next
+`f26e03da`. Verdict quoted: **CHANGES REQUESTED**, about 45 minutes. The link check and the
+`anno/` rule table were accepted as they were; two findings.
+
+**F1 (a deny list lets anything unnamed through) — rewritten as an allow list.** `classify_include`
+now refuses a header unless it is: a C++20 standard library header (`STD_HEADERS`, the full
+`cppreference` header index, cited there, not reproduced in prose); the library's own `anno/<lib>/`
+area or a library strictly below it; a quoted header that resolves to a real file next to the
+including file or inside that library's own `include/`/`tests/` directory (checked by path, not by
+name); doctest, in tests; or a `NAMED_EXCEPTIONS` entry scoped to one exact file with its reason.
+The real tree's two non-standard, non-`anno/` headers are both named:
+`src/sim/tests/founding_assets_test.cpp` uses `<sys/resource.h>` (POSIX `getrusage()`, no Windows
+equivalent, already guarded by `#ifndef _WIN32` in the source) and `"freight_original.inc"` (a
+generated fixture, included textually, not a real header). A new check
+(`check_named_exceptions_are_used`) reports a `NAMED_EXCEPTIONS` entry whose file no longer exists
+or no longer includes that header, so the list cannot rot into a claim about a file that moved on.
+Added the two required self-test cases (`<vulkan/vulkan.h>`, `<windows.h>` in a synthetic sim
+source both fail, named with file and line) plus one more in the same spirit
+(`<GLFW/glfw3.h>`, an unlisted third-party header, is refused by default - the exact thing an
+allow list is for that a deny list would have missed). The real tree still passes outright.
+
+**F2 (the section landed inside "Pins and goldens", and over-cited) — fixed.** The new
+`docs/testing/README.md` section had been inserted after that section's own closing code-block
+paragraph but *before* its numbered regeneration steps continued (1-7, ending "Finish with
+check"), so those steps were rendering under the new heading instead of their own. Moved the
+section to the true end of the file, after step 7. Dropped "and CLAUDE.md" from the citation:
+CLAUDE.md does not cite `tools/layer_check.py`, and an executor does not edit CLAUDE.md to make it
+do so.
+
+**Gates re-run after the code change:** `layer_check_self_test` (now covering the allow-list
+rewrite, the named-exception staleness check, and the three required-failing synthetic cases) and
+`layer_check_contract` (the real tree, via the link-list file already generated from the earlier
+configure - no new `cmake`/build/WSL run needed, per the standing hold on PC-heavy work during the
+landing candidate's own build): both pass, run directly with `python3 -I tools/layer_check.py`
+(no WSL, under a second each).
+
+**Decisions and reasoning:**
+- `STD_HEADERS` lists the *whole* C++20 standard library header index, not only the headers the
+  tree happens to use today: a future, legitimate standard-header use then needs no rule change,
+  matching the task's own "the standard library" wording rather than a narrower "headers seen so
+  far" list that would need updating on every new include.
+- The quoted-header allowance is resolved by real filesystem path (`.is_file()`), not by comparing
+  names against a list of known test-helper filenames: there are dozens of these (`cloth_town.hpp`,
+  `command_helpers.hpp`, ...) and a name-based list would itself rot the moment a new one is added,
+  the exact failure mode F1 was raised to prevent.
+- `NAMED_EXCEPTIONS` is keyed by `(file, header)`, not by header alone: a future file that happens
+  to want the same non-standard header still needs its own entry and its own reason, rather than
+  silently inheriting someone else's justification.
 
 READY FOR REVIEW.
 

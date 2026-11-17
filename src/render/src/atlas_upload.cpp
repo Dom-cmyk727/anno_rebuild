@@ -143,9 +143,20 @@ upload_atlas_pages(const Context& ctx, const AtlasPages& pages, std::uint64_t bu
         return *refusal;
     }
 
+    // The device can still refuse the allocation even though it fits the calculated budget (a
+    // single large resource can exceed a real allocator's own ceiling below the device's total
+    // reported memory - found exercising RENDER-DIRECT-1c review F1's real worst case on the
+    // Radeon iGPU: `wgpuDeviceCreateTexture` returned a non-null but device-invalidated handle,
+    // "Not enough memory left", silently accepted by every call below before this error-scope
+    // check existed - a correctness gap, not merely a reporting one, since the caller would have
+    // gone on to read back an invalid texture and seen a byte mismatch instead of a named
+    // refusal). Every device call that can fail is made inside one scope so any of them is
+    // caught, matching `submit`'s own pattern above.
     AtlasTexture out;
     out.page_size = pages.page_size;
     out.layers = layers;
+    wgpuDevicePushErrorScope(ctx.device.get(), WGPUErrorFilter_OutOfMemory);
+    wgpuDevicePushErrorScope(ctx.device.get(), WGPUErrorFilter_Validation);
     out.texture = make_texture_2mip(
         ctx.device.get(), "resident-atlas", WGPUTextureFormat_RGBA8Unorm, pages.page_size, layers,
         WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
@@ -170,6 +181,16 @@ upload_atlas_pages(const Context& ctx, const AtlasPages& pages, std::uint64_t bu
             const WGPUExtent3D ext = {size, size, 1};
             wgpuQueueWriteTexture(ctx.queue.get(), &dst, src.data(), src.size(), &lay, &ext);
         }
+    }
+    const std::string validation_err = pop_error_scope(ctx.instance.get(), ctx.device.get());
+    const std::string oom_err = pop_error_scope(ctx.instance.get(), ctx.device.get());
+    if (!validation_err.empty() || !oom_err.empty()) {
+        return "upload_atlas_pages: device refused the allocation (" + std::to_string(layers) +
+               " layers, " + std::to_string(atlas_pages_bytes(pages)) + " bytes needed, " +
+               std::to_string(budget_bytes) +
+               " bytes budgeted - the real device, not the "
+               "calculated budget, refused this one): " +
+               (oom_err.empty() ? validation_err : oom_err);
     }
     return out;
 }

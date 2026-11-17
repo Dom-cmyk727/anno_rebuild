@@ -15114,3 +15114,111 @@ GPU test suite (127 pre-existing cases) passed unchanged alongside the new ones.
 - CI preflight (`python -I tools/test/run_selected.py --preflight-only`, the exact CI step): PASS.
 
 READY FOR REVIEW.
+
+## RENDER-DIRECT-1c addendum — review F1/F2 resolved, a real device finding on the Radeon — READY FOR REVIEW (same branch, commit `a6329831`)
+
+**F1, fixed: the real worst case, not the wrong scene.** `worst_pair_scene`'s "worst pair, 340 MiB"
+case uploaded `02_1024_easy_128.sze` - RENDER-DIRECT-1b's own review F5 names `endless02.sze`
+(`Scenes/0011SingleEndlosAddon/endless02.sze`) as both the worst adjacent-pair scene (groups 0+1,
+340 MiB) and the worst all-three-group scene (360 MiB), so the real worst case had never been
+uploaded. Now uploads `endless02.sze`'s real resident set as ONE combined page set per adapter -
+every group `resident_atlas_groups` names folded into one shared `FrameTable`/`SpriteCache` (the
+last call's own return already holds every earlier group's frames too, since `collect_static_
+water`'s final pass walks the whole table from id 0 - exactly `bench_frame`'s own
+`collect_static_water_groups`, the function RD-1b's 340/360 MiB figures were measured with, not a
+different method): all three groups (18 layers, 360 MiB) on the 4090, the adjacent pair {0,1} (17
+layers, 340 MiB) on the Radeon.
+
+**F2, fixed: a real device budget, not a tautology.** Every budget passed to `upload_atlas_pages`
+in this file was `atlas_pages_bytes(pages)` - always exactly what is being uploaded, so the
+refusal path was never exercised by a real number. The `endless02.sze` case now computes the real
+budget the compositor would compute on the opened device: `atlas_budget_bytes_before_sprite` from
+`wgpuDeviceGetLimits`'s own `maxTextureArrayLayers`, the per-frame sprite (Hot) atlas's own
+footprint stated as 0 bytes (this standalone unit test holds no `GpuFrame`/Hot atlas of its own to
+measure a real one from - the same convention RD-1b's own F5 finding already used for its CPU-side
+44 MiB (Radeon)/152 MiB (4090) headroom figures, so this proves those already-accepted numbers
+hold for a real GPU upload, not a new, tighter claim). Needed vs. allowed is reported via
+`MESSAGE` on every run: RTX 4090 needed 377,487,360 against 536,870,912 allowed; Radeon needed
+356,515,840 against 402,653,184 allowed. One new case, `refused_one_byte_short`, proves a budget
+one byte short is refused through `upload_atlas_pages` itself (not only the pure
+`atlas_upload_refusal` tested without a GPU), on both adapters.
+
+**Finding for the owner, surfaced by F1/F2 together, not a bug in the fix: the Radeon's calculated
+budget fits, but the real device still refuses the allocation.** `endless02.sze`'s real pair on
+the Radeon needs 356,515,840 bytes, *inside* the calculated 402,653,184-byte budget - the
+arithmetic says it fits - but `wgpuDeviceCreateTexture` itself refused the single 17-layer texture
+with "Not enough memory left". This is the review's own anticipated category ("that's a finding
+for the owner, not a fix") under a different failure signature than expected: a real
+single-allocation ceiling below the device's own configured/reported memory, not a
+budget-arithmetic overrun. **Recorded, not patched: a calculated budget that fits is necessary but
+not sufficient on this adapter - a resident set this large needs either more than one texture
+resource (a stage 2/3 upload-granularity design question, explicitly out of this packet's "no
+draw pass/streaming" scope) or a smaller real budget than 384 MiB to actually allocate as one
+texture on this hardware.** The RTX 4090 uploaded the full 18-layer, 360 MiB set with no issue -
+the same combined-upload method, a different real limit.
+
+**A second, genuine bug found and fixed while investigating, not merely a reporting gap.**
+`upload_atlas_pages` had no error scope around `wgpuDeviceCreateTexture`/`wgpuQueueWriteTexture`:
+on the real device refusal above, the WGPU handle came back non-null but device-invalidated, and
+the function returned `out` as a *success* holding it - the caller (`check_pages_on_gpu`) then
+tried to read it back and hit a byte-mismatch `REQUIRE` failure, not a named refusal, which would
+have misreported a real allocation failure as a readback/correctness bug in this task's own proof.
+Fixed by wrapping both the texture creation and every `wgpuQueueWriteTexture` call in one
+validation + out-of-memory error scope (`submit`'s own push/pop pattern, reused), returning a
+descriptive error naming the layers/needed/budgeted bytes when either scope catches something.
+Confirmed fixed by rerunning the Radeon case: it now returns the clean, named refusal shown above
+instead of a readback mismatch.
+
+**Test case name/structure changes.** `check_pages_on_gpu` lost its `budget_bytes` parameter
+(every remaining caller always passes the tautological budget, so the parameter was dead weight
+after the refactor below) and gained a sibling, `verify_readback` (the byte-for-byte readback loop
+alone, extracted so `worst_pair_scene` can call it on an already-uploaded texture after handling
+its own, possibly-refused upload separately - `check_pages_on_gpu` itself is unchanged for every
+other caller). The two `02_1024_easy_128.sze`-named `TEST_CASE`s are renamed to name
+`endless02.sze` and the real finding (all three groups / the adjacent pair, not "340 MiB" as a
+flat label repeated for both scenes). Two new `TEST_CASE`s (`refused_one_byte_short` on each
+adapter).
+
+**Gates, rerun on this commit.**
+- clang-format 23.1.3: clean on all three touched files.
+- WSL GCC 13 / Clang 18 `-Werror`, whole tree, all four configurations: clean.
+- `anno_render_gpu_tests`, native MSVC Release, `ANNO_GPU_ADAPTER=RTX`, full suite: **131/131 test
+  cases, 80,512,458/80,512,458 assertions, 0 failed** (122 pre-existing cases unchanged, 9 of this
+  file's own, 2 more than the previous round's 7 - the `endless02.sze` pair is now one case per
+  adapter instead of none, plus `refused_one_byte_short` per adapter).
+- `anno_render_gpu_tests`, native MSVC Release, every Radeon-named case (`--test-case=*Radeon*`,
+  default adapter selection): **5/5 test cases, 38,095,006/38,095,006 assertions, 0 failed**
+  (one more than the previous round: `refused_one_byte_short` on the Radeon).
+- CI preflight: PASS.
+- These are correctness runs (no quiet-PC slot requested or needed, per the review's own note);
+  the step 4 timing rows from the previous round are untouched and still indicative/measured as
+  reported there.
+
+**Decisions and reasoning.**
+- Combined every resident group into ONE page set for `endless02.sze` (not one upload per group,
+  as the previous revision did for `02_1024_easy_128.sze`) because that is what any adapter
+  actually holds resident at once - uploading groups separately would not have reproduced RD-1b's
+  own combined-set byte figures, and would not have surfaced the real allocation-ceiling finding
+  above (which only appears for the single large resource, not for two smaller separate ones - the
+  earlier, separately-uploaded 02_1024_easy_128.sze pair, 1+1 layers, never came close to this
+  limit).
+- Took the per-frame sprite atlas's footprint as 0 bytes, stated and documented, rather than
+  building a real `GpuFrame`/Hot atlas inside this standalone unit test to measure one: matches
+  RD-1b's own F5 convention exactly, keeps this unit test free of a `GpuFrame` dependency (the
+  task's own "a new unit, not a change to the chunk compositor" boundary), and is explicitly named
+  as a stated assumption in both the code and this report, not asserted as the true runtime figure.
+- Reported the real device refusal as a finding, not a workaround: did not shrink the upload, did
+  not silently split it into per-group textures, did not lower the stated budget to make the case
+  "pass" quietly - the review's own instruction ("that's a finding for the owner, not a fix") is
+  honoured even though the actual failure mode (a real allocator ceiling under an in-budget number)
+  is a stronger finding than the budget-arithmetic miss the review anticipated.
+- Fixed the error-scope gap in `upload_atlas_pages` because it is a real correctness bug in this
+  task's own code, found while making the F1/F2 fix honestly report what the real device did -
+  not fixing it would have let a genuine device refusal masquerade as a readback/correctness
+  failure in this unit's own proof, which is exactly the kind of silent-wrongness CLAUDE.md's
+  evidence policy exists to prevent.
+- Left the step 4 timing section of this report and `docs/perf/README.md` untouched: the review
+  said these are correctness runs needing no quiet slot, and marked new timing rows as optional/
+  indicative, not required for this round.
+
+READY FOR REVIEW.

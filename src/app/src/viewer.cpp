@@ -19,6 +19,7 @@
 
 #include <anno/app/dev_feedback.hpp>
 #include <anno/app/dev_script.hpp>
+#include <anno/app/fertility_indicator.hpp>
 #include <anno/app/frame_projection.hpp>
 #include <anno/app/hud_tabs.hpp>
 #include <anno/app/live_resize.hpp>
@@ -3087,6 +3088,31 @@ void Viewer::script_tick() {
                                        ? std::to_string(dev_->input().rotation())
                                        : std::string("none");
     st.facts["tool.turn"] = tool_armed ? std::to_string(dev_->turn()) : std::string("none");
+    // UI-PRODBAR-1 B1: the fertility indicator over the ghost (fertility_indicator.hpp,
+    // docs/re/ui.md 4.1). Named placeholder `fertility-indicator-needs-sim` (OQ-715): the window
+    // has no FertilityTileSource until the sim answers the crop test and the tile-object
+    // placement, so the decision stops there and no bar is drawn. The gates as this window knows
+    // them: a preview the window's own knowledge does not refuse, one ghost (always the last), a
+    // footprint with tiles, the armed type in the registry; the projection is the frame drawn.
+    {
+        std::string fertility = "none";
+        if (tool_armed && !dev_->input().demolish_mode() && dev_->hover()) {
+            const sim::TileXY fert_hover = *dev_->hover();
+            const auto fert_extent = dev_->input().footprint_extent(fert_hover);
+            const auto fert_snap = play_ != nullptr ? play_->runner().snapshot() : nullptr;
+            FertilityGates fert_gates;
+            fert_gates.preview_valid =
+                !(knowledge_ && knowledge_->check(*dev_, fert_snap.get()).refused);
+            fert_gates.last_ghost = true;
+            fert_gates.rect_nonempty = fert_extent && fert_extent->area() > 0;
+            fert_gates.type_found = dev_->input().selected_type() != nullptr;
+            fert_gates.projected = pointer_frame_.has_value();
+            fertility = fertility_label(fertility_decision(
+                dev_->input().selected_type(), dev_->input().origin(fert_hover),
+                dev_->input().rotation(), dev_->setup().island, fert_gates, nullptr));
+        }
+        st.facts["tool.fertility"] = fertility;
+    }
     // UI-PLACE-1: what a map click does now - nothing, build the armed type, or demolish.
     st.facts["tool.mode"] = dev_ == nullptr || !dev_->enabled() ? "off"
                             : dev_->input().demolish_mode()     ? "demolish"
@@ -3734,7 +3760,9 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     const gpu::TextureView target(wgpuTextureCreateView(texture.get(), &vd));
     const auto render_start = Clock::now();
     steps_.push_back({"surface view", since_ms(acquired, render_start)});
-    // The developer tool's preview: its sprites, drawn last (dev_feedback.hpp).
+    // The developer tool's preview: its sprites, drawn last (dev_feedback.hpp). The fertility
+    // indicator over it (UI-PRODBAR-1, figure 1557) is the named placeholder
+    // `fertility-indicator-needs-sim` until a FertilityTileSource exists (OQ-715): nothing drawn.
     std::vector<render::SpriteDraw> overlay;
     if (dev_ != nullptr) {
         if (auto p = make_preview(*dev_, *gen, group_, time_ms())) {
@@ -4054,6 +4082,9 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
     if (dev_ != nullptr) {
         if (const auto p = make_preview(*dev_, *gen, group_, time_ms())) {
             blend_preview(*gen, *p, group_, time_ms(), view, buffer_.data());
+            // UI-PRODBAR-1: the fertility indicator (blend_fertility_frame, figure 1557) goes
+            // here once a FertilityTileSource exists; until then the named placeholder
+            // `fertility-indicator-needs-sim` (OQ-715, the `tool.fertility` fact) draws nothing.
         }
     }
     double construction_ui_ms = 0.0;

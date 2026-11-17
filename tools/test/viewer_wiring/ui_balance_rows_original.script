@@ -1,0 +1,20 @@
+# UI-TABS-1 stage B: the balance pages under the original rules (Rules::city_booking off: the sim
+# does not keep the cities' accounts), docs/re/ui.md 5.5. Only the populations show; every account
+# row stays empty rather than showing figures the game does not have.
+# Launch: --play data/maps/lan5.txt --construction-menu on --layout data/ui
+resize 1024 768
+wait frames 5
+expect fact hud.view == player
+expect fact hud.row.player.0 == 0
+expect fact hud.row.player.1 == empty
+expect fact hud.row.player.2 == empty
+expect fact hud.row.player.6 == empty
+click_px 931 212
+wait frames 5
+expect fact hud.view == info
+expect fact hud.row.city.0 == 0
+expect fact hud.row.city.1 == empty
+expect fact hud.row.city.2 == empty
+expect fact hud.row.city.6 == empty
+expect fact hud.row.city.7 == empty
+quit

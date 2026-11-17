@@ -1,0 +1,18 @@
+# UI-TABS-1 stage B: the overview before the first founding (the ship start), docs/re/ui.md 5.5.
+# The original sums over the player's city list, so with no city rows 0..2 read 0 whatever the
+# rules (HE HE_UI_1.mp4 44.5 s: 0, 0, 0, 0, 0, 17, -17); rows 3..6 need the player's own terms
+# (OQ-694) and stay empty; the city page has no city to show.
+# Launch: --ship-start data/maps/candidates/ship-start-v2/lan5-ship-a.json --seat 0
+#         --construction-menu on --layout data/ui
+resize 1024 768
+wait frames 5
+expect fact hud.view == player
+expect fact hud.row.player.0 == 0
+expect fact hud.row.player.1 == 0
+expect fact hud.row.player.2 == 0
+expect fact hud.row.player.3 == empty
+expect fact hud.row.player.5 == empty
+expect fact hud.row.player.6 == empty
+expect fact hud.row.city.0 == empty
+expect fact hud.row.city.6 == empty
+quit

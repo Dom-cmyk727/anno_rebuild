@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <deque>
 #include <filesystem>
 #include <map>
 #include <optional>
@@ -22,6 +23,7 @@
 #include <anno/app/live_resize.hpp>
 #include <anno/app/png.hpp>
 #include <anno/app/sdl_input.hpp>
+#include <anno/app/section_overlap.hpp>
 #include <anno/app/selection.hpp>
 #include <anno/app/ship_motion.hpp>
 #include <anno/app/ui_mock.hpp>
@@ -96,6 +98,18 @@ double trace_now_s() {
 /// worst 526 ms gap) closes the gap at roughly 60 draws/s instead of waiting for the timer to
 /// resume.
 constexpr auto kMoveFallbackInterval = std::chrono::milliseconds(16);
+#ifdef ANNO_VIEWER_GPU
+/// ZOOM-SMOOTH-3c F3: whether to read the window thread's CPU use around the finish call this
+/// frame (a real syscall) - only while ANNO_VIEW_HITCH_MS is explicitly set, the signal that
+/// hitch diagnostics are being watched closely, not on every ordinary run at the 30 ms default.
+/// GPU-only (its one call site, draw_gpu's own render() call, is): unused and -Werror on the CPU
+/// path otherwise (GCC/Clang -Wunused-function; MSVC does not report it, docs/orchestration's
+/// own note on this check).
+bool hitch_tracking_enabled() {
+    static const bool v = std::getenv("ANNO_VIEW_HITCH_MS") != nullptr;
+    return v;
+}
+#endif
 /// One step of a frame on the window thread: the steps of a frame, laid end to
 /// end, add up to its busy time (see Viewer::measure).
 struct Step {
@@ -536,11 +550,54 @@ class Viewer {
     void toggle_pause();
     [[nodiscard]] std::uint64_t time_ms() const;
     [[nodiscard]] std::pair<int, int> view_size() const;
-    void measure(double chunks_ms, const std::array<double, 4>& stages);
+    /// ZOOM-SMOOTH-3: the counts the hitch line's own frame steps say nothing about (how much
+    /// content, not how long it took) - chunks built/missing/drawn, stand-in parts, open-sea
+    /// chunks, chunks dropped, planes freed, sprites decoded, draws and bind-group sets this
+    /// frame (ZOOM-SMOOTH-3b item 2), and finish's own wall/CPU time (item 3) - gpu::GpuStats's
+    /// own fields, so this is appended only from the GPU path; the CPU path's own measure() call
+    /// passes no counts.
+    ///
+    /// ZOOM-SMOOTH-3b item 1 (review F1): chunks_built + chunks_missing (the old "visible chunks")
+    /// is 0 at rest, since neither counts a chunk already cached from an earlier frame - it
+    /// measures new work this frame, not what is drawn. chunks_drawn (GpuStats::chunks_visible,
+    /// visible_chunks(view).size() - every chunk the view covers, cached or not) is the real count.
+    struct FrameCounts {
+        std::size_t chunks_built = 0, chunks_missing = 0, chunks_drawn = 0, stand_in_parts = 0,
+                    open_sea_chunks = 0, chunks_dropped = 0, planes_freed = 0, sprites_decoded = 0,
+                    draw_calls = 0, bind_group_sets = 0;
+        double finish_ms = 0, finish_cpu_ms = 0;
+        /// ZOOM-SMOOTH-3c: cycles (Windows; 0 off it) and the absolute start of the finish call
+        /// (steady_clock ticks), plus the background sections' own last few instances (3d item 3,
+        /// a ring - a single pair could miss one between two reads) and the per-frame fluid/
+        /// pre-creation counts (item 3). sections_read_at_ns is when these were read, after the
+        /// finish call returned (3d item 1) - anno::app::overlap_ms's own read_time_ns.
+        std::uint64_t finish_cpu_cycles = 0;
+        std::int64_t finish_at_ns = 0;
+        SectionSnapshot prewarm_sections, fluid_build_sections, fluid_release_sections;
+        std::int64_t sections_read_at_ns = 0;
+        std::size_t fluid_windows_new = 0, planes_prewarmed = 0;
+    };
+    void measure(double chunks_ms, const std::array<double, 4>& stages,
+                 const FrameCounts* counts = nullptr);
     /// The steps of the frame being drawn (filled by draw_gpu / draw_cpu), the
     /// end of the last one, and the previous frame's.
     std::vector<Step> steps_, last_steps_, worst_steps_;
     Clock::time_point steps_end_ = Clock::now();
+    /// The previous frame's own counts (measure()'s own counts parameter, carried over the way
+    /// last_steps_ is) - std::nullopt for the CPU path, which passes none.
+    std::optional<FrameCounts> last_counts_;
+    /// The kLookback frames before the one just measured (ZOOM-SMOOTH-3b item 4): whether a slow
+    /// finish follows unusually heavy plane-freeing/chunk-dropping/sprite-decoding just before it
+    /// (deferred destruction, upload catch-up) or none of that, for a given spike.
+    static constexpr std::size_t kLookback = 8;
+    std::deque<FrameCounts> counts_history_;
+    /// ZOOM-SMOOTH-3c F2: cycles per millisecond of wall time, from this run's own ordinary
+    /// (not-slow) finish calls - the yardstick a slow call's own ratio is compared against,
+    /// since cycles do not convert to time reliably. Capped so a long run does not grow this
+    /// without bound; a slow call's own cycles/ms is never added (it would skew the yardstick
+    /// toward whatever it is being judged against).
+    static constexpr std::size_t kYardstickCap = 500;
+    std::deque<double> cycles_per_ms_samples_;
 
     /// The scene of --view (null in play: the frames draw the picture's generations).
     std::shared_ptr<const render::Scene> fixed_;
@@ -3675,16 +3732,22 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
             steps_.push_back({"ui scale", since_ms(scale_start, Clock::now())});
         }
     }
-    const auto s = g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(),
-                                   resample, overlay, live_units_, ui_overlay_ptr);
+    const auto s =
+        g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(), resample,
+                        overlay, live_units_, ui_overlay_ptr, hitch_tracking_enabled());
     fluid_windows_ = s.fluid_windows;
     fluid_resamples_ = s.fluid_resamples;
+    // ZOOM-SMOOTH-3c item 3: this frame's own new-window count, saved before windows_seen_ is
+    // updated below (the hitch line's own FrameCounts wants the per-frame delta, not the
+    // cumulative windows_new_ this block also maintains).
+    std::size_t fluid_windows_new_this_frame = 0;
     if (s.wave_simulation) {
         wave_centre_ = {s.fluid_centre.first, s.fluid_centre.second};
         const auto grown = [](std::uint64_t now, std::uint64_t seen) {
             return now >= seen ? now - seen : now; // smaller: a new compositor's count
         };
-        windows_new_ += grown(s.fluid_windows, windows_seen_);
+        fluid_windows_new_this_frame = grown(s.fluid_windows, windows_seen_);
+        windows_new_ += fluid_windows_new_this_frame;
         resamples_new_ += grown(s.fluid_resamples, resamples_seen_);
         windows_seen_ = s.fluid_windows;
         resamples_seen_ = s.fluid_resamples;
@@ -3761,7 +3824,39 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     chunks_received_ += s.chunks_built; // reported with the periodic line, not per frame
     tex_w_ = out_w;
     tex_h_ = out_h;
-    measure(s.chunks_ms, {s.upload_ms, s.sprites_ms, s.encode_ms, present});
+    // ZOOM-SMOOTH-3d: GpuStats' own SectionRing::Snapshot (render layer) copied field by field
+    // into FrameCounts' own SectionSnapshot (app layer, section_overlap.hpp) - same shape, kept
+    // as separate types so section_overlap.hpp has no render-layer dependency (its own doc
+    // comment). The sizes must agree; a mismatch here is a build error, not a silent truncation.
+    static_assert(render::gpu::kSectionRingSize == kSectionRingSize);
+    auto to_app_snapshot = [](const render::gpu::SectionRing::Snapshot& r) {
+        SectionSnapshot a;
+        a.begin_ns = r.begin_ns;
+        a.end_ns = r.end_ns;
+        return a;
+    };
+    FrameCounts counts;
+    counts.chunks_built = s.chunks_built;
+    counts.chunks_missing = s.chunks_missing;
+    counts.chunks_drawn = s.chunks_visible;
+    counts.stand_in_parts = s.stand_in_parts;
+    counts.open_sea_chunks = s.open_sea_chunks;
+    counts.chunks_dropped = s.chunks_dropped;
+    counts.planes_freed = s.planes_freed;
+    counts.sprites_decoded = s.sprites_new;
+    counts.draw_calls = s.draw_calls;
+    counts.bind_group_sets = s.bind_group_sets;
+    counts.finish_ms = s.finish_ms;
+    counts.finish_cpu_ms = s.finish_cpu_ms;
+    counts.finish_cpu_cycles = s.finish_cpu_cycles;
+    counts.finish_at_ns = s.finish_at_ns;
+    counts.prewarm_sections = to_app_snapshot(s.prewarm_sections);
+    counts.fluid_build_sections = to_app_snapshot(s.fluid_build_sections);
+    counts.fluid_release_sections = to_app_snapshot(s.fluid_release_sections);
+    counts.sections_read_at_ns = s.sections_read_at_ns;
+    counts.fluid_windows_new = fluid_windows_new_this_frame;
+    counts.planes_prewarmed = s.planes_prewarmed;
+    measure(s.chunks_ms, {s.upload_ms, s.sprites_ms, s.encode_ms, present}, &counts);
 }
 #endif
 
@@ -4010,7 +4105,8 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
     measure(s.chunks_ms, {s.ground_ms, s.water_objects_ms, s.sea_ms, s.objects_ms});
 }
 
-void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
+void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages,
+                     const FrameCounts* counts) {
     // The window thread's busy time: all of draw() (events excluded) from
     // its start to the end of the present call, minus the wait for the
     // display. Not just the compositor's own timer: acquiring the surface
@@ -4027,6 +4123,46 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
     // Gap between the starts of two frames of the continuous animation: the
     // true hitch (the vsync wait is in it, so it is one display interval
     // when all is well).
+    // ZOOM-SMOOTH-3: how much content a frame handled, not how long it took - the previous
+    // frame's own counts are what the PREVIOUS line's own busy time (the spike, if any) is
+    // about; nullopt (the CPU path, which passes no counts) prints as "n/a", told apart from a
+    // real, all-zero GPU frame.
+    auto describe_counts = [](const std::optional<FrameCounts>& c) {
+        if (!c) {
+            return std::string("n/a");
+        }
+        char buf[400];
+        std::snprintf(buf, sizeof buf,
+                      "chunks built %zu, missing %zu, drawn %zu, stand-in parts %zu, open sea "
+                      "chunks %zu, dropped %zu, planes freed %zu, sprites decoded %zu, draws %zu, "
+                      "bind groups set %zu, finish %.2f ms (cpu %.2f ms, %llu cycles), fluid "
+                      "windows new %zu, planes pre-created %zu",
+                      c->chunks_built, c->chunks_missing, c->chunks_drawn, c->stand_in_parts,
+                      c->open_sea_chunks, c->chunks_dropped, c->planes_freed, c->sprites_decoded,
+                      c->draw_calls, c->bind_group_sets, c->finish_ms, c->finish_cpu_ms,
+                      static_cast<unsigned long long>(c->finish_cpu_cycles), c->fluid_windows_new,
+                      c->planes_prewarmed);
+        return std::string(buf);
+    };
+    // ZOOM-SMOOTH-3b item 4: a slow finish this frame (same 2 ms line as ZOOM-MEASURE-1's
+    // control-sweep criterion, not yet classified past 3.1 ms, review F4) prints the sums of
+    // the kLookback frames just before it - unusually heavy freeing/dropping/decoding there
+    // would support deferred destruction or upload catch-up; all quiet there rules it out for
+    // that spike.
+    constexpr double kSlowFinishMs = 2.0;
+    const bool slow_finish = counts != nullptr && counts->finish_ms > kSlowFinishMs;
+    // ZOOM-SMOOTH-3c F2: every ordinary call (not itself slow) with usable cycle data feeds the
+    // yardstick, whether or not this particular frame ends up printing a hitch line - the
+    // yardstick has to be built from the run's own history before a slow call can be judged
+    // against it, not only from frames that happen to coincide with a hitch.
+    if (!slow_finish && counts != nullptr && counts->finish_cpu_cycles > 0 &&
+        counts->finish_ms > 0.0) {
+        cycles_per_ms_samples_.push_back(static_cast<double>(counts->finish_cpu_cycles) /
+                                         counts->finish_ms);
+        if (cycles_per_ms_samples_.size() > kYardstickCap) {
+            cycles_per_ms_samples_.pop_front();
+        }
+    }
     if (last_start_ && last_animating_ && frame_animating_) {
         const double gap =
             std::chrono::duration<double, std::milli>(draw_start_ - *last_start_).count();
@@ -4037,13 +4173,115 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
                          "%.1f ms, waiting for the display %.1f ms; previous frame: busy %.1f ms, "
                          "waiting %.1f ms; %.1f ms from the end of that frame to the start of "
                          "this one, of which %.1f ms handling window events); zoom group %zu\n"
-                         "  previous frame steps (ms): %s\n  this frame steps (ms): %s\n",
+                         "  previous frame steps (ms): %s\n  this frame steps (ms): %s\n"
+                         "  previous frame counts: %s\n  this frame counts: %s\n",
                          gap, total_ms, display_wait_ms_, last_busy_ms_, last_wait_ms_,
                          std::chrono::duration<double, std::milli>(draw_start_ - last_end_).count(),
                          events_ms_, group_, describe(last_steps_, last_busy_ms_).c_str(),
-                         describe(steps_, total_ms).c_str());
+                         describe(steps_, total_ms).c_str(), describe_counts(last_counts_).c_str(),
+                         describe_counts(counts ? std::optional(*counts) : std::nullopt).c_str());
+#ifdef ANNO_VIEWER_GPU
+            // Only reachable with a real counts (slow_finish already requires counts !=
+            // nullptr): the CPU path's own measure() call always passes none, so counts (and
+            // counts_history_'s own per-frame contents) are provably unused in a build without
+            // this macro, and GCC/Clang's own unused-variable/-Wnull-dereference checks (-O3,
+            // the viewer-without-GPU WSL check) flagged this dead code directly - this guard
+            // removes it instead of arguing with the warnings about it.
+            //
+            // ZOOM-SMOOTH-3b item 4: a slow finish this frame (same 2 ms line as
+            // ZOOM-MEASURE-1's control-sweep criterion, not yet classified past 3.1 ms, review
+            // F4) prints the sums of the kLookback frames just before it - unusually heavy
+            // freeing/dropping/decoding there would support deferred destruction or upload
+            // catch-up; all quiet there rules it out for that spike.
+            auto describe_lookback = [this] {
+                std::size_t planes = 0, dropped = 0, sprites = 0;
+                for (const FrameCounts& c : counts_history_) {
+                    planes += c.planes_freed;
+                    dropped += c.chunks_dropped;
+                    sprites += c.sprites_decoded;
+                }
+                char buf[160];
+                std::snprintf(buf, sizeof buf,
+                              "planes freed %zu, chunks dropped %zu, sprites decoded %zu, over "
+                              "%zu frame(s)",
+                              planes, dropped, sprites, counts_history_.size());
+                return std::string(buf);
+            };
+            // ZOOM-SMOOTH-3d: a section's own overlap with the finish call's own span, across
+            // its ring's kSectionRingSize instances (any one of which may be in progress -
+            // anno::app::overlap_ms's own read_time_ns, c.sections_read_at_ns here, handles that
+            // per 3c's review F1); the largest single instance's own overlap is what is reported
+            // (a benign race against the background thread's own writes is still possible, so
+            // this is "worth a look", not a certainty).
+            auto section_overlap_ms = [](const FrameCounts& c, const SectionSnapshot& section) {
+                std::optional<double> best;
+                for (std::size_t i = 0; i < kSectionRingSize; ++i) {
+                    const auto ms = overlap_ms(c.finish_at_ns, c.finish_ms, section.begin_ns[i],
+                                               section.end_ns[i], c.sections_read_at_ns);
+                    if (ms && (!best || *ms > *best)) {
+                        best = ms;
+                    }
+                }
+                return best;
+            };
+            if (slow_finish) {
+                const FrameCounts& fc = *counts;
+                // ZOOM-SMOOTH-3c F2: this call's own cycles per ms against the run's own
+                // yardstick (median over ordinary calls so far) - far fewer than the yardstick
+                // means waiting, not computing; the same order of magnitude means computing.
+                std::string cycles_line = "no cycle data";
+                if (fc.finish_cpu_cycles > 0 && !cycles_per_ms_samples_.empty()) {
+                    std::vector<double> sorted(cycles_per_ms_samples_.begin(),
+                                               cycles_per_ms_samples_.end());
+                    std::sort(sorted.begin(), sorted.end());
+                    const double yardstick = sorted[sorted.size() / 2];
+                    const double this_call =
+                        static_cast<double>(fc.finish_cpu_cycles) / fc.finish_ms;
+                    char buf[160];
+                    std::snprintf(buf, sizeof buf,
+                                  "%.0f cycles/ms against a yardstick of %.0f (%zu ordinary "
+                                  "calls, %.0f%% of the yardstick)",
+                                  this_call, yardstick, sorted.size(),
+                                  yardstick > 0 ? 100.0 * this_call / yardstick : 0.0);
+                    cycles_line = buf;
+                }
+                // ZOOM-SMOOTH-3d: which of the three background sections overlap this call's own
+                // span (any instance in its ring, in-progress ones included), and by how much.
+                std::string overlaps = "none";
+                {
+                    const std::array<std::pair<const char*, std::optional<double>>, 3> sections{
+                        {{"pre-creation", section_overlap_ms(fc, fc.prewarm_sections)},
+                         {"fluid build", section_overlap_ms(fc, fc.fluid_build_sections)},
+                         {"fluid release", section_overlap_ms(fc, fc.fluid_release_sections)}}};
+                    std::string joined;
+                    for (const auto& [name, ms] : sections) {
+                        if (ms) {
+                            char piece[64];
+                            std::snprintf(piece, sizeof piece, "%s%s %.2f ms",
+                                          joined.empty() ? "" : ", ", name, *ms);
+                            joined += piece;
+                        }
+                    }
+                    if (!joined.empty()) {
+                        overlaps = joined;
+                    }
+                }
+                std::fprintf(stderr,
+                             "  finish %.2f ms (cpu %.2f ms) over %.1f ms: %s; overlapping "
+                             "background sections: %s; look-back - %s\n",
+                             fc.finish_ms, fc.finish_cpu_ms, kSlowFinishMs, cycles_line.c_str(),
+                             overlaps.c_str(), describe_lookback().c_str());
+            }
+#endif
         }
     }
+    if (counts != nullptr) {
+        counts_history_.push_back(*counts);
+        if (counts_history_.size() > kLookback) {
+            counts_history_.pop_front();
+        }
+    }
+    last_counts_ = counts ? std::optional(*counts) : std::nullopt;
     last_busy_ms_ = total_ms;
     last_steps_ = steps_;
     last_wait_ms_ = display_wait_ms_;

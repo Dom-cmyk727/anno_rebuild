@@ -521,6 +521,14 @@ struct GpuFrame::Impl {
     /// The pre-creation's target in chunks (GpuLimits::prewarm_chunks at the start,
     /// GpuFrame::set_prewarm_chunks later).
     std::atomic<std::size_t> prewarm_target{0};
+    /// ZOOM-SMOOTH-3c item 3 / 3d item 3: the warm_thread's own last few texture/view builds -
+    /// begin set before make_texture, end set after the plane is pushed, so render() can
+    /// snapshot it into GpuStats and a caller check it against its own finish_ms span without
+    /// reaching into this Impl directly. Impl is never moved, so a plain member (not shared_ptr,
+    /// unlike FluidGpu's own rings) is fine here.
+    SectionRing prewarm_ring;
+    std::atomic<std::uint64_t> warm_planes_created_total{0};
+    std::uint64_t warm_planes_created_prev = 0;
 
     ~Impl() {
         {
@@ -593,10 +601,15 @@ struct GpuFrame::Impl {
                 // is dropped and the window thread creates textures itself, as
                 // before this thread existed.
                 const std::uint64_t errors_before = ref->errors->load();
+                // ZOOM-SMOOTH-3c item 3 / 3d item 3: begin/end of this build, so render() can
+                // report whether a slow finish_ms overlapped it (the comment above this struct:
+                // texture creation takes wgpu-hal's shared device allocator lock).
+                const auto warm_slot = prewarm_ring.begin(Clock::now().time_since_epoch().count());
                 p.texture = make_texture(dev(), "upload", p.format, n, n, 1,
                                          WGPUTextureUsage_TextureBinding |
                                              WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc);
                 p.view = make_view(p.texture.get(), false);
+                prewarm_ring.end(warm_slot, Clock::now().time_since_epoch().count());
                 const bool refused = !p.texture || !p.view || ref->errors->load() != errors_before;
                 lock.lock();
                 if (refused) {
@@ -604,6 +617,7 @@ struct GpuFrame::Impl {
                 }
                 ++warm_count[pick];
                 warm_planes.push_back(std::move(p));
+                warm_planes_created_total.fetch_add(1, std::memory_order_relaxed);
             }
         });
     }
@@ -781,18 +795,51 @@ struct GpuFrame::Impl {
     /// (milliseconds; the command buffer's release follows it).
     struct SubmitTimes {
         double finish = 0, scope = 0, queue = 0;
+        /// CPU time/cycles this thread spent during `finish` (ZOOM-SMOOTH-3b item 3,
+        /// ZOOM-SMOOTH-3c F2/F3): only read when `measure_cpu` is true (a real syscall, skipped
+        /// on every ordinary frame otherwise). finish_cpu_ms is -1 if the platform call failed;
+        /// finish_cpu_cycles is 0 on the platform the other one is for, or if it failed.
+        double finish_cpu_ms = 0;
+        std::uint64_t finish_cpu_cycles = 0;
+        /// steady_clock ticks at the start of the finish call (ZOOM-SMOOTH-3c item 3): with
+        /// `finish` (ms) this gives the call's own absolute span, to check against the
+        /// background sections' own begin/end.
+        std::int64_t finish_at_ns = 0;
     };
     /// Finishes `enc` and submits it, unless recording raised a validation
     /// error: wgpu-native 29 aborts the process when an invalid command
     /// buffer is submitted, so the error is counted (errors()) and the work
-    /// dropped instead. False if nothing was submitted.
-    bool submit(WGPUCommandEncoder enc, const char* what, SubmitTimes* times = nullptr) const {
+    /// dropped instead. False if nothing was submitted. `measure_cpu` (ZOOM-SMOOTH-3c F3): the
+    /// caller's own hitch-line-is-on decision - false skips the CPU read below entirely, rather
+    /// than reading it every frame and discarding the result when nothing gets printed.
+    bool submit(WGPUCommandEncoder enc, const char* what, bool measure_cpu,
+                SubmitTimes* times = nullptr) const {
         WGPUCommandBufferDescriptor cd = WGPU_COMMAND_BUFFER_DESCRIPTOR_INIT;
         auto t = Clock::now();
+        if (times != nullptr) {
+            times->finish_at_ns = t.time_since_epoch().count();
+        }
+        const bool measure = times != nullptr && measure_cpu;
+#if defined(_WIN32)
+        const std::uint64_t cycles_before = measure ? thread_cpu_cycles() : 0;
+#else
+        const double cpu_before = measure ? thread_cpu_time_ms() : 0.0;
+#endif
         wgpuDevicePushErrorScope(dev(), WGPUErrorFilter_Validation);
         CommandBuffer cmd(wgpuCommandEncoderFinish(enc, &cd));
         if (times != nullptr) {
             times->finish = ms_since(t);
+            if (measure) {
+#if defined(_WIN32)
+                const std::uint64_t cycles_after = thread_cpu_cycles();
+                times->finish_cpu_cycles =
+                    cycles_after > cycles_before ? cycles_after - cycles_before : 0;
+#else
+                const double cpu_after = thread_cpu_time_ms();
+                times->finish_cpu_ms =
+                    cpu_before < 0.0 || cpu_after < 0.0 ? -1.0 : cpu_after - cpu_before;
+#endif
+            }
             t = Clock::now();
         }
         if (const std::string err = pop_error_scope(ref->instance.get(), dev()); !err.empty()) {
@@ -1322,7 +1369,7 @@ struct GpuFrame::Impl {
             CommandEncoder enc(wgpuDeviceCreateCommandEncoder(dev(), &ed));
             cb_encode(enc.get(), s, objp.texture.get(), basep.texture.get(),
                       subp ? subp->texture.get() : nullptr);
-            submit(enc.get(), "gpu-list chunk");
+            submit(enc.get(), "gpu-list chunk", false);
             st.views[1] = objp.view.get();
             st.views[4] = basep.view.get();
             st.flags |= 2U | 16U; // objects, base present
@@ -1524,7 +1571,7 @@ struct GpuFrame::Impl {
                 dst.texture = to;
                 wgpuCommandEncoderCopyTextureToTexture(enc.get(), &src, &dst, &ext);
             }
-            submit(enc.get(), "chunk-atlas grow");
+            submit(enc.get(), "chunk-atlas grow", false);
             ++cb.grows;
         }
         cb.atlas = std::move(tex);
@@ -1962,7 +2009,7 @@ struct GpuFrame::Impl {
         }
         wgpuRenderPassEncoderEnd(p);
         wgpuRenderPassEncoderRelease(p);
-        if (!submit(enc.get(), "reduce")) {
+        if (!submit(enc.get(), "reduce", false)) {
             return std::nullopt;
         }
         // The chunk's bind group: the planes a source had, dummies for the rest
@@ -2299,7 +2346,7 @@ struct GpuFrame::Impl {
             dst.texture = a.texture.get();
             const WGPUExtent3D ext = {limits.atlas_size, limits.atlas_size, old->layers};
             wgpuCommandEncoderCopyTextureToTexture(enc.get(), &src, &dst, &ext);
-            submit(enc.get(), "atlas copy");
+            submit(enc.get(), "atlas copy", false);
             a.place = std::move(old->place);
             a.unit_place = std::move(old->unit_place);
             a.cursor = old->cursor;
@@ -3226,16 +3273,18 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const std::shared_ptr<const Sce
                           Rect view, std::size_t group, std::uint64_t time_ms, WaterStyle style,
                           WGPUTextureView target, const Resample* resample,
                           std::span<const SpriteDraw> overlay,
-                          std::span<const UnitSprite> live_units, const assets::Rgba* ui_overlay) {
+                          std::span<const UnitSprite> live_units, const assets::Rgba* ui_overlay,
+                          bool measure_cpu_time) {
     impl_->frame_scene = scene;
     return render(frames, *scene, view, group, time_ms, style, target, resample, overlay,
-                  live_units, ui_overlay);
+                  live_units, ui_overlay, measure_cpu_time);
 }
 
 GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, std::size_t group,
                           std::uint64_t time_ms, WaterStyle style, WGPUTextureView target,
                           const Resample* resample, std::span<const SpriteDraw> overlay,
-                          std::span<const UnitSprite> live_units, const assets::Rgba* ui_overlay) {
+                          std::span<const UnitSprite> live_units, const assets::Rgba* ui_overlay,
+                          bool measure_cpu_time) {
     Impl& m = *impl_;
     // Nothing of the scene stays referenced once the frame is recorded and submitted: the frame
     // table pointer and the owning handle (if any) are dropped on every way out. Uploads copy the
@@ -3312,6 +3361,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     m.ensure_sea(scene, group);
     stats.sea_ms = lap();
     const auto visible = visible_chunks(view);
+    stats.chunks_visible = visible.size();
     stats.visible_ms = lap();
     const std::size_t warm_before = m.planes_warm_taken;
     const std::uint64_t fade_now = m.fade_clock();
@@ -3390,6 +3440,15 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         }
     }
     stats.fluid_setting_up = fluid_on && m.fluid && m.fluid->setting_up();
+    // ZOOM-SMOOTH-3d item 1 (3c review F1): the three sections' own snapshot moved to after the
+    // finish() call returns, below - reading it here (roughly 400 lines, and the whole encode/
+    // record/finish sequence, before finish() actually runs) could not see a section that
+    // started during or after this point but before finish() returned.
+    {
+        const auto created_now = m.warm_planes_created_total.load(std::memory_order_relaxed);
+        stats.planes_prewarmed = static_cast<std::size_t>(created_now - m.warm_planes_created_prev);
+        m.warm_planes_created_prev = created_now;
+    }
     const bool river_flow = style == WaterStyle::Enhanced &&
                             frames.river_flow == RiverFlowMode::Flow && scene.river_active();
     m.write_frame_uniform(view, group, time_ms, style, scene, fluid_on, river_flow);
@@ -3563,6 +3622,12 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     const WGPUBindGroup atlas = m.atlas ? m.atlas->bind.get() : nullptr;
     // `fade` (the ground and sea passes): the pipeline the fading draws switch to
     // (they come last, so it is set once); nullptr = one pipeline for all.
+    // ZOOM-SMOOTH-3b item 2: draws and SetBindGroup calls this frame, to test
+    // whether finish_ms/record_ms track draws x passes. draw_chunks is the
+    // dominant, content-scaling source (called once per chunk pass below);
+    // the sprite/resample/UI passes add their own fixed few further down.
+    std::size_t draw_calls = 0;
+    std::size_t bind_group_sets = 0;
     auto draw_chunks = [&](WGPURenderPassEncoder p, WGPURenderPipeline fade = nullptr) {
         bool fading = false;
         for (const Draw& d : draws) {
@@ -3573,6 +3638,8 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
             wgpuRenderPassEncoderSetBindGroup(p, 1, d.bind, 0, nullptr);
             wgpuRenderPassEncoderSetBindGroup(p, 2, m.piece_bind.get(), 1, &d.piece_offset);
             wgpuRenderPassEncoderDraw(p, 6, 1, 0, 0);
+            ++draw_calls;
+            bind_group_sets += 2;
         }
     };
     // A timed pass writes its ticks (GpuLimits::gpu_timing) and is marked as recorded.
@@ -3610,6 +3677,8 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
             wgpuRenderPassEncoderSetBindGroup(p, 2, atlas, 0, nullptr);
             wgpuRenderPassEncoderSetVertexBuffer(p, 0, m.instances.get(), 0, WGPU_WHOLE_SIZE);
             wgpuRenderPassEncoderDraw(p, 6, n_below, 0, 0);
+            ++draw_calls;
+            bind_group_sets += 2;
         }
         wgpuRenderPassEncoderEnd(p);
         wgpuRenderPassEncoderRelease(p);
@@ -3646,6 +3715,8 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
             wgpuRenderPassEncoderSetVertexBuffer(
                 p, 0, m.instances.get(), std::uint64_t{n_below} * kInstanceBytes, WGPU_WHOLE_SIZE);
             wgpuRenderPassEncoderDraw(p, 6, n_above, 0, 0);
+            ++draw_calls;
+            bind_group_sets += 2;
         }
         wgpuRenderPassEncoderSetPipeline(p, m.objects_pipe.get());
         draw_chunks(p);
@@ -3663,6 +3734,8 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
                                                  std::uint64_t{n_below + n_above} * kInstanceBytes,
                                                  WGPU_WHOLE_SIZE);
             wgpuRenderPassEncoderDraw(p, 6, n_ships, 0, 0);
+            ++draw_calls;
+            bind_group_sets += 2;
         }
         if (m.instances && atlas != nullptr && n_overlay > 0) {
             wgpuRenderPassEncoderSetPipeline(p, m.sprite_pipe.get());
@@ -3672,6 +3745,8 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
                 p, 0, m.instances.get(),
                 std::uint64_t{n_below + n_above + n_ships} * kInstanceBytes, WGPU_WHOLE_SIZE);
             wgpuRenderPassEncoderDraw(p, 6, n_overlay, 0, 0);
+            ++draw_calls;
+            bind_group_sets += 2;
         }
         wgpuRenderPassEncoderEnd(p);
         wgpuRenderPassEncoderRelease(p);
@@ -3704,6 +3779,8 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         wgpuRenderPassEncoderSetBindGroup(p, 2, m.empty_bind.get(), 0, nullptr);
         wgpuRenderPassEncoderSetBindGroup(p, 3, scale_bind.get(), 0, nullptr);
         wgpuRenderPassEncoderDraw(p, 3, 1, 0, 0);
+        ++draw_calls;
+        bind_group_sets += 4;
         wgpuRenderPassEncoderEnd(p);
         wgpuRenderPassEncoderRelease(p);
     }
@@ -3739,6 +3816,8 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         wgpuRenderPassEncoderSetBindGroup(p, 2, m.empty_bind.get(), 0, nullptr);
         wgpuRenderPassEncoderSetBindGroup(p, 3, ui_bind.get(), 0, nullptr);
         wgpuRenderPassEncoderDraw(p, 3, 1, 0, 0);
+        ++draw_calls;
+        bind_group_sets += 4;
         wgpuRenderPassEncoderEnd(p);
         wgpuRenderPassEncoderRelease(p);
     }
@@ -3747,13 +3826,26 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     }
     stats.record_ms = lap();
     Impl::SubmitTimes times;
-    m.submit(enc.get(), "frame", &times);
+    m.submit(enc.get(), "frame", measure_cpu_time, &times);
     stats.finish_ms = times.finish;
+    stats.finish_cpu_ms = times.finish_cpu_ms;
+    stats.finish_cpu_cycles = times.finish_cpu_cycles;
+    stats.finish_at_ns = times.finish_at_ns;
     stats.scope_ms = times.scope;
     stats.queue_ms = times.queue;
     stats.release_ms = std::max(0.0, lap() - times.finish - times.scope - times.queue);
     stats.encode_ms = ms_since(t);
     stats.total_ms = ms_since(start);
+    stats.draw_calls = draw_calls;
+    stats.bind_group_sets = bind_group_sets;
+    // ZOOM-SMOOTH-3d item 1: read after finish() has returned, not before it (3c review F1) - a
+    // section that starts, ends, or both during finish() is now visible to this snapshot.
+    stats.prewarm_sections = m.prewarm_ring.snapshot();
+    if (m.fluid) {
+        stats.fluid_build_sections = m.fluid->build_snapshot();
+        stats.fluid_release_sections = m.fluid->release_snapshot();
+    }
+    stats.sections_read_at_ns = Clock::now().time_since_epoch().count();
     // A frame without uploads or placeholders lets the pre-creation thread make
     // one plane (Impl::warm_mutex); a busy frame leaves the allocator alone.
     if (m.limits.prewarm_chunks > 0) {
@@ -3926,7 +4018,7 @@ std::vector<RiverCost> GpuFrame::measure_river_cost(std::size_t repeats,
         }
         wait();
         const auto t0 = Clock::now();
-        if (!m.submit(enc.get(), "river cost")) {
+        if (!m.submit(enc.get(), "river cost", false)) {
             return std::nullopt;
         }
         if (stamps) {
@@ -4085,7 +4177,7 @@ std::optional<ChunkPlanes> GpuFrame::build_chunk_planes(const ChunkDraws& draws,
     WGPUCommandEncoderDescriptor ed = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
     CommandEncoder enc(wgpuDeviceCreateCommandEncoder(m.dev(), &ed));
     m.cb_encode(enc.get(), s, objects_tex.get(), base_tex.get(), sub_tex.get());
-    if (!m.submit(enc.get(), "chunk-build")) {
+    if (!m.submit(enc.get(), "chunk-build", false)) {
         return std::nullopt;
     }
     const auto ob = read_back(objects_tex.get(), w, h, 4);
@@ -4113,7 +4205,7 @@ std::vector<std::uint8_t> GpuFrame::read_back(WGPUTexture texture, std::uint32_t
     dst.layout.rowsPerImage = h;
     const WGPUExtent3D ext = {w, h, 1};
     wgpuCommandEncoderCopyTextureToBuffer(enc.get(), &src, &dst, &ext);
-    if (!impl_->submit(enc.get(), "read-back")) {
+    if (!impl_->submit(enc.get(), "read-back", false)) {
         return {};
     }
     if (!map_read(impl_->ref->instance.get(), impl_->dev(), buf.get(), std::size_t{row} * h)) {

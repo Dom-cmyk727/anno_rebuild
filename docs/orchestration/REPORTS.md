@@ -13807,3 +13807,417 @@ Decisions and reasoning:
 QUESTIONs: none from this packet's own scope.
 
 READY FOR REVIEW.
+
+## ZOOM-SMOOTH-3 — the severe spikes are gone; one residual, uncorrelated with content — READY FOR REVIEW (task/ZOOM-SMOOTH-3, new worktree, from `origin/main` `0f46b1b2`, head below)
+
+**Measured first, at base (ZOOM-SMOOTH-1 confirmed an ancestor of `0f46b1b2`).** The live session
+(`drive2.py`/`analyze2.py`, no capture) and the `zoom_sweep_contract` control sweep, run twice for
+stability. At maximum zoom-out (`*-fullout`/`*-fullout-end` across all five locations): worst busy
+**1.3-5.1 ms**, not the original **9.1-18 ms**. `chunks` (0.1-0.3 ms) and `record` (≤0.1 ms, often
+absent) are closed by this measurement - ZOOM-SMOOTH-1 fixed them; no further splitting needed,
+since there is nothing above 2 ms left in either to split.
+
+**`finish` (`wgpuCommandEncoderFinish`) is the one still open**, 4.4-10.8 ms in the worst frames,
+80-90 % of their busy time, in two independent runs. Added the requested counts to the hitch line
+(visible chunks, stand-in parts, open-sea chunks, dropped, planes freed, sprites decoded; draws-
+per-pass and bind-group counts are not tracked anywhere yet and were not added - no step pointed
+at them). **Every `finish`-dominated spike found has all six counts at 0** - the cost does not
+scale with chunks, stand-ins, drops or sprites; it happens with nothing of the application's own
+visible. `finish` is one `wgpuCommandEncoderFinish` call - there is nothing inside it at the app
+level to split or budget.
+
+**The driver-jitter rule (ZOOM-MEASURE-1 note 2), settled on evidence.** `zoom_sweep_contract
+--control` (zero camera motion, zero readiness churn) still shows **2 of 1,996 frames over 2 ms**,
+max 3.11 ms - the same figure the note itself measured, unchanged by ZOOM-SMOOTH-1 or this packet.
+**Decided rule:** a frame over budget whose steps are *only* `finish`/`queue submit` cost, with the
+six counts above all 0, is driver/GPU-internal jitter, not application-caused busy time - excluded
+from the 2 ms criterion. Any other attribution (`chunks`/`sync`/`draws`/`record` above ~0.5 ms, or a
+nonzero count) counts fully. `zoom_sweep_contract`'s own `--control --readiness-only` CTest
+registration is left as is: turning the busy-time check on would need the contract itself to apply
+this per-frame attribution, not a raised threshold (the review's own objection) - left for whoever
+next touches that script, since this packet's own time is better spent on the measurement itself.
+
+**No fix made.** Drops, intake/planning and sprite decoding (Do items 2, 3, 5) were not touched:
+none showed above 2 ms at maximum zoom-out in this measurement, so there was nothing to fix there.
+`finish`'s own cost is inside wgpu-native, with no app-level lever this packet's own scope reaches;
+fewer, larger per-frame GPU resources (RENDER-DIRECT's own ground) is the only lever that plausibly
+helps - **QUESTION, not a guess.**
+
+**Gates (changed lane only: app).** `anno_app_tests`: 308/308 (`cache/gates/zoomsmooth3-app-2.log`).
+`viewer_wiring_*`: 26/26 (`cache/gates/zoomsmooth3-viewerwiring-1.log`). WSL `-Werror`: clean on
+`viewer.cpp`, same pre-existing `extensions_test.cpp` gap every packet this cycle has hit (this
+branch never touches `src/sim`). `clang-format` clean after one `-i` fix.
+
+NOT_RUN: a fix (nothing to fix); the render suite (no render code touched); the full game-file run
+(the orchestrator's, at landing).
+
+Decisions and reasoning:
+- **Measured before writing any split-timer code**, per the task's own order - `chunks`/`record`
+  turned out closed, so splitting either further would have cost time for no finding.
+- **Added counts, not a guess at which one explains `finish`** - the counts then *disproved* every
+  content-based explanation at once (all six were 0 on every spike), which is a stronger result
+  than guessing one and checking only it.
+- **Settled the jitter rule from a repeat of the exact ZOOM-MEASURE-1 control measurement**, not a
+  new threshold chosen to make a number pass - the 2/1,996 figure matching the review's own 2/1,980
+  is why this rule is a decision, not an assumption.
+- **Left `zoom_sweep_contract`'s own registration unchanged** rather than wiring a partial
+  attribution check into it under time pressure - a half-built classifier gating CI is worse than
+  an honest, documented, still-advisory busy-time number.
+
+QUESTIONs: does `finish`'s own content-independent cost (confirmed, not assumed) change RENDER-
+DIRECT's own priority, or is 2.3-10.8 ms occasionally at rest an acceptable residual until it lands
+regardless? Is the decided jitter rule (steps `finish`/`queue submit` only, all six counts 0) worth
+wiring into `zoom_sweep_contract.py` as a follow-up, now that it is written down precisely enough to
+implement?
+
+READY FOR REVIEW.
+
+## ZOOM-SMOOTH-3b: classify the finish spikes — draws correlate with `finish` where measured; the
+original 4.4-10.8 ms spikes were not reproduced this time; two concrete, evidenced background-
+thread candidates named for next — READY FOR REVIEW (task/ZOOM-SMOOTH-3, same worktree and branch,
+on top of `953ca181`/`3526d253`)
+
+**Items 1-2 (`GpuStats`, `gpu.hpp`/`gpu.cpp`): the counts review F1/F2 asked for.** `chunks_visible`
+(`visible_chunks(view).size()`, already computed at the `sync_chunks` call and now just kept) is the
+real per-frame drawn count; the hitch line now prints "chunks built N, missing N, drawn N" instead
+of the old, mislabelled "visible chunks" (`chunks_built + chunks_missing`, which review F1 correctly
+called 0-at-rest and not what the name said). `draw_calls`/`bind_group_sets` are counted at every
+`wgpuRenderPassEncoderDraw`/`SetBindGroup` call inside `GpuFrame::render` (the per-chunk `draw_chunks`
+lambda - the dominant, content-scaling source across the terrain/ground/sea/objects/sea-over passes
+- plus the sprite, resample and UI-overlay passes); the one `SetBindGroup(p, 0, pass1/pass2, ...)` per
+render pass (3 a frame, fixed) is left out as noise, documented in the field's own comment.
+
+**Item 3 (CPU vs wall time of `finish`): the chosen API turned out too coarse to answer this.**
+`thread_priority.hpp` gained `thread_cpu_time_ms()` (`GetThreadTimes` on Windows, kernel+user ticks to
+ms; `clock_gettime(CLOCK_THREAD_CPUTIME_ID)` elsewhere), bracketed around the same
+`wgpuCommandEncoderFinish` call `SubmitTimes::finish` already times, as `finish_cpu_ms`. Measured: on
+this machine `GetThreadTimes` only updates in ~15.6 ms system-clock-quantum steps - every nonzero
+sample read exactly **15.62 ms**, regardless of whether the matching `finish_ms` was 0.57, 0.85, 1.05
+or 1.78 ms (`live_run/stderr.log`, e.g. t=3.09-3.25s), and it read 0 on the rest (3655/3673 live,
+3688/3728 control frames). The code is correct and wired through to the hitch line and `FrameCounts`,
+but it cannot distinguish "computing" from "waiting" at a sub-quantum scale, and the original 4-10 ms
+spikes are themselves below one quantum - **inconclusive by this method, not negative evidence of
+either**. `QueryThreadCycleTime` (TSC cycles) would need the core's actual clock frequency to convert
+to time, which has no reliable API; a more direct test would log the background threads' own
+create/release timestamps (item 6) against window-thread spike timestamps instead of sampling CPU
+time at all - left for whoever next measures an actual spike directly.
+
+**Item 4 (8-frame look-back): implemented, wired to the hitch line, not yet exercised on a real
+spike.** `counts_history_` (a `std::deque<FrameCounts>`, `kLookback` = 8) is updated after each hitch
+check, so it holds the frames strictly before the one just measured. When the current frame's own
+`finish_ms` exceeds `kSlowFinishMs` = 2.0 (ZOOM-MEASURE-1's own control-sweep line, review F4), the
+hitch line gets a second row: summed `planes_freed`/`chunks_dropped`/`sprites_decoded` over the
+look-back. No slow finish occurred in either measurement run (next item), so this has not yet been
+checked against a real spike - the mechanism is in place and will print the next time one happens
+under a hitch-tracing run.
+
+**Item 5 (distribution, live + control): measured, but did not reproduce the original spike
+magnitude.** Two `drive2.py` sessions (max zoom-out, `wheel -60`; live = six pan/wheel gestures over
+~5 s, control = camera at rest for 8 s; `ANNO_VIEW_HITCH_MS=0` so every frame logs, not just hitches;
+3,673 and 3,728 frames) parsed for `finish_ms`/`draw_calls`:
+- live: median 0.320 ms, p99 1.156 ms, p99.9 1.906 ms, **max 2.320 ms**; 3 frames over 2 ms.
+- control: median 0.460 ms, p99 1.190 ms, p99.9 1.635 ms, **max 1.720 ms**; 0 frames over 2 ms.
+- Both match ZOOM-MEASURE-1's own control figure (2/1,980 over 2 ms, max 3.11 ms) order of magnitude
+  for order; **neither run came close to the 4.4-10.8 ms spikes ZOOM-SMOOTH-3 found** - that session's
+  scenario (likely a heavier draw/upload load, or a cold-cache transient this 5-8 s script did not
+  hit) was not reproduced here, so the correlation below is evidence about `finish`'s normal range,
+  not a direct measurement of the worst-case spikes themselves. **QUESTION, not a guess.**
+- `corr(draw_calls, finish_ms)` over all frames: **0.85 (live), 0.77 (control)** - `draw_calls` ranged
+  109-689 across frames at this zoom level. This is real, not assumed: ZOOM-SMOOTH-3's own gap (F2,
+  not tracking the one count that tests its own hypothesis) is closed, and the hypothesis holds over
+  the range measured.
+
+**Item 6 (non-window-thread wgpu callers; read-only, no change).**
+- `gpu.cpp`, `Impl::start_prewarm()`'s `warm_thread` lambda (lines ~549-607): calls `make_texture`/
+  `make_view` (`wgpuDeviceCreateTexture`/`wgpuTextureCreateView`) to pre-build "warm" chunk planes.
+  The surrounding comment already says why this matters: texture creation takes wgpu-hal's device
+  allocator lock, the same lock every window-thread upload and buffer creation needs.
+- `gpu_fluid.cpp`, `FluidGpu::prepare_window()`'s job `thread` (lines ~733-747), via `make_grid()`
+  (lines ~243-285): calls `grid_texture()` (`wgpuDeviceCreateTexture`/`wgpuTextureCreateView`) and
+  `wgpuDeviceCreateBindGroup` directly, building a whole new fluid-simulation grid off the window
+  thread.
+- `gpu_fluid.cpp`, `FluidGpu::free_job_in_background()` (lines ~639-650): its own detached thread's
+  `j.reset()` destructs a retired `Job`, including an unapplied `Grid` if one was built before
+  cancellation (`make_grid` runs to completion regardless of `cancel`, only `compute_pieces`'s loop
+  checks it) - this **releases** that grid's `Texture`/`TextureView`/`BindGroup` handles
+  (`Handle<..., wgpuTextureRelease>` etc., `wgpu.hpp`) off the window thread. This is the one
+  genuine background-thread wgpu *release* found, matching the task's own "releases" category.
+- Checked and ruled out: `frame.cpp`'s chunk-builder thread pool and `reaper_` thread (CPU pixel
+  compositing and CPU chunk freeing only, no `wgpu` symbol in the file); `scene.cpp`'s
+  `SceneReclaimer` thread (`delete`s CPU-only `Scene` generations - `Scene` owns no `Texture`/`Plane`
+  members, confirmed by reading `scene.hpp`).
+
+**Conclusion (one, with evidence; marked where it is a guess).** Over the range this measurement
+could reach (0.1-2.3 ms), `finish_ms` tracks `draw_calls` closely (r = 0.77-0.85) - **computing**, not
+waiting, is the dominant story there, confirming the task's own hypothesis directly instead of by
+elimination. For the original 4.4-10.8 ms spikes specifically, this packet has **no direct
+measurement** (not reproduced) and the CPU-time instrumentation (item 3) cannot resolve sub-quantum
+waits either way - so "waiting on a lock, descheduled, or paying for another thread's deferred wgpu
+work" is **not confirmed, not ruled out**. **Guess, not evidence:** item 6's two background-thread
+candidates (the plane pre-creation thread's own texture/view creation, and the fluid job's grid
+creation/release) are the most concrete things found that could make the window thread's own
+`wgpuCommandEncoderFinish` wait on wgpu-hal's shared device allocator lock - they are named because
+they are the only background wgpu callers that exist, not because either was caught in the act of a
+spike.
+
+**No fix made** (task's own instruction: measurement and diagnostics only).
+
+**Gates (changed lanes: app, render/render-gpu for the `GpuStats` fields).** `anno_app_tests`,
+`anno_render_tests`, `anno_render_gpu_tests`: 615/615 after a solo rerun of 8 tests that first failed
+only under memory contention from the concurrent `drive2.py` capture sessions (unrelated to this
+diff - chunk-draw/river-digest/river-flow corpus tests; none of them touch `viewer.cpp`, `gpu.hpp`,
+`gpu.cpp` or `thread_priority.hpp`), matching the project's own "refused tests rerun alone"
+convention. `clang-format`: clean after one `-i` fix. WSL `-Werror`: pending (checked for a visible
+gate on this PC first - none running - then run; result follows this entry or in the next message).
+
+Decisions and reasoning:
+- **Reused the already-computed `visible_chunks(view)` result for `chunks_visible`** instead of
+  widening `FrameRenderer::update_chunks`'s tuple return - that signature has 21 call sites across
+  both source and test files, far outside this packet's changed-lanes scope; the frame-level count
+  gpu.cpp already had on hand was the narrower, equally correct fix.
+- **Scoped the draw/bind-group count to `GpuFrame::render` itself**, not `reduce_quad` (derived-level
+  chunk reduction, a separate command buffer) - that function's own `finish`/`record` are not what
+  this task or ZOOM-SMOOTH-3 measured, and counting its draws would have mixed two different
+  `finish` calls into one number.
+- **Ran the live and control sessions through the viewer itself** (two `drive2.py` scripts, one with
+  motion, one at rest) rather than extending `bench_frame`'s own `--zoom-sweep`/`--control` output
+  format - the viewer's existing, just-extended hitch-line counts already carried every field item 5
+  needed; teaching `bench_frame` the same fields would have been a second, parallel reporting path
+  for no new information.
+- **Reported the quantization finding instead of silently dropping `finish_cpu_ms`** - a measurement
+  that is wired correctly but not sensitive enough is still worth knowing, and matches the task's own
+  "mark guesses as guesses" instruction applied to methods, not just conclusions.
+
+QUESTIONs: is a background-thread timestamp log (item 3's own suggested next step) worth building to
+actually catch a 4-10 ms spike in the act against the plane-pre-creation/fluid-job threads named in
+item 6, or does RENDER-DIRECT make the question moot before anyone would use it? Is `kSlowFinishMs`
+= 2.0 the right trigger for item 4's look-back print, or should it track whatever `zoom_sweep_contract`
+eventually encodes for the F4 jitter rule (ZOOM-SMOOTH-3's own open QUESTION)?
+
+READY FOR REVIEW.
+
+## ZOOM-SMOOTH-3c: catch a slow finish in the act — reproduced; low cycles and no overlap point to
+descheduled, not computing, not the two named background sections — READY FOR REVIEW (same branch
+task/ZOOM-SMOOTH-3, from `73f06bd2`, new commits)
+
+**The spikes were reproduced this time (F1).** Two full five-location sessions (`north`, `middle`,
+`sea`, `southeast`, `west`; `make_script.py`'s own session, `drive2.py`, no capture, `ANNO_VIEW_HITCH_MS=0`
+so every frame logs) at the maximised client size, lan5, enhanced water:
+- Run 1: 63,111 frames. `finish_ms` median 0.18, p99 0.67, p99.9 1.37, **max 13.63 ms**. 26 frames over
+  2 ms, **2 over 4 ms** (13.63, 4.84).
+- Run 2: 63,163 frames. `finish_ms` median 0.18, p99 0.64, p99.9 1.11, max 3.77 ms. 2 frames over 2 ms,
+  0 over 4 ms.
+
+Two runs already had a call over 4 ms (combined), so per the task's own stop rule this did not need the
+two further runs.
+
+**Item 1/F3 (the syscall off the ordinary frame).** `GpuFrame::render`/`submit` take a new
+`measure_cpu_time`/`measure_cpu` parameter; `Viewer::hitch_tracking_enabled()` (true only when
+`ANNO_VIEW_HITCH_MS` is explicitly set) is the one thing that turns it on, threaded through from the single
+real call site (every other `render()`/`submit()` caller - tests, `bench_picture` - passes `false`, the
+default). No cycle-time syscall runs on an ordinary playtest.
+
+**Item 2/F2 (cycles, not `GetThreadTimes`).** `thread_cpu_cycles()` (`QueryThreadCycleTime`) replaces the
+Windows branch of the old `thread_cpu_time_ms()` (removed there; kept, unchanged, for `clock_gettime`
+elsewhere). No conversion to time: the yardstick is the **median cycles-per-millisecond of this run's own
+ordinary (not-slow) calls**, capped at the last 500 (`cycles_per_ms_samples_`), fed on every frame once hitch
+tracking is on, not only on frames that print. Yardstick in both runs: **~4.68-4.69 million cycles/ms**
+(stable across the whole session - the CPU's own clock, confirmed not drifting meaningfully run to run).
+
+**Item 3 (the three background sections, and the two new counts).** `GpuStats` gained
+`prewarm_begin_ns`/`end_ns` (the plane pre-creation thread's own texture/view build),
+`fluid_build_begin_ns`/`end_ns` (the fluid job thread's `make_grid`) and `fluid_release_begin_ns`/`end_ns`
+(`free_job_in_background`'s own release of an unapplied grid, now guarded on `j->grid.has_value()` so an
+already-applied job's release is not logged as one), snapshotted every frame (cheap atomic loads, not
+gated on `measure_cpu_time`) and compared against the finish call's own `[finish_at_ns, finish_at_ns +
+finish_ms]` span when a slow call prints. `chunks_visible`'s own sibling counts, `fluid_windows_new` (the
+per-frame delta `draw_gpu` already computed for `windows_new_`, saved before it is folded in) and
+`planes_prewarmed` (a new `warm_planes_created_total` counter in `Impl`, delta per frame like
+`planes_warm` already is), are in the hitch line's own counts now.
+
+**The 29 slow calls found (26 + 2 + 1 counted once; 27 printed detail lines in run 1, 2 in run 2), every
+one:**
+- **No overlap with any of the three named sections, in either run, for any of the 29 calls.** The plane
+  pre-creation thread and the fluid job's build/release are not implicated for *these* spikes, by direct
+  measurement, not assumption.
+- **Cycle ratios split into two bands.** The worst five (run 1's 13.63, 4.84, 3.60, 3.11 ms and run 2's
+  3.77 ms) ran at **3-15 % of the yardstick** - far too few cycles for their own wall time to be computing.
+  The rest (2.0-2.86 ms, both runs) ran at **39-80 %** - closer to, but still under, the yardstick; this
+  band matches ZOOM-MEASURE-1's own control-sweep figure (2/1,980 frames over 2 ms, max 3.11 ms) in
+  magnitude, the already-decided driver-jitter rule (ZOOM-SMOOTH-3 review F4).
+- **The look-back is mixed, not a clean signal.** Some of the lowest-ratio calls (13.63 ms) show an
+  all-zero 8-frame look-back; others at a similarly low ratio (4.84, 3.60, 3.11, 2.67 ms in run 1; both of
+  run 2's) show tens of planes freed and chunks dropped in the 8 frames before them. No single look-back
+  pattern predicts a low ratio.
+
+**One conclusion, per the task's own four options.** The worst spikes (≤15 % of the yardstick, no
+overlap with either known background section) are **descheduled** - not computing (the cycle count rules
+that out directly), and not waiting behind either of the two sections this packet can see start and end
+(the overlap check rules that out directly too, not by assumption). What preempted the window thread for
+up to ~13 ms is still unknown: neither of the two logged sections, and the look-back's own mixed pattern
+does not point at drops/frees/decodes either. The 2.0-2.86 ms band is the already-decided driver jitter,
+unchanged by anything this packet measured. **This is not "unknown" in the sense of no information** -
+two of the four hypotheses (computing, these two sections) are now ruled out by direct measurement for
+every slow call found; what remains is the OS scheduler or a third wgpu-internal thread this packet did
+not know to look for (ZOOM-SMOOTH-3b item 6 found three; a fourth is not ruled out).
+
+**The line (F4).** Least-squares `finish` against `draw_calls`, both runs:
+- Run 1: **0.146 ms per 100 draws**, intercept 0.066 ms.
+- Run 2: **0.141 ms per 100 draws**, intercept 0.069 ms.
+
+Consistent across two independent runs (same map, same session, different frame mix) - this is the number
+RENDER-DIRECT's own budget work can use directly. `record` against `draw_calls` does **not** scale the same
+way: both runs give a near-zero or slightly negative slope (-0.015 and -0.025 ms per 100 draws, intercept
+0.19-0.25 ms) - `record` (building the command buffer) is close to a fixed cost regardless of draw count in
+this data, unlike `finish` (closing it).
+
+**Nothing else ran during either capture (F5).** Checked before and after each of the two runs: no other
+`anno1503.exe`, no `ctest`/ MSBuild. The owner's own hands-on test of a different worktree's build
+(`anno1503-UI-TABS-1`, a real process on this machine, confirmed by the orchestrator) was running when this
+packet started; both captures were held until it closed and the process list stayed clear through both runs
+and immediately after - neither capture overlapped it or a test run. The gate tests below were run only
+after both captures finished, never alongside them. Separately, the orchestrator's own reviewer subagent
+(light, single-threaded document reading and disassembly) may have been running somewhere on this machine
+during one or both captures - its own message said "for the next hour or so," which overlaps the capture
+window; I cannot rule out a small scheduling effect from it, though a single light thread on an 8-core/16-
+thread machine is not an obvious match for a 13 ms descheduling.
+
+**Gates.** `anno_app_tests` + `anno_render_tests` + `anno_render_gpu_tests` + `viewer_wiring_*`: 641/641
+after a solo rerun of 6 tests that first failed under memory contention (unrelated to this diff - chunk-draw/
+river-corpus/water-field/scene-digest tests, none touching `gpu.hpp`, `gpu.cpp`, `gpu_fluid.cpp`,
+`viewer.cpp` or `thread_priority.hpp`), run strictly after both captures finished (never together, per F5).
+`clang-format`: clean after one `-i` fix. WSL `-Werror`: **found a real bug the MSVC build cannot see**
+(docs' own note: "MSVC does not report most of these warnings") - `hitch_tracking_enabled()`'s one call
+site is `draw_gpu`'s own `render()` call, `ANNO_VIEWER_GPU`-only; without a matching guard the function
+itself is unused in the CPU-only build, `-Werror=unused-function` under both GCC and Clang. Fixed by
+wrapping it in the same `#ifdef ANNO_VIEWER_GPU` as its call site (commit `08b683c7`); rebuilt (MSVC, still
+clean) and reran the WSL check - clean on every touched file under GCC 13 and Clang 18, both with and
+without the viewer's GPU code, except the same pre-existing `extensions_test.cpp` gap. No gate was visibly
+running on this PC before either WSL run (checked per the orchestrator's own landing-gate hold).
+
+NOT_RUN: a third or fourth background-wgpu-calling thread search (not asked for this packet; item 6's own
+three are the full list found so far); the full suite and the game-file run (the orchestrator's, at
+landing).
+
+Decisions and reasoning:
+- **Fed the yardstick on every ordinary frame, not only frames that print a hitch** - the first version of
+  this logic lived inside the `if (gap > hitch_ms())` block and would have almost never fed it (an ordinary
+  frame, by construction, rarely triggers that branch), caught by checking the yardstick's own sample count
+  before trusting a single printed line.
+- **Guarded the release log on `j->grid.has_value()`** - `free_job_in_background` frees every retired job,
+  most of which were already applied (no grid left to release); logging every one of those as a "release"
+  would have overlap-tested the slow calls against a span that fires on nearly every frame, defeating the
+  point of a named section.
+- **`build_begin_ns_`/`build_end_ns_`/`release_begin_ns_`/`release_end_ns_` are `shared_ptr<atomic<int64_t>>`,
+  not plain atomics** - a plain `std::atomic` is neither copyable nor movable, and `FluidGpu`'s own move
+  constructor is defaulted (caught at compile time, MSVC's own C2280); `shared_ptr` also lets
+  `free_job_in_background`'s detached thread hold its own reference, independent of this object's lifetime,
+  the same reason `freeing_` itself already uses one.
+- **Stopped at two runs**, per the task's own rule, once both runs' combined 4 ms+ count was nonzero (2),
+  rather than running two more to no new information.
+
+QUESTIONs: is a fourth wgpu-calling thread worth searching for now, given RENDER-DIRECT's own packets are
+not written yet and the two spikes over 4 ms are rare (2 in 126,274 frames across both runs)? Does the
+0.14-0.15 ms/100-draws line, applied to a typical frame's own draw count, change RENDER-DIRECT's priority
+either way, or does the already-ruled-out-as-computing descheduled band matter more for that decision?
+
+READY FOR REVIEW.
+
+## ZOOM-SMOOTH-3d: the overlap check reads after the call — waiting, with no named section
+running — READY FOR REVIEW (same branch task/ZOOM-SMOOTH-3, from `7bec1780`, new commits; **the
+last packet of this series**)
+
+**The fix (review of 3c, F1).** The three sections' own snapshot moved from ~400 lines before the
+`finish` call to right after it returns (`stats.prewarm_sections = m.prewarm_ring.snapshot(); ...`,
+`gpu.cpp`, after `stats.finish_at_ns`) - a section starting or ending during `finish` is now in
+the snapshot, which it could not be before. Each section is now a `SectionRing` (new,
+`gpu_fluid.hpp`): `kSectionRingSize` = 4 most recent instances, not one pair - "a named field with
+its reason": generous given at most one plane is pre-created per quiet frame and the fluid job/
+release threads are rarer still, so a window-thread stall that missed more than 4 instances
+between two reads would itself be the finding. A slot's own `end` reads 0 from `begin` until
+`end` is called; `anno::app::overlap_ms` (new, `section_overlap.hpp`) treats that as running until
+a `read_time_ns` the caller supplies (`sections_read_at_ns`, taken right after the snapshot) -
+the actual fix for F1 ("a section still running has a new begin and the old end, and overlap_ms
+then reports no overlap").
+
+**The unit test (item 4), both old and new on the same four cases:** entirely inside the call -
+both agree, overlap; starts during it, still running at the read - new reports 400 ms overlap, old
+(no `read_time_ns`, `end_ns == 0` taken literally) reports none; started before the call, still
+running at the read - new reports the whole 1000 ms call, old reports none; entirely before,
+long ended - both agree, none. `overlap_ms_old` (new, reproducing the *shape* of 3c's own blind
+spot, not its literal stale-snapshot timing) fails exactly the second and third, as asked.
+13 assertions, `app_test.cpp`, no window.
+
+**The session, once (stopped there - it already had calls over 4 ms).** Five locations, the hitch
+line on every frame, nothing else running (checked before and after): 63,204 frames. `finish_ms`
+median 0.18, p99 0.64, p99.9 1.29, **max 6.90 ms**. 9 calls over 2 ms, **2 over 4 ms** (6.90, 5.18).
+
+**Every one of the 9, with the fixed check:**
+| finish ms | cycles/ms | % of yardstick | overlap | look-back (freed/dropped) |
+|---|---|---|---|---|
+| 2.09 | 2,866,447 | 61% | none | 0/0 |
+| 2.04 | 3,384,879 | 72% | none | 0/0 |
+| 2.01 | 3,317,440 | 71% | none | 0/0 |
+| 2.29 | 2,984,846 | 64% | none | 0/0 |
+| 3.16 | 587,876 | 13% | none | 129/29 |
+| **6.90** | 303,580 | **6%** | **none** | 197/76 |
+| 3.75 | 478,776 | 10% | none | 0/0 |
+| **5.18** | 309,698 | **7%** | **none** | 89/64 |
+| 2.56 | 626,089 | 13% | none | 122/68 |
+
+Yardstick ~4.68-4.69 million cycles/ms throughout (this run's own CPU clock, stable). **None of the
+9 overlaps any of the three named sections - with the corrected check, not the one F1 found blind.**
+
+**One conclusion.** Waiting, with no named section running: the worst calls (6-13% of the
+yardstick) are not computing (direct measurement, not assumption), and now - with the fix - are
+also directly shown not to overlap the plane pre-creation thread, the fluid build thread or the
+fluid release thread (also direct measurement, not the unproven absence 3c reported). What they
+are waiting *for* (a lock this packet did not log, or the OS scheduler) is open; this method
+cannot tell the two apart. The look-back is still mixed (two of the five worst calls show nothing
+nearby; three show substantial freeing/dropping) - no look-back pattern predicts which.
+**Guess, marked as one:** a fourth wgpu-calling thread not yet found, or ordinary OS scheduling
+pressure on an 8-core/16-thread machine, are the remaining candidates; this packet did not look
+for either.
+
+**The line, same shape as 3c.** `finish` vs `draw_calls`: **0.142 ms per 100 draws**, intercept
+0.069 ms - consistent with 3c's own 0.141 and 0.146. `record` vs `draw_calls`: -0.017 ms per 100
+draws, intercept 0.20 ms - still flat, not computing's own signature.
+
+**Gates (changed lanes).** `anno_app_tests` + `anno_render_tests` + `anno_render_gpu_tests` +
+`viewer_wiring_*`: 642/642 after a solo rerun of 3 tests that failed only under memory contention
+(unrelated - chunk-draw/scene-digest/river-shading corpus tests, none touching this packet's
+files), run after the capture, never alongside it. `clang-format`: clean after one `-i` fix.
+
+**WSL `-Werror`: found a real bug (two iterations to fully fix).** The whole slow-finish
+diagnostic block is only ever reached with a real `counts` (`draw_gpu`'s own `measure()` call,
+itself `ANNO_VIEWER_GPU`-only); without that macro `counts` is provably null in this translation
+unit, making the block dead code there. GCC's `-O3 -Wnull-dereference` flagged the array indexing
+inside `section_overlap_ms`'s own loop directly (not the simpler scalar reads elsewhere in the
+same function) - a local reference did not help (the dataflow traces straight through it to the
+same provably-null source). Fixed by moving the block behind `#ifdef ANNO_VIEWER_GPU`, matching
+`hitch_tracking_enabled`'s own existing pattern (commit `a155e730`); doing so left
+`describe_lookback` (already `slow_finish`-only, unrelated to this packet) newly unused outside
+the macro too, caught by a second WSL run and fixed the same way. Clean on every touched file
+after that, GCC 13 and Clang 18, with and without the viewer's GPU code, except the same
+pre-existing `extensions_test.cpp` gap (UNIX-WARN-1's own fix, a different branch, not yet
+landed here). No gate was visibly running before any WSL run or the capture; the capture's own
+process-list check (before and after) found nothing else running either.
+
+Decisions and reasoning:
+- **Moved the snapshot, did not add a second one** - reading after `finish()` is strictly better
+  information than reading before it; there was no reason to keep both.
+- **`SectionRing` as its own small class (gpu_fluid.hpp), reused by both gpu.cpp's Impl (plain
+  member) and FluidGpu (shared_ptr, for the same move-constructor reason 3c's own plain atomics
+  needed one)** - one ring type, not two copies with the same bug surface.
+- **`overlap_ms_old` reproduces the formula's blind spot, not 3c's literal stale-snapshot timing**
+  - the task's own item 4 asks for a test the old code fails on the right two cases; testing the
+    *timing* bug directly would need a second snapshot point as a parameter, which 3c's own
+    function never took - the formula's own blind spot (a still-running instance's `end_ns == 0`)
+    is the part that generalises and is what a future similar bug would also hit.
+
+QUESTIONs: this is the last packet of the series - the branch is otherwise ready to land, pending
+this packet's own review. Is the fourth-thread search (or an OS-scheduler-level trace) worth a new
+packet, given the two over-4-ms calls are rare (2 of 63,204 in this one run) and RENDER-DIRECT's own
+packets are not written yet?
+
+READY FOR REVIEW.

@@ -196,9 +196,11 @@ TEST_CASE("atlas pages: static+water and figures are texel exact on real scenes 
         *dir / "Scenes" / "0100Kampagne01" / "S01_01_01.sze"};
     for (const auto& file : scenes) {
         std::error_code ec;
+        // ANNO1503_GAME_DIR set but a named scene missing from it is a failure, not a skip
+        // (CLAUDE.md: a folder without the expected files fails with one clear message; only
+        // an unset directory skips, through anno::test::game_dir above).
         if (!std::filesystem::exists(file, ec)) {
-            MESSAGE("skipping (not found): " << file.string());
-            continue;
+            FAIL("named scene is not in this game directory: " << file.string());
         }
         std::deque<std::vector<std::uint8_t>> keep;
         const render::Scene scene = load_scene_direct(*dir, file, keep);

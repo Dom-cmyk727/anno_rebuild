@@ -33,9 +33,11 @@ TEST_CASE("atlas pages: lan5.txt's static+water is texel exact (game files)" *
     const std::filesystem::path lan5 =
         std::filesystem::path(ANNO_REPO_DIR) / "data" / "maps" / "lan5.txt";
     std::error_code ec;
+    // data/maps/lan5.txt is a repo file, always checked in; missing it is a broken checkout, a
+    // failure, not a skip (the same rule as a named game file missing while ANNO1503_GAME_DIR is
+    // set, CLAUDE.md - only an unset ANNO1503_GAME_DIR, checked above, skips).
     if (!std::filesystem::exists(lan5, ec)) {
-        MESSAGE("skipping (not found): " << lan5.string());
-        return;
+        FAIL("lan5.txt is not at the expected repo path: " << lan5.string());
     }
 
     // The same two calls bench_frame's own load_any_scene uses for its ".txt" branch (no second

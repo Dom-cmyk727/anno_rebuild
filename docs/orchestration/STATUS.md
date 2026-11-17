@@ -170,6 +170,17 @@ says who is doing what, where the work is, and what it waits on.
   order?", the owner answered "Yes". They run in the UI lane, then UI-RANGE-1. Also, asked "Delete the public
   task branch with the data table after landing, and recreate it clean?", the owner answered "Yes, clean it
   up": `task/BUILDINGS-REF-1` is recreated as one clean commit.
+- **FERTILITY-1 1a ACCEPTED** 2026-11-17, head `3637c288` (CI 44106292573 green):
+  [review](reviews/2026-11-17-fertility-1a-review.md). It adds the single-quad tile-object placement
+  class (floor of the four-corner mean >= 32, overlap only with bit-`0x20` objects, the exempt classes);
+  C++ = oracle on all 2,266 corpus lines; no golden or hash change. Two comment nits go to 1b. It is
+  stacked into the next landing candidate.
+- **BUILDINGS-REF-1 recreated clean:** `task/BUILDINGS-REF-1` = `cc2c6e80` (one commit, tree `167625b0` =
+  `00714b67`'s) on GitHub and GitLab; no origin ref or tag contains `c0c3f3a0` (checked by the
+  orchestrator). The co-dev share repo refused the forced update (its `receive.denyNonFastForwards`);
+  that one is the owner's call.
+- **CI infrastructure:** runs 44118907639 (UNITS-REF-1) and 44108255131 (ISLAND-CROPS-1 1b) failed only
+  because their macOS jobs got no runner (abandoned, 0 steps); the failed jobs were rerun.
 - **UNITS-REF-1 dispatched** 2026-11-17 on the owner's request: "I want the same kind of research on any movable
   unit, I.e. movable by the player and the Ai, like ships, soldiers, cannons, scouts etc And also movable units
   that are NOT movable by the player like wildlife, birds (birds landing on ships when they stay still),

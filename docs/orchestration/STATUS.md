@@ -31,7 +31,10 @@ says who is doing what, where the work is, and what it waits on.
   2026-11-17:** asked whether stage A lands with this batch, "Yes stack it". Two conflicts were resolved: both
   includes kept in `src/app/src/viewer.cpp`, and in `docs/open-questions.md` UI-TABS-1's code-read line plus
   OQ-641 to 644 after the candidate's entries. Fetchable as `refs/candidates/ui-tabs-a`. **The Mac's one full
-  run on `09315620` covers all three candidates**; this PC runs its part after `945c3216`'s.
+  run on `09315620` covers all three candidates**. **The Windows PC's part PASSED** 2026-11-17: the same
+  selection plus `ui_subtabs_compare` (with the GOG shots) and `viewer_wiring_ui_subtabs`, 531 selected, 528
+  executed, 0 failed, 3 opt-in skips; the WSL warning check clean, both negative controls caught. Waiting for
+  the Mac's run.
   **The owner's landing OK for all three, 2026-11-17:** "Also land everything once the test is done". So they land
   in order once this PC's parts and the Mac's run pass with nothing new failing.
 - **The owner, 2026-11-17, on RENDER-DIRECT-1a and LAYER-CHECK-1:** "You will land them once you approve

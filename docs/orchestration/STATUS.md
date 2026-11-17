@@ -142,8 +142,13 @@ says who is doing what, where the work is, and what it waits on.
   - ISLAND-CROPS-1 1a `4bebe08e`, ACCEPTED (CI 44070678390): the ANBAU crop list decoded, with a writer;
     1,133 records round-trip byte for byte; OQ-708 inserted before 710;
   - UI-PRODBAR-1 A `6b6758b9` and UI-HARVEST-ICON-1 A `ccaab768`, ACCEPTED (docs only), with ISS-151.
-  The register now runs 690-695, 700-708, 710, 715-724 in order. The PC part runs after RENDER-DIRECT-1c's
-  quiet slot. One Mac run on `c01d5806` covers ui-tabs-b, `c9bdc3e3` and this candidate.
+  The register now runs 690-695, 700-708, 710, 715-724 in order. **The Windows PC's part PASSED** 2026-11-17:
+  - changed lanes (status bar, balance rows, insel/ANBAU, app tests and wiring, layer check): 491 selected,
+    484 executed, 0 failed, 7 opt-in skips;
+  - the WSL warning check clean, 425 files.
+  One Mac run on `c01d5806` (GATE-RUN status-crops) covers ui-tabs-b, `c9bdc3e3` and this candidate.
+  OQ-728..749 are reserved for BUILDINGS-REF-1 (`docs/BUILDINGSOBJECTS.md`, the standing reference for
+  building work, landing as one squashed commit without its first commit's data table).
 - **[MAC-HEAVY-1](tasks/mac-heavy-1.md) written** 2026-11-17 for the Mac executor, on the owner's request
   ("I also need a new mac job. This can be more comprehensive once this time, it may contain CPU and or RAM
   heavy test jobs"). Released when the owner pastes the prompt, after GATE-RUN ui-tabs-b. Verification of

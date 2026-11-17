@@ -98,6 +98,13 @@ AtlasPages build_atlas_pages(std::span<const AtlasFrameInput> frames, std::uint3
         if (!f.image || f.image->width == 0 || f.image->height == 0) {
             continue; // an empty frame has nothing to place (upstream already skips length 0).
         }
+        if (images.contains(f.id)) {
+            // A second (or later) occurrence of this id: skipped, not placed again - first wins,
+            // named in duplicate_ids (review F3), not silently dropped and not given a second
+            // work item (which would race with the first's writer thread for the same slot).
+            out.duplicate_ids.push_back(f.id);
+            continue;
+        }
         images[f.id] = f.image;
         refs.push_back(FrameRef{f.id, round_up_even(f.image->width + 2 * padding),
                                 round_up_even(f.image->height + 2 * padding)});
@@ -146,16 +153,24 @@ AtlasPages build_atlas_pages(std::span<const AtlasFrameInput> frames, std::uint3
                              place.height, padding);
                 write_level1(out.level0[place.layer], page_size, out.level1[place.layer], mip_size,
                              place.x, place.y, place.width, place.height);
+                // Review F4: the mip rectangle is computed from the slot's own level-0 origin
+                // and the frame's level-0 end, each independently floor/ceil-divided by 2 - not
+                // from width/height halved on their own (one texel short for an odd size) nor
+                // from padding/2 added separately (wrong for an odd padding).
+                const std::uint32_t mip_x0 = (place.x + padding) / 2;
+                const std::uint32_t mip_x1 = (place.x + padding + img.width + 1) / 2; // ceil
+                const std::uint32_t mip_y0 = (place.y + padding) / 2;
+                const std::uint32_t mip_y1 = (place.y + padding + img.height + 1) / 2; // ceil
                 out.placements[i] = AtlasFramePlacement{id,
                                                         place.layer,
                                                         place.x + padding,
                                                         place.y + padding,
                                                         img.width,
                                                         img.height,
-                                                        place.x / 2 + padding / 2,
-                                                        place.y / 2 + padding / 2,
-                                                        static_cast<std::uint32_t>(img.width / 2),
-                                                        static_cast<std::uint32_t>(img.height / 2)};
+                                                        mip_x0,
+                                                        mip_y0,
+                                                        mip_x1 - mip_x0,
+                                                        mip_y1 - mip_y0};
             }
         });
     }

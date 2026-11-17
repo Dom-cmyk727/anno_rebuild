@@ -36,9 +36,16 @@ struct AtlasFrameInput {
 };
 
 /// Where one frame's own content (not its padding) lands, at level 0 and at the one mip level.
-/// The mip rectangle is the frame's padding/2-inset sub-rectangle of its slot's own mip region
-/// (the same relationship padding has to the frame at level 0): a renderer samples slightly
-/// outside it, into the dilated padding, exactly as at level 0.
+/// The mip rectangle is the exact half-resolution image of the frame's own level-0 rectangle
+/// within the slot's mip region, computed from the slot's own origin (always even) and the
+/// frame's level-0 end, not from the frame's width/height halved on their own (RENDER-DIRECT-1b
+/// review F4): `mip_x = (x0 + padding) / 2` (floor), `mip_width = ceil((x0 + padding + width) /
+/// 2) - mip_x`, and the same for y/height, where `x0`/`y0` are the slot's own level-0 origin
+/// (`place.x`/`place.y` before adding `padding`). Halving `width`/`height` directly (the
+/// pre-review formula) under-counts by one texel for an odd width/height, and `x/2 + padding/2`
+/// is only right when `padding` itself is even - computing from the origin and the end, each
+/// independently rounded (floor/ceil), is correct for any padding. A renderer samples slightly
+/// outside this rectangle, into the dilated padding, exactly as at level 0.
 struct AtlasFramePlacement {
     FrameId id = 0;
     std::uint32_t layer = 0;
@@ -58,6 +65,12 @@ struct AtlasPages {
     /// Frames `AtlasResidency::ensure` could not place at all (too large for one page even
     /// alone, Overflow on its own): named, not silently dropped.
     std::vector<FrameId> oversized;
+    /// A `FrameId` that appeared more than once in `frames` (the caller's own dedup failed, or a
+    /// deliberately repeated id): every occurrence after the first is named here and skipped, not
+    /// placed - two work items for the same slot would let two worker threads write the same
+    /// bytes concurrently, a data race even though the values agree (RENDER-DIRECT-1b review F3).
+    /// `placements` holds exactly one entry per distinct id, for the first occurrence.
+    std::vector<FrameId> duplicate_ids;
 };
 
 /// A straight-alpha pixel premultiplied by its own alpha: `c' = (c * a + 127) / 255` per colour

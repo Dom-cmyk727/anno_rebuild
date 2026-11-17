@@ -193,6 +193,77 @@ TEST_CASE("build_atlas_pages: every mip texel is the 2x2 box of level 0, rounded
     }
 }
 
+TEST_CASE("build_atlas_pages: the mip rectangle fields are the slot origin/end floor/ceil, not "
+          "width/height halved on their own (RENDER-DIRECT-1b review F4)") {
+    // An even-sized and an odd-sized frame in the same page: the pre-review formula
+    // (place.x / 2 + padding / 2, img.width / 2) only ever differs from the correct one (the
+    // slot's own level-0 origin/end, each independently floor/ceil-divided by 2) for an odd
+    // width or height, so both are needed to catch the bug this test targets.
+    auto even_frame = make_frame(6, 4, [](std::uint32_t, std::uint32_t) {
+        return std::array<std::uint8_t, 4>{1, 2, 3, 255};
+    });
+    auto odd_frame = make_frame(5, 3, [](std::uint32_t, std::uint32_t) {
+        return std::array<std::uint8_t, 4>{4, 5, 6, 255};
+    });
+    constexpr std::uint32_t kPadding = 2;
+    const std::vector<render::AtlasFrameInput> frames = {{1, even_frame}, {2, odd_frame}};
+    const auto pages = render::build_atlas_pages(frames, 64, kPadding, 1);
+    for (const render::FrameId id : {render::FrameId{1}, render::FrameId{2}}) {
+        const auto& place = placement_of(pages, id);
+        const std::uint32_t slot_x0 = place.x - kPadding, slot_y0 = place.y - kPadding;
+        const std::uint32_t expected_mip_x = (slot_x0 + kPadding) / 2;
+        const std::uint32_t expected_mip_x_end = (slot_x0 + kPadding + place.width + 1) / 2;
+        const std::uint32_t expected_mip_y = (slot_y0 + kPadding) / 2;
+        const std::uint32_t expected_mip_y_end = (slot_y0 + kPadding + place.height + 1) / 2;
+        CHECK(place.mip_x == expected_mip_x);
+        CHECK(place.mip_y == expected_mip_y);
+        CHECK(place.mip_width == expected_mip_x_end - expected_mip_x);
+        CHECK(place.mip_height == expected_mip_y_end - expected_mip_y);
+    }
+    // The odd frame's width (5) must round up, not down: ceil(5/2) = 3, not floor(5/2) = 2 - the
+    // exact discrepancy the pre-review formula (img.width / 2) had.
+    const auto& odd_place = placement_of(pages, 2);
+    CHECK(odd_place.mip_width == 3);
+    CHECK(odd_place.mip_height == 2);
+}
+
+TEST_CASE("build_atlas_pages: a duplicated frame id is placed once, named, and does not race "
+          "(RENDER-DIRECT-1b review F3)") {
+    auto frame = make_frame(5, 3, [](std::uint32_t x, std::uint32_t y) {
+        return std::array<std::uint8_t, 4>{static_cast<std::uint8_t>(10 + x),
+                                           static_cast<std::uint8_t>(20 + y), 7, 200};
+    });
+    // Id 1, three times (once "first", twice duplicated), interleaved with 30 distinct ids (2..31,
+    // id 1 itself held out of the loop so the count below is exact) so a naive per-input work
+    // list would give id 1 three separate work items - three threads could then write the same
+    // slot concurrently, the race this test targets, caught by the hash-equality check below, not
+    // by placements.size() alone.
+    std::vector<render::AtlasFrameInput> frames;
+    for (render::FrameId id = 2; id < 32; ++id) {
+        frames.push_back({id, make_frame(static_cast<std::uint16_t>(2 + id % 5),
+                                         static_cast<std::uint16_t>(2 + id % 3),
+                                         [id](std::uint32_t x, std::uint32_t y) {
+                                             return std::array<std::uint8_t, 4>{
+                                                 static_cast<std::uint8_t>(id + x),
+                                                 static_cast<std::uint8_t>(id + y), 1, 255};
+                                         })});
+    }
+    frames.push_back({1, frame});
+    frames.push_back({1, frame});
+    frames.push_back({1, frame});
+
+    const auto one = render::build_atlas_pages(frames, 128, 2, 1);
+    const auto many = render::build_atlas_pages(frames, 128, 2, 8);
+    CHECK(one.duplicate_ids == std::vector<render::FrameId>{1, 1});
+    CHECK(many.duplicate_ids == std::vector<render::FrameId>{1, 1});
+    std::size_t placements_for_id_1 = 0;
+    for (const auto& p : one.placements) {
+        placements_for_id_1 += (p.id == 1) ? 1 : 0;
+    }
+    CHECK(placements_for_id_1 == 1);
+    CHECK(hash_pages(one) == hash_pages(many));
+}
+
 TEST_CASE("build_atlas_pages: texels outside every slot are 0, and a frame exactly filling a "
           "page after padding places cleanly") {
     // A page of 8 holds one frame of 8 - 2*padding = 4 exactly, with nothing left over.

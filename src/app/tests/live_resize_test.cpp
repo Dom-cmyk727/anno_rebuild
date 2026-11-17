@@ -129,9 +129,13 @@ TEST_CASE("the watch never reads its own shared guard for an event of another ty
             e.type = SDL_EVENT_WINDOW_RESIZED; // never the live-resize signal
             SDL_PushEvent(&e);
         }
-        // FLAKE-RESIZE-1 failure proof (commit A): SDL_CleanupTLS deliberately not called here
-        // yet - the forced overflow above now makes the leak deterministic, so this commit
-        // should fail linux-clang-asan's LeakSanitizer every time, not just occasionally.
+        // SDL 3.4.18's own docs (SDL_thread.h, SDL_CleanupTLS): "If you are creating your
+        // threads outside of SDL and then calling SDL functions, you should call this function
+        // before your thread exits, to properly clean up SDL memory." This thread is a raw
+        // std::thread, not SDL_CreateThread, so without this call SDL never frees the per-thread
+        // error-state buffer SDL_SetError (above, via the forced queue overflow) lazily
+        // allocates on it - LeakSanitizer reports that as a leak at process exit otherwise.
+        SDL_CleanupTLS();
     });
     for (int i = 0; i < 200; ++i) {
         // The window thread's own flips of the real guard, exactly as live_resize_watch and

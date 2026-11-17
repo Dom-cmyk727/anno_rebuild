@@ -14623,3 +14623,82 @@ READY FOR REVIEW.
   rule says draw nothing for a missing source. This needs the UI lane's call with OQ-702.
 
 READY FOR REVIEW.
+
+## UI-STATUS-1 stage B: READY FOR REVIEW (Windows, 2026-11-17)
+
+- Base `57109f85` (A accepted; OQ-703 answered "Like original"). Commits `42482bbc` (feat), `aeb95c6c` (docs),
+  `e20e1e74` (test name), `1fa3c45f` (fix), then this entry. No `src/sim`, `src/render` or `src/formats` change, no
+  new sim field, no pixels in git. The rule and the rebuild's table are in
+  [ui.md 5.6](../re/ui.md#56-the-status-bars-island-ui-status-1-stage-a-2026-11-17).
+- **What changed:**
+  - `status_bar.hpp/.cpp` (new, pure):
+    - `pick_status`: the island is the one whose rectangle holds the tile; the city comes from the tile's owner.
+      An own city shows materials and residents; a foreign city that knows the player shows residents; anything
+      else shows gold. An armed building's corners are tried on island land outside every territory.
+    - `fertility_segments`: the climate mask without `0xf009` and without 7, at most the hud.txt slots.
+    - `FertilityRow`: hides now, or after 2 s on the window clock; land cancels the hide.
+  - Published `TerritoryView`: each island's slot, climate and `discovered_by` (`players_present` plus the city
+    owners, E9). It also carries `land` (vertex height > 0, reused per terrain digest, compared by content) and the
+    climate mask.
+  - `CityCounters` now also lists foreign cities that know the player. `PlaySnapshot::local_player` is new.
+  - Viewer `update_status_bar`: every frame, on the CPU and GPU paths, it reads the cursor tile with `pick_point`
+    (split out of `FrameProjection::pick`). It keeps that tile while the pointer is on chrome (OQ-700).
+    `centre_tile()` and R4's "Always show my city" are removed.
+  - Draw (all three ui_mock paths): the materials and the residents are gated separately. hud.txt `rosh_46/48/51`
+    became `rosh_0..3` (x 547 + 40k, `tex_id` 40 + segment); the oracles draw each slot's shot `segment`.
+  - Bars: not drawn, a named placeholder (hud.txt comment; masks.txt `balken_0..3`, OQ-702).
+  - New facts: `hud.status.tile`, `.island`, `.city`, `hud.fertility`, `hud.fertility.pending`. `hud.counters`
+    now reads `gold` / `residents` / `materials+residents`. New script verbs: `hover-sea`, `hover_px`.
+- **Changed tests and scripts, and why:**
+  - `viewer_wiring_ui_counters_centred` and its script are removed (they tested the centre rule). Its replacement
+    is `viewer_wiring_ui_status_island`.
+  - `ui_counters_before_founding.script` and `live_screen_hud_idle.script`: `hidden` became `gold` (the new fact
+    names), and both now check that the row is hidden.
+  - `construction_menu_draw_check.script` hovers the developer city (1130, 516) before its screenshots.
+  - `live_screen_compare.py`: the slot names changed. hud_idle on the ship start masks the three slots: before the
+    first founding no island is discovered (OQ-701), while the GOG shot shows the row.
+  - `tools/ui_layout.py` and the C++ `compose_screen`: they draw the slots from hud.txt `segment`.
+- **Tests:** `status_bar_test.cpp` has 12 cases: every climate, with the always-set and slot-count controls; own
+  territory; own island outside its territory; a foreign city, known and unknown; open sea; sea within the rectangle
+  (delay, cancel, no re-arm); undiscovered; two own cities; corner order; a climate with no segment; no height
+  column; hud.txt slots.
+  - `viewer_wiring_ui_status_island` (lan5): own territory, the panel keeping the tile while the camera moves,
+    open sea, a foreign island, undiscovered island 10, and sea inside island 1 with the 2 s hide.
+  - Not on lan5: own island outside the territory (the developer start owns the whole rectangle), a known foreign
+    city, two own cities. These are covered by the unit tests.
+- **Gate:** `run_selected.py --build-dir build/msvc --config Release --select
+  '^anno_app_tests\.(status bar|hud |ui |dev script|construction menu|selection|minimap|play)|^viewer_wiring_|^live_screen_matches_oracle$|^ui_dynamic_draw_check$|^info_panel|^selected_house|^ui_panels_match_gog$|^ui_mock_matches_oracle$|^ui_subtabs_compare$|^ui_window_matches_he$'
+  --exclude 'opt-in measure' --jobs 8 --asset-policy required` with the 7 oracle/new tests `--require-test`.
+  - Head `1fa3c45f`, `cache/gates/ui-status-1-B-03.log` (sha256 `40f48ebfb15b...`):
+    `COUNTS: selected=144 executed=144 failed=0 empty=0 skipped=0`, `VERDICT: PASS`.
+  - B-01 failed the test-name preflight (a `;` in a case name). B-02 had one failure, `play: the tutorial's
+    territory...` (`land` compared by pointer; fixed in `1fa3c45f`), and one opt-in skip, now excluded.
+- **Failure proof:** `update_status_bar` was given the old view-centre point (temporary, restored):
+  - `ui_status_island` FAILs at line 15 (the centre always yields a tile);
+  - a copy without the no-tile checks FAILs at the decisive step: `hud.status.tile is '1002,322', it was
+    '1140,516'` after `look 1000 320` with the pointer on the panel (`cache/ui-status-1/failure-proof-centre*.log`);
+  - restored: PASS.
+- **Pixels and measurements:**
+  - Residents icon x: GOG `r2_construction_public` and `f13_hud_cursor_map` give sprite-sad 4.74 at 401, against
+    29.5 at 400 and 30.6 at 402. hud.txt's 401 stays; the 1-pixel gap to the code's 400 is likely the sprite inside
+    the 40-px ACCESS rectangle (the decoded sprite is 38 wide).
+  - `ANNO_PUBLISH_STATS`, lan5 script run: snapshot build median 552 us, p95 1160 us; turn max 10.8 ms (the
+    first collection of the land tests). No base run to compare against.
+  - The play test's 20 cold `collect_territory_view` calls take 190 us each.
+- clang-format 23.1.3 (`anno1503-T10c/cache/cfpkg`) is clean on every changed C++ file. `ui_layout.py validate` and
+  `self-test` pass; self-test had failed on stage A's `\|` in a 5.6 table row, fixed in `aeb95c6c`.
+- **NOT_RUN:** the WSL GCC/Clang warning check (`check_unix_warnings.sh`), CI (not polled), the GPU window path
+  live, and the owner's viewer test.
+- **Decisions and reasoning:**
+  - `discovered_by` adds the city owners to `players_present`. A fixed map's developer start does not set the word,
+    but the original's registration always does (E9). This is a derivation, not a new field.
+  - The island is found by rectangle, not by the original's 8 x 8 chunks. They agree for 8-aligned templates.
+  - A tile inside an island's rectangle with no height column counts as land, so synthetic islands show the row.
+  - Gold keeps the existing gate: it is drawn once there is a city. The original draws gold always; changing that
+    is outside this packet.
+  - No hide delay is armed for a row that is already hidden (the original re-asks only on a new tile).
+  - `hud.status.island` is `none` before any tile, `sea` over open sea.
+  - A foreign city's goods are never published.
+- **QUESTION:** none new. Gold before the founding, and a ship reveal of islands (OQ-701), are left as they are.
+
+READY FOR REVIEW.

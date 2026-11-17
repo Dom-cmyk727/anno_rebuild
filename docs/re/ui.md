@@ -1180,3 +1180,102 @@ Consequences:
 | E13 | small farm and whaler `0x10073720`: icon 1 never raised (75 000 / 90 000 > 65 535), icon 2 after 45 000 t | D `0x1006f57c`, `0x1006f5f3`, `0x10073a5a`, `0x10073ad0`, `0x10072f1a`; ISS-150 | confirmed |
 | E14 | who sees it (own buildings only?) | not traced | U (OQ-723) |
 | E15 | the help texts name the icons | P `help/Auslastung.htm`, `IH_Lager_Voll.htm`, `IH_Betrieb_Strasse_Fehlt.htm`, `Produktion_stilllegen.htm` | confirmed (text) |
+| E16 | the two "no road" tests: candidates by callback `0x100722d0`, a carrier walk search from the building (code 1) or to it from the nearest candidate first within 24 tiles (code 2) | D `0x10071f40`-`0x100722b9`, `0x10072390`-`0x1007285a` (§11.6) | control flow confirmed; self-match U (OQ-720) |
+
+### 11.6 The "no road" tests `0x10071f40` and `0x10072390` (UI-HARVEST-ICON-1 stage C, 2026-11-17)
+
+Read instruction by instruction (`adis.py`, `AnnoWelt.dll`). Both functions take `(goods index, 0)`;
+every caller passes index 0 (§11.2). Both return 1 (keep the code), -1 (keep the code) or 0 (rewrite
+to code 3). They share the candidate callback `0x100722d0` and the world's land walk searcher. **D**
+unless marked.
+
+**Candidate callback `0x100722d0(building, ctx)`** (`ctx[0]` = goods, `ctx[3]` = count, `ctx[4 + 2n]`
+= building, `ctx[5 + 2n]` = squared distance):
+- type = `building.slot+0x74()`; it is a candidate when `((PRODTYPE − 1) & ~0x1f) + 1 == 0x21`, i.e.
+  PRODTYPE 33-64 (the market block HAUPT, MARKT, KONTOR = 33-35 and the PRODTYPEs after them; which of
+  36-64 exist as buildings is in `production.md` §3), **or** when the type's **input** 0 or 1
+  (`type.slot+0xb0(0)`, `+0xb0(1)`; `production.md` §2.5: `+0xb0` = input goods) equals `ctx[0]`
+  (`0x100722e7`-`0x10072316`).
+- It stores the building and the squared distance between the footprint centres,
+  `(x + w/2 − cx)² + (y + h/2 − cy)²` (u8 halves, `shr 1`), and counts it (`0x10072318`-`0x10072377`).
+  It always returns 0 (the enumeration goes on).
+
+**`0x10071f40(i, 0)`, due "raw material missing" (code 1, non-crop, non-animal input):**
+1. `g = type.slot+0xb0(i)`, the input goods; `g == 0` → return 1 (`0x10071f61`).
+2. The search rectangle: the footprint centre ± the type's radius `type.slot+0x78()`, built like the
+   harvest square (`forestry.md` §2.1 item 2; rotation table `0x100722bc`).
+3. The city's building enumerator (`city.slot+0x60()` → `.slot+4(0xa, &rect, 0x100722d0, ctx)`) collects
+   the candidates in the rectangle. None → return **-1**: the code stays 1 ("raw material missing",
+   `0x100720cf`-`0x100720de`).
+4. Otherwise one search, with the building's own figure type `type.slot+0xb4(0, 0)` (its carrier):
+   - the searcher is the world service `world.slot+0x20(0xc00, 0)` (`transport.md` §3: the land walk
+     searcher, world `+0x6aa8`), set up for the island (`.slot+0x50`), the figure's route type
+     (`figure type.slot+0xac` → `.slot+0x80`) and the callback `0x10054240` (the first goal reached is
+     the result and the search stops; `transport.md` §1.3);
+   - the search rectangle (`.slot+0x54(&rect, type.slot+0x78())`);
+   - **starts**: the building's entrance points (`type.slot+0x98(rotation, buf)`, 12-byte records, x
+     and y added to the building's tile position · `0x100c92a8`, `.slot+0x68(x, y)` each;
+     `0x100721c9`-`0x10072248`);
+   - **goals**: every candidate's `slot+0xf8(figure type, 0, searcher)` (its entrance goals,
+     `transport.md` §3; `0x1007224a`-`0x10072281`);
+   - `.slot+0x84()` runs it: a path → return **1** (code 1 stays); no path → return **0** (code 3).
+   (`.slot+0xac()` releases the searcher on the success path, `0x10072295`.)
+
+**`0x10072390(i, 0)`, due "storage full" (code 2, any input):**
+1. `g = type.slot+0xac(i)`, the **output** goods; `g == 0` → return 1.
+2. A fixed rectangle: the footprint ± **24** tiles (`sub ax, 0x18` at `0x100723d3`/`0x100723e1`; the
+   size from the rotated footprint + 0x18, `0x100723f9`-`0x10072444`), not the type's radius.
+3. The same enumerator and callback with `ctx[0]` = the output goods: candidates are the market-block
+   buildings and the buildings whose **input** is this output (the consumers). None → **-1** (code 2
+   stays).
+4. The candidates are sorted by squared distance (quicksort, `0x100724d5`-`0x100725a4`, helper
+   `0x100734f0`). For each one, nearest first (`0x100725d0`-`0x1007282c`), a search **in the other
+   direction**:
+   - with the **candidate's** figure type (`candidate type.slot+0xb4(0, 0)`), its route type, the
+     callback `0x10054240`;
+   - the rectangle around the candidate with the candidate type's radius (`.slot+0x54(&rect,
+     candidate type.slot+0x78())`);
+   - **starts**: the candidate's entrance points (`candidate type.slot+0x98(candidate.slot+0x64())`
+     at the candidate's tile `slot+0x54`/`+0x58` · `0x100c92a8`);
+   - **goal**: this building's `slot+0xf8(figure type, 0, searcher)`;
+   - a path → release, return **1**; no candidate reaches it → return **0** (code 3).
+
+So "no road" is: *a carrier of the building cannot walk from its entrances to any candidate in its
+radius* (missing input), or *no market cart or consumer's carrier within 24 tiles can walk to it*
+(full store). With no candidate at all the original keeps the plain code 1 or 2.
+
+**Open, narrowed (OQ-720):**
+- **Self-match (narrowed, D + L).** The enumerator is the city's building index (`city.slot+0x60` =
+  `0x1002dfc0`: `lea eax, [ecx+0x144]`), whose slot `+4` = `0x10023ea0` runs the rectangle query
+  `0x100232a0` over the lists whose mask bit is in the kind. Kind `0xa` = mask 8 (production, PRODTYPE
+  1-32) | mask 2 (market, 33-64) (`ListLayout::original`, D `0x10023c80`/`0x10023f50`). So the calling
+  production building is enumerated too, and in `0x10071f40` it matches its own input: it is a
+  candidate at distance 0 and its entrance goals coincide with the search's starts. If the searcher
+  answers "found" for a start that is a goal, **a due code 1 never becomes code 3** (L; how the engine
+  treats a start on a goal is the open point; goals are dropped only for a building whose flags bits 4/5
+  are set, `docs/sim/state.md` §5.9). In `0x10072390` the building is a candidate only when one of its
+  inputs is its own output, which no production type has (L, not checked over `Anlagen.dat`), so code 2
+  → code 3 works as described.
+- Which PRODTYPEs 36-64 exist as buildings (the candidate block beyond 33-35) is a data question
+  (`Anlagen.dat` PRODTYPEs, `production.md` §3).
+- The constant at `0x100c92a8` (the tile → float factor of the entrance points) and the record layout
+  of `type.slot+0x98` are taken from the existing transport reading (`transport.md` §1.3, §3), not
+  re-read here.
+
+**Can the rebuild's existing road graph answer it?** Yes, with the existing pieces (L, from the code
+reading; no implementation was tried):
+- the land walk searcher is ported as `sim::search` (`src/sim/include/anno/sim/walk_search.hpp`:
+  starts, goals, a rectangle, a callback with `Stop` = the first goal reached, i.e. `0x10054240`), and
+  the transport code already runs the same pattern for the market cart and the workshop carrier
+  (`src/sim/src/transport.cpp`: `entrance_points`, `search` with `GoalAction::Stop`;
+  `docs/re/transport.md` §1.3, §2, §3);
+- entrance points and entrance goals of a building are already produced for those carriers;
+- the candidate set needs a city building query over a rectangle by PRODTYPE block and input goods,
+  which the city's building lists can answer (ordered, deterministic).
+
+What is new for the sim packet: the two predicates, the 24-tile rectangle and the nearest-first order
+of the code-2 test, the rewrite to code 3 in `StatusTracker::report` (a predicate passed by the
+caller, so the tracker stays pure), `Status::NoRoad = 3`, and the start-on-goal answer above (it decides whether code 1 can ever become code 3). Size: the
+start-on-goal read about 1 h (docs; the ported `sim::search` may already answer it), the sim packet
+3-4 h. The search cost per due report (every step
+while due, ≥ 500 ticks apart) is bounded by the walk searcher's own limits.

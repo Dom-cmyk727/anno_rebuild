@@ -14741,3 +14741,111 @@ open QUESTION: the iGPU's adjacent-pair worst case, 340 MiB with one mip level, 
 touched; RENDER-DIRECT-1b is written on this basis.
 
 READY FOR REVIEW.
+
+## LAYER-CHECK-1 — a CTest test keeping formats/sim/sim_load free of app/render/SDL/GPU code — READY FOR REVIEW (task/LAYER-CHECK-1, new worktree from `origin/main` `ac02d4a2`)
+
+**The rule**, stated once in `tools/layer_check.py`'s own module docstring (docs cite it, do not
+copy it): `anno_formats` may include/link nothing above it; `anno_sim` may include/link
+`anno_formats`; `anno_sim_load` may include/link `anno_sim` (and so `anno_formats` transitively).
+Each library's own tests additionally get doctest and `anno/test/...` (the real namespace -
+`anno_test_support`'s headers live under `anno/test/`, not `anno/test_support/`, found and fixed
+after the first self-test run flagged every test file using it); `anno_sim`'s own tests also get
+`anno/sim_load/...` (CMake already links `anno_sim_tests` to `anno_sim_load` for the scenario
+corpus case). SDL, webgpu/wgpu, and `anno/render`/`anno/app`/`anno/assets`/`anno/net`/`anno/ui` are
+refused everywhere in the three libraries, code and tests alike.
+
+**The link list is read from CMake itself**: `file(GENERATE)` at the end of the root
+`CMakeLists.txt` (after all three `add_subdirectory` calls, so the targets already exist) writes
+`anno_formats`/`anno_sim`/`anno_sim_load`'s real `$<TARGET_PROPERTY:...,LINK_LIBRARIES>` into
+`layer_check_links.txt` in the build directory; `tools/layer_check.py --link-list` reads that file,
+never a hand-written copy of the graph.
+
+**The three outcomes of step 5, all confirmed:**
+- the real tree passes both checks (`layer_check_contract`, verified via `ctest -R layer_check -V`
+  after a configure-only `cmake --preset dev` in WSL, no build needed - both link_libraries and the
+  include scan are static/configure-time facts);
+- an injected `#include <SDL3/SDL.h>` in a synthetic sim source fails, naming the file and line
+  (`--self-test`'s `tree_self_test`);
+- a synthetic link list with `anno_render` under `anno_sim` fails (`--self-test`'s link-table
+  check).
+
+**Registered** as `layer_check_contract` and `layer_check_self_test`, both `LABELS "workflow"`, so
+every job that runs the other workflow tests (`test_verdict_contract` etc.) runs these on Windows,
+Linux and macOS alike - no per-platform gating needed, the check is pure Python over text files.
+
+**No violation found in the real tree.** No fix was needed; nothing beyond `CMakeLists.txt`,
+`tools/layer_check.py` and the `docs/testing/README.md` section was touched.
+
+**Gates.** `layer_check_contract`/`layer_check_self_test`: 2/2 passed (`ctest -R layer_check -V`,
+WSL, 4.3s total). No sim/formats/sim_load source touched, so `anno_sim_tests`/`anno_formats_tests`
+were not run (not reached by this change). No C++ touched, so `clang-format` is a no-op, noted
+rather than silently skipped.
+
+**Decisions and reasoning:**
+- Whitelist, not a blocklist, for the link check (`check_links`): a library may link only what the
+  table names, not "anything except the five named upper layers" - catches an unexpected future
+  link target the task's own five examples don't name, not just SDL/render/app/assets/net/ui.
+- `anno_sim`'s tests keep their existing `anno_sim_load` reach (CMake already wires it for the
+  scenario corpus case) rather than treating it as a violation to fix: the task's own step 1 names
+  this exact exception ("for the sim tests anno/sim_load").
+- `file(GENERATE)` placed after `add_subdirectory(src/sim_load)` (not earlier, where the other
+  workflow tests are registered): the generator expression needs the three targets to already
+  exist in CMake's model, even though its *value* resolves later, at the generate step.
+
+**NOT_RUN:** the full suite/other lanes (not reached by this change); macOS (no host here; the
+test is pure Python, expected to be platform-independent, unverified on that host).
+
+READY FOR REVIEW.
+
+## LAYER-CHECK-1 addendum — the orchestrator's CHANGES REQUESTED review, resolved — READY FOR REVIEW (same branch, new commits)
+
+Review: `docs/orchestration/reviews/2026-11-17-layer-check-1-review.md`, orch/board-next
+`f26e03da`. Verdict quoted: **CHANGES REQUESTED**, about 45 minutes. The link check and the
+`anno/` rule table were accepted as they were; two findings.
+
+**F1 (a deny list lets anything unnamed through) — rewritten as an allow list.** `classify_include`
+now refuses a header unless it is: a C++20 standard library header (`STD_HEADERS`, the full
+`cppreference` header index, cited there, not reproduced in prose); the library's own `anno/<lib>/`
+area or a library strictly below it; a quoted header that resolves to a real file next to the
+including file or inside that library's own `include/`/`tests/` directory (checked by path, not by
+name); doctest, in tests; or a `NAMED_EXCEPTIONS` entry scoped to one exact file with its reason.
+The real tree's two non-standard, non-`anno/` headers are both named:
+`src/sim/tests/founding_assets_test.cpp` uses `<sys/resource.h>` (POSIX `getrusage()`, no Windows
+equivalent, already guarded by `#ifndef _WIN32` in the source) and `"freight_original.inc"` (a
+generated fixture, included textually, not a real header). A new check
+(`check_named_exceptions_are_used`) reports a `NAMED_EXCEPTIONS` entry whose file no longer exists
+or no longer includes that header, so the list cannot rot into a claim about a file that moved on.
+Added the two required self-test cases (`<vulkan/vulkan.h>`, `<windows.h>` in a synthetic sim
+source both fail, named with file and line) plus one more in the same spirit
+(`<GLFW/glfw3.h>`, an unlisted third-party header, is refused by default - the exact thing an
+allow list is for that a deny list would have missed). The real tree still passes outright.
+
+**F2 (the section landed inside "Pins and goldens", and over-cited) — fixed.** The new
+`docs/testing/README.md` section had been inserted after that section's own closing code-block
+paragraph but *before* its numbered regeneration steps continued (1-7, ending "Finish with
+check"), so those steps were rendering under the new heading instead of their own. Moved the
+section to the true end of the file, after step 7. Dropped "and CLAUDE.md" from the citation:
+CLAUDE.md does not cite `tools/layer_check.py`, and an executor does not edit CLAUDE.md to make it
+do so.
+
+**Gates re-run after the code change:** `layer_check_self_test` (now covering the allow-list
+rewrite, the named-exception staleness check, and the three required-failing synthetic cases) and
+`layer_check_contract` (the real tree, via the link-list file already generated from the earlier
+configure - no new `cmake`/build/WSL run needed, per the standing hold on PC-heavy work during the
+landing candidate's own build): both pass, run directly with `python3 -I tools/layer_check.py`
+(no WSL, under a second each).
+
+**Decisions and reasoning:**
+- `STD_HEADERS` lists the *whole* C++20 standard library header index, not only the headers the
+  tree happens to use today: a future, legitimate standard-header use then needs no rule change,
+  matching the task's own "the standard library" wording rather than a narrower "headers seen so
+  far" list that would need updating on every new include.
+- The quoted-header allowance is resolved by real filesystem path (`.is_file()`), not by comparing
+  names against a list of known test-helper filenames: there are dozens of these (`cloth_town.hpp`,
+  `command_helpers.hpp`, ...) and a name-based list would itself rot the moment a new one is added,
+  the exact failure mode F1 was raised to prevent.
+- `NAMED_EXCEPTIONS` is keyed by `(file, header)`, not by header alone: a future file that happens
+  to want the same non-standard header still needs its own entry and its own reason, rather than
+  silently inheriting someone else's justification.
+
+READY FOR REVIEW.

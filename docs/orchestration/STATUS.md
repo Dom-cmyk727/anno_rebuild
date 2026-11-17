@@ -100,8 +100,15 @@ says who is doing what, where the work is, and what it waits on.
     is identical logic; the one rules difference is HE's single-precision `PROD3` load. That makes `need1`
     of 1010 (KANONENBAU) 7 against 6, and of 3979 (PIONIER) 4 against 3. New OQ-710. The open-questions
     end conflict was resolved with both sides kept.
-  The PC part (changed lanes, all GPU tests, the WSL check) is running. The Mac's run covers it with
-  ui-tabs-b.
+  **The Windows PC's part PASSED** 2026-11-17:
+  - changed lanes (atlas, lan5, minimap/magnifier, budget) and every GPU test on the 4090 and the Radeon:
+    189 selected, 188 executed, 0 failed, 1 platform skip;
+  - the WSL warning check clean on all four configurations, 422 files.
+  It waits for the Mac's run (GATE-RUN atlas-pages-minimap, which covers ui-tabs-b).
+  **A flake found on main:** `anno_app_input_tests` "the watch never reads its own shared guard ..."
+  (`live_resize_test.cpp`, ZOOM-SMOOTH-2b) failed once in CI's linux-clang-asan job, run 44076929673 on
+  UI-STATUS-1's merge, which does not touch it. It is queued for the Windows executor after
+  RENDER-DIRECT-1c as FLAKE-RESIZE-1.
   **UI-STATUS-1 B+C** `0ee20000` is ACCEPTED (CI 44062827710),
   [review](reviews/2026-11-17-ui-status-1-review.md). It is not in the stack yet: it conflicts with UI-TABS-1 B
   in seven files. The UI lane merges `refs/candidates/ui-tabs-b` into its branch, resolves, runs both lanes'

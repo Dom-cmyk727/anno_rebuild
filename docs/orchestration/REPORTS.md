@@ -14572,3 +14572,54 @@ READY FOR REVIEW.
   any view (pre-existing since R2, noted in 5.4).
 
 READY FOR REVIEW.
+
+## UI-STATUS-1 stage A: READY FOR REVIEW (Windows, 2026-11-17)
+
+- Base origin/main `09315620`, packet `3608be57`, branch `task/UI-STATUS-1`. Commits: `9b844677` (re), then this entry.
+  Docs only: `docs/re/ui.md` 5.5, `docs/open-questions.md`. No code, no pixels, no listings in git; the helper scripts
+  are in `cache/ui-status-1/`. Stage B not started.
+- **The rule** (GOG `AnnoFrame.dll`, static read, [ui.md 5.5](../re/ui.md#55-the-status-bars-island-ui-status-1-stage-a-2026-11-17)):
+  - The point is the frame cursor's map tile, not the view centre (`0x100052a0`, `tViewedInfo` `+0x1c`, SetCursor
+    `0x10007e00`). It is re-read every frame by the frame tick `0x10005a10`.
+  - The counters (`tStadtInfo` `0x10009920`) follow the city whose **territory** holds the tile (owner nibble,
+    island slot `+0xec`):
+    - an own city shows the four materials (wares `0x29..0x2c` / 256) and the residents;
+    - a foreign city shows only the residents, and only if its property-0 mask has the player;
+    - no city shows gold only; with a building armed, the building's corners select an own city.
+  - The fertility row (`0x10009770`) needs the island's discovery word `+0xa6` (property `0xe`, the rebuild's
+    `players_present`). The segments come from the climate mask (jump table `0x10009904`, = `raw_climate_mask`),
+    minus `0xf009` and minus 7, ascending, at most 4, at x 547 + 40k. BALKEN is 100 if island property 11 has the
+    bit, else 50. Open sea hides the row at once; sea inside an island's chunks hides it after 2 s.
+  - The cost row's code is located for UI-STATUS-2 (5.5, groups table).
+- **HE re-check:** fertility before the founding = the discovery rule (high). The 20 s gap and the hide at 02:04.5 =
+  territory, not island, for the counters (medium / medium-high). Recipe for the owner in 5.5.
+- **Owner comparison** (5.5, last table). Three points need an owner decision (OQ-703): (1) counters by territory,
+  not by island; (2) **fertility icons over every discovered island, own or not**; (3) residents over a foreign city
+  that knows him.
+- **OQs:** 622 PARTLY ANSWERED; 700 (cursor tile over the panel), 701 (writers of `+0xa6` besides founding: ship
+  reveal?), 702 (meaning of the half bar; the sim has no island property 11), 703 (owner decision).
+
+| Requirement | Positive proof | Counterexample / control | Evidence |
+|---|---|---|---|
+| Segment choice | NORD `0xf949` minus `0xf009` minus 7 gives 6, 8, 11 = the three icons on GOG `hud_idle_running` (2.3) | Without the `0xf009` filter, NORD would give 0, 3, 6, 8 (four slots, 0 first): the shot refutes it | `0x100098aa`-`0x100098e4` |
+| Counters by territory | HE 02:04.5: M hides, F stays (the tile is still on the island) | An island rule would hide F with M | `0x100053bf`, island `0x100860c0` |
+| Point = cursor tile | `tViewedInfo +8` is written only by SetCursor `0x10007e00` | The camera vector `+0x15bc` is not read on the path | `0x100041f0` |
+| Discovery flag | getter `0x10087c30` case `0xe` = word `+0xa6` | The player property 7 is not read on the path | `0x10009797`-`0x100097c2` |
+
+- **Gates:** none run. Docs only, and the PC was asked to stay quiet (no build, no ctest, no agree.py). CI not polled
+  (dispatch instruction). NOT_RUN: everything executable; any HE capture (recipe written instead).
+- **Decisions and reasoning:**
+  - I used the user-site capstone/pefile (`python` without `-I`, as `tools/disasm.py` documents). `python -I` was
+    used only for the doc edits, which keep CRLF.
+  - I followed the bar's feeder through `tStadtInfo` instead of reading every bar slot. It answers all the packet's
+    questions; the bar's mouse/tooltip slot `+0x2c` (`0x10064290`) is left for the tooltip packet.
+  - The status bar's flag is called "discovery word" and tied to `players_present`, not `Player::discovery`, because
+    the getter address shows the island word. Its other writers are an OQ, not a guess.
+  - I kept the owner differences as decisions (OQ-703), not as defaults: a feel matter.
+  - The +1 texture-index offset is marked P/L: it agrees with every measured element, but the group's load order was
+    not read.
+  - I did not chase the 1-pixel EINWOHNER x (code 400, `hud.txt` 401): it is left to B's pixel check.
+- **QUESTION for B:** with no island property 11 in the sim, B draws the icons without bars or with none? The packet
+  rule says draw nothing for a missing source. This needs the UI lane's call with OQ-702.
+
+READY FOR REVIEW.

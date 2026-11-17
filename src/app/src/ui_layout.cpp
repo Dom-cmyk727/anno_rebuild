@@ -259,6 +259,14 @@ const ConstructionCategory* ConstructionLayout::category(const std::string& name
     return nullptr;
 }
 
+const UiElement* construction_category_tab(const HudLayout& hud,
+                                           const ConstructionCategory& category) {
+    if (category.index < 1)
+        return nullptr;
+    const UiElement* e = hud.element("viewbautab_" + std::to_string(category.index - 1));
+    return e != nullptr && e->has_pos && e->has_size ? e : nullptr;
+}
+
 const UiMask* MaskLayout::mask(const std::string& name) const {
     for (const auto& m : masks) {
         if (m.name == name)

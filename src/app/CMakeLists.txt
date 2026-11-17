@@ -298,6 +298,16 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_ui_tabs PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-BUILDCAT-1: the construction menu's eight category tabs, each selected by a press on
+      # its own gadget (also left of the column), and the column/grid boundary (OQ-714).
+      add_test(NAME viewer_wiring_ui_buildcat
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_buildcat
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_buildcat PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # UI-TABS-1: every sub-tab of the three views, the keys S, C, D, O, each view keeping its own.
       add_test(NAME viewer_wiring_ui_subtabs
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py

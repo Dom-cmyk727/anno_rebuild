@@ -60,7 +60,20 @@ element lupe_minus pos 826 153 size 19 21 file toolgfx/fenster.tex access KARTEP
 element karteplus_access size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 40 method inc-size
 element karte_nordung size 256 133 file toolgfx/fenster.tex access KARTE_NORDUNG tex_id 52 method inc-size
 element plankegross pos 783 252 size 241 48 file toolgfx/fenster.tex access PLANKEGROSS tex_id 1019 anchor right panel player,player_list,info,main_menu method sprite-sad shot r2_construction_public
-element viewbautab_0 pos 779 302 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 16 frame_idle 16 frame_selected 17 anchor right method view-dll
+# UI-BUILDCAT-1: the construction menu's eight category tabs, viewbautab_<k> for construction.txt
+# `index` k+1. View.dll 0x1002bb4f: VIEWBAUTAB, one 42 x 46 gadget per category (0x1002bbea),
+# texture 0x198 = VIEWBAUTAB + 2k (0x1002bc88 add esi, 2), loop cmp ebp, 8 (0x1002bc8b). Selected =
+# +1. Positions: sprite-565 exact (1879/1879 px per tab) on f13_construction_open and every
+# r2_construction_* shot, x 762, y 303 + 46k (docs/re/ui.md 2.4). `panel construction`: the
+# press area while the construction menu shows (ui_hit; they stick out left of the column).
+element viewbautab_0 pos 762 303 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 16 frame_idle 16 frame_selected 17 anchor right panel construction method sprite-565 shot r2_construction_public
+element viewbautab_1 pos 762 349 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 18 frame_idle 18 frame_selected 19 anchor right panel construction method sprite-565 shot r2_construction_roads
+element viewbautab_2 pos 762 395 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 20 frame_idle 20 frame_selected 21 anchor right panel construction method sprite-565 shot r2_construction_farms
+element viewbautab_3 pos 762 441 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 22 frame_idle 22 frame_selected 23 anchor right panel construction method sprite-565 shot r2_construction_workshops
+element viewbautab_4 pos 762 487 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 24 frame_idle 24 frame_selected 25 anchor right panel construction method sprite-565 shot r2_construction_coastal
+element viewbautab_5 pos 762 533 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 26 frame_idle 26 frame_selected 27 anchor right panel construction method sprite-565 shot r2_construction_mines
+element viewbautab_6 pos 762 579 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 28 frame_idle 28 frame_selected 29 anchor right panel construction method sprite-565 shot r2_construction_military
+element viewbautab_7 pos 762 625 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 30 frame_idle 30 frame_selected 31 anchor right panel construction method sprite-565 shot r2_construction_ornamental
 element baukosten size 32 29 file toolgfx/B_Baukosten.tex access image001.pcx tex_id 1 method inc-size
 element betriebskosten pos 815 674 size 40 37 file toolgfx/B_Betriebskosten.tex access image001.pcx tex_id 1 anchor right method sprite-sad shot r2_info_pioneer_house
 # UI-INFO-1: not drawn. The upkeep icon the shots show here is INFOUNTERGRUND id 33's own pixels:

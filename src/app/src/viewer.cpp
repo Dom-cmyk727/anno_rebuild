@@ -2334,7 +2334,11 @@ UiHit Viewer::ui_hit_at(double px, double py) const {
         return {};
     }
     const HudLayout& hud = construction_menu_->hud();
-    const char* panel = construction_menu_open_ || !hud_tabs_ ? nullptr : hud_tabs_->body().c_str();
+    // UI-BUILDCAT-1: with the construction menu open, its category tabs (hud.txt `panel
+    // construction`) are the shown panel's elements: they stick out left of the column.
+    const char* panel = construction_menu_open_ ? "construction"
+                        : !hud_tabs_            ? nullptr
+                                                : hud_tabs_->body().c_str();
     // UI-MINIMAP-1 C: the minimap's click area, where the minimap is drawn (minimap_overlay).
     std::optional<UiRect> minimap;
     if (minimap_ && construction_tex_cache_ != std::nullopt) {
@@ -3109,6 +3113,23 @@ void Viewer::script_tick() {
     st.facts["ui.tab"] = construction_menu_open_ ? std::string("construction")
                          : hud_tabs_             ? hud_tabs_->body()
                                                  : std::string("none");
+    // UI-BUILDCAT-1: the construction menu's open category and the category tab drawn in its
+    // selected frame (draw_category_tabs' rule: the open category's own hud.txt viewbautab_<k>).
+    {
+        std::string category = "none", category_tab = "none";
+        if (construction_menu_open_ && construction_menu_ != nullptr) {
+            category = construction_open_category_;
+            if (const ConstructionCategory* c =
+                    construction_menu_->construction().category(construction_open_category_)) {
+                if (const UiElement* tab =
+                        construction_category_tab(construction_menu_->hud(), *c)) {
+                    category_tab = tab->name;
+                }
+            }
+        }
+        st.facts["ui.category"] = category;
+        st.facts["ui.category_tab"] = category_tab;
+    }
     st.facts["hud.view"] = hud_tabs_ ? hud_tabs_->view().name : std::string("none");
     st.facts["hud.subtab"] = hud_tabs_ ? std::to_string(hud_tabs_->subtab()) : std::string("none");
     // UI-TABS-1 stage B: each balance row's figure as drawn (balance_text) while its page shows,

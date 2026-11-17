@@ -62,12 +62,16 @@ if(ANNO_HAVE_WGPU)
   set(_gen ${CMAKE_CURRENT_BINARY_DIR}/generated)
   anno_embed_text(${_gen}/gpu_wgsl.cpp kGpuWgsl ${CMAKE_CURRENT_SOURCE_DIR}/shaders/gpu.wgsl)
   anno_embed_text(${_gen}/fluid_wgsl.cpp kFluidWgsl ${CMAKE_CURRENT_SOURCE_DIR}/shaders/fluid.wgsl)
+  anno_embed_text(${_gen}/atlas_upload_wgsl.cpp kAtlasUploadWgsl
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/atlas_upload.wgsl)
   add_library(anno_render_gpu
+    src/atlas_upload.cpp
     src/gpu.cpp
     src/gpu_fluid.cpp
     src/wgpu.cpp
     ${_gen}/gpu_wgsl.cpp
     ${_gen}/fluid_wgsl.cpp
+    ${_gen}/atlas_upload_wgsl.cpp
   )
   target_include_directories(anno_render_gpu PUBLIC include)
   target_link_libraries(anno_render_gpu PUBLIC anno_render wgpu::native)
@@ -76,12 +80,22 @@ if(ANNO_HAVE_WGPU)
   if(ANNO_BUILD_TESTS)
     add_executable(anno_render_gpu_tests tests/main.cpp tests/gpu_test.cpp
       tests/gpu_chunk_build_test.cpp tests/play_gpu_test.cpp tests/picture_gpu_test.cpp
-      tests/preview_gpu_test.cpp)
+      tests/preview_gpu_test.cpp tests/atlas_upload_test.cpp tests/adapter_memory_diag_test.cpp)
     target_link_libraries(anno_render_gpu_tests PRIVATE anno_render_gpu anno_app_core
       anno_test_support doctest::doctest)
-    # Our own synthetic files (fixtures/synthetic): a scene without islands.
+    if(WIN32)
+      # RENDER-DIRECT-1d: adapter_memory_diag_test.cpp reads DXGI_ADAPTER_DESC's own
+      # DedicatedVideoMemory/DedicatedSystemMemory/SharedSystemMemory - wgpu's own
+      # WGPUAdapterInfo exposes no memory sizes at all (webgpu.h), so this is the OS/API's own
+      # report, read directly, diagnostic-only (this test binary already needs no portability
+      # below Windows+Linux per CLAUDE.md's own target list, and the file itself is Windows-only).
+      target_link_libraries(anno_render_gpu_tests PRIVATE dxgi)
+    endif()
+    # Our own synthetic files (fixtures/synthetic): a scene without islands. ANNO_REPO_DIR
+    # (as anno_app_tests, src/app/CMakeLists.txt): atlas_upload_test.cpp's own data/maps/lan5.txt.
     target_compile_definitions(anno_render_gpu_tests PRIVATE
-      ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")
+      ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic"
+      ANNO_REPO_DIR="${PROJECT_SOURCE_DIR}")
     anno_target_defaults(anno_render_gpu_tests)
     anno_stage_budget_coord(anno_render_gpu_tests)
     # One GPU case at a time: each opens its own device. The label "gpu" lets a

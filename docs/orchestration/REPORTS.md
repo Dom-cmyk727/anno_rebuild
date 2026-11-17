@@ -15341,6 +15341,342 @@ extraction only), `gpu_test.cpp` (new case), `bench_frame/main.cpp` (`--atlas-bu
 - `--atlas-build`'s F1/F5 rerun ran alone on this PC, as asked, once the owner's recording was done and the
   orchestrator released the machine.
 
+## RENDER-DIRECT-1c — the resident atlas pages uploaded to the GPU, proven exact by readback and sampling, both adapters — READY FOR REVIEW (task/RENDER-DIRECT-1c, from `origin/task/RENDER-DIRECT-1b` `95a5ace6`, head `cf9e2cc4`)
+
+**The unit.** New `anno_render_gpu` module, `src/render/include/anno/render/atlas_upload.hpp` /
+`src/render/src/atlas_upload.cpp`: opens no device of its own (the caller's `gpu::Context`) and touches no
+`GpuFrame` state - "a new unit, not a change to the chunk compositor" (the packet's own words, confirmed by
+`git diff` against the task base: nothing under `GpuFrame::render`, the chunk build, the viewer, `--png`, or
+any digest changed). `upload_atlas_pages(ctx, pages, budget_bytes)` makes one 2D texture array, RGBA8Unorm
+(matching the existing sprite atlas's format family, `new_atlas`/`gpu.cpp` - never `*Srgb`, `GpuFrame::
+create`'s own "a sRGB target would convert twice" rule), `page_size` x `page_size` x `pages.level0.size()`
+layers, **2 mip levels** written straight from `AtlasPages::level0`/`level1` (no GPU-generated mips - that
+would silently redo RENDER-DIRECT-1b's own box filter, untested against it). Usage `TextureBinding | CopyDst
+| CopySrc` (`CopySrc` for the readback proof).
+
+**The refusal, named not truncated.** `atlas_upload_refusal(layers, page_size, max_array_layers,
+max_dimension_2d, needed_bytes, budget_bytes)` - a pure function, no device, checked against three
+conditions in order (no layers / layer count over `maxTextureArrayLayers` / page size over
+`maxTextureDimension2D` / `atlas_pages_bytes(pages)` over `budget_bytes`); `upload_atlas_pages` reads the
+real device's limits and calls this for the decision, so the decision itself is unit-tested with zero GPU
+(the packet's own acceptance item).
+
+**Which groups: `resident_atlas_groups(adapter_type, zoom_group, group_count)`.** A discrete adapter holds
+every group (ADR 0007 decision 2); any other adapter holds the pair `{zoom_group, zoom_group + 1}`, clamped
+to `group_count - 2` at the top of the range, a single group when `group_count <= 1`. Pure and total, tested
+without a GPU for discrete/integrated/CPU/unknown adapter kinds and `group_count` in {0, 1, 2, 3}.
+**Resolved the orchestrator's review question** (why `zoom_group + 1` and never `zoom_group - 1`): derived
+from `docs/render/iso.md`'s own "Choosing the level" hysteresis mechanism - while the picture is shown on
+group g, the continuous zoom position is bounded so it is always strictly between `tile_w(g)` and
+`tile_w(g + 1)`, never between `tile_w(g)` and `tile_w(g - 1)` (that interval is where the picture has
+already switched to `g - 1`, since the scale on `g` there would exceed `max_upscale`). So `g + 1` is the
+only neighbour `g` can be adjacent to while `g` is the group shown, not an arbitrary pick between two
+equally plausible ones. Full derivation in `docs/render/atlas.md` section 11.
+
+**The placement-to-UV rule: `sample_placement`, realized as `textureLoad`, no sampler.** Every pass in
+`gpu.wgsl` already reads a resident texture with `textureLoad` only, never a filtered sampler
+("textureLoad, never filtered, so cached chunks and sprites stay exact", `gpu.wgsl`'s own comment); no
+`WGPUSampler` object exists anywhere in this codebase. The new shader `src/render/shaders/atlas_upload.wgsl`
+follows that convention: `textureLoad(atlas_tex, origin + floor(pos.xy), layer, level)` at the destination
+pixel's own integer index - exact at every texel, the nearest-sampler-at-texel-centres rule the packet asks
+for, with the rounding ambiguity a true sampler could introduce at a rectangle's edge removed by
+construction.
+
+**Readback (step 2) and sampling (step 3): both proofs, both adapters, by name (`ANNO_GPU_ADAPTER=RTX` /
+the Radeon iGPU, `play_gpu_test.cpp`'s own adapter-pinning pattern reused as `on_named_adapter`).**
+- Synthetic (4 placements - 1x1, odd size, alpha edges, a larger frame): readback and sampling both exact on
+  the 4090 and the Radeon.
+- `data/maps/lan5.txt`'s static+water: every group on the 4090 (3 groups, 1090 placements/pass,
+  **39,966,623 assertions**), the adjacent pair {0,1} on the Radeon (`resident_atlas_groups(IntegratedGPU,
+  0, 3)`, 2 groups, **38,094,953 assertions**) - readback and sampling both exact on both adapters.
+- `Scenes/0010SingleEndlos/02_1024_easy_128.sze` groups 0+1 (the worst adjacent pair, 340 MiB,
+  RENDER-DIRECT-1b review F5's own finding), readback only (the packet names this dataset for step 2, not
+  step 3): exact on both adapters.
+
+`ctx.errors` checked at 0 after every case. Neither adapter needed `ANNO_REQUIRE_GPU` - both were present
+and opened cleanly throughout.
+
+**Step 4, measured on the orchestrator's quiet-PC slot (confirmed idle first: no `check_unix_warnings`/
+`cc1plus`/`clang` in WSL, no `cl.exe`/`ctest`/`cmake`/`anno_*`/`MSBuild` on Windows), `msvc` Release,
+`ANNO1503_GAME_DIR` set, both real adapters by name:**
+
+| Scene | Adapter | Groups resident | Layers | VRAM (upload only) | Upload (fenced) | Readback |
+|---|---|---|---|---|---|---|
+| lan5.txt | RTX 4090 (all 3) | 0,1,2 | 10 | 200.0 MiB | 22.74 ms | 117.02 ms |
+| lan5.txt | Radeon iGPU (adjacent pair) | 0,1 | 9 | 180.0 MiB | 78.18 ms | 70.12 ms |
+| 02_1024_easy_128.sze worst pair | RTX 4090 | 0,1 (separate) | 1+1 | 40.0 MiB | 4.62 ms | 11.65 ms |
+| 02_1024_easy_128.sze worst pair | Radeon iGPU | 0,1 (separate) | 1+1 | 40.0 MiB | 2.76 ms | 16.75 ms |
+
+Per-layer VRAM (20,971,520 B at `page_size = 2048`) matches `atlas_pages_bytes`'s own formula exactly - no
+device-vs-formula discrepancy to account for. The Radeon's upload is slower than the 4090's on the largest
+group (74.77 ms vs. 16.63 ms, 7 layers) - expected for an integrated part without the 4090's discrete memory
+bandwidth; its readback is faster on that same group (56.52 ms vs. 98.96 ms), plausibly because `mapAsync`
+over its unified-memory heap skips the 4090's discrete-VRAM copy-back (not investigated further - a wall-
+time observation, not a correctness claim). Neither adapter's `maxTextureArrayLayers`/`maxTextureDimension2D`
+binds at these layer counts. Full tables in `docs/render/atlas.md` section 11 and `docs/perf/README.md`.
+
+**No render-path or draw-call change.** Touched: `atlas_upload.hpp`/`.cpp` (new, `anno_render_gpu`),
+`atlas_upload.wgsl` (new shader), `atlas_upload_test.cpp` (new, `anno_render_gpu_tests`), one `shaders.hpp`/
+`CMakeLists.txt` embed-text entry (`anno_embed_text`, following `gpu.wgsl`/`fluid.wgsl`'s own pattern), docs.
+Nothing under `GpuFrame::render`, the chunk build, the viewer, `--png`, or any digest changed; the existing
+GPU test suite (127 pre-existing cases) passed unchanged alongside the new ones.
+
+**Decisions and reasoning.**
+- Extracted `atlas_upload_refusal` as a separate pure function from `upload_atlas_pages` (which needs a
+  device for `wgpuDeviceGetLimits`) specifically so the refusal decision is unit-tested with zero GPU - the
+  packet's own acceptance item, not achievable if the check stayed inline in the device-reading function.
+- Reused `play_gpu_test.cpp`'s adapter-pinning pattern (`on_named_adapter`: pin by name, skip if absent, fail
+  only under `ANNO_REQUIRE_GPU`) rather than inventing a second one.
+- No `WGPUSampler` object introduced: `sample_placement` realizes "nearest sampler, texel centres" as an
+  exact `textureLoad`, following the codebase's existing textureLoad-only convention rather than being the
+  first caller to add a sampler.
+- Resolved the orchestrator's pair-neighbour question from first principles (`iso.md`'s own hysteresis
+  bound), not by picking a plausible-sounding default - `g + 1` is provably the only neighbour possible
+  while `g` is shown, not a 50/50 guess between `g - 1` and `g + 1`.
+- No change to `GpuFrame::render` or any existing shader: the new shader module and the new C++ unit are
+  additive, so the existing 127-case suite needed no update to accommodate this task, only to keep passing.
+- No guesses went to `open-questions.md`: every design choice here traces either to the packet text itself
+  or to existing codebase/doc evidence (`iso.md`, `gpu.wgsl`'s own comment, `GpuFrame::create`'s own sRGB
+  rule, `play_gpu_test.cpp`'s own pinning pattern) - none of it is a genuine open question.
+
+**Gates.**
+- clang-format 23.1.3: clean on every touched file (one self-inflicted mishap during development - running
+  clang-format over `src/render/CMakeLists.txt` by accident mangled it into pseudo-C++ formatting; caught via
+  the disk-change diff, `git checkout`-reverted, both intended edits redone by hand with `Edit`, not
+  reformatted again).
+- WSL GCC 13 / Clang 18 `-Werror`, whole tree, all four configurations (GCC/Clang, viewer+GPU on and off):
+  clean.
+- `anno_render_gpu_tests`, native MSVC Release, `ANNO_GPU_ADAPTER=RTX`, full suite: **129/129 test cases,
+  80,512,304/80,512,304 assertions, 0 failed**, adapter named throughout ("NVIDIA GeForce RTX 4090
+  (Vulkan)").
+- `anno_render_gpu_tests`, native MSVC Release, every Radeon-named case (`--test-case=*Radeon*`, default
+  adapter selection): **4/4 test cases, 38,095,006/38,095,006 assertions, 0 failed**, adapter named
+  throughout ("AMD Radeon(TM) Graphics (Vulkan)").
+- Step 4's two measurement cases ran alone, as asked: the shared PC was checked idle first (recorded above),
+  the orchestrator was told once each check and once the run was done.
+- CI preflight (`python -I tools/test/run_selected.py --preflight-only`, the exact CI step): PASS.
+
+READY FOR REVIEW.
+
+## RENDER-DIRECT-1c addendum — review F1/F2 resolved, a real device finding on the Radeon — READY FOR REVIEW (same branch, commit `a6329831`)
+
+**F1, fixed: the real worst case, not the wrong scene.** `worst_pair_scene`'s "worst pair, 340 MiB"
+case uploaded `02_1024_easy_128.sze` - RENDER-DIRECT-1b's own review F5 names `endless02.sze`
+(`Scenes/0011SingleEndlosAddon/endless02.sze`) as both the worst adjacent-pair scene (groups 0+1,
+340 MiB) and the worst all-three-group scene (360 MiB), so the real worst case had never been
+uploaded. Now uploads `endless02.sze`'s real resident set as ONE combined page set per adapter -
+every group `resident_atlas_groups` names folded into one shared `FrameTable`/`SpriteCache` (the
+last call's own return already holds every earlier group's frames too, since `collect_static_
+water`'s final pass walks the whole table from id 0 - exactly `bench_frame`'s own
+`collect_static_water_groups`, the function RD-1b's 340/360 MiB figures were measured with, not a
+different method): all three groups (18 layers, 360 MiB) on the 4090, the adjacent pair {0,1} (17
+layers, 340 MiB) on the Radeon.
+
+**F2, fixed: a real device budget, not a tautology.** Every budget passed to `upload_atlas_pages`
+in this file was `atlas_pages_bytes(pages)` - always exactly what is being uploaded, so the
+refusal path was never exercised by a real number. The `endless02.sze` case now computes the real
+budget the compositor would compute on the opened device: `atlas_budget_bytes_before_sprite` from
+`wgpuDeviceGetLimits`'s own `maxTextureArrayLayers`, the per-frame sprite (Hot) atlas's own
+footprint stated as 0 bytes (this standalone unit test holds no `GpuFrame`/Hot atlas of its own to
+measure a real one from - the same convention RD-1b's own F5 finding already used for its CPU-side
+44 MiB (Radeon)/152 MiB (4090) headroom figures, so this proves those already-accepted numbers
+hold for a real GPU upload, not a new, tighter claim). Needed vs. allowed is reported via
+`MESSAGE` on every run: RTX 4090 needed 377,487,360 against 536,870,912 allowed; Radeon needed
+356,515,840 against 402,653,184 allowed. One new case, `refused_one_byte_short`, proves a budget
+one byte short is refused through `upload_atlas_pages` itself (not only the pure
+`atlas_upload_refusal` tested without a GPU), on both adapters.
+
+**Finding for the owner, surfaced by F1/F2 together, not a bug in the fix: the Radeon's calculated
+budget fits, but the real device still refuses the allocation.** `endless02.sze`'s real pair on
+the Radeon needs 356,515,840 bytes, *inside* the calculated 402,653,184-byte budget - the
+arithmetic says it fits - but `wgpuDeviceCreateTexture` itself refused the single 17-layer texture
+with "Not enough memory left". This is the review's own anticipated category ("that's a finding
+for the owner, not a fix") under a different failure signature than expected: a real
+single-allocation ceiling below the device's own configured/reported memory, not a
+budget-arithmetic overrun. **Recorded, not patched: a calculated budget that fits is necessary but
+not sufficient on this adapter - a resident set this large needs either more than one texture
+resource (a stage 2/3 upload-granularity design question, explicitly out of this packet's "no
+draw pass/streaming" scope) or a smaller real budget than 384 MiB to actually allocate as one
+texture on this hardware.** The RTX 4090 uploaded the full 18-layer, 360 MiB set with no issue -
+the same combined-upload method, a different real limit.
+
+**A second, genuine bug found and fixed while investigating, not merely a reporting gap.**
+`upload_atlas_pages` had no error scope around `wgpuDeviceCreateTexture`/`wgpuQueueWriteTexture`:
+on the real device refusal above, the WGPU handle came back non-null but device-invalidated, and
+the function returned `out` as a *success* holding it - the caller (`check_pages_on_gpu`) then
+tried to read it back and hit a byte-mismatch `REQUIRE` failure, not a named refusal, which would
+have misreported a real allocation failure as a readback/correctness bug in this task's own proof.
+Fixed by wrapping both the texture creation and every `wgpuQueueWriteTexture` call in one
+validation + out-of-memory error scope (`submit`'s own push/pop pattern, reused), returning a
+descriptive error naming the layers/needed/budgeted bytes when either scope catches something.
+Confirmed fixed by rerunning the Radeon case: it now returns the clean, named refusal shown above
+instead of a readback mismatch.
+
+**Test case name/structure changes.** `check_pages_on_gpu` lost its `budget_bytes` parameter
+(every remaining caller always passes the tautological budget, so the parameter was dead weight
+after the refactor below) and gained a sibling, `verify_readback` (the byte-for-byte readback loop
+alone, extracted so `worst_pair_scene` can call it on an already-uploaded texture after handling
+its own, possibly-refused upload separately - `check_pages_on_gpu` itself is unchanged for every
+other caller). The two `02_1024_easy_128.sze`-named `TEST_CASE`s are renamed to name
+`endless02.sze` and the real finding (all three groups / the adjacent pair, not "340 MiB" as a
+flat label repeated for both scenes). Two new `TEST_CASE`s (`refused_one_byte_short` on each
+adapter).
+
+**Gates, rerun on this commit.**
+- clang-format 23.1.3: clean on all three touched files.
+- WSL GCC 13 / Clang 18 `-Werror`, whole tree, all four configurations: clean.
+- `anno_render_gpu_tests`, native MSVC Release, `ANNO_GPU_ADAPTER=RTX`, full suite: **131/131 test
+  cases, 80,512,458/80,512,458 assertions, 0 failed** (122 pre-existing cases unchanged, 9 of this
+  file's own, 2 more than the previous round's 7 - the `endless02.sze` pair is now one case per
+  adapter instead of none, plus `refused_one_byte_short` per adapter).
+- `anno_render_gpu_tests`, native MSVC Release, every Radeon-named case (`--test-case=*Radeon*`,
+  default adapter selection): **5/5 test cases, 38,095,006/38,095,006 assertions, 0 failed**
+  (one more than the previous round: `refused_one_byte_short` on the Radeon).
+- CI preflight: PASS.
+- These are correctness runs (no quiet-PC slot requested or needed, per the review's own note);
+  the step 4 timing rows from the previous round are untouched and still indicative/measured as
+  reported there.
+
+**Decisions and reasoning.**
+- Combined every resident group into ONE page set for `endless02.sze` (not one upload per group,
+  as the previous revision did for `02_1024_easy_128.sze`) because that is what any adapter
+  actually holds resident at once - uploading groups separately would not have reproduced RD-1b's
+  own combined-set byte figures, and would not have surfaced the real allocation-ceiling finding
+  above (which only appears for the single large resource, not for two smaller separate ones - the
+  earlier, separately-uploaded 02_1024_easy_128.sze pair, 1+1 layers, never came close to this
+  limit).
+- Took the per-frame sprite atlas's footprint as 0 bytes, stated and documented, rather than
+  building a real `GpuFrame`/Hot atlas inside this standalone unit test to measure one: matches
+  RD-1b's own F5 convention exactly, keeps this unit test free of a `GpuFrame` dependency (the
+  task's own "a new unit, not a change to the chunk compositor" boundary), and is explicitly named
+  as a stated assumption in both the code and this report, not asserted as the true runtime figure.
+- Reported the real device refusal as a finding, not a workaround: did not shrink the upload, did
+  not silently split it into per-group textures, did not lower the stated budget to make the case
+  "pass" quietly - the review's own instruction ("that's a finding for the owner, not a fix") is
+  honoured even though the actual failure mode (a real allocator ceiling under an in-budget number)
+  is a stronger finding than the budget-arithmetic miss the review anticipated.
+- Fixed the error-scope gap in `upload_atlas_pages` because it is a real correctness bug in this
+  task's own code, found while making the F1/F2 fix honestly report what the real device did -
+  not fixing it would have let a genuine device refusal masquerade as a readback/correctness
+  failure in this unit's own proof, which is exactly the kind of silent-wrongness CLAUDE.md's
+  evidence policy exists to prevent.
+- Left the step 4 timing section of this report and `docs/perf/README.md` untouched: the review
+  said these are correctness runs needing no quiet slot, and marked new timing rows as optional/
+  indicative, not required for this round.
+
+READY FOR REVIEW.
+
+## RENDER-DIRECT-1d — the Radeon's real allocation ceiling, measured and diagnosed — READY FOR REVIEW (task/RENDER-DIRECT-1d, from `origin/task/RENDER-DIRECT-1c` `f148638e`, new worktree)
+
+**Scope, as the packet asked: measurement and diagnosis only.** No production code changed; OQ-096b's 384 MiB non-discrete default is NOT touched. One new file, `src/render/tests/adapter_memory_diag_test.cpp` (`anno_render_gpu_tests`), answering the orchestrator's three questions about RENDER-DIRECT-1c review F1/F2's Radeon finding (`endless02.sze`'s real pair, 356,515,840 bytes, fits the calculated 402,653,184-byte budget but the real device still refuses the single 17-layer texture: "Not enough memory left").
+
+**Question 1, answered: a single-resource ceiling, not the heap's own total capacity - but small enough that even one of the two groups alone can exceed it.** `endless02.sze`'s pair uploaded as two SEPARATE per-group textures: group 1 (4 layers, 83,886,080 bytes/80.0 MiB) allocated; group 0 (14 layers, 293,601,280 bytes/280.0 MiB) was refused even on its own. Splitting the pair by zoom group is not always enough to make a resident set fit.
+
+**Question 2, answered: DXGI's own memory facts** (`DXGI_ADAPTER_DESC`/`IDXGIAdapter1::GetDesc1`, matched to the already-opened wgpu adapter by `vendorID`/`deviceID` - `WGPUAdapterInfo`/webgpu.h has no memory-size fields at all):
+
+| Adapter | DedicatedVideoMemory | DedicatedSystemMemory | SharedSystemMemory |
+|---|---|---|---|
+| RTX 4090 | 25,310,527,488 B (24,138.0 MiB) | 0 | 16,704,471,040 B (15,930.6 MiB) |
+| Radeon iGPU | 488,390,656 B (465.8 MiB) | 0 | 16,704,471,040 B (15,930.6 MiB, same shared pool) |
+
+**Question 3, answered: the real single-resource ceiling, found by bisecting the layer count of a single 2048×2048 texture array with RENDER-DIRECT-1c's own error-scope detection: 12 layers (251,658,240 bytes, 240.0 MiB) allocate on the Radeon; 13 layers (272,629,760 bytes, 260.0 MiB) are refused.** Consistent with question 1 (group 1 at 80.0 MiB well under, group 0 at 280.0 MiB well over), and about **52% of the 465.8 MiB `DedicatedVideoMemory`** DXGI reports for this adapter (question 2) - a real allocator-level restriction, not simply "the dedicated VRAM is smaller than the budget."
+
+**For the owner, prepared not decided: `docs/open-questions.md` OQ-727.** OQ-096b's 384 MiB non-discrete default is well above the real ~240 MiB single-resource ceiling found on this adapter. Three non-exclusive options, none implemented: (a) lower the non-discrete default below the real per-resource ceiling; (b) split any resident set above a configured per-resource size into more than one texture at upload time (a stage 2/3 upload-granularity design, separate from the *total* budget number); (c) measure the real ceiling at runtime per-adapter instead of hardcoding a number that is specific to this PC's Radeon/driver/Vulkan combination on 2026-11-17 and may not transfer elsewhere.
+
+**Gates.**
+- clang-format 23.1.3: clean.
+- WSL GCC 13 / Clang 18 `-Werror`, whole tree, all four configurations: clean.
+- `anno_render_gpu_tests`, native MSVC Release, `ANNO_GPU_ADAPTER=RTX`, full suite: **134/134 test cases, 80,512,071/80,512,071 assertions, 0 failed** (131 pre-existing plus this file's own 3 diagnostic cases - the DXGI case runs both adapters by name within itself).
+- `anno_render_gpu_tests`, native MSVC Release, every Radeon-named case (`--test-case=*Radeon*`, default adapter selection): **8/8 test cases, 38,095,019/38,095,019 assertions, 0 failed**.
+- CI preflight: PASS.
+- No quiet slot needed or requested, per the packet's own note (allocation outcomes, not timings).
+
+**Decisions and reasoning.**
+- Tolerated a real device refusal as a reportable finding, not a hard test failure, for both the per-group split (question 1) and the bisection's own expected refusals (question 3's `layers_allocate` just returns a bool) - following RENDER-DIRECT-1c review F1/F2's own precedent: a real, named device outcome is data for the owner, not a bug in the proof, as long as it is the SPECIFIC named refusal expected (checked where it matters) and not some other, unexplained failure.
+- Built the bisection's probe pages as all-zero dummy buffers (`dummy_pages`) rather than real decoded scene frames: allocation-size testing needs only the right byte counts, and a real-frame version would have made every bisection step as slow as a full scene decode for no added evidence.
+- Called `wait_idle` after every bisection probe so a released texture's memory has a chance to be reclaimed before the next attempt - without it, back-to-back allocate/release cycles could show stale pressure and report a falsely low ceiling.
+- Duplicated `on_named_adapter`/`read_all`/`load_scene_direct` from `atlas_upload_test.cpp` rather than sharing them: both files already duplicate small per-binary helpers by this project's own established convention (`atlas_upload_test.cpp`'s own doc comment on `load_scene_direct`), and a new header for helpers only two files in one binary use would be more machinery than the ~30 lines it replaces.
+- Added DXGI as a Windows-only diagnostic dependency of the test binary only (not of `anno_render_gpu`/`anno_render`), guarded by `#if defined(_WIN32)`/`#ifdef WIN32` in both the CMakeLists.txt link and the source file - wgpu's own `WGPUAdapterInfo` has no memory-size fields to read instead, and this question is explicitly about what the OS/API expose, which on this project's Windows dev host means DXGI.
+- Did not touch OQ-096b's default or design a split-upload path: both are the owner's call (the packet's own "don't change the default. Prepare the options and numbers"), recorded as OQ-727 rather than acted on.
+
+READY FOR REVIEW.
+
+## RENDER-DIRECT-1d addendum — renumbered OQ-691 to OQ-727, and the orchestrator's follow-up question answered — READY FOR REVIEW (same branch, commit `70c25b66`)
+
+**Renumbering.** OQ-691-695 was already taken by UI-TABS-1 B (in candidate `c01d5806`). Checked `docs/orchestration/STATUS.md`'s "OQ number reservations" first this time, per the orchestrator's instruction - the next free number is 727. Renumbered everywhere: `docs/open-questions.md`'s heading and both cross-references (`docs/render/atlas.md` §13, this report).
+
+**Question 4 (the follow-up): does the Radeon's heap hold the real worst pair's full bytes once split under the per-resource ceiling, and where does the total heap stop?** New `TEST_CASE` in `src/render/tests/adapter_memory_diag_test.cpp` (same file, same branch):
+
+- `endless02.sze`'s real combined 17-layer pair split 12+5 at an arbitrary layer boundary (not either group's own layer count - `slice_pages`, a new helper, slices the already-built real `AtlasPages` rather than rebuilding dummy data, so the split texture's content is the real scene bytes, not a stand-in): **both halves allocated, both held resident at once, both byte-exact on readback** (first and last layer of each checked while the other half stayed resident) - **356,515,840 bytes (340.0 MiB) total**, confirming splitting under question 3's ~240 MiB ceiling does hold the real worst case's full bytes.
+- Continuing to add more 2048×2048, 12-layer (240 MiB) dummy blocks on top of that 340 MiB (`try_hold_another`, a new helper: every earlier texture stays resident, unlike `layers_allocate`'s own isolated single-resource test), one at a time, held resident, to find the TOTAL heap's own stopping point: **29 additional whole blocks also allocated** before a further whole block was refused; bisecting one more, smaller block on top found 0 additional layers fit (even 1 more layer was refused at that point). **Largest total found: 7,654,604,800 bytes (≈7,300.0 MiB, ≈7.3 GiB).**
+- This is far above both `DedicatedVideoMemory` (465.8 MiB) and even approaches half of `SharedSystemMemory` (15,930.6 MiB, question 2) - **the total heap is nowhere near the binding constraint for a 384 MiB budget; only the per-resource ceiling (question 3, ~240 MiB) is.** Updated `docs/render/atlas.md` §13 and OQ-727 with both new findings and a revised option ranking: option (a) "keep the 384 MiB default, split per-resource above the ceiling" now has the least evidence against it of the three prepared options, since the total-heap finding removes the main reason a smaller total default would have been needed.
+
+**Gates, rerun on this commit.**
+- clang-format 23.1.3: clean.
+- WSL GCC 13 / Clang 18 `-Werror`, whole tree, all four configurations: clean.
+- `anno_render_gpu_tests`, native MSVC Release, `ANNO_GPU_ADAPTER=RTX`, full suite: **135/135 test cases, 80,512,767/80,512,767 assertions, 0 failed** (one more case than the previous round: question 4).
+- `anno_render_gpu_tests`, native MSVC Release, every Radeon-named case (`--test-case=*Radeon*`): **9/9 test cases, 38,095,031/38,095,031 assertions, 0 failed**.
+- CI preflight: PASS.
+- No quiet slot needed or used, per the orchestrator's own note (allocation outcomes, not timings).
+
+**Decisions and reasoning (this addendum).**
+- Built the split pair's two textures from the REAL combined `AtlasPages` (`slice_pages`, a new layer-range copy), not from fresh dummy data: question 4 asks whether splitting holds the real worst case's bytes, which a dummy-data test could not answer - only the heap-stop search past that point (which has no more real data to exhaust) uses dummy blocks.
+- Capped the whole-block search at 32 iterations (`kMaxWholeBlocks`, `REQUIRE_MESSAGE` if exceeded) as a safety net against a runaway loop, even though 7.3 GiB (29 blocks) made it obviously finite in practice on this adapter.
+- Checked `docs/orchestration/STATUS.md`'s reservation list before taking a number this time, as asked, rather than guessing the next unclaimed-looking one.
+
+READY FOR REVIEW.
+
+## RENDER-DIRECT-1c CI fix — the named-adapter skip order, matched to play_gpu_test.cpp's own — READY FOR REVIEW (merged from `task/RENDER-DIRECT-1c` `50de7c24`/`465741b8`)
+
+**The failure.** CI run `44095685040` failed on `cpp (linux-gcc)` ("test" step) then `gate`: eight `atlas_upload_test.cpp` cases reported `SKIPPED(gpu)` on lavapipe (no adapter named "RTX 4090"/"Radeon"), and `linux-gcc` does not pass `--allow-skip gpu` (`ci.yml`: every OTHER job does; `linux-gcc` is the one job meant to run the real GPU parity path on lavapipe for real, OQ-089/GATE-1c item 2) - so an unallowed `gpu` skip there fails the gate.
+
+**Root cause, found by comparing against `play_gpu_test.cpp`'s own two named-adapter cases (which pass on the SAME job, SAME lavapipe, confirmed by reading a known-green run's own log, `44051159572`'s `cpp (linux-gcc)` job):** `play_gpu_matches_cpu` checks `anno::test::game_dir()` FIRST, before ever calling `list_adapters()`/`pick_adapter()`. CI's `linux-gcc` runner has no game files at all, so that check skips as `required-asset` (allowed everywhere via `--asset-policy unavailable`) before the function ever reaches the adapter-naming logic. Every one of this file's own adapter-pinned helpers (`synthetic_and_lan5`, `worst_pair_scene`, `measure_adapter`) did the OPPOSITE order: `on_named_adapter` (which calls `pick_adapter` immediately) ran FIRST, so on a game-file-less, differently-named-adapter runner they always hit the "no adapter named ..." skip (classified `gpu` by `ctest_verdict.py`'s own `GPU|adapter|RTX|Radeon|Metal|Vulkan` pattern) before ever reaching the `required-asset` check that would have been allowed. `refused_one_byte_short` had no `game_dir()` dependency at all and was pinned to each named adapter for no reason tied to what it tests - it always hit the `gpu` skip on CI, with no `required-asset` escape available at all.
+
+**The fix, two parts, matching how the already-passing cases avoid this:**
+1. **Reordered** `game_dir()`/scene-loading to run BEFORE `on_named_adapter` in `lan5_on_named_adapter` (renamed from `synthetic_and_lan5`, its synthetic-only part moved out - see below), `worst_pair_scene`, and `measure_adapter` - the same order `play_gpu_test.cpp`'s `play_gpu_matches_cpu` already uses. No behavior change on this PC (game files are present, so the check passes through either order); on a game-file-less runner the function now skips as `required-asset` before it would otherwise reach the adapter-naming logic.
+2. **Made two cases adapter-agnostic**, since neither needs a specific named adapter to mean anything: the synthetic-pages correctness proof (split out of `synthetic_and_lan5` into its own `TEST_CASE`, using `gpu::headless_context()` with no pin) and `refused_one_byte_short` (merged from two adapter-pinned cases into one adapter-agnostic one). Both now run on whatever adapter is actually available - lavapipe on CI's `linux-gcc`, for real, which is OQ-089's own point ("the GPU parity tests run on a real adapter in this job... a missing adapter must fail the job, not skip").
+
+**No correctness change.** Every renamed/reordered function's own body is unchanged; only the ORDER of two independent early-return checks (and, for the two merged cases, which adapter opens) moved. Re-verified: full suite 131/131 (unchanged count: two cases renamed in place, one new adapter-agnostic case added, two adapter-pinned refusal cases merged into one - net zero), 80,508,175/80,508,175 assertions, on the RTX 4090; 4/4 Radeon-named cases, 38,091,107/38,091,107 assertions (one fewer named case than before, since the refusal case is no longer Radeon-named - by design).
+
+**Verified the fix's actual mechanism, not just reasoned about it:** ran the game-file-dependent cases with `ANNO1503_GAME_DIR` unset (on this PC, where the named adapters ARE present) - all six skipped with `"skipping: ANNO1503_GAME_DIR not set"` (the `required-asset` message), never reaching the adapter-pick code at all, confirming the reorder's own guarantee independent of whether an adapter happens to be present.
+
+**Step 1 (run the CI preflight and the linux-gcc GPU step locally in WSL on lavapipe), partially possible on this host:** `python -I tools/test/run_selected.py --preflight-only` run natively on Windows: PASS (WSL has no `cmake`/`ninja` at all on this host per `CLAUDE.md`'s own note - confirmed: `cmake -P ...` fails with "No such file or directory: 'cmake'" - so the preflight's own `cmake`-based `CheckTestNames.cmake` step cannot run inside WSL here, and a full `cmake --preset dev`/`ctest` build+run on lavapipe is not possible on this host either, same reason). WSL DOES have the lavapipe Vulkan ICD installed (`lvp_icd.x86_64.json`) but no build toolchain to use it with. Verified the skip-order fix by other means instead (above): reading a known-green CI run's own log for the exact classification `ctest_verdict.py` gives, and reproducing the "required-asset wins first" order locally on Windows with the game dir unset.
+
+**Gates.**
+- clang-format 23.1.3: clean.
+- WSL GCC 13 / Clang 18 `-Werror`, whole tree, all four configurations: clean.
+- CI preflight (native Windows, WSL's own cmake-based preflight step not runnable here): PASS.
+- `anno_render_gpu_tests`, native MSVC Release, `ANNO_GPU_ADAPTER=RTX`, full suite: 131/131, 80,508,175/80,508,175 assertions, 0 failed.
+- `anno_render_gpu_tests`, native MSVC Release, every Radeon-named case: 4/4, 38,091,107/38,091,107 assertions, 0 failed.
+- CI: pushed, run pending at the time of this report - see the follow-up message to the orchestrator for the result.
+
+**Decisions and reasoning.**
+- Fixed the ORDER of two pre-existing, correct checks rather than adding a new skip-suppression mechanism: the two checks (`game_dir()`, adapter pick) were already both there and both correct in isolation; only their sequence determined which allowed category a CI runner's skip falls into.
+- Merged `refused_one_byte_short`'s two adapter-pinned cases into one adapter-agnostic case rather than keeping both and also adding a third, agnostic one: nothing about a budget-refusal check needs the owner's specific hardware names, so pinning it was never load-bearing, unlike the readback/sampling correctness cases this file also runs per adapter to prove the upload path works on each specific GPU.
+- Did not touch `play_gpu_test.cpp` itself: it already has the right order; this packet copies its pattern, not its code.
+
+READY FOR REVIEW.
+
+## RENDER-DIRECT-1d CI fix round 2 — the diagnostic file's own skip issue, then the bisection made opt-in — READY FOR REVIEW (same branch, commits `849aa4c4`, `6374c2be`, `bdcb77f2`)
+
+**Round 1 (`849aa4c4`): the diagnostic file inherited RENDER-DIRECT-1c's own named-adapter skip issue.** `adapter_memory_diag_test.cpp` didn't exist when that fix was written. Same two techniques: questions 1 and 4 (both need `endless02.sze`) check `game_dir()` before `on_named_adapter`; question 3 (pure bisection, no game-file dependency) falls back to whatever adapter is available via a new `on_preferred_or_any_adapter` instead of skipping when "Radeon" is absent.
+
+**Round 2 (`6374c2be`): the fallback itself hung two CI jobs.** `linux-gcc-release`/`linux-clang-asan` have no Vulkan ICD, so the fallback opened llvmpipe/OpenGL; the bisection's doubling search is bounded only by the device's own reported `maxTextureArrayLayers`, far more permissive there than on real hardware, so it tried to allocate tens of GiB of dummy probe data and was killed on timeout (exit 143). First fix: skip the bisection outright on a CPU adapter type or non-Vulkan/Metal/D3D12 backend (RENDER-DIRECT-1c's own adapter-agnostic-case check), plus a 256-layer practical ceiling as a second guard. This fixed those two jobs but broke `linux-gcc` itself: lavapipe reports `adapter_type` CPU even over its own Vulkan backend (it is a software Vulkan implementation), so the same skip caught it too - and `linux-gcc` is the one job that disallows a `gpu`-classified skip at all (`ANNO_REQUIRE_GPU=1`, OQ-089's own point: it runs the GPU parity tests for real there).
+
+**Round 3 (`bdcb77f2`): made the bisection opt-in instead (the owner's technical call, via the orchestrator).** `ANNO_MEASURE_TEXTURE_CEILING=1` gates the whole case; unset, it skips with a message `ctest_verdict.py`'s own `OPT_IN` pattern (`\bset ANNO_[A-Z0-9_]+=`) classifies before its `GPU` pattern ever gets a chance to - `opt-in` is allowed on every job, `linux-gcc` included, so the conflict is sidestepped entirely rather than traded for a different one. Removed the CPU/backend skip (no longer needed); kept the 256-layer `kPracticalCeiling` as the bound for whoever opts in on a software adapter. No other GPU correctness case in this file or `atlas_upload_test.cpp` touched - they keep running on lavapipe for real.
+
+**Reproducing this section's own Radeon figures:**
+```bash
+ANNO_MEASURE_TEXTURE_CEILING=1 ./anno_render_gpu_tests --test-case="*question 3*"
+```
+Documented in `docs/render/atlas.md` §13 alongside the figures it reproduces.
+
+**Gates.** Rounds 1-2 were pushed without a local build (the PC was held for the orchestrator's own candidate 8 lanes); GitHub CI was the check each round, confirming the two-steps-forward-one-back sequence above. Round 3 (this commit) is pushed the same way; CI on this head is the pending check - 1d is accepted once every job is green.
+
+**Decisions and reasoning.**
+- Did not guess at round 2's own fix (CPU/backend skip) being final: when it broke a job that had been passing, reported the conflict precisely (lavapipe's own adapter_type vs. its backend) rather than picking one of the two options that seemed obvious, since the owner's own `ANNO_REQUIRE_GPU=1` policy on `linux-gcc` is deliberate (OQ-089) and not mine to override by guessing.
+- Chose the opt-in switch over either alternative once given it: it is the only option that does not change what already runs on lavapipe for real (every other GPU correctness case in both files), consistent with "don't change lavapipe's real GPU path."
+
 READY FOR REVIEW.
 
 ## UI-MINIMAP-2 — READY FOR REVIEW (Windows, 2026-11-17)

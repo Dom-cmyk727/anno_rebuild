@@ -9,6 +9,8 @@ extern const unsigned char kGpuWgsl[];
 extern const std::size_t kGpuWgsl_size;
 extern const unsigned char kFluidWgsl[];
 extern const std::size_t kFluidWgsl_size;
+extern const unsigned char kAtlasUploadWgsl[];
+extern const std::size_t kAtlasUploadWgsl_size;
 
 namespace anno::render::shaders {
 
@@ -19,6 +21,11 @@ inline std::string_view compositor() {
 /// The coastal wave simulation of the enhanced water (fluid.wgsl).
 inline std::string_view fluid() {
     return {reinterpret_cast<const char*>(kFluidWgsl), kFluidWgsl_size};
+}
+/// RENDER-DIRECT-1c step 3's own sampling test (atlas_upload.wgsl): a new unit, not part of
+/// the compositor.
+inline std::string_view atlas_upload() {
+    return {reinterpret_cast<const char*>(kAtlasUploadWgsl), kAtlasUploadWgsl_size};
 }
 
 } // namespace anno::render::shaders

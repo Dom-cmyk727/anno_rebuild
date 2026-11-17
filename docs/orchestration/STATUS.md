@@ -40,6 +40,12 @@ says who is doing what, where the work is, and what it waits on.
 - **The owner, 2026-11-17, on RENDER-DIRECT-1a and LAYER-CHECK-1:** "You will land them once you approve
   them". They land without a further ask once accepted (CI green on the reviewed head), through the usual
   candidate gates: a candidate stacked on `09315620`, this PC's changed lanes and the Mac's full run.
+- **Standing rule, the owner 2026-11-17:** asked whether every packet the orchestrator accepts lands without
+  asking from now on, the owner answered "Yes standing rule". So an accepted packet (CI green on the reviewed
+  head) lands through the usual gates (a landing candidate, this PC's changed lanes and GPU tests, the Mac's
+  full run with the same tree, `land.py`) without a separate landing OK. Owner decisions (defaults, anything
+  that may change the feel, open questions marked for the owner) still go to the owner, and a candidate whose
+  gates show a new failure does not land.
 - **The owner decided OQ-096 and OQ-096b** 2026-11-17. Asked "Raise it to 384 MiB, one mipmap level on both
   cards (my recommendation)", against keeping 256 MiB with no mips on the iGPU or deciding on a build, the
   owner answered "your recommendation". So `atlas_budget_mb` defaults to 512 MiB discrete and 384 MiB

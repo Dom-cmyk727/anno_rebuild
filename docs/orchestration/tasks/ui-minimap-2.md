@@ -2,8 +2,10 @@
 
 **Written 2026-11-17** by the UI lane. The orchestrator assigned it to the UI lane ("UI logic over the
 levels the renderer already exposes"). Branch `task/UI-MINIMAP-2`, base origin/main `09315620`, worktree
-`E:\anno1503-worktrees\anno1503-UI-MINIMAP-2`. **Not released: it waits for the owner's go.** It also
-waits for the PC to be free for builds; the orchestrator says when.
+`E:\anno1503-worktrees\anno1503-UI-MINIMAP-2`. **Released 2026-11-17** on the owner's go, relayed by the
+orchestrator: the owner, asked "Go for the UI lane's UI-MINIMAP-2 (magnifier zooms out as far as the
+wheel)?", answered "Yes, go". Code and docs can start now. Builds and tests wait until the orchestrator
+says the PC is free.
 
 ## Why
 

@@ -14576,9 +14576,9 @@ READY FOR REVIEW.
 ## UI-STATUS-1 stage A: READY FOR REVIEW (Windows, 2026-11-17)
 
 - Base origin/main `09315620`, packet `3608be57`, branch `task/UI-STATUS-1`. Commits: `9b844677` (re), then this entry.
-  Docs only: `docs/re/ui.md` 5.5, `docs/open-questions.md`. No code, no pixels, no listings in git; the helper scripts
+  Docs only: `docs/re/ui.md` 5.6, `docs/open-questions.md`. No code, no pixels, no listings in git; the helper scripts
   are in `cache/ui-status-1/`. Stage B not started.
-- **The rule** (GOG `AnnoFrame.dll`, static read, [ui.md 5.5](../re/ui.md#55-the-status-bars-island-ui-status-1-stage-a-2026-11-17)):
+- **The rule** (GOG `AnnoFrame.dll`, static read, [ui.md 5.6](../re/ui.md#56-the-status-bars-island-ui-status-1-stage-a-2026-11-17)):
   - The point is the frame cursor's map tile, not the view centre (`0x100052a0`, `tViewedInfo` `+0x1c`, SetCursor
     `0x10007e00`). It is re-read every frame by the frame tick `0x10005a10`.
   - The counters (`tStadtInfo` `0x10009920`) follow the city whose **territory** holds the tile (owner nibble,
@@ -14590,10 +14590,10 @@ READY FOR REVIEW.
     `players_present`). The segments come from the climate mask (jump table `0x10009904`, = `raw_climate_mask`),
     minus `0xf009` and minus 7, ascending, at most 4, at x 547 + 40k. BALKEN is 100 if island property 11 has the
     bit, else 50. Open sea hides the row at once; sea inside an island's chunks hides it after 2 s.
-  - The cost row's code is located for UI-STATUS-2 (5.5, groups table).
+  - The cost row's code is located for UI-STATUS-2 (5.6, groups table).
 - **HE re-check:** fertility before the founding = the discovery rule (high). The 20 s gap and the hide at 02:04.5 =
-  territory, not island, for the counters (medium / medium-high). Recipe for the owner in 5.5.
-- **Owner comparison** (5.5, last table). Three points need an owner decision (OQ-703): (1) counters by territory,
+  territory, not island, for the counters (medium / medium-high). Recipe for the owner in 5.6.
+- **Owner comparison** (5.6, last table). Three points need an owner decision (OQ-703): (1) counters by territory,
   not by island; (2) **fertility icons over every discovered island, own or not**; (3) residents over a foreign city
   that knows him.
 - **OQs:** 622 PARTLY ANSWERED; 700 (cursor tile over the panel), 701 (writers of `+0xa6` besides founding: ship

@@ -708,7 +708,7 @@ show the stock of the island the view is centred on. **Not evidenced:** what the
 over open sea and over another player's island (no shot is taken there), the exact centre point
 and the update timing - OQ-622.
 
-**Superseded by 5.5 (UI-STATUS-1, 2026-11-17):** the GOG code reads the tile under the cursor, every
+**Superseded by 5.6 (UI-STATUS-1, 2026-11-17):** the GOG code reads the tile under the cursor, every
 frame; the counters follow the city whose territory holds that tile, the fertility row the
 discovered island.
 
@@ -791,7 +791,7 @@ composer against the GOG shots above, the window's CPU path against the composer
 built: the pages' bodies (the panel packets), tooltips, the header plank with the view's name
 (not drawn on any view's page since R2), the "?" view's selection-dependent content (OQ-642).
 
-### 5.5 The status bar's island (UI-STATUS-1 stage A, 2026-11-17)
+### 5.6 The status bar's island (UI-STATUS-1 stage A, 2026-11-17)
 
 Code: GOG 2.0.0.5 `AnnoFrame.dll`, static disassembly (pefile/capstone, helper scripts in the
 worktree's `cache/ui-status-1/`, not committed). Callees in `AnnoWelt.dll` through its vtables

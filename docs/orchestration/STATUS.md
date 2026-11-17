@@ -177,8 +177,11 @@ says who is doing what, where the work is, and what it waits on.
   stacked into the next landing candidate.
 - **BUILDINGS-REF-1 recreated clean:** `task/BUILDINGS-REF-1` = `cc2c6e80` (one commit, tree `167625b0` =
   `00714b67`'s) on GitHub and GitLab; no origin ref or tag contains `c0c3f3a0` (checked by the
-  orchestrator). The co-dev share repo refused the forced update (its `receive.denyNonFastForwards`);
-  that one is the owner's call.
+  orchestrator). The co-dev share repo refused the forced update (its `receive.denyNonFastForwards`).
+  Asked "May I lift the share repo's force-push protection for one push, then restore it?", the owner
+  answered "Yes, one push": the share's branch is `cc2c6e80` now (forced with lease against `00714b67`),
+  the protection restored (`denyNonFastForwards` and `denyDeletes` both true), and no ref there contains
+  `c0c3f3a0`. The unreachable commit object is still in the share's object store until it is pruned.
 - **CI infrastructure:** runs 44118907639 (UNITS-REF-1) and 44108255131 (ISLAND-CROPS-1 1b) failed only
   because their macOS jobs got no runner (abandoned, 0 steps); the failed jobs were rerun.
 - **UNITS-REF-1 dispatched** 2026-11-17 on the owner's request: "I want the same kind of research on any movable

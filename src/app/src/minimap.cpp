@@ -577,20 +577,47 @@ double minimap_zoom_step(const MinimapConfig& cfg, double zoom, bool closer) {
     return static_cast<double>(next);
 }
 
+namespace {
+
+/// A stage within this relative distance of a tile width is that width: the stage the view is
+/// at, or (magnifier_stages) a halving that is the wheel's end itself.
+constexpr double kMagnifierSame = 1e-6;
+
+} // namespace
+
 std::optional<double> magnifier_target(const std::vector<double>& level_tile_w, double current,
                                        bool closer) {
-    // A level within this relative distance is the level the view is at.
-    constexpr double kSame = 1e-6;
     std::optional<double> best;
     for (const double t : level_tile_w) {
         if (!(t > 0.0))
             continue;
-        if (closer && t > current * (1.0 + kSame) && (!best || t < *best))
+        if (closer && t > current * (1.0 + kMagnifierSame) && (!best || t < *best))
             best = t;
-        if (!closer && t < current * (1.0 - kSame) && (!best || t > *best))
+        if (!closer && t < current * (1.0 - kMagnifierSame) && (!best || t > *best))
             best = t;
     }
     return best;
+}
+
+std::vector<double> magnifier_stages(const std::vector<double>& built_tile_w, double min_tile) {
+    std::vector<double> stages = built_tile_w;
+    std::optional<double> narrowest;
+    for (const double t : built_tile_w) {
+        if (t > 0.0 && std::isfinite(t) && (!narrowest || t < *narrowest))
+            narrowest = t;
+    }
+    // No extra stages without a built level, or when the wheel ends at or above the narrowest
+    // one (a small scene, a large window): the built levels alone.
+    if (!narrowest || !(min_tile > 0.0) || !std::isfinite(min_tile) ||
+        !(min_tile < *narrowest * (1.0 - kMagnifierSame)))
+        return stages;
+    // min_tile > 0 and the factor > 1: the width falls below min_tile after finitely many steps.
+    static_assert(kMagnifierStageFactor > 1.0);
+    for (double w = *narrowest / kMagnifierStageFactor; w > min_tile * (1.0 + kMagnifierSame);
+         w /= kMagnifierStageFactor)
+        stages.push_back(w);
+    stages.push_back(min_tile);
+    return stages;
 }
 
 namespace {

@@ -2177,8 +2177,11 @@ bool Viewer::minimap_press(double px, double py) {
     };
     // The magnifier's + and - (gadgets 1 and 2, commands 0xa and 9): the main view one level
     // closer / farther, clamped to the original's levels 0..2 (AnnoFrame 0x10007710,
-    // 0x10007692). The stepped zoom has exactly those levels; the continuous zoom goes to the
-    // next built level in that direction (magnifier_target), easing there as a key press does.
+    // 0x10007692). The stepped zoom keeps exactly that clamp. The continuous zoom steps through
+    // magnifier_stages instead (UI-MINIMAP-2, owner decision 2026-11-17): the built levels, then
+    // halvings down to the wheel's furthest zoom-out (zoom_floor) and that width itself, built at
+    // each press because the wheel's end follows the window size. One press goes to the next
+    // stage in that direction (magnifier_target), easing there as a key press does.
     if (on("lupe_plus") || on("lupe_minus")) {
         const bool closer = on("lupe_plus");
         if (continuous_) {
@@ -2186,7 +2189,8 @@ bool Viewer::minimap_press(double px, double py) {
             for (std::size_t k = 0; k < levels().built_count(); ++k) {
                 level_w.push_back(levels().tile_w(k));
             }
-            if (const auto target = magnifier_target(level_w, zoom_target_, closer)) {
+            const auto stages = magnifier_stages(level_w, zoom_floor(levels(), zoom_min_tile()));
+            if (const auto target = magnifier_target(stages, zoom_target_, closer)) {
                 zoom_to(*target);
             }
         } else {
@@ -3099,8 +3103,15 @@ void Viewer::script_tick() {
         const auto [cx, cy] = camera_tile();
         st.facts["camera.tile.x"] = std::to_string(std::llround(cx));
         st.facts["camera.tile.y"] = std::to_string(std::llround(cy));
-        st.facts["view.tile_w"] =
-            std::to_string(std::llround(continuous_ ? zoom_target_ : levels().tile_w(group_)));
+        const double view_w = continuous_ ? zoom_target_ : levels().tile_w(group_);
+        st.facts["view.tile_w"] = std::to_string(std::llround(view_w));
+        // UI-MINIMAP-2: that tile width and the wheel's furthest zoom-out (zoom_floor, the
+        // magnifier's last stage), both in thousandths of a pixel (the far stages are a pixel or
+        // two wide), and whether the view is at that end (within the magnifier's relative 1e-6).
+        const double floor_w = zoom_floor(levels(), zoom_min_tile());
+        st.facts["zoom.target"] = std::to_string(std::llround(view_w * 1000.0));
+        st.facts["zoom.min_tile"] = std::to_string(std::llround(floor_w * 1000.0));
+        st.facts["zoom.at_min"] = std::abs(view_w - floor_w) <= floor_w * 1e-6 ? "1" : "0";
         st.facts["minimap.clicks"] = std::to_string(minimap_clicks_);
         if (minimap_) {
             st.facts["minimap.zoom"] = std::to_string(std::llround(minimap_->zoom * 100.0));

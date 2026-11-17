@@ -301,13 +301,33 @@ minimap_world_at(const MinimapConfig& cfg, const MinimapRect& rect, const Minima
 
 /// UI-MINIMAP-1 C: the main view's zoom after one press of the magnifier's + (`closer`, command
 /// 0xa: level - 1, not below 0, AnnoFrame 0x10007710) or - (command 9: level + 1, not above the
-/// last, 0x10007692), as the tile width to zoom to. `level_tile_w` holds the built levels'
-/// tile widths, closest first (84, 42, 20 for the original's three). The rebuild's view also
-/// zooms continuously; one press goes to the next built level in that direction from `current`
-/// (the shown or targeted tile width): the closest level wider than it, or the widest level
-/// narrower than it. nullopt when there is none (the original's clamp: nothing changes).
+/// last, 0x10007692), as the tile width to zoom to. `level_tile_w` holds the stages' tile
+/// widths: the built levels', closest first (84, 42, 20 for the original's three), or the
+/// continuous zoom's stages (magnifier_stages). The rebuild's view also zooms continuously; one
+/// press goes to the next stage in that direction from `current` (the shown or targeted tile
+/// width, which the wheel may have left between two stages): the closest stage wider than it, or
+/// the widest stage narrower than it. nullopt when there is none (the clamp: nothing changes).
 [[nodiscard]] std::optional<double> magnifier_target(const std::vector<double>& level_tile_w,
                                                      double current, bool closer);
+
+/// UI-MINIMAP-2: the tile width ratio between two of the magnifier's stages past the narrowest
+/// built level. The derived levels the renderer draws there halve the tile size each
+/// (render::ZoomLevels::with_derived), so each such stage is a derived level's own width.
+inline constexpr double kMagnifierStageFactor = 2.0;
+
+/// UI-MINIMAP-2: the continuous zoom's magnifier stages, closest first (owner decision
+/// 2026-11-17, ui_6.mp4: the magnifier's - reaches the wheel's furthest zoom-out, "rather one
+/// too many than too few"). `built_tile_w` holds the built levels' tile widths, closest first;
+/// `min_tile` is the narrowest tile width the wheel reaches (zoom_floor in zoom.hpp). The stages
+/// are the built widths, then the narrowest built width divided by kMagnifierStageFactor again
+/// and again while the result is still wider than `min_tile`, then `min_tile` itself: the last
+/// press lands exactly on the wheel's end, also when that last hop is short. When `min_tile` is
+/// not below the narrowest built width (or not a positive finite width) there are no extra
+/// stages: the built widths alone, as before. The stepped zoom keeps the original's clamp to the
+/// built levels and does not use these. The wheel's end depends on the window size: build the
+/// stages at each press.
+[[nodiscard]] std::vector<double> magnifier_stages(const std::vector<double>& built_tile_w,
+                                                   double min_tile);
 
 /// One line of the view box in screen coordinates.
 struct MinimapSegment {

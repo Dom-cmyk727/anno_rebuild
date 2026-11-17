@@ -398,51 +398,40 @@ TEST_CASE("RENDER-DIRECT-1d question 1: endless02.sze's pair as two SEPARATE per
 
 TEST_CASE("RENDER-DIRECT-1d question 3: the largest single 2048x2048 texture array that "
           "allocates on the Radeon iGPU (or, if absent, whatever adapter is available), found "
-          "by bisecting the layer count") {
+          "by bisecting the layer count (opt-in: ANNO_MEASURE_TEXTURE_CEILING=1)") {
+    // Owner's call, via the orchestrator, 2026-11-17: this bisection is a HARDWARE measurement
+    // (a real allocator's own ceiling), not a correctness test, so it is opt-in rather than
+    // skipped by adapter type/backend - a CPU-type or non-Vulkan backend check would ALSO catch
+    // lavapipe-via-Vulkan on CI's own linux-gcc job (lavapipe's own adapter_type is CPU even
+    // though its backend is Vulkan, since it is a software Vulkan implementation), which is the
+    // one job `ANNO_REQUIRE_GPU=1` disallows any `gpu`-classified skip on at all (it is meant to
+    // run the GPU parity tests for real there, OQ-089) - so that approach skips this case on
+    // EVERY CI job, including the one whose policy forbids it. An opt-in switch sidesteps the
+    // conflict entirely: `ctest_verdict.py`'s own `OPT_IN` pattern (`\bset ANNO_[A-Z0-9_]+=`) is
+    // checked before its `GPU` pattern, and the message below leads with it, so this is
+    // classified `opt-in` (allowed on every job, `linux-gcc` included) rather than `gpu`,
+    // without touching any other GPU correctness case in this file or atlas_upload_test.cpp -
+    // they keep running on lavapipe for real, unaffected, matching RENDER-DIRECT-1c's own
+    // adapter-agnostic synthetic case.
+    if (std::getenv("ANNO_MEASURE_TEXTURE_CEILING") == nullptr) {
+        MESSAGE("skipping: set ANNO_MEASURE_TEXTURE_CEILING=1 to run this hardware probe (a "
+                "real allocator's own ceiling - costly, and on a software rasterizer "
+                "meaningless, so it is opt-in rather than run automatically)");
+        return;
+    }
     on_preferred_or_any_adapter("Radeon", [&](const gpu::Context& ctx) {
-        // Orchestrator, 2026-11-17: this bisection is a HARDWARE measurement (a real allocator's
-        // own ceiling) - meaningless on a software rasterizer, and a multi-GiB probe there can
-        // still be OOM-killed or run slowly on a CI runner's limited RAM even with the practical
-        // ceiling below as a second guard. Skip (not run) on anything other than Vulkan/Metal/
-        // D3D12, or on a CPU adapter type, the same backend check RENDER-DIRECT-1c's own
-        // adapter-agnostic synthetic case (atlas_upload_test.cpp) uses, with the same reason:
-        // lavapipe/llvmpipe on CI's linux-gcc-release/linux-clang-asan jobs (no Vulkan ICD there)
-        // is a CI-runner artifact to skip past, not a target platform to measure.
-        if (ctx.adapter_type == WGPUAdapterType_CPU) {
-            MESSAGE("skipping: adapter " << ctx.name
-                                         << " is a CPU (software) adapter - this bisection "
-                                            "measures a real hardware allocator's own ceiling, "
-                                            "meaningless on a software rasterizer");
-            return;
-        }
-        WGPUAdapterInfo backend_info = WGPU_ADAPTER_INFO_INIT;
-        if (wgpuAdapterGetInfo(ctx.adapter.get(), &backend_info) == WGPUStatus_Success) {
-            const WGPUBackendType backend = backend_info.backendType;
-            wgpuAdapterInfoFreeMembers(backend_info);
-            if (backend != WGPUBackendType_Vulkan && backend != WGPUBackendType_Metal &&
-                backend != WGPUBackendType_D3D12) {
-                MESSAGE("skipping: adapter " << ctx.name
-                                             << "'s backend is not one this bisection is "
-                                                "validated on (Vulkan/Metal/D3D12 only) - an "
-                                                "OpenGL/OpenGLES/D3D11 fallback happens when no "
-                                                "Vulkan ICD is installed, a CI-runner artifact, "
-                                                "not a target platform, and this bisection is a "
-                                                "hardware measurement, meaningless there anyway");
-                return;
-            }
-        }
         WGPULimits limits = WGPU_LIMITS_INIT;
         wgpuDeviceGetLimits(ctx.device.get(), &limits);
         constexpr std::uint32_t kPageSize = 2048;
-        // A practical probe ceiling (second guard, independent of and far tighter than the
-        // device's own reported maxTextureArrayLayers): bounds this bisection's own worst-case
-        // probe memory even on real hardware, since the device limit stays the real bound in
-        // practice (a real GPU refuses long before this ceiling - the ~12-13 layer ceiling
-        // already found on the Radeon, this question's own earlier result). The backend check
-        // above is the primary guard against a software rasterizer's own permissive limit (which
-        // can make every layer count up to that reported limit allocate, trying tens of
-        // gigabytes of dummy probe data and hanging a CI job, exit 143, killed on timeout, before
-        // this ceiling's own 256-layer/~5 GiB top end is even reached).
+        // A practical probe ceiling (bounded probe memory), independent of and far tighter than
+        // the device's own reported maxTextureArrayLayers: on real hardware the device's own
+        // limit stays the real bound in practice (a real GPU refuses long before this ceiling -
+        // the ~12-13 layer ceiling already found on the Radeon, this question's own earlier
+        // result), but a permissive software rasterizer's own reported limit can be far larger
+        // than any real GPU's, letting every layer count the doubling search tries allocate -
+        // this ceiling bounds that case too (whoever opts in on a software adapter), at ~5 GiB
+        // of dummy probe data at its 256-layer top end rather than the tens of gigabytes that
+        // hung a CI job (exit 143, killed on timeout) before the opt-in switch above existed.
         constexpr std::uint32_t kPracticalCeiling = 256;
         const std::uint32_t ceiling = std::min(limits.maxTextureArrayLayers, kPracticalCeiling);
 

@@ -15313,3 +15313,25 @@ READY FOR REVIEW.
 - Did not touch `play_gpu_test.cpp` itself: it already has the right order; this packet copies its pattern, not its code.
 
 READY FOR REVIEW.
+
+## RENDER-DIRECT-1d CI fix round 2 — the diagnostic file's own skip issue, then the bisection made opt-in — READY FOR REVIEW (same branch, commits `849aa4c4`, `6374c2be`, `6ba9a3c0`)
+
+**Round 1 (`849aa4c4`): the diagnostic file inherited RENDER-DIRECT-1c's own named-adapter skip issue.** `adapter_memory_diag_test.cpp` didn't exist when that fix was written. Same two techniques: questions 1 and 4 (both need `endless02.sze`) check `game_dir()` before `on_named_adapter`; question 3 (pure bisection, no game-file dependency) falls back to whatever adapter is available via a new `on_preferred_or_any_adapter` instead of skipping when "Radeon" is absent.
+
+**Round 2 (`6374c2be`): the fallback itself hung two CI jobs.** `linux-gcc-release`/`linux-clang-asan` have no Vulkan ICD, so the fallback opened llvmpipe/OpenGL; the bisection's doubling search is bounded only by the device's own reported `maxTextureArrayLayers`, far more permissive there than on real hardware, so it tried to allocate tens of GiB of dummy probe data and was killed on timeout (exit 143). First fix: skip the bisection outright on a CPU adapter type or non-Vulkan/Metal/D3D12 backend (RENDER-DIRECT-1c's own adapter-agnostic-case check), plus a 256-layer practical ceiling as a second guard. This fixed those two jobs but broke `linux-gcc` itself: lavapipe reports `adapter_type` CPU even over its own Vulkan backend (it is a software Vulkan implementation), so the same skip caught it too - and `linux-gcc` is the one job that disallows a `gpu`-classified skip at all (`ANNO_REQUIRE_GPU=1`, OQ-089's own point: it runs the GPU parity tests for real there).
+
+**Round 3 (`6ba9a3c0`): made the bisection opt-in instead (the owner's technical call, via the orchestrator).** `ANNO_MEASURE_TEXTURE_CEILING=1` gates the whole case; unset, it skips with a message `ctest_verdict.py`'s own `OPT_IN` pattern (`\bset ANNO_[A-Z0-9_]+=`) classifies before its `GPU` pattern ever gets a chance to - `opt-in` is allowed on every job, `linux-gcc` included, so the conflict is sidestepped entirely rather than traded for a different one. Removed the CPU/backend skip (no longer needed); kept the 256-layer `kPracticalCeiling` as the bound for whoever opts in on a software adapter. No other GPU correctness case in this file or `atlas_upload_test.cpp` touched - they keep running on lavapipe for real.
+
+**Reproducing this section's own Radeon figures:**
+```bash
+ANNO_MEASURE_TEXTURE_CEILING=1 ./anno_render_gpu_tests --test-case="*question 3*"
+```
+Documented in `docs/render/atlas.md` §13 alongside the figures it reproduces.
+
+**Gates.** Rounds 1-2 were pushed without a local build (the PC was held for the orchestrator's own candidate 8 lanes); GitHub CI was the check each round, confirming the two-steps-forward-one-back sequence above. Round 3 (this commit) is pushed the same way; CI on this head is the pending check - 1d is accepted once every job is green.
+
+**Decisions and reasoning.**
+- Did not guess at round 2's own fix (CPU/backend skip) being final: when it broke a job that had been passing, reported the conflict precisely (lavapipe's own adapter_type vs. its backend) rather than picking one of the two options that seemed obvious, since the owner's own `ANNO_REQUIRE_GPU=1` policy on `linux-gcc` is deliberate (OQ-089) and not mine to override by guessing.
+- Chose the opt-in switch over either alternative once given it: it is the only option that does not change what already runs on lavapipe for real (every other GPU correctness case in both files), consistent with "don't change lavapipe's real GPU path."
+
+READY FOR REVIEW.

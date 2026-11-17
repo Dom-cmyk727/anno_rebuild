@@ -125,8 +125,9 @@ says who is doing what, where the work is, and what it waits on.
   727. UI-HARVEST-ICON-1 A (ccaab768, with ISS-151 the whaler) and UI-PRODBAR-1 A (6b6758b9) are ACCEPTED
   2026-11-17 (docs only, CI green) and land with the next candidate; their B stages are released. FERTILITY-1
   (the Wachstum table, the nibble grid, the crop test, single-tile placement; about 9-10 h in four stages) goes
-  to the UI lane after ISLAND-CROPS-1 1b, drafted for the orchestrator's review. The owner question on the
-  status icons is open: own buildings only (the original) or an option for all.
+  to the UI lane after ISLAND-CROPS-1 1b, drafted for the orchestrator's review. **The owner, OQ-723,
+  2026-11-17:** asked "Show only your own buildings' status icons (original), or add an option to see all?",
+  the owner answered "Own only": the original's owner gate, no rules option.
 - **[MAC-HEAVY-1](tasks/mac-heavy-1.md) written** 2026-11-17 for the Mac executor, on the owner's request
   ("I also need a new mac job. This can be more comprehensive once this time, it may contain CPU and or RAM
   heavy test jobs"). Released when the owner pastes the prompt, after GATE-RUN ui-tabs-b. Verification of

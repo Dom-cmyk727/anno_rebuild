@@ -3154,8 +3154,11 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
   `VKEK_HINTERGRUND` should sit at (781, 301) on GOG 1024 x 768 (A). No capture of either edition.
 - **How to resolve:** HE recording R2 and R3 (packet), then sprite-sad of each texture on the frames.
 
-## OQ-651: Where View.dll's gadget positions come from (UI-PANELS-PREP, 2026-11-16; OPEN)
-- **Status:** open.
+## OQ-651: Where View.dll's gadget positions come from (UI-PANELS-PREP, 2026-11-16; PARTLY ANSWERED 2026-11-17)
+- **Status:** partly answered (UI-TABS-1 stage B, `docs/re/ui.md` section 5.5): for the player overview and the
+  city status page, each page's layout function (vtable slot 29; city `0x1006c4c0`, overview `0x1007fcf0`)
+  places the children with gadget slot `+0x5c` `(x, y)` at (page x + 35, page y + C - 244) from float
+  constants. Open: whether every other View.dll page uses the same layout slot (check per panel packet).
 - **Area:** UI / original code.
 - **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
 - **Question:** The View.dll builders set size, image, tooltip and handler but no position; where is
@@ -3210,8 +3213,13 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **How to resolve:** read the slider class (factory 0xb17 → 0x1000fa60) property handler and the
   formatter 0x10025110; HE recording R2 with narration of the numbers shown.
 
-## OQ-655: The city-status rows' sources and period (UI-PANELS-PREP, 2026-11-16; OPEN)
-- **Status:** open.
+## OQ-655: The city-status rows' sources and period (UI-PANELS-PREP, 2026-11-16; PARTLY ANSWERED 2026-11-17)
+- **Status:** partly answered (UI-TABS-1 stage B, `docs/re/ui.md` section 5.5, update `0x1006c0f0`): sources
+  and signs are read. Row 1 = city statistic 0, row 2 = 1 + 2, row 3 = 4, row 4 = 5, row 5 = 2, row 6 =
+  row 1 - row 2 - row 3 + row 4 - row 5 (statistic 2, military, enters twice), row 7 = city `+0x64` ->
+  `+0x20` / 256. Open: the period of the statistics (the sim's decay, `SimConfig::stat_decay_den`, is
+  the rebuild's reading, not checked against a recording), the labels of statistics 4 and 5 (OQ-693)
+  and the knowledge source (OQ-695).
 - **Area:** UI / simulation.
 - **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
 - **Question:** Which city field (and which period: per minute, running, last cycle) does each of rows

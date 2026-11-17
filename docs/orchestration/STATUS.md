@@ -149,6 +149,21 @@ says who is doing what, where the work is, and what it waits on.
   One Mac run on `c01d5806` (GATE-RUN status-crops) covers ui-tabs-b, `c9bdc3e3` and this candidate.
   OQ-728..749 are reserved for BUILDINGS-REF-1 (`docs/BUILDINGSOBJECTS.md`, the standing reference for
   building work, landing as one squashed commit without its first commit's data table).
+- **RENDER-DIRECT-1c and 1d (Windows), 2026-11-17:**
+  - **1c:** fix round `f148638e` answered the review ([review](reviews/2026-11-17-render-direct-1c-review.md)).
+    `endless02.sze`'s real worst sets were uploaded with the compositor's budget: RTX 377 of 537 MB, Radeon
+    357 of 403 MB. It added an error scope around texture creation, so a refused allocation can no longer be
+    reported as success.
+  - **1d:** on this PC's Radeon iGPU, a single texture is refused above about 240 MiB (12 layers allocate, 13
+    don't), while the total heap holds about 7.3 GiB. The 340 MiB worst pair, split 12 + 5 layers into two
+    textures, allocates and reads back exact.
+  - **Orchestrator's technical decision (OQ-727):** the owner's 384 MiB integrated budget (OQ-096b) stays.
+    The upload splits any resident set into textures of at most the per-resource ceiling; the ceiling is
+    configuration, with a measured default and a runtime fallback that halves on an allocation refusal. This
+    changes no owner decision. It is implemented with the draw passes (RENDER-DIRECT-2).
+  - **CI on 1c `f148638e` failed:** the adapter-pinned cases skip as `gpu` on lavapipe, where the job requires
+    a GPU. They get the same skip classification as `play_gpu_test`'s pinned cases, plus one adapter-agnostic
+    upload case; then 1c and 1d are accepted on green CI.
 - **[MAC-HEAVY-1](tasks/mac-heavy-1.md) written** 2026-11-17 for the Mac executor, on the owner's request
   ("I also need a new mac job. This can be more comprehensive once this time, it may contain CPU and or RAM
   heavy test jobs"). Released when the owner pastes the prompt, after GATE-RUN ui-tabs-b. Verification of

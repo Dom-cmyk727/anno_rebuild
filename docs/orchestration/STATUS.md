@@ -56,8 +56,10 @@ says who is doing what, where the work is, and what it waits on.
   **Both ACCEPTED** 2026-11-17: RENDER-DIRECT-1a `5fb98192` (run 44010395552) and LAYER-CHECK-1 `c9a3bb23`
   (run 44010921049). **Landing candidate `4dfdd9b7`** (tree `e218b8f5`), stacked on `09315620`: one end-of-file
   conflict in `docs/open-questions.md`, both sides kept (OQ-690 after the candidate's entries). Fetchable as
-  `refs/candidates/atlas-layers`. The PC part (the residency cases, the layer check, an atlas report on
-  `lan5.txt`, the WSL warning check) is running. The Mac's run on it covers all four candidates.
+  `refs/candidates/atlas-layers`. **The Windows PC's part PASSED** 2026-11-17: the residency cases and both
+  layer-check tests, 10 selected, 10 executed, 0 failed; `bench_frame --atlas-report` on `lan5.txt` ran (worst
+  group 0, 134,217,728 bytes); the WSL warning check clean. The Mac's run on it is requested; it lands after
+  `09315620`.
 - **Standing rule, the owner 2026-11-17:** asked whether every packet the orchestrator accepts lands without
   asking from now on, the owner answered "Yes standing rule". So an accepted packet (CI green on the reviewed
   head) lands through the usual gates (a landing candidate, this PC's changed lanes and GPU tests, the Mac's

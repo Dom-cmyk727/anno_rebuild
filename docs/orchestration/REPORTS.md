@@ -14702,3 +14702,16 @@ READY FOR REVIEW.
 - **QUESTION:** none new. Gold before the founding, and a ship reveal of islands (OQ-701), are left as they are.
 
 READY FOR REVIEW.
+
+**Addendum (review fix, gold before the first founding):** `e1d2e1d8` publishes the local player's money
+whenever that player exists (`PlaySnapshot::has_local_player`; `costs_waived` moved with it) and draws the gold
+figure in every mode, 0 when the world has no local player (the original's Update(zeros), `0x10009949`; there is
+no such session today). New fact `hud.gold`; `ui_counters_before_founding`, `live_screen_hud_idle` and
+`ui_status_island` check `hud.gold != none`. The gold digits stay masked as live digits (masks.txt `gold_digits`) in
+the live_screen comparison. No other test expected no gold before founding (`git grep -n counters`). Gate
+`cache/gates/ui-status-1-B-04.log` (sha256 `c2563f9dac18...`), head `e1d2e1d8`, select
+`^anno_app_tests\.(status bar|hud |play|command outcome)|^viewer_wiring_ui_counters_before_founding$|^viewer_wiring_ui_status_island$|^live_screen_matches_oracle$|^ui_dynamic_draw_check$`
+(`--exclude 'opt-in measure'`, the four named tests `--require-test`): `COUNTS: selected=59 executed=59 failed=0
+empty=0 skipped=0`, `VERDICT: PASS`. clang-format 23.1.3 clean on the changed files.
+
+READY FOR REVIEW.

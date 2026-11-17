@@ -16,6 +16,13 @@
 //    single-resource ceiling (12+5 layers, not tied to either group's own layer count), both
 //    resident and byte-exact? And where does the TOTAL heap stop - the largest total that
 //    allocates, found by adding more blocks until one is refused, then bisecting the last one?
+// CI gate fix (orchestrator, 2026-11-17, matching RENDER-DIRECT-1c's own atlas_upload_test.cpp
+// fix): questions 1 and 4 check game_dir() before on_named_adapter (CI's game-file-less runner
+// then skips as the allowed `required-asset`, before reaching the disallowed-on-linux-gcc `gpu`
+// skip); question 3 has no game-file escape, so it falls back to whatever adapter is available
+// via on_preferred_or_any_adapter instead of skipping when "Radeon" is absent (OQ-089's own
+// point: the method is what matters, not necessarily this specific adapter, on a runner that
+// has no Radeon at all).
 // No production code changed here, and OQ-096b's 384 MiB default is NOT touched (the packet's
 // own "don't change the default, prepare the options and numbers"): this file is diagnostic
 // only, added to anno_render_gpu_tests.
@@ -93,6 +100,54 @@ void on_named_adapter(const char* adapter_name,
         return;
     }
     MESSAGE("adapter " << ctx.value().name);
+    body(ctx.value());
+    CHECK(ctx.value().errors->load() == 0);
+}
+
+/// Opens `preferred_name` when present, else whatever adapter is available (never skips solely
+/// because the preferred name is absent) - for question 3's bisection, which measures "this
+/// device's own ceiling" generically (the method, not the Radeon specifically, is what the
+/// orchestrator's packet asked to find): on the owner's own PC this still opens the Radeon
+/// exactly as `on_named_adapter` would; on a CI runner with no Radeon (lavapipe on `linux-gcc`)
+/// it falls back to lavapipe rather than skipping as `gpu` (disallowed there, OQ-089) - CI gate
+/// fix, orchestrator, 2026-11-17.
+void on_preferred_or_any_adapter(const char* preferred_name,
+                                 const std::function<void(const gpu::Context&)>& body) {
+    const auto adapters = gpu::list_adapters();
+    const bool have_preferred = gpu::pick_adapter(preferred_name, adapters).has_value();
+    const char* previous = std::getenv("ANNO_GPU_ADAPTER");
+    const std::string saved = previous != nullptr ? previous : "";
+    if (have_preferred) {
+#if defined(_WIN32)
+        _putenv_s("ANNO_GPU_ADAPTER", preferred_name);
+#else
+        setenv("ANNO_GPU_ADAPTER", preferred_name, 1);
+#endif
+    }
+    auto ctx = gpu::headless_context();
+    if (have_preferred) {
+#if defined(_WIN32)
+        _putenv_s("ANNO_GPU_ADAPTER", saved.c_str());
+#else
+        if (saved.empty()) {
+            unsetenv("ANNO_GPU_ADAPTER");
+        } else {
+            setenv("ANNO_GPU_ADAPTER", saved.c_str(), 1);
+        }
+#endif
+    }
+    if (!ctx) {
+        if (std::getenv("ANNO_REQUIRE_GPU") != nullptr) {
+            FAIL("no GPU device at all (ANNO_REQUIRE_GPU is set): " << ctx.error());
+        }
+        MESSAGE("skipping: no GPU device: " << ctx.error());
+        return;
+    }
+    MESSAGE("adapter " << ctx.value().name
+                       << std::string(have_preferred
+                                          ? ""
+                                          : " (preferred adapter not found; using whatever is "
+                                            "available instead)"));
     body(ctx.value());
     CHECK(ctx.value().errors->load() == 0);
 }
@@ -262,20 +317,25 @@ TEST_CASE("RENDER-DIRECT-1d question 2: DXGI's own DedicatedVideoMemory/Dedicate
 
 TEST_CASE("RENDER-DIRECT-1d question 1: endless02.sze's pair as two SEPARATE per-group "
           "textures, both resident at once, on the Radeon iGPU") {
-    on_named_adapter("Radeon", [&](const gpu::Context& ctx) {
-        const auto dir = anno::test::game_dir();
-        if (!dir) {
-            MESSAGE("skipping: ANNO1503_GAME_DIR not set");
-            return;
-        }
-        const auto file = *dir / "Scenes" / "0011SingleEndlosAddon" / "endless02.sze";
-        std::error_code ec;
-        if (!std::filesystem::exists(file, ec)) {
-            FAIL("missing named scene: " << file.string());
-        }
-        std::deque<std::vector<std::uint8_t>> keep;
-        const render::Scene scene = load_scene_direct(*dir, file, keep);
+    // CI gate fix (orchestrator, 2026-11-17, matching RENDER-DIRECT-1c's own atlas_upload_test.cpp
+    // fix): game_dir() checked before on_named_adapter, so CI's game-file-less runner skips as
+    // the allowed `required-asset` before ever reaching the "no adapter named Radeon" skip
+    // (classified `gpu`, disallowed on linux-gcc) - same order play_gpu_test.cpp's own
+    // play_gpu_matches_cpu uses.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto file = *dir / "Scenes" / "0011SingleEndlosAddon" / "endless02.sze";
+    std::error_code ec;
+    if (!std::filesystem::exists(file, ec)) {
+        FAIL("missing named scene: " << file.string());
+    }
+    std::deque<std::vector<std::uint8_t>> keep;
+    const render::Scene scene = load_scene_direct(*dir, file, keep);
 
+    on_named_adapter("Radeon", [&](const gpu::Context& ctx) {
         // Each group's own upload may itself refuse (a real device outcome, not a bug - see
         // RENDER-DIRECT-1c review F1/F2's own precedent for treating a real, named device
         // refusal as a reportable finding rather than forcing it to "pass"). Every refusal is
@@ -333,8 +393,9 @@ TEST_CASE("RENDER-DIRECT-1d question 1: endless02.sze's pair as two SEPARATE per
 }
 
 TEST_CASE("RENDER-DIRECT-1d question 3: the largest single 2048x2048 texture array that "
-          "allocates on the Radeon iGPU, found by bisecting the layer count") {
-    on_named_adapter("Radeon", [&](const gpu::Context& ctx) {
+          "allocates on the Radeon iGPU (or, if absent, whatever adapter is available), found "
+          "by bisecting the layer count") {
+    on_preferred_or_any_adapter("Radeon", [&](const gpu::Context& ctx) {
         WGPULimits limits = WGPU_LIMITS_INIT;
         wgpuDeviceGetLimits(ctx.device.get(), &limits);
         constexpr std::uint32_t kPageSize = 2048;
@@ -381,20 +442,22 @@ TEST_CASE("RENDER-DIRECT-1d question 3: the largest single 2048x2048 texture arr
 TEST_CASE("RENDER-DIRECT-1d question 4 (orchestrator follow-up): endless02.sze's full pair "
           "split under the single-resource ceiling, both resident and byte-exact, then the "
           "total heap's own stopping point on the Radeon iGPU") {
-    on_named_adapter("Radeon", [&](const gpu::Context& ctx) {
-        const auto dir = anno::test::game_dir();
-        if (!dir) {
-            MESSAGE("skipping: ANNO1503_GAME_DIR not set");
-            return;
-        }
-        const auto file = *dir / "Scenes" / "0011SingleEndlosAddon" / "endless02.sze";
-        std::error_code ec;
-        if (!std::filesystem::exists(file, ec)) {
-            FAIL("missing named scene: " << file.string());
-        }
-        std::deque<std::vector<std::uint8_t>> keep;
-        const render::Scene scene = load_scene_direct(*dir, file, keep);
+    // CI gate fix (orchestrator, 2026-11-17): game_dir() checked before on_named_adapter - see
+    // question 1's own doc comment above.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto file = *dir / "Scenes" / "0011SingleEndlosAddon" / "endless02.sze";
+    std::error_code ec;
+    if (!std::filesystem::exists(file, ec)) {
+        FAIL("missing named scene: " << file.string());
+    }
+    std::deque<std::vector<std::uint8_t>> keep;
+    const render::Scene scene = load_scene_direct(*dir, file, keep);
 
+    on_named_adapter("Radeon", [&](const gpu::Context& ctx) {
         // The same combined 17-layer page set RENDER-DIRECT-1c's worst_pair_scene built: both
         // groups' frames folded into one shared FrameTable/SpriteCache (bench_frame's own
         // collect_static_water_groups, folded here by hand - both groups are wanted regardless

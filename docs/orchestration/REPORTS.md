@@ -14572,3 +14572,52 @@ READY FOR REVIEW.
   any view (pre-existing since R2, noted in 5.4).
 
 READY FOR REVIEW.
+
+## UI-MINIMAP-2 — READY FOR REVIEW (Windows, 2026-11-17)
+
+- Base origin/main `09315620`, packet `11203d0d`, release `1d766083`, branch `task/UI-MINIMAP-2`.
+  Commits `96f735b0` (feat), `b8e706c3` (test), `d1a06be4` (docs), this entry. No `src/sim`,
+  `src/render`, `src/formats` change.
+- Change: in the continuous zoom the magnifier's stages are the built levels' tile widths, then
+  halvings of the narrowest (`kMagnifierStageFactor` 2, the derived levels' own reduction) while
+  wider than the wheel's end, then that end itself (`magnifier_stages`, pure, `minimap.hpp`). The
+  end is `zoom_floor(levels(), zoom_min_tile())` (`zoom.hpp`): the clamp `zoom_target_after`
+  already used, now named, so the magnifier stops exactly where the wheel does (the UI lane
+  accepted the floor instead of `zoom_min_tile()` alone). Built at each press (window size).
+  Stepped zoom unchanged (the original's 0..2 clamp, AnnoFrame `0x10007710` / `0x10007692`).
+  Owner decision 2026-11-17, `ui_6.mp4`. Facts `zoom.target`, `zoom.min_tile` (thousandths of a
+  pixel), `zoom.at_min` (the script grammar cannot compare two facts).
+- Tests: `minimap_test.cpp` "minimap magnifier stages: halvings past level 2, then the wheel's end
+  itself" (several halvings then the exact minimum, a short last hop 4.9, a minimum on a halving,
+  one extra stage, none at or above level 2 / for 0 / -1 / no levels, a one-level list, minus to
+  the end and plus back to level 0, starts between stages); `app_test.cpp` `zoom_floor` checks in
+  "zoom over derived levels". Wiring cases `viewer_wiring_ui_magnifier_range` (continuous, lan5 at
+  1024 x 768: - 20 -> 10 -> 5 -> 2.5 -> ... until nothing changes, `zoom.at_min == 1`; + back to
+  84 and stops; - 42 -> 20 -> 10) and `viewer_wiring_ui_magnifier_range_stepped` (`--zoom-mode
+  stepped`: - stops at 20, + at 84). Both run in the GPU window (`--gpu`, label `gpu`,
+  `RESOURCE_LOCK gpu`): the CPU wiring default is never continuous. They are the first
+  CTest-registered `--gpu` viewer_wiring cases; on the RTX 4090 (Vulkan) about 4 s each.
+- Failure proof (viewer's `stages` reverted to `level_w` locally, `anno1503` rebuilt, not
+  committed): `viewer_wiring_ui_magnifier_range` FAIL `line 23 (expect): zoom.target is '20000',
+  expected == 10000`; a scratch script with the end check alone (15 presses of -, then
+  `expect fact zoom.at_min == 1`) FAIL `zoom.at_min is '0', expected == 1`. Restored and rebuilt:
+  the case passes (`cache/gates/ui-minimap-2-failure-proof.log`, `ui-minimap-2-restored.log`).
+- Gate `run_selected.py` msvc Release, game dir, GOG shots, HE captures, rotation shots, head
+  `d1a06be4`, select `^anno_app_tests\.(minimap|zoom|ui |hud )|^viewer_wiring_ui_minimap|
+  ^viewer_wiring_ui_magnifier|^live_screen_matches_oracle$|^ui_dynamic_draw_check$|
+  ^ui_panels_match_gog$`, required: both magnifier cases, `live_screen_matches_oracle`,
+  `ui_dynamic_draw_check`. `cache/gates/ui-minimap-2-01.log` (sha256 `7b5a4985...7399`):
+  `COUNTS: selected=61 executed=61 failed=0 empty=0 skipped=0 ... incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`. Build without warnings; clang-format 23.1.3 clean on the changed files.
+- NOT_RUN: WSL GCC/Clang warning check, Linux/Mac CI (pushed, not polled), the owner's viewer test
+  (magnifier - until it stops, then the wheel must not go further; + back in).
+
+| Requirement | Positive proof | Negative control | Evidence | Reviewer disposition |
+|---|---|---|---|---|
+| - reaches the wheel's end | `zoom.at_min == 1` (wiring); unit walk to 1.1 | reverted viewer: at_min 0 | gate 01; failure proof | pending |
+| One halving per press, short last hop a stage | unit 1.1 / 1.5 / 4.9 / 5.0 / 14.142; wiring 10000 / 5000 / 2500 | reverted viewer: line 23 FAIL | gate 01; failure proof | pending |
+| + walks back to level 0 | unit walk; wiring 84000, then unchanged | n/a | gate 01 | pending |
+| No extras at or above level 2 | unit 20 / 25 / 0 / -1 | n/a | gate 01 | pending |
+| Stepped keeps the clamp | `viewer_wiring_ui_magnifier_range_stepped` | n/a | gate 01 | pending |
+
+READY FOR REVIEW.

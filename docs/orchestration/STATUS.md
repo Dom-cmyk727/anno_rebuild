@@ -170,6 +170,11 @@ says who is doing what, where the work is, and what it waits on.
   order?", the owner answered "Yes". They run in the UI lane, then UI-RANGE-1. Also, asked "Delete the public
   task branch with the data table after landing, and recreate it clean?", the owner answered "Yes, clean it
   up": `task/BUILDINGS-REF-1` is recreated as one clean commit.
+- **UNITS-REF-1 ACCEPTED** 2026-11-17, head `8a8086e4` (CI 44118907639 attempt 3 green; the first two
+  had no macOS runner): `docs/UNITS.md`, the standing reference for every movable unit. **ISLAND-CROPS-1
+  1b ACCEPTED**, head `1eef2cfb` (CI 44108255131 attempt 3 green):
+  [review](reviews/2026-11-17-island-crops-1b-review.md). It changes the state stream (section bases
+  header 2, islands 2), so it lands after the Mac's full run on its candidate.
 - **UI-BUILDCAT-1 moved ahead of UI-GHOST-1 B** 2026-11-17: during the UI-INFO-2d viewer test the owner
   told the UI lane "the side panel in the construction menu is STILL missing, fix now". It is released on
   `task/UI-BUILDCAT-1` (`443cbd2d`, base `4dfdd9b7`): all eight VIEWBAUTAB tabs with the selected frame, the

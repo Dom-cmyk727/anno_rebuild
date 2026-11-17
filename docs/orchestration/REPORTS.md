@@ -14998,4 +14998,119 @@ extraction only), `gpu_test.cpp` (new case), `bench_frame/main.cpp` (`--atlas-bu
 - `--atlas-build`'s F1/F5 rerun ran alone on this PC, as asked, once the owner's recording was done and the
   orchestrator released the machine.
 
+## RENDER-DIRECT-1c — the resident atlas pages uploaded to the GPU, proven exact by readback and sampling, both adapters — READY FOR REVIEW (task/RENDER-DIRECT-1c, from `origin/task/RENDER-DIRECT-1b` `95a5ace6`, head `cf9e2cc4`)
+
+**The unit.** New `anno_render_gpu` module, `src/render/include/anno/render/atlas_upload.hpp` /
+`src/render/src/atlas_upload.cpp`: opens no device of its own (the caller's `gpu::Context`) and touches no
+`GpuFrame` state - "a new unit, not a change to the chunk compositor" (the packet's own words, confirmed by
+`git diff` against the task base: nothing under `GpuFrame::render`, the chunk build, the viewer, `--png`, or
+any digest changed). `upload_atlas_pages(ctx, pages, budget_bytes)` makes one 2D texture array, RGBA8Unorm
+(matching the existing sprite atlas's format family, `new_atlas`/`gpu.cpp` - never `*Srgb`, `GpuFrame::
+create`'s own "a sRGB target would convert twice" rule), `page_size` x `page_size` x `pages.level0.size()`
+layers, **2 mip levels** written straight from `AtlasPages::level0`/`level1` (no GPU-generated mips - that
+would silently redo RENDER-DIRECT-1b's own box filter, untested against it). Usage `TextureBinding | CopyDst
+| CopySrc` (`CopySrc` for the readback proof).
+
+**The refusal, named not truncated.** `atlas_upload_refusal(layers, page_size, max_array_layers,
+max_dimension_2d, needed_bytes, budget_bytes)` - a pure function, no device, checked against three
+conditions in order (no layers / layer count over `maxTextureArrayLayers` / page size over
+`maxTextureDimension2D` / `atlas_pages_bytes(pages)` over `budget_bytes`); `upload_atlas_pages` reads the
+real device's limits and calls this for the decision, so the decision itself is unit-tested with zero GPU
+(the packet's own acceptance item).
+
+**Which groups: `resident_atlas_groups(adapter_type, zoom_group, group_count)`.** A discrete adapter holds
+every group (ADR 0007 decision 2); any other adapter holds the pair `{zoom_group, zoom_group + 1}`, clamped
+to `group_count - 2` at the top of the range, a single group when `group_count <= 1`. Pure and total, tested
+without a GPU for discrete/integrated/CPU/unknown adapter kinds and `group_count` in {0, 1, 2, 3}.
+**Resolved the orchestrator's review question** (why `zoom_group + 1` and never `zoom_group - 1`): derived
+from `docs/render/iso.md`'s own "Choosing the level" hysteresis mechanism - while the picture is shown on
+group g, the continuous zoom position is bounded so it is always strictly between `tile_w(g)` and
+`tile_w(g + 1)`, never between `tile_w(g)` and `tile_w(g - 1)` (that interval is where the picture has
+already switched to `g - 1`, since the scale on `g` there would exceed `max_upscale`). So `g + 1` is the
+only neighbour `g` can be adjacent to while `g` is the group shown, not an arbitrary pick between two
+equally plausible ones. Full derivation in `docs/render/atlas.md` section 11.
+
+**The placement-to-UV rule: `sample_placement`, realized as `textureLoad`, no sampler.** Every pass in
+`gpu.wgsl` already reads a resident texture with `textureLoad` only, never a filtered sampler
+("textureLoad, never filtered, so cached chunks and sprites stay exact", `gpu.wgsl`'s own comment); no
+`WGPUSampler` object exists anywhere in this codebase. The new shader `src/render/shaders/atlas_upload.wgsl`
+follows that convention: `textureLoad(atlas_tex, origin + floor(pos.xy), layer, level)` at the destination
+pixel's own integer index - exact at every texel, the nearest-sampler-at-texel-centres rule the packet asks
+for, with the rounding ambiguity a true sampler could introduce at a rectangle's edge removed by
+construction.
+
+**Readback (step 2) and sampling (step 3): both proofs, both adapters, by name (`ANNO_GPU_ADAPTER=RTX` /
+the Radeon iGPU, `play_gpu_test.cpp`'s own adapter-pinning pattern reused as `on_named_adapter`).**
+- Synthetic (4 placements - 1x1, odd size, alpha edges, a larger frame): readback and sampling both exact on
+  the 4090 and the Radeon.
+- `data/maps/lan5.txt`'s static+water: every group on the 4090 (3 groups, 1090 placements/pass,
+  **39,966,623 assertions**), the adjacent pair {0,1} on the Radeon (`resident_atlas_groups(IntegratedGPU,
+  0, 3)`, 2 groups, **38,094,953 assertions**) - readback and sampling both exact on both adapters.
+- `Scenes/0010SingleEndlos/02_1024_easy_128.sze` groups 0+1 (the worst adjacent pair, 340 MiB,
+  RENDER-DIRECT-1b review F5's own finding), readback only (the packet names this dataset for step 2, not
+  step 3): exact on both adapters.
+
+`ctx.errors` checked at 0 after every case. Neither adapter needed `ANNO_REQUIRE_GPU` - both were present
+and opened cleanly throughout.
+
+**Step 4, measured on the orchestrator's quiet-PC slot (confirmed idle first: no `check_unix_warnings`/
+`cc1plus`/`clang` in WSL, no `cl.exe`/`ctest`/`cmake`/`anno_*`/`MSBuild` on Windows), `msvc` Release,
+`ANNO1503_GAME_DIR` set, both real adapters by name:**
+
+| Scene | Adapter | Groups resident | Layers | VRAM (upload only) | Upload (fenced) | Readback |
+|---|---|---|---|---|---|---|
+| lan5.txt | RTX 4090 (all 3) | 0,1,2 | 10 | 200.0 MiB | 22.74 ms | 117.02 ms |
+| lan5.txt | Radeon iGPU (adjacent pair) | 0,1 | 9 | 180.0 MiB | 78.18 ms | 70.12 ms |
+| 02_1024_easy_128.sze worst pair | RTX 4090 | 0,1 (separate) | 1+1 | 40.0 MiB | 4.62 ms | 11.65 ms |
+| 02_1024_easy_128.sze worst pair | Radeon iGPU | 0,1 (separate) | 1+1 | 40.0 MiB | 2.76 ms | 16.75 ms |
+
+Per-layer VRAM (20,971,520 B at `page_size = 2048`) matches `atlas_pages_bytes`'s own formula exactly - no
+device-vs-formula discrepancy to account for. The Radeon's upload is slower than the 4090's on the largest
+group (74.77 ms vs. 16.63 ms, 7 layers) - expected for an integrated part without the 4090's discrete memory
+bandwidth; its readback is faster on that same group (56.52 ms vs. 98.96 ms), plausibly because `mapAsync`
+over its unified-memory heap skips the 4090's discrete-VRAM copy-back (not investigated further - a wall-
+time observation, not a correctness claim). Neither adapter's `maxTextureArrayLayers`/`maxTextureDimension2D`
+binds at these layer counts. Full tables in `docs/render/atlas.md` section 11 and `docs/perf/README.md`.
+
+**No render-path or draw-call change.** Touched: `atlas_upload.hpp`/`.cpp` (new, `anno_render_gpu`),
+`atlas_upload.wgsl` (new shader), `atlas_upload_test.cpp` (new, `anno_render_gpu_tests`), one `shaders.hpp`/
+`CMakeLists.txt` embed-text entry (`anno_embed_text`, following `gpu.wgsl`/`fluid.wgsl`'s own pattern), docs.
+Nothing under `GpuFrame::render`, the chunk build, the viewer, `--png`, or any digest changed; the existing
+GPU test suite (127 pre-existing cases) passed unchanged alongside the new ones.
+
+**Decisions and reasoning.**
+- Extracted `atlas_upload_refusal` as a separate pure function from `upload_atlas_pages` (which needs a
+  device for `wgpuDeviceGetLimits`) specifically so the refusal decision is unit-tested with zero GPU - the
+  packet's own acceptance item, not achievable if the check stayed inline in the device-reading function.
+- Reused `play_gpu_test.cpp`'s adapter-pinning pattern (`on_named_adapter`: pin by name, skip if absent, fail
+  only under `ANNO_REQUIRE_GPU`) rather than inventing a second one.
+- No `WGPUSampler` object introduced: `sample_placement` realizes "nearest sampler, texel centres" as an
+  exact `textureLoad`, following the codebase's existing textureLoad-only convention rather than being the
+  first caller to add a sampler.
+- Resolved the orchestrator's pair-neighbour question from first principles (`iso.md`'s own hysteresis
+  bound), not by picking a plausible-sounding default - `g + 1` is provably the only neighbour possible
+  while `g` is shown, not a 50/50 guess between `g - 1` and `g + 1`.
+- No change to `GpuFrame::render` or any existing shader: the new shader module and the new C++ unit are
+  additive, so the existing 127-case suite needed no update to accommodate this task, only to keep passing.
+- No guesses went to `open-questions.md`: every design choice here traces either to the packet text itself
+  or to existing codebase/doc evidence (`iso.md`, `gpu.wgsl`'s own comment, `GpuFrame::create`'s own sRGB
+  rule, `play_gpu_test.cpp`'s own pinning pattern) - none of it is a genuine open question.
+
+**Gates.**
+- clang-format 23.1.3: clean on every touched file (one self-inflicted mishap during development - running
+  clang-format over `src/render/CMakeLists.txt` by accident mangled it into pseudo-C++ formatting; caught via
+  the disk-change diff, `git checkout`-reverted, both intended edits redone by hand with `Edit`, not
+  reformatted again).
+- WSL GCC 13 / Clang 18 `-Werror`, whole tree, all four configurations (GCC/Clang, viewer+GPU on and off):
+  clean.
+- `anno_render_gpu_tests`, native MSVC Release, `ANNO_GPU_ADAPTER=RTX`, full suite: **129/129 test cases,
+  80,512,304/80,512,304 assertions, 0 failed**, adapter named throughout ("NVIDIA GeForce RTX 4090
+  (Vulkan)").
+- `anno_render_gpu_tests`, native MSVC Release, every Radeon-named case (`--test-case=*Radeon*`, default
+  adapter selection): **4/4 test cases, 38,095,006/38,095,006 assertions, 0 failed**, adapter named
+  throughout ("AMD Radeon(TM) Graphics (Vulkan)").
+- Step 4's two measurement cases ran alone, as asked: the shared PC was checked idle first (recorded above),
+  the orchestrator was told once each check and once the run was done.
+- CI preflight (`python -I tools/test/run_selected.py --preflight-only`, the exact CI step): PASS.
+
 READY FOR REVIEW.

@@ -4,7 +4,7 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-16, by the Claude Code orchestrator:
+**Last updated:** 2026-11-17, by the Claude Code orchestrator:
 - **`main` is `ac02d4a2`** (2026-11-16, evening): the minimap (UI-MINIMAP-1), FISHER-RE-4 and ANNOSCENE-ORE-1
   landed together on the owner's OK, the second landing under the evidence split below. The next full game-file
   run on the Windows PC is due 2026-11-17.
@@ -16,6 +16,19 @@ says who is doing what, where the work is, and what it waits on.
   full run is requested (the owner pastes the prompt); not landed yet.
   **The owner, 2026-11-16:** GATE-MAC-1 (`d4f2e592`) and UNIX-WARN-1 (`841af180`, once its CI is green) "land
   with the next one": the candidate `784b5a27` stays as it is, and the two go into the following candidate.
+- **Landing candidate `945c3216`** (tree `0dce3018`), **stacked on `784b5a27`**: GATE-MAC-1 `d4f2e592`,
+  UNIX-WARN-1 `841af180`, ZOOM-SMOOTH-3 `c552c193` and the bounce branch `0a2f0240` (ZOOM-BOUNCE-1 to 3 and
+  TRACE-COLS-1), each with CI green on its reviewed head. **The owner, 2026-11-17:** asked whether both zoom
+  branches join the next candidate with the Metal and warning fixes, "yes both". One conflict, in
+  `src/app/src/viewer.cpp`: both sides' helpers kept (ZOOM-SMOOTH-2's live-resize trace and move fallback,
+  ZOOM-SMOOTH-3's GPU-only `hitch_tracking_enabled`). Fetchable as `refs/candidates/zoom-diag`. The Windows
+  PC's part (GPU tests on the RTX 4090, the app lanes, the window-trace contract, the WSL warning check) is
+  running. The Mac's one full run on `945c3216` covers both candidates. They land in order, `784b5a27` first.
+- **The owner decided OQ-096 and OQ-096b** 2026-11-17. Asked "Raise it to 384 MiB, one mipmap level on both
+  cards (my recommendation)", against keeping 256 MiB with no mips on the iGPU or deciding on a build, the
+  owner answered "your recommendation". So `atlas_budget_mb` defaults to 512 MiB discrete and 384 MiB
+  integrated, and the direct renderer's static and water atlas has one mip level with 2 px padding on both
+  adapters. The Windows executor records it on `task/RENDER-DIRECT-1a`; RENDER-DIRECT-1b is written on it.
 - **What is left and who does what next:** [remaining-work-2026-11-16.md](remaining-work-2026-11-16.md)
   (2026-11-16, the owner's request): a research agent read the repository and every document; the
   orchestrator checked its plan, changed the order to the LAN target's critical path, and assigned first lists

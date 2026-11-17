@@ -1,0 +1,146 @@
+# UI-TABS-1 stage A: the sub-tabs of the right panel's three views (docs/re/ui.md 5.4), at
+# 1024 x 768. `hud.view` / `hud.subtab` are the view showing and its sub-tab, `ui.tab` the panel
+# that sub-tab draws (hud.txt `body`). The columns sit at x 762..803, sub-tab k at y 303 + 46 k,
+# 46 high (centres x 783, y 326 + 46 k). Start: the player overview (hud_idle_running). The bust
+# from the overview changes nothing; a sub-tab press selects it (View.dll 0x1007f730 -> 0x1007f600),
+# also the selected one (no change); sub-tab 0 brings the overview back. Keys S, C, D: player
+# sub-tabs 3, 2, 1 (AnnoFrame.dll 0x1000bfc4). "?" with its eight sub-tabs, the gears with five.
+# Each view keeps its sub-tab while another shows (a main tab re-shows it; key O likewise); Esc on
+# the construction grid gives the overview (View.dll 0x100333e3).
+# Launch: --play data/maps/lan5.txt --construction-menu on --layout data/ui
+resize 1024 768
+wait frames 5
+look 1140 516
+expect fact hud.view == player
+expect fact hud.subtab == 0
+expect fact ui.tab == player
+click_px 870 212
+wait frames 3
+expect fact hud.view == player
+expect fact hud.subtab == 0
+expect fact ui.tab == player
+click_px 783 372
+wait frames 3
+expect fact hud.subtab == 1
+expect fact ui.tab == player_list
+click_px 783 326
+wait frames 3
+expect fact hud.subtab == 0
+expect fact ui.tab == player
+click_px 783 418
+wait frames 3
+expect fact hud.subtab == 2
+expect fact ui.tab == player_cities
+click_px 783 464
+wait frames 3
+expect fact hud.subtab == 3
+expect fact ui.tab == player_ships
+click_px 783 510
+wait frames 3
+expect fact hud.subtab == 4
+expect fact ui.tab == player_ships_buy
+click_px 783 510
+wait frames 3
+expect fact hud.subtab == 4
+expect fact selection.clicks == 0
+key s
+wait frames 3
+expect fact hud.view == player
+expect fact hud.subtab == 3
+key c
+wait frames 3
+expect fact hud.subtab == 2
+key d
+wait frames 3
+expect fact hud.subtab == 1
+expect fact ui.tab == player_list
+click_px 931 212
+wait frames 3
+expect fact hud.view == info
+expect fact hud.subtab == 0
+expect fact ui.tab == info
+click_px 783 372
+wait frames 3
+expect fact hud.subtab == 1
+expect fact ui.tab == info_tab_1
+click_px 783 418
+wait frames 3
+expect fact hud.subtab == 2
+click_px 783 464
+wait frames 3
+expect fact hud.subtab == 3
+click_px 783 510
+wait frames 3
+expect fact hud.subtab == 4
+click_px 783 556
+wait frames 3
+expect fact hud.subtab == 5
+click_px 783 602
+wait frames 3
+expect fact hud.subtab == 6
+click_px 783 648
+wait frames 3
+expect fact hud.subtab == 7
+expect fact ui.tab == info_tab_7
+click_px 783 326
+wait frames 3
+expect fact hud.subtab == 0
+expect fact ui.tab == info
+click_px 783 648
+wait frames 3
+expect fact hud.subtab == 7
+click_px 870 212
+wait frames 3
+expect fact hud.view == player
+expect fact hud.subtab == 1
+click_px 931 212
+wait frames 3
+expect fact hud.view == info
+expect fact hud.subtab == 7
+click_px 992 212
+wait frames 3
+expect fact hud.view == options
+expect fact hud.subtab == 0
+expect fact ui.tab == main_menu
+click_px 783 372
+wait frames 3
+expect fact hud.subtab == 1
+expect fact ui.tab == options_load
+click_px 783 418
+wait frames 3
+expect fact hud.subtab == 2
+expect fact ui.tab == options_save
+click_px 783 464
+wait frames 3
+expect fact hud.subtab == 3
+expect fact ui.tab == options_music
+click_px 783 510
+wait frames 3
+expect fact hud.subtab == 4
+expect fact ui.tab == options_speech
+click_px 783 326
+wait frames 3
+expect fact hud.subtab == 0
+expect fact ui.tab == main_menu
+click_px 783 510
+wait frames 3
+expect fact hud.subtab == 4
+key d
+wait frames 3
+expect fact hud.view == player
+expect fact hud.subtab == 1
+key o
+wait frames 3
+expect fact hud.view == options
+expect fact hud.subtab == 4
+expect fact ui.tab == options_speech
+click_px 809 212
+wait frames 3
+expect fact ui.tab == construction
+key esc
+wait frames 3
+expect fact ui.tab == player
+expect fact hud.view == player
+expect fact hud.subtab == 0
+expect fact selection.clicks == 0
+quit

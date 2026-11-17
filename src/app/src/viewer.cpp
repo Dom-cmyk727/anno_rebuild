@@ -20,6 +20,7 @@
 #include <anno/app/dev_feedback.hpp>
 #include <anno/app/dev_script.hpp>
 #include <anno/app/frame_projection.hpp>
+#include <anno/app/hud_tabs.hpp>
 #include <anno/app/live_resize.hpp>
 #include <anno/app/png.hpp>
 #include <anno/app/sdl_input.hpp>
@@ -402,6 +403,11 @@ class Viewer {
         }
         if (construction_menu_ != nullptr) {
             construction_tex_cache_.emplace(construction_game_dir_);
+            if (auto views = hud_views(construction_menu_->hud()); views.ok()) {
+                hud_tabs_.emplace(std::move(views.value()));
+            } else {
+                std::fprintf(stderr, "[ui] %s\n", views.error().c_str());
+            }
             ui_scale_ = hooks->ui_scale;
             ui_rule_.ref_w = construction_menu_->hud().resolution_w;
             ui_rule_.ref_h = construction_menu_->hud().resolution_h;
@@ -797,17 +803,24 @@ class Viewer {
     /// UI-PLACE-2: the held Esc whose first press the menu took: its auto-repeats are swallowed,
     /// so holding Esc never steps further back, nor quits the window once the menu has closed.
     bool construction_escape_held_ = false;
-    /// UI-WINDOW-1 fix round R2: the panel the right chrome shows while the construction menu is
-    /// closed (UiMockScreen: Hud = the player overview, the start state; PlayerList; Info;
-    /// MainMenu), and the switch to one of them (closing the construction menu first).
-    UiMockScreen hud_screen_ = UiMockScreen::Hud;
+    /// UI-TABS-1: the view the right chrome shows while the construction menu is closed and the
+    /// sub-tab each view shows (hud_tabs.hpp; docs/re/ui.md 5.4), built from hud.txt; empty when
+    /// there is no HUD layout or its views do not parse (the error is printed once).
+    std::optional<HudTabs> hud_tabs_;
     /// Whether the last frame drew the status bar's city counters (the `hud.counters` fact, R2).
     bool hud_counters_shown_ = false;
     /// And which city they showed (the `hud.counters.city` fact, fix round R4).
     std::optional<sim::CityRef> hud_counters_city_;
     /// Whether any frame drew the HUD yet (the fact says "not drawn" until then, R4).
     bool hud_counters_drawn_ = false;
-    void select_hud_tab(UiMockScreen screen);
+    /// Shows view `view` at the sub-tab it showed last (a main-tab press), closing the
+    /// construction menu first.
+    void select_hud_view(const std::string& view);
+    /// UI-TABS-1: a key press in the classic surface: a sub-tab key (D, S, C) or a view key (O)
+    /// from hud.txt; closes the construction menu first. Whether it was one.
+    bool hud_key(char c);
+    /// The sub-tab of the showing view under reference pixel (px, py), if any.
+    [[nodiscard]] std::optional<int> hud_subtab_at(double px, double py) const;
     /// UI-WINDOW-1: the UI scale setting (ViewerHooks::ui_scale; nullopt = the original 1:1) and
     /// the layer's placement for the current drawable size (ui_transform.hpp).
     std::optional<float> ui_scale_;
@@ -1827,11 +1840,46 @@ void Viewer::opening_apply(const UiResult& result) {
     dirty_ = true;
 }
 
-void Viewer::select_hud_tab(UiMockScreen screen) {
+void Viewer::select_hud_view(const std::string& view) {
     if (construction_menu_open_) {
         construction_close();
     }
-    hud_screen_ = screen;
+    if (hud_tabs_) {
+        hud_tabs_->show(view);
+    }
+}
+
+bool Viewer::hud_key(char c) {
+    if (!hud_tabs_) {
+        return false;
+    }
+    // A key changes the state only when hud.txt binds it; the construction menu closes then, as
+    // a main-tab switch closes it (View.dll 0x100335d0 hides every main view first).
+    HudTabs next = *hud_tabs_;
+    if (!next.key(c)) {
+        return false;
+    }
+    if (construction_menu_open_) {
+        construction_close();
+    }
+    hud_tabs_ = std::move(next);
+    return true;
+}
+
+std::optional<int> Viewer::hud_subtab_at(double px, double py) const {
+    if (!hud_tabs_ || construction_menu_ == nullptr) {
+        return std::nullopt;
+    }
+    const auto& subtabs = hud_tabs_->view().subtabs;
+    for (std::size_t k = 0; k < subtabs.size(); ++k) {
+        const UiElement* e = construction_menu_->hud().element(subtabs[k].element);
+        if (e != nullptr && e->has_pos && e->has_size && px >= e->pos_x &&
+            px < e->pos_x + static_cast<double>(e->size_w) && py >= e->pos_y &&
+            py < e->pos_y + static_cast<double>(e->size_h)) {
+            return static_cast<int>(k);
+        }
+    }
+    return std::nullopt;
 }
 
 void Viewer::disarm_tool() {
@@ -1871,9 +1919,12 @@ void Viewer::construction_step_back() {
     // The grid, with a building armed after the cancel-X or nothing armed: the menu closes and
     // the building is put away with it (p3_after_x_esc, p4_armed_demolish_esc2, p2_esc2); the
     // panel shows the player overview, also when the menu was opened from another tab
-    // (p4_help_b_esc).
+    // (p4_help_b_esc). UI-TABS-1: the overview is the player view at sub-tab 0 whatever it
+    // showed before (AnnoFrame.dll 0x1000bd43 -> View.dll 0x100333e3, docs/re/ui.md 5.4).
     construction_close();
-    hud_screen_ = UiMockScreen::Hud;
+    if (hud_tabs_) {
+        hud_tabs_->overview();
+    }
 }
 
 void Viewer::construction_right_click(bool on_chrome) {
@@ -1882,7 +1933,9 @@ void Viewer::construction_right_click(bool on_chrome) {
         // nothing armed; with a building armed or the demolish mode on it is put away with it -
         // not captured, the same as ESC on the grid), to the player overview (p5_right_on_cell).
         construction_close();
-        hud_screen_ = UiMockScreen::Hud;
+        if (hud_tabs_) {
+            hud_tabs_->overview();
+        }
         return;
     }
     // On the map, or on the info panel: whatever the pointer carries is put away at once (an
@@ -1924,17 +1977,13 @@ bool Viewer::construction_handle(const SDL_Event& e) {
             construction_placement_open_ = false;
             return true;
         }
-        // UI-WINDOW-1 fix round R2: key D opens the player tab's list and key O the main menu,
-        // as their tabs do (docs/re/ui.md section 1 rows 8 and 9: r2_player_menu and the
-        // military tab show the same panel; key O and the gears tab the same options).
-        // Only in the classic surface: `--ui dev` keeps D as a pan key (ADR 0004 R2).
+        // UI-TABS-1: the keys hud.txt binds to a view or a sub-tab (D the player view's diplomacy
+        // status, C its city list, S its ship list, O the options view; AnnoFrame.dll key switch
+        // 0x1000bfc4, docs/re/ui.md 5.4). Only in the classic surface: `--ui dev` keeps D and S
+        // as pan keys (ADR 0004 R2).
         const bool classic = hooks_ != nullptr && hooks_->ui == UiSurface::Classic;
-        if (classic && e.key.key == SDLK_D) {
-            select_hud_tab(UiMockScreen::PlayerList);
-            return true;
-        }
-        if (classic && e.key.key == SDLK_O) {
-            select_hud_tab(UiMockScreen::MainMenu);
+        if (classic && e.key.key >= SDLK_A && e.key.key <= SDLK_Z &&
+            hud_key(static_cast<char>('A' + (e.key.key - SDLK_A)))) {
             return true;
         }
         return false;
@@ -2006,11 +2055,10 @@ bool Viewer::construction_handle(const SDL_Event& e) {
         return true;
     }
     // UI-WINDOW-1 fix round R2: the four tabs are switches (docs/re/ui.md 5.3): construction
-    // opens the construction menu (as key B), the bust the player list (as key D), "?" the info
-    // panel, the gears the main menu (as key O). A click on the tab already selected changes
-    // nothing, except the bust from the overview, which opens the list (shot r2_player_menu); a
-    // second bust click is OQ-621. Leaving the construction menu for another tab turns an armed
-    // tool off.
+    // opens the construction menu (as key B). UI-TABS-1 (docs/re/ui.md 5.4): the bust, "?" and
+    // the gears show their view (hud.txt `view`) at the sub-tab it showed last (View.dll
+    // 0x10034ab0 -> 0x100335d0); a press on the tab already selected changes nothing. Leaving
+    // the construction menu for another tab turns an armed tool off.
     const auto inside_tab = [&](const char* name) {
         const UiElement* tab = construction_menu_->hud().element(name);
         return tab != nullptr && tab->has_pos && tab->has_size && px >= tab->pos_x &&
@@ -2025,20 +2073,21 @@ bool Viewer::construction_handle(const SDL_Event& e) {
         }
         return true;
     }
-    if (inside_tab("tab_military")) {
-        select_hud_tab(UiMockScreen::PlayerList);
-        return true;
-    }
-    if (inside_tab("tab_help")) {
-        select_hud_tab(UiMockScreen::Info);
-        return true;
-    }
-    if (inside_tab("tab_options")) {
-        select_hud_tab(UiMockScreen::MainMenu);
-        return true;
+    if (hud_tabs_) {
+        for (const HudView& v : hud_tabs_->views()) {
+            if (inside_tab(v.main_tab.c_str())) {
+                select_hud_view(v.name);
+                return true;
+            }
+        }
     }
     if (!construction_menu_open_) {
-        return true; // chrome without the menu showing: taken, nothing to resolve
+        // UI-TABS-1: a press on a sub-tab of the showing view selects it, on the press as the
+        // main tabs (handlers View.dll 0x1007f730, 0x1006b070, 0x100786a0; docs/re/ui.md 5.4).
+        if (const auto k = hud_subtab_at(px, py)) {
+            hud_tabs_->select(*k);
+        }
+        return true; // chrome without the menu showing: taken, nothing more to resolve
     }
     const auto snapshot = play_->runner().snapshot();
     const auto result =
@@ -2261,7 +2310,7 @@ UiHit Viewer::ui_hit_at(double px, double py) const {
         return {};
     }
     const HudLayout& hud = construction_menu_->hud();
-    const char* panel = construction_menu_open_ ? nullptr : ui_panel_group(hud_screen_);
+    const char* panel = construction_menu_open_ || !hud_tabs_ ? nullptr : hud_tabs_->body().c_str();
     // UI-MINIMAP-1 C: the minimap's click area, where the minimap is drawn (minimap_overlay).
     std::optional<UiRect> minimap;
     if (minimap_ && construction_tex_cache_ != std::nullopt) {
@@ -3021,11 +3070,15 @@ void Viewer::script_tick() {
                                         ? std::to_string(hud_counters_city_->island.v) + ":" +
                                               std::to_string(hud_counters_city_->city.v)
                                         : std::string("none");
-    st.facts["ui.tab"] = construction_menu_open_                   ? "construction"
-                         : hud_screen_ == UiMockScreen::PlayerList ? "player_list"
-                         : hud_screen_ == UiMockScreen::Info       ? "info"
-                         : hud_screen_ == UiMockScreen::MainMenu   ? "main_menu"
-                                                                   : "player";
+    // UI-TABS-1: `ui.tab` is the construction menu or the panel the showing sub-tab draws
+    // (hud.txt `body`: player, player_list, info, main_menu, or a placeholder's name); `hud.view`
+    // and `hud.subtab` the view showing and its sub-tab (also behind the construction menu;
+    // "none" without a HUD layout).
+    st.facts["ui.tab"] = construction_menu_open_ ? std::string("construction")
+                         : hud_tabs_             ? hud_tabs_->body()
+                                                 : std::string("none");
+    st.facts["hud.view"] = hud_tabs_ ? hud_tabs_->view().name : std::string("none");
+    st.facts["hud.subtab"] = hud_tabs_ ? std::to_string(hud_tabs_->subtab()) : std::string("none");
     // UI-INFO-2: the rotation the info panel's preview shows (DevInput's, the one the keys and
     // the rotate arrows turn), and the turn the map ghost is drawn and a click builds at
     // (DevTool::turn: the same, or the coast's turn for a coast kind such as the Kontor).
@@ -3900,9 +3953,12 @@ std::optional<sim::TileXY> Viewer::centre_tile() const {
 }
 
 Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
-    const UiMockSpec spec = construction_menu_open_ ? UiMockSpec{UiMockScreen::Construction,
-                                                                 construction_open_category_}
-                                                    : UiMockSpec{hud_screen_, ""};
+    UiMockSpec spec;
+    if (construction_menu_open_) {
+        spec = UiMockSpec{UiMockScreen::Construction, construction_open_category_, "", 0};
+    } else if (hud_tabs_) {
+        spec = UiMockSpec{UiMockScreen::Hud, "", hud_tabs_->view().name, hud_tabs_->subtab()};
+    }
     const auto snapshot = play_ != nullptr ? play_->runner().snapshot() : nullptr;
     // H2: the live numbers (goods_tools_ etc. resolved once, constructor; this file's own member
     // comment). Goods are 8.8 fixed-point tons (PlaySnapshot::goods's own doc comment) - sim::kTon

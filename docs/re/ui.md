@@ -735,6 +735,58 @@ two big backgrounds); `tools/test/ui_panels_compare.py` checks them. Names, figu
 the diplomacy cluster and the info emblem are not drawn (UI-TABS-1). Unproven parts (a second
 click on a tab, Esc's return, the list background, the crest per player): OQ-621.
 
+**Corrected by section 5.4 (UI-TABS-1, 2026-11-16):** the exception above does not hold. The
+bust shows the player view at the sub-tab it showed last (code read below); `r2_tab_military` shows
+the list because the runner had pressed key D before it (`actions.jsonl` of run
+`d91-20261030-112532`: O, Esc, D, Esc, "?", Esc, bust).
+
+### 5.4 The sub-tabs (UI-TABS-1, 2026-11-16)
+
+Each of the three panel views (the bust's player view, the "?" tab's city view, the gears' options
+view) has a column of sub-tabs left of the panel, x 762, sub-tab k at y 303 + 46k, 42 x 46. Code:
+GOG 2.0.0.5, static disassembly (pefile/capstone). Frames: `fenster.inc` line 1 (P). Shots: GOG
+Wine runner (`cache/orig/ui-1/shots`), exact = fraction of the frame's opaque pixels within 2 of
+the shot after the RGB565 reduction, idle / selected frame at each position. History Edition:
+`HE_UI_1.mp4` (owner's run), sub-tab crops compared with ours at UI scale 1.0 scaled to the video
+(0.75): mean abs per channel against our selected / idle frame.
+
+| Fact | Evidence | Confidence |
+|---|---|---|
+| Player view: 5 sub-tabs, `VIEWINFOPIELERTAB` idle 1184 + 2k, selected 1185 + 2k | builder View.dll `0x1007f428..0x1007f507` (`cmp esi, 5` at `0x1007f504`; image property `0x198` = base + 2k, `0x197` = 1); ACCESS `VIEWINFOPIELERTAB,1184`, next name at 1194 | D, P |
+| City view ("?"): 8 sub-tabs, `VIEWINFOSTADTTAB` idle 661 + 2k, selected 662 + 2k | builder `0x1006ac92..0x1006adc0` (`cmp esi, 8` at `0x1006adb9`, `0x198` = base + 2k); ACCESS `VIEWINFOSTADTTAB,661`, next 677 | D, P |
+| Options view: 5 sub-tabs, `OPTION_TABS` idle 1476 + 2k, selected 1477 + 2k | ACCESS `OPTION_TABS,1476`, next 1486; `TOOLTIP:OPTION` 0..4 (`ui-options-mainmenu.md` 2.6) | P |
+| A sub-tab press selects it: the handler reads the column's index (property `0x1b3`), stores it at `[view+0x5f0]`, sends message 1 to that page, hides every page and the column, adds the page and then the column on top | player `0x1007f730` -> `0x1007f600`; city `0x1006b070` -> `0x1006af30`; options `0x100786a0` -> `0x100784c0` (also sets the banner text to the page's line, `0x100784f4..0x10078523`) | D |
+| A press on the selected sub-tab shows the same page again (no compare with the current index) | the three handlers above | D |
+| Before switching, the player handler sends message 6 to page 1, the city handler to pages 2 and 3 | `0x1007f62a`, `0x1006af5e`, `0x1006af75`; meaning not read (OQ-643) | D / U |
+| The views are persistent children of the HUD; a main-tab press shows a view again with its column's last selection | main-tab handler `0x10034ab0` -> `0x100335d0`(i): `[hud+0x5f0]` = i, page = vfunc `+0x20`(0xa00, i) = `[hud+0x5e4][i]` (`0x100194c0`), message 1; player view message 1 -> `0x1007f600` (`0x1007e9c0`, `dec eax; je`); city view message 1 -> `0x1006af30` (`0x1006a439..0x1006a44e`); options message 1 only the base handler (`0x100787f0`), its last page stays attached | D |
+| ... the options view kept the speech page when key O was pressed later | GOG `f15_key_O` (after `f15_options_y510` and three more clicks): OPTION_TABS 4 selected, exact 1.00 | M-GOG, high |
+| Start state: every view at sub-tab 0 | `hud_idle_running` player 0 selected (1.00); `r2_tab_help` city 0; `r2_options` options 0; HE 44.5 s player 0 (11.4 vs 31.4), 107.75 s options 0 (11.0 vs 30.8) | M-GOG, M-HE, high |
+| Keys (lower case, the frame's key switch): d -> HUD message 0x10 param 5, s -> 6, c -> 7, o -> 9, b -> 8 | AnnoFrame.dll `0x1000bfc4` (table `0x1000c548` / `0x1000c4e8`): 'd' `0x1000c210`, 's' `0x1000c279`, 'c' `0x1000c29c`, 'o' `0x1000c1ed`, 'b' `0x1000c233` | D |
+| Params 4..7 show the player view and forward the param, which selects sub-tab 0, 1, 3, 2 | HUD `0x10033260` (table `0x10033590`: 4..7 -> `0x10033456`/`0x10033485`: main tab 1, then message 0x10 to the player view); player view `0x1007e9c0`, table `0x1007ea3c`: 4 -> `0x1007e9e6` (0), 5 -> `0x1007e9f1` (1), 6 -> `0x1007e9fc` (3), 7 -> `0x1007ea07` (2), via `0x1007eaf0` (sets `0x1b3`, switches) | D |
+| ... so D = diplomacy status (1), C = city list (2), S = ship list (3) | GOG `f15_player_menu` (D) 1 selected 1.00, `f15_city_list` (C) 2 1.00, `f15_ship_list` (S) 3 1.00; tab order `TOOLTIP:SPIELERINFOMAIN_TAB_ADDON` (`ui-ships-diplomacy.md` 2.9) | D, M-GOG, high |
+| Param 9 (o) shows the options view with its last page; param 3 the "?" view | `0x1003353f`, `0x10033423` | D |
+| Esc (VK 0x1b) sends param 2; with the construction tab showing and no panel flag, nothing selected: param 4 = the player view at sub-tab 0; something selected: param 3 = "?" | AnnoFrame `0x1000bd18..0x1000bd51`; View `0x1003334c..0x100333ed` | D (selection branch not modelled, OQ-643) |
+| Player view pages: 0 overview (`SPIELER_BILANZ_BK` its own: 0.94 exact on `hud_idle_running`, 0.01 on the list shots), 1 diplomacy status, 2 city list, 3 ship list, 4 ships for purchase; the crest is the view's (1.00 on `f15_ship_list`, `f15_city_list`) | GOG shots; `TOOLTIP:SPIELERINFOMAIN_TAB_ADDON` | M-GOG |
+| Options pages 1-4: the main page's icons are page 0's (0.00-0.03 elsewhere); `OPTION_BACKGROUND` 0.18-0.36 exact under them | `f15_options_y360..y510` | M-GOG, medium (OQ-644) |
+| HE: one selected sub-tab at our position in every frame sampled | player 104.5 s -> 3 (14.3 vs 27.1), 139.0 s -> 1, 141.2 s -> 2, 142.5 s -> 4; options 108.9 s -> 1, 110.5 s -> 2, 111.75 s -> 3, 112.3 s -> 4, 113.75 s -> 0 (back to the main page); margin 12-17 per channel at every tab | M-HE, high |
+| HE: the bust at 01:44.25 showed the ship list although the player view last showed the overview | `HE_UI_1.mp4` 44.0-46.0 s (overview), 104.25 s (ship list) | M-HE; contradicts a pure "last sub-tab" rule: OQ-641 |
+| HE: "?" with nothing selected shows only the castle background | `HE_UI_1.mp4` 50.0 s, 142.75 s | M-HE (OQ-642) |
+
+**Rebuild (UI-TABS-1 stage A).** `data/ui/hud.txt`: `view` on the three main tabs, `view`,
+`subtab`, `body`, `frame_idle`, `frame_selected` (and `hotkey` D, C, S) on each sub-tab, `hotkey O`
+on the gears; the counts are the sub-tab elements. `src/app` `hud_tabs.hpp`: the view showing and
+one sub-tab per view; a main-tab press or key O shows a view at its last sub-tab, a sub-tab press
+selects it (on the press), D/C/S show the player view at 1/2/3 (classic surface only), Esc on the
+construction grid (and the right click there) gives the player view at 0. Both UI paths draw the
+selected sub-tab's frame, the others idle, and the selected sub-tab's `body`: player 0 `player`,
+1 `player_list`, city 0 `info`, options 0 `main_menu` (unchanged panels); the other pages are
+named placeholders (column, crest, and in the options view `OPTION_BACKGROUND`; OQ-644). Facts:
+`hud.view`, `hud.subtab`, `ui.tab` (= the body). Checks: `hud_tabs_test.cpp`,
+`tools/test/viewer_wiring/ui_subtabs.script`, `tools/test/ui_subtabs_compare.py` (the GPU layer's
+composer against the GOG shots above, the window's CPU path against the composer, exact). Not
+built: the pages' bodies (the panel packets), tooltips, the header plank with the view's name
+(not drawn on any view's page since R2), the "?" view's selection-dependent content (OQ-642).
+
 ## 6. `data/ui/` layout format
 
 Documented in [`data/ui/README.md`](../../data/ui/README.md). Derived facts only: ids, coordinates, sizes, file names, ACCESS names, frame/segment indices, `Texte.dat` section+index, Anlagen type ids, hotkey codes. No pixels, no English/German UI strings, no screenshots.

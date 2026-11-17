@@ -3,6 +3,7 @@
 #include <fstream>
 #include <map>
 
+#include <anno/app/hud_tabs.hpp>
 #include <anno/app/ui_mock.hpp>
 #include <anno/assets/building.hpp>
 #include <anno/assets/text.hpp>
@@ -647,64 +648,59 @@ void draw_column_filler(TexCache& cache, const HudLayout& hud, const UiPlacement
     blit(*picture, x, picture_y);
 }
 
-/// UI-WINDOW-1 fix round R2: which of the four tabs (hud.txt `tab_*`) is selected on a screen
-/// kind, and which `panel` group of hud.txt elements its right-chrome panel draws.
-const char* selected_tab(UiMockScreen kind) {
-    switch (kind) {
-    case UiMockScreen::Construction:
+/// UI-WINDOW-1 fix round R2 / UI-TABS-1: which of the four tabs (hud.txt `tab_*`) is selected on
+/// a screen: the construction tab, or the main tab whose `view` the screen shows.
+std::string selected_tab(const HudLayout& hud, const UiMockSpec& screen) {
+    if (screen.kind == UiMockScreen::Construction)
         return "tab_construction";
-    case UiMockScreen::Hud:
-    case UiMockScreen::PlayerList:
-        return "tab_military";
-    case UiMockScreen::Info:
-        return "tab_help";
-    case UiMockScreen::MainMenu:
-        return "tab_options";
-    }
-    return "tab_military";
+    const std::string view = screen.view.empty() ? hud_first_view(hud) : screen.view;
+    for (const UiElement& e : hud.elements)
+        if (!e.subtab && e.view == view)
+            return e.name;
+    return {};
 }
 
 /// The four tabs with `selected` in its `frame_selected` and the others in `frame_idle`
 /// (hud.txt), through `blit_el(name, tex id)`.
 template <typename BlitEl>
-void draw_tabs(const HudLayout& hud, const char* selected, BlitEl&& blit_el) {
+void draw_tabs(const HudLayout& hud, const std::string& selected, BlitEl&& blit_el) {
     for (const char* tab : {"tab_construction", "tab_military", "tab_help", "tab_options"}) {
         const UiElement* el = hud.element(tab);
         if (el == nullptr)
             continue;
-        const bool on = std::string(tab) == selected;
+        const bool on = tab == selected;
         const std::optional<int> frame = on ? el->frame_selected : el->frame_idle;
         blit_el(tab, frame ? frame : el->tex_id);
     }
 }
 
-/// Every hud.txt element of `group` (its `panel` field), in file order, through `blit_el`.
+/// Every hud.txt element of the screen's panel group (its `panel` field, ui_panel_group), in file
+/// order, through `blit_el`; a sub-tab of the shown view (UI-TABS-1) in its selected frame when it
+/// is the screen's sub-tab, else in its idle frame.
 template <typename BlitEl>
-void draw_panel(const HudLayout& hud, const char* group, BlitEl&& blit_el) {
-    if (group == nullptr)
+void draw_panel(const HudLayout& hud, const UiMockSpec& screen, BlitEl&& blit_el) {
+    const std::string group = ui_panel_group(hud, screen);
+    if (group.empty())
         return;
+    const std::string view = screen.view.empty() ? hud_first_view(hud) : screen.view;
     for (const UiElement& e : hud.elements) {
-        if (std::find(e.panels.begin(), e.panels.end(), group) != e.panels.end())
+        if (std::find(e.panels.begin(), e.panels.end(), group) == e.panels.end())
+            continue;
+        if (e.subtab && e.view == view)
+            blit_el(e.name, hud_subtab_frame(e, *e.subtab == screen.subtab));
+        else
             blit_el(e.name, std::nullopt);
     }
 }
 
 } // namespace
 
-const char* ui_panel_group(UiMockScreen kind) {
-    switch (kind) {
-    case UiMockScreen::Hud:
-        return "player";
-    case UiMockScreen::PlayerList:
-        return "player_list";
-    case UiMockScreen::Info:
-        return "info";
-    case UiMockScreen::MainMenu:
-        return "main_menu";
-    case UiMockScreen::Construction:
-        return nullptr;
-    }
-    return nullptr;
+std::string ui_panel_group(const HudLayout& hud, const UiMockSpec& screen) {
+    if (screen.kind == UiMockScreen::Construction)
+        return {};
+    const std::string view = screen.view.empty() ? hud_first_view(hud) : screen.view;
+    const UiElement* e = hud_subtab_element(hud, view, screen.subtab);
+    return e != nullptr ? e->body : std::string();
 }
 
 int centred_text_x(int box_x, unsigned box_w, int text_w) {
@@ -730,18 +726,30 @@ UiTexCache& UiTexCache::operator=(UiTexCache&&) noexcept = default;
 
 std::optional<UiMockSpec> parse_screen_name(const std::string& screen) {
     if (screen == "hud_idle")
-        return UiMockSpec{UiMockScreen::Hud, ""};
+        return UiMockSpec{UiMockScreen::Hud, "", "", 0};
+    // UI-WINDOW-1 fix round R2's panel names, as views and sub-tabs (UI-TABS-1).
     if (screen == "player_list")
-        return UiMockSpec{UiMockScreen::PlayerList, ""};
+        return UiMockSpec{UiMockScreen::Hud, "", "player", 1};
     if (screen == "info")
-        return UiMockSpec{UiMockScreen::Info, ""};
+        return UiMockSpec{UiMockScreen::Hud, "", "info", 0};
     if (screen == "main_menu")
-        return UiMockSpec{UiMockScreen::MainMenu, ""};
+        return UiMockSpec{UiMockScreen::Hud, "", "options", 0};
+    // UI-TABS-1: "<view>.<k>", sub-tab k of a view.
+    if (const auto dot = screen.find('.');
+        dot != std::string::npos && dot > 0 && dot + 1 < screen.size() && dot + 4 > screen.size()) {
+        int k = 0;
+        for (std::size_t i = dot + 1; i < screen.size(); ++i) {
+            if (screen[i] < '0' || screen[i] > '9')
+                return std::nullopt;
+            k = k * 10 + (screen[i] - '0');
+        }
+        return UiMockSpec{UiMockScreen::Hud, "", screen.substr(0, dot), k};
+    }
     static const std::array<const char*, 8> kCategories = {
         "public", "roads", "farms", "workshops", "coastal", "mines", "military", "ornamental"};
     for (const auto* cat : kCategories) {
         if (screen == std::string("construction_") + cat)
-            return UiMockSpec{UiMockScreen::Construction, cat};
+            return UiMockSpec{UiMockScreen::Construction, cat, "", 0};
     }
     return std::nullopt;
 }
@@ -808,8 +816,8 @@ formats::Result<assets::Rgba, std::string> compose_screen(const HudLayout& hud,
     // UI-WINDOW-1 fix round R2: the idle HUD's own panel (hud.txt `panel player`), mirrored by
     // tools/ui_layout.py compose_screen.
     if (!is_construction) {
-        draw_panel(hud, "player",
-                   [&](const std::string& name, std::optional<int>) { blit_el(name); });
+        draw_panel(hud, screen,
+                   [&](const std::string& name, std::optional<int> tid) { blit_el(name, tid); });
     }
 
     if (is_construction) {
@@ -919,7 +927,7 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
     draw_column_filler(cache, hud, placement, blit_image);
     // UI-WINDOW-1 fix round R2: the selected tab follows the screen (hud.txt frame_selected /
     // frame_idle; the same frames as before for the idle HUD and the construction menu).
-    draw_tabs(hud, selected_tab(screen.kind),
+    draw_tabs(hud, selected_tab(hud, screen),
               [&](const char* name, std::optional<int> tid) { blit_el(name, tid); });
     draw_statusbar(cache, hud, placement, blit_image);
     blit_el("gold");
@@ -1010,7 +1018,7 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
     blit_el("compass_e");
     // UI-WINDOW-1 fix round R2: the selected tab's panel, static chrome only (hud.txt `panel`;
     // its names and figures are UI-TABS-1).
-    draw_panel(hud, ui_panel_group(screen.kind),
+    draw_panel(hud, screen,
                [&](const std::string& name, std::optional<int> tid) { blit_el(name, tid); });
 
     if (is_construction) {
@@ -1182,7 +1190,7 @@ std::string draw_live_screen_rgba_into(
     draw_column_filler(cache, hud, placement, blit_image);
     // UI-WINDOW-1 fix round R2: the selected tab follows the screen (hud.txt frame_selected /
     // frame_idle; the same frames as before for the idle HUD and the construction menu).
-    draw_tabs(hud, selected_tab(screen.kind),
+    draw_tabs(hud, selected_tab(hud, screen),
               [&](const char* name, std::optional<int> tid) { blit_el(name, tid); });
     draw_statusbar(cache, hud, placement, blit_image);
     blit_el("gold");
@@ -1253,7 +1261,7 @@ std::string draw_live_screen_rgba_into(
     blit_el("compass_e");
     // UI-WINDOW-1 fix round R2: the selected tab's panel, static chrome only (hud.txt `panel`;
     // its names and figures are UI-TABS-1).
-    draw_panel(hud, ui_panel_group(screen.kind),
+    draw_panel(hud, screen,
                [&](const std::string& name, std::optional<int> tid) { blit_el(name, tid); });
 
     if (is_construction) {

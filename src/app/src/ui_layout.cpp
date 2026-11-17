@@ -420,6 +420,17 @@ formats::Result<HudLayout, std::string> parse_hud_layout(const std::string& text
                     if (!v || *v == 0)
                         return fail(line_no, "turn: not a non-zero integer");
                     e.turn = v;
+                } else if (key == "view" || key == "body") {
+                    if (!tok.more())
+                        return fail(line_no, key + ": missing value");
+                    (key == "view" ? e.view : e.body) = tok.take();
+                } else if (key == "subtab") {
+                    if (!tok.more())
+                        return fail(line_no, "subtab: missing value");
+                    const auto v = to_int(tok.take());
+                    if (!v || *v < 0)
+                        return fail(line_no, "subtab: not a non-negative integer");
+                    e.subtab = v;
                 } else {
                     return fail(line_no, "element: unknown key '" + key + "'");
                 }

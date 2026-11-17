@@ -58,25 +58,33 @@ class UiTexCache {
 /// Which chrome the construction tab frames show: `kHud` draws the idle HUD's frames
 /// (construction 8, military 13 selected); `kConstruction` draws a construction-menu category's
 /// frames (construction 12 selected, military 9) - `compose_screen`'s `spec["kind"]` branch.
-/// UI-WINDOW-1 fix round R2: `Hud` is the idle HUD with the player tab's own panel
-/// (hud_idle_running); `PlayerList` the player tab after its click or key D (r2_player_menu);
-/// `Info` the "?" tab (r2_tab_help); `MainMenu` the gears tab or key O (r2_options).
-enum class UiMockScreen { Hud, Construction, PlayerList, Info, MainMenu };
+/// UI-TABS-1: `Hud` is the HUD with one of the right panel's views (`UiMockSpec::view` at
+/// `subtab`; hud.txt `view`/`subtab`, docs/re/ui.md 5.4); `Construction` the construction menu.
+enum class UiMockScreen { Hud, Construction };
 
 /// One of the UI.1 oracle's nine named screens (`tools/ui_layout.py SCREENS`): `hud_idle`, or
-/// `construction_<category>` for each of the eight categories.
+/// `construction_<category>` for each of the eight categories; and (UI-TABS-1) any view and
+/// sub-tab of the right panel.
 struct UiMockSpec {
     UiMockScreen kind = UiMockScreen::Hud;
     /// Empty for `kHud`; one of hud.txt/construction.txt's eight category names otherwise.
     std::string category;
+    /// UI-TABS-1, for `kHud`: the view the right panel shows (hud.txt `view`; empty = the first
+    /// view, the start state) and its sub-tab.
+    std::string view;
+    int subtab = 0;
 };
 
-/// The hud.txt `panel` group a screen's right chrome draws ("player", "player_list", "info",
-/// "main_menu"), or nullptr for the construction menu.
-[[nodiscard]] const char* ui_panel_group(UiMockScreen kind);
+/// The hud.txt `panel` group a screen's right chrome draws (the `body` of its view's sub-tab:
+/// "player", "player_list", "info", "main_menu", or a placeholder's name), or empty for the
+/// construction menu or a view/sub-tab hud.txt does not have.
+[[nodiscard]] std::string ui_panel_group(const HudLayout& hud, const UiMockSpec& screen);
 
 /// Parses `screen` into a UiMockSpec (e.g. "hud_idle" -> {Hud, ""}, "construction_public" ->
-/// {Construction, "public"}); nullopt for any other name.
+/// {Construction, "public"}); the R2 panel names "player_list" (player view, sub-tab 1), "info"
+/// (info view, sub-tab 0), "main_menu" (options view, sub-tab 0); and (UI-TABS-1) "<view>.<k>"
+/// for sub-tab k of a view, e.g. "options.3" (the view is checked against hud.txt when drawn).
+/// nullopt for any other name.
 [[nodiscard]] std::optional<UiMockSpec> parse_screen_name(const std::string& screen);
 
 /// The live numbers `draw_live_screen_xrgb` draws over the HUD/construction chrome (H2), already

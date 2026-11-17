@@ -335,7 +335,7 @@ TEST_CASE("ui layer: the right chrome at 2542 x 1351 is the 1024 x 768 chrome sh
     }
     const Layouts l = load();
     app::UiTexCache cache(*game);
-    const app::UiMockSpec hud_screen{app::UiMockScreen::Hud, ""};
+    const app::UiMockSpec hud_screen{app::UiMockScreen::Hud, "", "", 0};
     const auto small = app::draw_live_screen_rgba(1024, 768, l.hud, l.construction, l.masks,
                                                   hud_screen, cache, nullptr);
     const auto big = app::draw_live_screen_rgba(2542, 1351, l.hud, l.construction, l.masks,

@@ -3548,3 +3548,113 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Question:** OQ-022 already confirms the COLORS record's `flag` 4 means `EffectsMulti`, a player-colour-variant palette kind, and names `Flagge01_01.PCX` (Anlagen.dat colour-table id 109) as a user of it. Today's code path never applies it to a placed object: `assets::building::to_rgba` (the static-frame decoder `iso.cpp`'s `SpriteCache::get` calls) has no colour parameter at all, and `assets::figure::player_coloured`/`recolour` are called only from `assets/src/unit.cpp` (live ships/soldiers), never from the static draw path. Does the *original* ever draw a static object (a flag, say) tinted by its owner's colour, or is `EffectsMulti` on `Flagge01_01.PCX` unused by placement (e.g. only reached through a UI icon, not a placed ANLAGEN object)? A decoder-level test (RENDER-DIRECT-1a's own `static_player_colour_eligibility`, `bench_frame/main.cpp`) found 40.6% of static frames have at least one pixel matching the green-dominance test `recolour` uses — but that test cannot distinguish ordinary green content (grass, trees, foliage) from a genuine player-colour marking, so it does not answer this question either way.
 - **What we know:** OQ-022's own kind=4/`Flagge01_01.PCX` finding (D: `AnnoGame.dll` `0x10004e60`); the static decode path's lack of a colour parameter (C: `iso.cpp:322`, `building.hpp`, `iso.hpp:276-277`).
 - **How to resolve:** check whether any `ANLAGEN` entry's `palette_ids` references colour table id 109 (or another `EffectsMulti`-kind table); if so, check whether the original ever renders that entry recoloured (Ghidra on the building-frame decoder/blitter in `AnnoDisplay.dll`, or a capture of a placed flag object across players in the original/History Edition).
+
+## OQ-728: Does the build menu arm tCursorAnlageBergwerk (kind 0xe) for MINE and STEINBRUCH (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** Does the build menu arm `tCursorAnlageBergwerk` (kind `0xe`) for `MINE` and `STEINBRUCH`? If it does, a player mine can only stand on a site record whose mask holds its ore bit (`0x10046300`). That is a UI-level deposit restriction OQ-552 did not consider, because OQ-552 read the Default cursor `0x10047170`. Next: the View.dll cell callback (from `0x1002c260`) and the source of the 6-byte records (island `+0x24`, object slot `+0xc`).
+- **Where:** `docs/BUILDINGSOBJECTS.md` part B (placement rules); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-729: Which kind arms which cell: the per-cell rule in View.dll (PRODTYPE, flag class, or a table) (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** Which kind arms which cell: the per-cell rule in View.dll (PRODTYPE, flag class, or a table). Also which cursor places bridges, ramps and piers.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part B (placement rules); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-730: The writer of the draw-context byte +0x140c (the blink phase) and its period (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** The writer of the draw-context byte `+0x140c` (the blink phase) and its period. Not in AnnoWelt, AnnoFrame, AnnoGame, View, AnnoScene or AnnoDisplay by direct offset; likely a struct copy or an indexed store.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part B (placement rules); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-731: The neighbour table of the road/wall autotiler 0x1007cc40 (ids 2500-2537, 2672/2673, PRODTYPE 0x181, flag 0x80 (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** The neighbour table of the road/wall autotiler `0x1007cc40` (ids 2500-2537, 2672/2673, PRODTYPE `0x181`, flag `0x800`).
+- **Where:** `docs/BUILDINGSOBJECTS.md` part B (placement rules); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-732: The meaning of event codes 1, 2 and 4 and of flag bit 8 in the cursor input handlers (L: press, release, right (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** The meaning of event codes 1, 2 and 4 and of flag bit 8 in the cursor input handlers (L: press, release, right click, CTRL). One Wine capture would settle it.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part B (placement rules); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-733: The dry-tile swap in the field commit: what type slot +0xf8(3) returns (dry variant), and whether a tree on a  (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** The dry-tile swap in the field commit: what type slot `+0xf8(3)` returns (dry variant), and whether a tree on a dry tile is really dropped (id 0, `0x1004ab61`-`0x1004ab68`).
+- **Where:** `docs/BUILDINGSOBJECTS.md` part B (placement rules); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-734: Whether a multi-record Default drag can overspend: each record is checked against the live stock at release, b (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** Whether a multi-record Default drag can overspend: each record is checked against the live stock at release, before the earlier records are applied.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part B (placement rules); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-735: the Ctrl auto-align (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** the Ctrl auto-align. Which routine turns the cursor building to meet a street, and what does it test: ENTRANCE plus walk mask, or CONPO2? CONPO2 is ruled out (1.3), so it must use ENTRANCE/WALKMASK or the road layer. Resolve: find the key-state path in the cursor's input handler (`tCursorAnlageDefault` slots `0x5c` `0x10047010`, `0x60` `0x10047e40`, `0x6c` `0x10047470`); no `GetKeyState` import use in AnnoFrame/AnnoWelt, so the flag arrives with the input message.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part C (entrance/exit arrows); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-736: which 0x1001d760 caller is which info gadget (placed production panel, market, house, ...) and whether any of  (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** which `0x1001d760` caller is which info gadget (placed production panel, market, house, ...) and whether any of them hides the arrows by its own drawing. Resolve: RTTI of the classes owning `0x1003e475` ... `0x10074b03`, plus a GOG capture of a placed producer's panel.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part C (entrance/exit arrows); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-737: the ghost's own draw path (the object that renders the building at the cursor, its tint, and the blink when un (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** the ghost's own draw path (the object that renders the building at the cursor, its tint, and the blink when unaffordable in HE; GOG not checked). Part B.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part C (entrance/exit arrows); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-738: the owner's "mine 1 front + 2 back" (ui_9 4:31-4:50) was spoken over the whaler panel (821, 4 arrows) and just (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** the owner's "mine 1 front + 2 back" (`ui_9` 4:31-4:50) was spoken over the whaler panel (821, 4 arrows) and just before the salt mine panel (1203, 3 arrows). Resolve: confirm with the owner; the data fit 1203.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part C (entrance/exit arrows); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-739: the semantics of the four edge scans in 0x1000d2a0 (0x1000cf80/d000/d080/d190), for an exact statement "arrow  (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** the semantics of the four edge scans in `0x1000d2a0` (`0x1000cf80`/`d000`/`d080`/`d190`), for an exact statement "arrow = border cell of the entrance's walkable region". Only needed if the rebuild ever regenerates arrows; the game uses the stored data.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part C (entrance/exit arrows); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-740: city-creation.md E12 says the Kontor counter runs "only for PRODTYPE exactly 0x21"; 0x10027b32–0x10027b62 comp (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** `city-creation.md` E12 says the Kontor counter runs "only for PRODTYPE exactly 0x21"; `0x10027b32`–`0x10027b62` compares the **group** (`((p-1)&~0x1f)+1`), so every market-block building (33..64, including markets 1301…) takes a KONTID and bumps the counter. Re-check and correct the contract.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part D (what placing does to the world); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-741: Building slot +0x108 = 0x10071d10 with argument 0 leaves flag bit 3 set and posts island +0x168: is a new prod (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** Building slot `+0x108` = `0x10071d10` with argument 0 leaves flag bit 3 set and posts island `+0x168`: is a new production/military building really "blocked" until its first step, and what clears it? (read the class ticks' `+0x108` callers; one capture in the original of a fresh workshop's status).
+- **Where:** `docs/BUILDINGSOBJECTS.md` part D (what placing does to the world); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-742: Well hooks 0x1002cf60 / 0x1002d090 → island slot +0x138: which tile bits does +0x138 write (the crop test's we (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** Well hooks `0x1002cf60` / `0x1002d090` → island slot `+0x138`: which tile bits does `+0x138` write (the crop test's well bit), and with which radius (farm radius `type+0x78(1)`)?
+- **Where:** `docs/BUILDINGSOBJECTS.md` part D (what placing does to the world); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-743: City slot +0xb8 = 0x100286c0 after a market-block removal: which tiles revert to neutral, which objects are re (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** City slot `+0xb8` = `0x100286c0` after a market-block removal: which tiles revert to neutral, which objects are removed by the nested RemoveAt, and are other cities' buildings affected?
+- **Where:** `docs/BUILDINGSOBJECTS.md` part D (what placing does to the world); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-744: Island slot +0x80 (0x1007cc40) with {id 1} records: what the tower/gate fill (flags 0x10) and the demolish bor (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** Island slot `+0x80` (`0x1007cc40`) with `{id 1}` records: what the tower/gate fill (flags `0x10`) and the demolish border strip (flags `0xe`) write — wall/road variant re-fit?
+- **Where:** `docs/BUILDINGSOBJECTS.md` part D (what placing does to the world); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-745: RemoveAt R9 for 197/257/258: figure slot +0x9c(slot+0x90(3,0)) — what happens to units on a removed wall or pi (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** RemoveAt R9 for 197/257/258: figure slot `+0x9c(slot+0x90(3,0))` — what happens to units on a removed wall or pier?
+- **Where:** `docs/BUILDINGSOBJECTS.md` part D (what placing does to the world); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-746: Hooks P8c (0x1002c920, 0x1002ca80, 0x1002d2a0) and R6 handlers: what state they keep (L: research/infrastructu (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** Hooks P8c (`0x1002c920`, `0x1002ca80`, `0x1002d2a0`) and R6 handlers: what state they keep (L: research/infrastructure counters for goods `0x51..0x56`).
+- **Where:** `docs/BUILDINGSOBJECTS.md` part D (what placing does to the world); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-747: The player "plant" action (fields/trees around a farm): which cursor and records it sends (tCursorAnlageRohsto (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** The player "plant" action (fields/trees around a farm): which cursor and records it sends (`tCursorAnlageRohstoff`?), and whether the apply path is mode 6 Build/Place (charge, footprint claim) as the code allows.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part D (what placing does to the world); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-748: The demolish callback [tNetClient+0x124]: who installs it and is it the "enemy units near" rule (M 27) (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** The demolish callback `[tNetClient+0x124]`: who installs it and is it the "enemy units near" rule (M 27)? It aborts the whole remaining command.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part D (what placing does to the world); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-749: Type property 0x479 played by AnnoFrame 0x10046020: confirm it is BAUSAMPLE and whether demolish has its own s (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** Type property `0x479` played by `AnnoFrame 0x10046020`: confirm it is `BAUSAMPLE` and whether demolish has its own sample.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part D (what placing does to the world); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.

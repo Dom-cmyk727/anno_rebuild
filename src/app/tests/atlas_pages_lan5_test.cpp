@@ -52,7 +52,7 @@ TEST_CASE("atlas pages: lan5.txt's static+water is texel exact (game files)" *
     // load_placed_scene does not populate scene.units (atlas.md section 5's own finding), so a
     // fixed map has no figures to check - only its static+water class.
     CHECK_MESSAGE(scene.units.empty(),
-                 "lan5.txt: load_placed_scene does not populate units (expected)");
+                  "lan5.txt: load_placed_scene does not populate units (expected)");
 
     for (std::uint32_t group = 0; group < render::kGroups; ++group) {
         render::SpriteCache cache;

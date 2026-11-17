@@ -32,9 +32,10 @@ namespace anno::test {
 /// variant - no second decoder). Mirrors RENDER-DIRECT-1a's own enumeration (prepare_objects,
 /// animation()/frame_index(), the enhanced-water exclusion constants), decoding instead of only
 /// sizing (RENDER-DIRECT-1b).
-inline std::vector<render::AtlasFrameInput>
-collect_static_water(const render::Scene& scene, std::uint32_t group, render::SpriteCache& cache,
-                     render::FrameTable& table) {
+inline std::vector<render::AtlasFrameInput> collect_static_water(const render::Scene& scene,
+                                                                 std::uint32_t group,
+                                                                 render::SpriteCache& cache,
+                                                                 render::FrameTable& table) {
     namespace fig = anno::formats::figuren;
     auto add_object = [&](const render::Prepared& p, bool enhanced_eligible) {
         const std::uint32_t id = p.first.anlage;
@@ -81,12 +82,12 @@ collect_static_water(const render::Scene& scene, std::uint32_t group, render::Sp
     };
     for (const auto& island : scene.islands) {
         const auto statics = render::prepare_objects(island, scene.anlagen, render::kObjectRecords,
-                                                      render::Objects::NotWater);
+                                                     render::Objects::NotWater);
         for (const auto& p : statics) {
             add_object(p, false);
         }
         const auto below = render::prepare_objects(island, scene.anlagen, render::kObjectRecords,
-                                                    render::Objects::WaterBelowSea);
+                                                   render::Objects::WaterBelowSea);
         for (const auto& p : below) {
             const std::uint32_t id = p.first.anlage;
             const bool is_fall =
@@ -95,7 +96,7 @@ collect_static_water(const render::Scene& scene, std::uint32_t group, render::Sp
             add_object(p, id != render::kSurfAnlage && !is_fall);
         }
         const auto above = render::prepare_objects(island, scene.anlagen, render::kObjectRecords,
-                                                    render::Objects::WaterAboveSea);
+                                                   render::Objects::WaterAboveSea);
         for (const auto& p : above) {
             const std::uint32_t id = p.first.anlage;
             const bool is_river =
@@ -119,7 +120,7 @@ collect_static_water(const render::Scene& scene, std::uint32_t group, render::Sp
 /// `img`'s own pixel at (x, y), premultiplied - the expectation every level-0 texel of its own
 /// rectangle is checked against directly (review F2: every frame, not a sample).
 inline std::array<std::uint8_t, 4> expected_level0(const assets::Rgba& img, std::uint32_t x,
-                                                    std::uint32_t y) {
+                                                   std::uint32_t y) {
     const std::size_t si = (std::size_t{y} * img.width + x) * 4;
     return render::premultiply_pixel(
         {img.pixels[si + 0], img.pixels[si + 1], img.pixels[si + 2], img.pixels[si + 3]});
@@ -168,17 +169,16 @@ inline void check_pages_against_source(const std::vector<render::AtlasFrameInput
                 std::array<std::uint8_t, 4> expected{};
                 for (std::size_t c = 0; c < 4; ++c) {
                     unsigned s = 0;
-                    for (const auto [dx, dy] :
-                         {std::pair{0U, 0U}, {1U, 0U}, {0U, 1U}, {1U, 1U}}) {
+                    for (const auto [dx, dy] : {std::pair{0U, 0U}, {1U, 0U}, {0U, 1U}, {1U, 1U}}) {
                         // Frame-local coordinate of this level-0 texel (place->x/y is the frame's
                         // own absolute origin); clamped exactly as write_level0 clamps the
                         // dilated padding.
                         const std::int64_t fx = std::int64_t{l0x + dx} - place->x;
                         const std::int64_t fy = std::int64_t{l0y + dy} - place->y;
-                        const auto cx = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
-                            fx, 0, std::int64_t{f.image->width} - 1));
-                        const auto cy = static_cast<std::uint32_t>(std::clamp<std::int64_t>(
-                            fy, 0, std::int64_t{f.image->height} - 1));
+                        const auto cx = static_cast<std::uint32_t>(
+                            std::clamp<std::int64_t>(fx, 0, std::int64_t{f.image->width} - 1));
+                        const auto cy = static_cast<std::uint32_t>(
+                            std::clamp<std::int64_t>(fy, 0, std::int64_t{f.image->height} - 1));
                         s += expected_level0(*f.image, cx, cy)[c];
                     }
                     expected[c] = static_cast<std::uint8_t>((s + 2) / 4);

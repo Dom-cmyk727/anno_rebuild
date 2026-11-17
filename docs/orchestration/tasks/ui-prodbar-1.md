@@ -47,3 +47,31 @@ He narrates that it shows the building's productivity at that spot. The rebuild 
 
 Rules: GOG code by address (`py -3.14 E:\anno1503-worktrees\anno1503-UI-STATUS-1\cache\ui-status-1\adis.py`),
 HE pixels only. If a frame is needed, write an HE recipe for the owner. No code, builds or tests in A.
+
+
+## Stage B (released 2026-11-17)
+
+Released by the UI lane after the orchestrator accepted stage A (`6b6758b9`). UI lane, read-only app
+work, no sim changes. Stage A's rule: `docs/re/ui.md` 4.1.
+
+- **B1:** `src/app/{include/anno/app,src}/fertility_indicator.*`, pure functions:
+  - every gate: the preview valid (`B+0x2e4`), the last ghost, `[B+0x48] < [B+0x50]`, the registry
+    lookup, and the projection non-zero, tested after the count;
+  - the building check: input 0 in `0x38..0x4b` and HEAD `[0x28]` != 0, from the type registry the app
+    already has;
+  - the disc (row table, centre cells, clamp, footprint excluded) and trunc(10·good/N);
+  - figure 1557's frames and a CPU blend.
+
+  Until a `FertilityTileSource` exists (the sim's crop test and tile-object placement), nothing is
+  drawn: the named placeholder `fertility-indicator-needs-sim` (OQ-715). The viewer reports it as fact
+  `tool.fertility`, and comments mark both draw sites.
+- **B3a:** unit tests now:
+  - disc counts 36/52/88, r1 = 0, r2 = 16;
+  - 59/88 → 6;
+  - 801 has the bar, 810 and 805 don't;
+  - each gate on its own;
+  - an injected source with a hand count;
+  - the sprite (11 frames of 54 × 12);
+  - a failure proof.
+- **Later:** the climate tree resolver moves to sim S3. B3b (the pixel check against HE) waits for
+  S2-S4 and OQ-716.

@@ -13,6 +13,7 @@ add_library(anno_app_core
   src/dev_session.cpp
   src/dev_input.cpp
   src/dev_tool.cpp
+  src/fertility_indicator.cpp
   src/frame_projection.cpp
   src/hud_tabs.cpp
   src/info_preview.cpp
@@ -94,7 +95,8 @@ if(ANNO_BUILD_TESTS)
     tests/ui_layout_test.cpp tests/ui_transform_test.cpp tests/ui_construction_eligibility_test.cpp
     tests/construction_menu_test.cpp tests/inspect_building_test.cpp tests/selection_test.cpp
     tests/minimap_test.cpp tests/hud_tabs_test.cpp tests/status_bar_test.cpp
-    tests/balance_rows_test.cpp tests/atlas_pages_lan5_test.cpp tests/info_preview_test.cpp)
+    tests/balance_rows_test.cpp tests/atlas_pages_lan5_test.cpp tests/info_preview_test.cpp
+    tests/fertility_indicator_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   target_compile_definitions(anno_app_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic"

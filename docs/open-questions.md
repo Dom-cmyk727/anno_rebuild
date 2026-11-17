@@ -3674,3 +3674,8 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Question:** GOG draws the refused footprint in `0xffff00`; HE draws the radius outline green. Which colour does HE use for the refused footprint?
 - **Where:** `docs/BUILDINGSOBJECTS.md` part B §5.1 (2).
 - **How to resolve:** a frame of a refused HE ghost (over water or another building) from an owner recording.
+
+## OQ-760: The ghost over open sea outside the city's island rectangle (UI-GHOST-1, 2026-11-17; OPEN, ADAPTATION)
+- **Question:** The rebuild hides the placement ghost over open sea outside the city's island rectangle, because the developer tool picks no tile there (`DevTool::pick`). The original draws the refused footprint anywhere on the map (`AnnoFrame 0x10041050` has no island test; GOG `f13_place_water`). When does the ghost's pick reach every map tile?
+- **Where:** `docs/BUILDINGSOBJECTS.md` part B §5.1 ("What the rebuild draws", row "Off the island") and gap 7.
+- **How to resolve:** the follow-up "pick over the whole map" (packet `docs/orchestration/tasks/ui-ghost-1.md`, "Follow-up"): a pick for the ghost over every map tile; the click still builds only on the island.

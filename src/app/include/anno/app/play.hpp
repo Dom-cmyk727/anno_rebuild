@@ -162,6 +162,19 @@ struct CityCounters {
     }
 };
 
+/// UI-GHOST-1: one Build record of a city the placement ghost asks the sim about.
+struct BuildProbe {
+    sim::CityRef city;
+    sim::PlacementWire record;
+    friend bool operator==(const BuildProbe&, const BuildProbe&) = default;
+};
+
+/// The sim's verdict on a BuildProbe (World::check_build_record).
+struct BuildProbeAnswer {
+    BuildProbe probe;
+    sim::Reject verdict = sim::Reject::None;
+};
+
 struct PlaySnapshot {
     std::uint64_t tick = 0;
     std::uint64_t game_ms = 0;
@@ -203,6 +216,10 @@ struct PlaySnapshot {
     /// `inspection` is null). The selection (selection.hpp) needs it to tell "answered: nothing
     /// there" from "not answered yet" (W4-NEXT-2 K).
     std::optional<sim::TileXY> inspected;
+    /// UI-GHOST-1: the placement ghost's question (request_build_probe) and the sim's verdict on
+    /// it, `World::check_build_record` taken in the same turn as this snapshot (a pure read: no
+    /// state, stream, hash or draw change). nullopt when nothing is asked.
+    std::optional<BuildProbeAnswer> build_probe;
     /// `World::construction_eligibility(local player, type).allowed()` for every type the
     /// registry defines, ascending by id (UI.2 C2: the sim's own lock authority is the one and
     /// only source the construction menu's lock display reads — never a copy of it, and never
@@ -394,6 +411,13 @@ class PlayRunner {
         const std::lock_guard lock(inspect_mu_);
         inspect_tile_ = tile;
     }
+    /// UI-GHOST-1: the placement ghost's record, answered in every snapshot published from now on
+    /// (PlaySnapshot::build_probe), also while paused, until another replaces it or
+    /// `std::nullopt` turns it off. Thread-safe; the same pattern as request_inspect.
+    void request_build_probe(std::optional<BuildProbe> probe) {
+        const std::lock_guard lock(inspect_mu_);
+        build_probe_ = probe;
+    }
     /// Ends a capture that was asked for and has not run (the requester is going away).
     /// Thread-safe.
     void cancel_capture() {
@@ -497,6 +521,8 @@ class PlayRunner {
     void find_local_city();
     /// Fills `inspection` and `inspected` from the requested tile.
     void fill_inspection(PlaySnapshot& next);
+    /// Fills `build_probe` from the requested probe (UI-GHOST-1).
+    void fill_build_probe(PlaySnapshot& next);
     [[nodiscard]] std::uint64_t p95_locked() const;
 
     sim::World world_;
@@ -549,6 +575,7 @@ class PlayRunner {
     std::optional<sim::FoundCmd> probe_;
     std::mutex inspect_mu_;
     std::optional<sim::TileXY> inspect_tile_;
+    std::optional<BuildProbe> build_probe_; // under inspect_mu_
     std::function<void(WorldCapture)> capture_;
     // The developer player's city (sim thread, found at construction) and the last refusal
     // shown in the title.

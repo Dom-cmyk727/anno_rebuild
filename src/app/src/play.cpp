@@ -943,6 +943,7 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
         find_local_city();
     }
     fill_inspection(*next); // also without a city: the requested tile is answered as empty
+    fill_build_probe(*next);
     // UI-MINIMAP-1 B2: the minimap's owners (republished unchanged while equal) and its figures.
     refresh_territory();
     next->territory = territory_;
@@ -1194,6 +1195,19 @@ void PlayRunner::fill_inspection(PlaySnapshot& next) {
     }
 }
 
+void PlayRunner::fill_build_probe(PlaySnapshot& next) {
+    std::optional<BuildProbe> probe;
+    {
+        const std::lock_guard lock(inspect_mu_);
+        probe = build_probe_;
+    }
+    next.build_probe.reset();
+    if (probe) {
+        next.build_probe =
+            BuildProbeAnswer{*probe, world_.check_build_record(probe->city, probe->record)};
+    }
+}
+
 void PlayRunner::refresh_territory() {
     TerritoryView now = collect_territory_view(world_);
     if (territory_ && territory_->same_content(now)) {
@@ -1325,16 +1339,22 @@ void PlayRunner::answer_inspection_while_paused() {
         find_local_city(); // set_local_player before the first turn: the turn would look it up
     }
     std::optional<sim::TileXY> requested;
+    std::optional<BuildProbe> probe;
     {
         const std::lock_guard lock(inspect_mu_);
         requested = inspect_tile_;
+        probe = build_probe_;
     }
     const auto current = snapshot();
-    if (!current || current->inspected == requested) {
+    const auto answered = current && current->build_probe
+                              ? std::optional<BuildProbe>(current->build_probe->probe)
+                              : std::nullopt;
+    if (!current || (current->inspected == requested && answered == probe)) {
         return;
     }
     auto next = std::make_shared<PlaySnapshot>(*current);
     fill_inspection(*next);
+    fill_build_probe(*next); // UI-GHOST-1: the ghost's verdict while paused, too
     publish_snapshot(std::move(next));
 }
 

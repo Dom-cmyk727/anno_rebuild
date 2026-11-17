@@ -54,3 +54,10 @@ What is known (part B, D unless marked):
 - Gate as UI-INFO-2d's packet describes, plus the `construction` and `selection` app cases.
 - The owner's viewer test, with **default rules** (the developer city; NOT `--rules living`): arm a house, move it over
   water, then over land; empty the stock with a dev command and watch it blink.
+
+## Follow-up (after B)
+
+- **Pick over the whole map** (orchestrator, 2026-11-17): the dev tool picks only tiles of the city's island
+  rectangle, so B hides the ghost over open sea outside it (ADAPTATION, OQ-760). The original draws the refused
+  footprint there. A later packet lets the ghost's pick reach every map tile (the click still builds only on the
+  island). Not part of B.

@@ -96,7 +96,7 @@ original text in git). This file keeps the method, the field meanings, findings 
 | 4 | Fields and trees (0x29) cannot be placed: no rectangle drag, no dry-variant swap | B, D | FERTILITY-1a has the placement class; planting is still `Unsupported` |
 | 5 | Walls, gates, bridges, ramps, piers, plazas, fences, monuments `Unsupported` | B, D | sim + UI |
 | 6 | Road drag: no L-path, no 40-tile cap, no every-tile-own-territory rule, no no-downgrade rule, no free re-lay; no neighbour reshaping (`0x1007cc40`) | B | sim + UI |
-| 7 | Ghost: the window's check covers bounds, occupancy and cost only; it always draws; no yellow rectangle, no radius outline, no blinking when unaffordable | B, C | UI-GHOST-1 (proposed) |
+| 7 | Ghost: the window's check covers bounds, occupancy and cost only; it always draws; no yellow rectangle, no radius outline, no blinking when unaffordable. **Closed by UI-GHOST-1 stage B** (§5.1 "What the rebuild draws"); left: the multi-record drag ghost, the road/wall prefix, and **"pick over the whole map"** (the refused outline over open sea outside the island rectangle; ADAPTATION until then, OQ-760) | B, C | UI-GHOST-1 |
 | 8 | Ordinary buildings cannot be drag-placed (original: up to 64), and no random house variants (property 0x32) | B | UI + sim |
 | 9 | Mine cursor's snap to deposit sites not modelled; gold and gem mines `Unsupported` | B | sim (OQ-728) |
 | 10 | Arrows on a placed building's info-panel picture (the build preview has them on task/UI-INFO-2b, not yet on main) | C | UI-INFO-2d (re-scoped: no ghost arrows, see below) |
@@ -342,6 +342,21 @@ GOG Wine captures are from UI-1 and UI-PLACE-1. Scripts and frames are in the ta
 - `hidden`: nothing armed, empty footprint, or the pointer over the panel/chrome (HE, 4.3).
 - Priority: hidden > refused > unaffordable > valid.
 
+**What the rebuild draws (UI-GHOST-1 stage B, 2026-11-17):**
+
+| Part | Rebuild | Evidence / tag |
+|---|---|---|
+| Verdict | the sim's own: `World::check_build_record(city, record)` runs Build's record check (`check_record`, the footprint owner rule, buildings under the footprint, `placement_rule`, eligibility, research, serials, affordability) on the record a click would send, read-only (`docs/sim/state.md` S10, UI-GHOST-1 note). The window asks for it every frame through `PlayRunner::request_build_probe`; the runner answers in each published snapshot (and while paused), so the answer is at most one turn behind. While it is pending the last state stays (a pointer moving tile by tile does not flash). The window's own partial check (`PlacementKnowledge::check`) only feeds the title now | D (Build's rule) |
+| State | `app::ghost_state`: not armed, empty footprint or pointer on chrome → hidden; reject None → valid; CannotAfford → unaffordable; any other reject → refused | §5.1 (1)-(4) |
+| Refused | `footprint_outline`: one edge per tile side along the footprint's corners at ground height + 0.08, 1 pixel, `0xffff00`, no building, no radius. **ADAPTATION** (accepted 2026-11-17): the 0.08 lift is applied in the rebuild's HEIGHT units; the original's unit for it is not established (under a pixel either way). The radius outline uses the same lift | §5.1 (2) |
+| Valid | the building (`make_preview`) plus `radius_outline(footprint, HEAD[0x11])`: the boundary of the tiles `cx ± w[i]` of rows `cy ± i`, `w` = `radius_half_widths` (the 0x100443c0 table), clipped at the map's near edge only (the window does not know the far one) | §5.1 (3); the boundary reading is L (OQ-756) |
+| Unaffordable | as valid, the building hidden while `GhostBlink` is in phase 1: `acc += window ms; if acc > 699 { acc -= 699; flip }`, one flip per frame, the surplus kept. The window's own steady clock, never game time (it runs while paused) and never sim state. A steady phase lasts 699 ms after the first 700 ms. The window wakes for the next flip (its event wait is cut to the time left) | §5.1 (1) |
+| Hidden over chrome | the pointer's last drawable position hits drawn chrome (`ui_hit_at(...).chrome`) → hidden: "HE-observed, GOG unread (OQ-757)" (orchestrator decision 2026-11-17) | §5.1 (4) |
+| Drawing | CPU path: the outline into the frame after the world and the building, before the chrome. GPU path: into the frame-sized UI layer, only where it is transparent (the chrome stays on top); a layer of its own when the frame has no UI layer | N (no depth test: the original draws over everything too, `r2_place_market_1301`) |
+| Off the island | **ADAPTATION (OQ-760)**: the tool picks only tiles of the city's island rectangle (`DevTool::pick`), so over open sea outside that rectangle the ghost is hidden; inside it (coastal water, inlets) it is refused. The original draws the refused footprint anywhere on the map (§5.1 (2.5)). Follow-up: "pick over the whole map" (gap 7) | N |
+| Facts | `tool.ghost` (`hidden`, `refused`, `unaffordable`, `valid`), `tool.ghost.phase` (1: building hidden), `tool.ghost.flips`, `tool.ghost.pixels` (outline pixels of the last frame) | — |
+| Tests | `placement_ghost_test.cpp` (state, blink at 0 / 1 ms / partitioned / surplus, the table by hand for r = 0, 1, 4, 24, both outlines, the pixels); `command_build_test.cpp` "check_build_record gives Build's verdict and changes nothing"; `viewer_wiring_ui_ghost` (lan5, ANNO_DEV_GOODS_TONS=3: valid, refused over the inlet, hidden over the panel, unaffordable after one house, the phase flipping both ways, refused again); `viewer_wiring_ui_ghost_pixel_check` (exact `0xffff00` pixels; the hidden shot is the negative control) | — |
+
 ---
 
 ### 6. The placement UI flow
@@ -385,8 +400,8 @@ Rebuild: `src/sim/src/placement.cpp` classes `Ordinary`, `Coast`, `Road`, `Mount
 | Territory claim by markets (PRODTYPE 33-35, radius 24) | `City::Place` | only the founding claims (`founding.cpp:476`); a market or a second Kontor claims nothing | **gap** (OQ-490 is now answered by SF §11.2) |
 | Figure veto `0x10045080` | on every check | only in founding (`FigureInTheWay`); not in Build | **gap** |
 | UI blocked-tile test (island `+0x64`) | footprint and fields | not modelled | gap (OQ-552 note) |
-| Affordability | click and apply; preview ignores it; the ghost blinks | sim: `CannotAfford`; window: the verdict says "would be refused" as text; the ghost is always drawn | **gap**: no blink, no prefix display |
-| Refused preview | yellow empty rectangle | the ghost sprites are drawn anyway (`make_preview`); the verdict checks only bounds, occupancy and cost, not the placement rule or territory (`dev_feedback.cpp:350`) | **gap** |
+| Affordability | click and apply; preview ignores it; the ghost blinks | sim: `CannotAfford`; window: the ghost blinks 699/700 ms from the sim's verdict (UI-GHOST-1, §5.1) | **gap**: no prefix display for drags |
+| Refused preview | yellow empty rectangle | the yellow footprint outline and no building, from the sim's own record check (UI-GHOST-1, §5.1) | none for a single record; a refused site outside the island rectangle shows nothing (the dev tool's pick) |
 | Multi-placement of buildings (Default drag, at most 64) | yes | "a drag places a road; the selected type is not one" | **gap** |
 | Random house variants (`+0x32`) and CTRL | yes | none | gap (OQ-546) |
 | Fertility bar | `0x10047940` | none | gap (PB) |
@@ -421,6 +436,7 @@ Proposed new questions:
 - **OQ-730.** The writer of the draw-context byte `+0x140c` (the blink phase) and its period. **Answered (UI-GHOST-1, §5.1 (1)):** the list is embedded at frame `+0x14`, so the writer is AnnoFrame `0x100038f2` `xor byte [ebx+0x1420],1`. It flips every 700 ms of frame time (accumulator `+0x1422`, threshold 699), and HE measures 0.700 s / 0.700 s.
 - **OQ-756.** The radius outline's exact vertex walk in `0x100443c0` (`0x10044477`-`0x10044f79`): confirm that it outlines exactly the cells `cx ± w[i]` of rows `cy ± i`, and what a radius-0 type (decorations, `DENKMAL`/`ZIERDE`, 141 types with `HEAD[0x11]` = 0) shows. Next: one GOG Wine capture of an armed ornamental (for example 2564 flower bed) and of a radius-4 type, compared with the table.
 - **OQ-757.** GOG with the pointer on the panel while a building is armed: is the ghost (and its radius outline) hidden as in HE, or does it stay at the last map tile? Nothing in the cursor draw `0x10048450` tests the pointer. Next: a Wine capture that arms a building, moves the pointer to the map, then onto the panel, and screenshots without moving back.
+- **OQ-760.** ADAPTATION: the rebuild's ghost is hidden over open sea outside the city's island rectangle (the dev tool picks no tile there), where the original draws the refused footprint anywhere on the map. Resolve with the follow-up "pick over the whole map" (gap 7).
 - **OQ-758.** HE's colour for the refused-site footprint outline (GOG `0xffff00`; HE's radius outline is green). Next: a frame of a refused HE ghost (over water or another building) from an owner recording.
 - **OQ-731.** The neighbour table of the road/wall autotiler `0x1007cc40` (ids 2500-2537, 2672/2673, PRODTYPE `0x181`, flag `0x800`).
 - **OQ-732.** The meaning of event codes 1, 2 and 4 and of flag bit 8 in the cursor input handlers (L: press, release, right click, CTRL). One Wine capture would settle it.

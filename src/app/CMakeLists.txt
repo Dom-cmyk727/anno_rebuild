@@ -23,6 +23,7 @@ add_library(anno_app_core
   src/opening_view.cpp
   src/picture_check.cpp
   src/picture_trace.cpp
+  src/placement_ghost.cpp
   src/play.cpp
   src/play_follow.cpp
   src/png.cpp
@@ -90,7 +91,7 @@ if(ANNO_BUILD_TESTS)
     tests/opening_ui_test.cpp tests/opening_test.cpp tests/ship_motion_test.cpp
     tests/ui_layout_test.cpp tests/ui_transform_test.cpp tests/ui_construction_eligibility_test.cpp
     tests/construction_menu_test.cpp tests/inspect_building_test.cpp tests/selection_test.cpp
-    tests/minimap_test.cpp tests/hud_tabs_test.cpp)
+    tests/minimap_test.cpp tests/hud_tabs_test.cpp tests/placement_ghost_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   target_compile_definitions(anno_app_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic"
@@ -324,6 +325,26 @@ if(ANNO_BUILD_TESTS)
       set_tests_properties(viewer_wiring_construction_unaffordable PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4
         ENVIRONMENT "ANNO_DEV_GOODS_TONS=0")
+      # UI-GHOST-1: the placement ghost's states from the sim's verdict through the real window
+      # (tool.ghost: valid over free land, refused over the inlet, hidden over the panel's chrome,
+      # unaffordable with the stock spent, its blink phase flipping both ways). ANNO_DEV_GOODS_TONS=3
+      # pays for exactly one pioneer house (ui_ghost.script's own comment).
+      add_test(NAME viewer_wiring_ui_ghost
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_ghost
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_ghost PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4
+        ENVIRONMENT "ANNO_DEV_GOODS_TONS=3")
+      # UI-GHOST-1: the same session's screenshots, the outline's exact 0xffff00 pixels counted
+      # (ghost_pixel_check.py; the hidden shot is the negative control).
+      add_test(NAME viewer_wiring_ui_ghost_pixel_check
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/ghost_pixel_check.py
+                $<TARGET_FILE:anno1503>)
+      set_tests_properties(viewer_wiring_ui_ghost_pixel_check PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 300 PROCESSORS 4)
       # W4-UI-2 V2: construction_full_proof's own recording (commands.txt/hashes.txt), replayed
       # headlessly in a fresh process (main.cpp's --commands/--replay-hashes, no window, no SDL -
       # opening_session.py's own mechanism, applied to the fixed-map/construction-menu session).

@@ -22,6 +22,7 @@
 #include <anno/app/frame_projection.hpp>
 #include <anno/app/hud_tabs.hpp>
 #include <anno/app/live_resize.hpp>
+#include <anno/app/placement_ghost.hpp>
 #include <anno/app/png.hpp>
 #include <anno/app/sdl_input.hpp>
 #include <anno/app/section_overlap.hpp>
@@ -840,6 +841,32 @@ class Viewer {
     UiLayerScaler ui_scaler_;
     /// The GPU path's UI layer, composed in place every frame (its storage is reused).
     assets::Rgba ui_canvas_;
+    /// UI-GHOST-1 (placement_ghost.hpp): the placement ghost's state, its blink on the window's
+    /// own clock (never game time, never sim state), the clock's last tick, the pointer's last
+    /// drawable position (the chrome test) and the GPU path's line layer when the frame has no 1:1
+    /// UI canvas to draw the outline into. `ghost_pixels_`: the outline pixels of the last frame.
+    GhostState ghost_ = GhostState::Hidden;
+    GhostBlink ghost_blink_;
+    std::optional<Clock::time_point> ghost_tick_at_;
+    std::optional<std::pair<double, double>> ghost_pointer_;
+    assets::Rgba ghost_canvas_;
+    std::uint64_t ghost_pixels_ = 0;
+    /// Asks the sim about the record a click would send (PlayRunner::request_build_probe) and
+    /// chooses the state from the latest published answer. True when the state changed.
+    bool ghost_refresh();
+    /// Advances the blink by the window milliseconds since the last tick and refreshes the state;
+    /// marks the frame dirty when what the ghost shows changed.
+    void ghost_tick();
+    /// The building's sprites are drawn: valid, or unaffordable in the shown phase.
+    [[nodiscard]] bool ghost_building_shown() const;
+    /// The outline the state draws (refused: the footprint; valid, unaffordable: the radius) and
+    /// where its corners land in frame `pf`; nullopt when none is drawn.
+    struct GhostLines {
+        std::vector<CornerEdge> edges;
+        OutlineProjection projection;
+    };
+    [[nodiscard]] std::optional<GhostLines> ghost_lines(const render::Scene& scene,
+                                                        const PointerFrame& pf) const;
     /// The selected building (ADR 0004 "Selection", W4-NEXT-2 K, row 18): viewer UI state only.
     /// Active in `--play` with the classic surface, outside the ship-start opening, while the
     /// developer/construction tool is off (a tool's click stays the tool's).
@@ -1412,9 +1439,15 @@ std::string Viewer::run() {
         // A batch waiting in the mailbox, a change not committed yet, chunk builds and the
         // compositor's uploads and dissolves keep the frames coming, also while paused (round eb,
         // 1A): they finish without a new turn or an input event.
+        ghost_tick(); // UI-GHOST-1: the blink runs on the window's clock
         const bool animating = demand(can_draw).animating();
         if (!animating && !(dirty_ && can_draw)) {
             int wait_ms = 100;
+            if (ghost_ == GhostState::Unaffordable) {
+                // Wake for the next flip of the blink (at most 100 ms anyway).
+                wait_ms =
+                    static_cast<int>(std::clamp<std::uint64_t>(ghost_blink_.ms_to_flip(), 1, 100));
+            }
             if (retry_at_) {
                 const auto left =
                     std::chrono::duration_cast<std::chrono::milliseconds>(*retry_at_ - Clock::now())
@@ -1491,6 +1524,14 @@ std::string Viewer::run() {
 void Viewer::handle(const SDL_Event& e) {
     if (script_ != nullptr && foreign_input(e)) {
         return; // a scripted session takes only its own input (dev_script.hpp, kScriptDevice)
+    }
+    if (e.type == SDL_EVENT_MOUSE_MOTION) {
+        // UI-GHOST-1: where the pointer is, whoever takes the motion (the chrome test).
+        const double density = SDL_GetWindowPixelDensity(window_);
+        ghost_pointer_ = std::pair{static_cast<double>(e.motion.x) * density,
+                                   static_cast<double>(e.motion.y) * density};
+    } else if (e.type == SDL_EVENT_WINDOW_MOUSE_LEAVE) {
+        ghost_pointer_.reset();
     }
     if (wake_event_ != 0 && e.type == wake_event_) {
         dirty_ = true; // a building batch or a command outcome (the runner's wake): draw it now
@@ -2819,6 +2860,109 @@ void Viewer::refresh_visibility_title() {
     }
 }
 
+bool Viewer::ghost_refresh() {
+    const GhostState before = ghost_;
+    GhostInputs in;
+    std::optional<BuildProbe> probe;
+    const sim::BuildingType* type = dev_ != nullptr ? dev_->input().selected_type() : nullptr;
+    const std::optional<sim::TileXY> hover =
+        dev_ != nullptr ? dev_->hover() : std::optional<sim::TileXY>{};
+    if (dev_ != nullptr && dev_->enabled() && !dev_->input().demolish_mode() && type != nullptr &&
+        hover && dev_->setup().city) {
+        in.armed = true;
+        const auto extent = dev_->input().footprint_extent(*hover, dev_->turn());
+        in.footprint_empty = !extent || extent->w == 0 || extent->h == 0;
+        // The record a click here sends (DevInput::build_command with DevTool::turn).
+        const sim::TileXY o = dev_->input().origin(*hover);
+        probe = BuildProbe{*dev_->setup().city,
+                           sim::PlacementWire{type->id, o.x, o.y, dev_->turn(), 0, 0}};
+    }
+    // No hover off the city's island rectangle: hidden there (ADAPTATION, OQ-760; the original
+    // draws the refused footprint over open sea too). A pick over the whole map is a follow-up.
+    // HE-observed, GOG unread (OQ-757): the ghost and its radius outline hide while the pointer is
+    // over the drawn chrome (docs/BUILDINGSOBJECTS.md part B 5.1 (4)).
+    if (construction_menu_ != nullptr && ghost_pointer_) {
+        in.pointer_on_chrome = ui_hit_at(ghost_pointer_->first, ghost_pointer_->second).chrome;
+    }
+    if (play_ != nullptr) {
+        play_->runner().request_build_probe(probe);
+        if (probe) {
+            const auto snap = play_->runner().snapshot();
+            if (snap && snap->build_probe && snap->build_probe->probe == *probe) {
+                in.verdict = snap->build_probe->verdict;
+            }
+        }
+    }
+    ghost_ = ghost_state(in, ghost_);
+    return ghost_ != before;
+}
+
+void Viewer::ghost_tick() {
+    // Whole window milliseconds since the last tick; the fraction stays for the next one.
+    const auto now = Clock::now();
+    std::uint64_t dt = 0;
+    if (ghost_tick_at_) {
+        const auto ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - *ghost_tick_at_);
+        if (ms.count() > 0) {
+            dt = static_cast<std::uint64_t>(ms.count());
+            *ghost_tick_at_ += ms;
+        }
+    } else {
+        ghost_tick_at_ = now;
+    }
+    const bool shown_before = ghost_building_shown();
+    static_cast<void>(ghost_blink_.advance(dt));
+    const bool changed = ghost_refresh();
+    if (changed || ghost_building_shown() != shown_before) {
+        dirty_ = true;
+    }
+}
+
+bool Viewer::ghost_building_shown() const {
+    return ghost_ == GhostState::Valid ||
+           (ghost_ == GhostState::Unaffordable && !ghost_blink_.hidden());
+}
+
+std::optional<Viewer::GhostLines> Viewer::ghost_lines(const render::Scene& scene,
+                                                      const PointerFrame& pf) const {
+    if (dev_ == nullptr || ghost_ == GhostState::Hidden) {
+        return std::nullopt;
+    }
+    const auto hover = dev_->hover();
+    const sim::BuildingType* type = dev_->input().selected_type();
+    if (!hover || type == nullptr) {
+        return std::nullopt;
+    }
+    const auto extent = dev_->input().footprint_extent(*hover, dev_->turn());
+    if (!extent || extent->w == 0 || extent->h == 0) {
+        return std::nullopt;
+    }
+    const GhostBox box{extent->x0, extent->y0, extent->w, extent->h};
+    GhostLines out;
+    // Refused: the footprint only (0x1004846b); valid and unaffordable: the radius (0x10048491).
+    out.edges = ghost_ == GhostState::Refused ? footprint_outline(box)
+                                              : radius_outline(box, type->action_radius);
+    if (out.edges.empty()) {
+        return std::nullopt;
+    }
+    out.projection.geometry = pf.geometry;
+    out.projection.map = pf.map;
+    // The city island's drawn rounding, as the pick undoes it (DevTool::pick).
+    for (std::size_t k = 0; k < scene.islands.size(); ++k) {
+        if (scene.islands[k].x == dev_->setup().island.x0 &&
+            scene.islands[k].y == dev_->setup().island.y0) {
+            out.projection.rounding = placement_rounding(scene, k, pf.group, pf.geometry.tile_w);
+            break;
+        }
+    }
+    out.projection.height = [&scene](double u, double v) {
+        return static_cast<double>(
+            scene.ground_height(static_cast<float>(u), static_cast<float>(v)).value_or(0.0F));
+    };
+    return out;
+}
+
 void Viewer::update_title() {
     // Whatever stage the title is about to show is the stage refresh_visibility_title compares to.
     if (dev_ != nullptr && play_ != nullptr && latest_receipt_) {
@@ -2893,6 +3037,7 @@ void Viewer::update_title() {
         // now, shown from `snap->inspection` next time (same one-turn-lag pattern as the founding
         // probe below — this frame's title still reads what the previous request answered).
         play_->runner().request_inspect(dev_->hover());
+        static_cast<void>(ghost_refresh()); // UI-GHOST-1: and the ghost's record
         // Why there is no preview, from the frame the pointer is over (its scene and zoom level).
         std::string note = pointer_frame_ && pointer_frame_->scene
                                ? preview_note(*dev_, *pointer_frame_->scene, pointer_frame_->group)
@@ -3087,6 +3232,12 @@ void Viewer::script_tick() {
                                        ? std::to_string(dev_->input().rotation())
                                        : std::string("none");
     st.facts["tool.turn"] = tool_armed ? std::to_string(dev_->turn()) : std::string("none");
+    // UI-GHOST-1: the ghost's state, the blink's phase (1: the unaffordable building hidden), its
+    // flips so far and the outline pixels the last frame drew.
+    st.facts["tool.ghost"] = std::string(ghost_state_name(ghost_));
+    st.facts["tool.ghost.phase"] = ghost_blink_.hidden() ? "1" : "0";
+    st.facts["tool.ghost.flips"] = std::to_string(ghost_blink_.flips());
+    st.facts["tool.ghost.pixels"] = std::to_string(ghost_pixels_);
     // UI-PLACE-1: what a map click does now - nothing, build the armed type, or demolish.
     st.facts["tool.mode"] = dev_ == nullptr || !dev_->enabled() ? "off"
                             : dev_->input().demolish_mode()     ? "demolish"
@@ -3736,7 +3887,7 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     steps_.push_back({"surface view", since_ms(acquired, render_start)});
     // The developer tool's preview: its sprites, drawn last (dev_feedback.hpp).
     std::vector<render::SpriteDraw> overlay;
-    if (dev_ != nullptr) {
+    if (dev_ != nullptr && ghost_building_shown()) {
         if (auto p = make_preview(*dev_, *gen, group_, time_ms())) {
             overlay = std::move(p->sprites);
         }
@@ -3801,6 +3952,33 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
             const auto scale_start = Clock::now();
             ui_overlay_ptr = &ui_scaler_.scale(ui_canvas_, ui_t);
             steps_.push_back({"ui scale", since_ms(scale_start, Clock::now())});
+        }
+    }
+    // UI-GHOST-1: the ghost's outline, drawn into the frame-sized UI layer where it is
+    // transparent (the chrome stays on top): the 1:1 canvas itself, else a copy of the stretched
+    // layer, else a layer of its own.
+    ghost_pixels_ = 0;
+    if (dev_ != nullptr) {
+        const PointerFrame pf = pointer_frame(view, resample, group_, levels().tile_w(group_),
+                                              levels().tile_h(group_), gen, out_w, out_h);
+        if (const auto lines = ghost_lines(*gen, pf)) {
+            assets::Rgba* layer = nullptr;
+            if (ui_overlay_ptr == &ui_canvas_) {
+                layer = &ui_canvas_;
+            } else {
+                if (ui_overlay_ptr != nullptr) {
+                    ghost_canvas_ = *ui_overlay_ptr;
+                } else {
+                    ghost_canvas_.width = static_cast<std::uint16_t>(out_w);
+                    ghost_canvas_.height = static_cast<std::uint16_t>(out_h);
+                    ghost_canvas_.pixels.assign(
+                        static_cast<std::size_t>(out_w) * static_cast<std::size_t>(out_h) * 4, 0);
+                }
+                layer = &ghost_canvas_;
+            }
+            ghost_pixels_ =
+                draw_outline_rgba_under(lines->edges, lines->projection, *layer, kGhostOutlineRgb);
+            ui_overlay_ptr = layer;
         }
     }
     const auto s =
@@ -4051,9 +4229,19 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
             }
         }
     }
+    ghost_pixels_ = 0;
     if (dev_ != nullptr) {
-        if (const auto p = make_preview(*dev_, *gen, group_, time_ms())) {
-            blend_preview(*gen, *p, group_, time_ms(), view, buffer_.data());
+        if (ghost_building_shown()) {
+            if (const auto p = make_preview(*dev_, *gen, group_, time_ms())) {
+                blend_preview(*gen, *p, group_, time_ms(), view, buffer_.data());
+            }
+        }
+        // UI-GHOST-1: the outline over the world, under the chrome drawn next.
+        const PointerFrame pf = pointer_frame(view, nullptr, group_, levels().tile_w(group_),
+                                              levels().tile_h(group_), gen, w, h);
+        if (const auto lines = ghost_lines(*gen, pf)) {
+            ghost_pixels_ = draw_outline_xrgb(lines->edges, lines->projection, buffer_.data(), w, h,
+                                              kGhostOutlineRgb);
         }
     }
     double construction_ui_ms = 0.0;

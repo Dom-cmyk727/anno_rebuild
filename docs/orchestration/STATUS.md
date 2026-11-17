@@ -170,6 +170,17 @@ says who is doing what, where the work is, and what it waits on.
   order?", the owner answered "Yes". They run in the UI lane, then UI-RANGE-1. Also, asked "Delete the public
   task branch with the data table after landing, and recreate it clean?", the owner answered "Yes, clean it
   up": `task/BUILDINGS-REF-1` is recreated as one clean commit.
+- **Candidate 8 `refs/candidates/refs-crops-fertility` = `c4b79447`** (tree `cda6649b`), stacked on
+  `c01d5806`: BUILDINGS-REF-1 `cc2c6e80`, UNITS-REF-1 `8a8086e4`, FERTILITY-1a `3637c288`, ISLAND-CROPS-1 1b
+  `1eef2cfb`, UI-INFO-2b `1a6f5ef5`, UI-PRODBAR-1 B `be6e13ed`.
+  - Conflicts resolved by hand: `docs/open-questions.md` (in-place updates of OQ-023, 708, 624 and the
+    fertility note, new OQs in numeric order 708-754), `data/ui/README.md` (both hud.txt clauses) and
+    `src/app/CMakeLists.txt` (the union of the test files). No CR, no markers.
+  - It changes the state stream (ISLAND-CROPS-1 1b), so it lands only after the Mac's full game-file run
+    (GATE-RUN refs-crops-fertility), which also covers the three candidates below it. The PC part (build,
+    changed lanes, the WSL check) runs when the PC is quiet; the owner's viewer is open now.
+  - UI-INFO-2d (`e4ae2b16`, owner test passed "Yes, they looked right") waits for its CI rerun and the
+    orchestrator's review, then goes on top.
 - **UNITS-REF-1 ACCEPTED** 2026-11-17, head `8a8086e4` (CI 44118907639 attempt 3 green; the first two
   had no macOS runner): `docs/UNITS.md`, the standing reference for every movable unit. **ISLAND-CROPS-1
   1b ACCEPTED**, head `1eef2cfb` (CI 44108255131 attempt 3 green):

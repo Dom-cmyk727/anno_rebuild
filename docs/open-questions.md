@@ -3567,10 +3567,11 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Rebuild default (stage B):** frame = (game ms / 40) mod 16 from the global clock, no restart: the original's confirmed divisor `ANIM_ms / 2` with the tick read as a game millisecond (0.64 s per turn). The tick unit and the no-restart choice are adaptations until this closes.
 - **How to resolve:** the HE recipe in REPORTS (UI-HARVEST-ICON-1 stage A): record an icon at 60 fps for 10 s and count frames per turn and look for jumps.
 
-## OQ-723: Who sees a building's status icon (UI-HARVEST-ICON-1, 2026-11-17; OPEN)
+## OQ-723: Who sees a building's status icon (UI-HARVEST-ICON-1, 2026-11-17; RESOLVED by the owner 2026-11-17)
 - **Question:** the icon is an island object, created whenever the building's owner has Volk 1 (human and computer seats, OQ-033). Does the original draw it for every viewer, so a player sees the icons on a computer opponent's or another human's buildings, or does the draw path filter by the local player?
 - **What we know:** `0x10073010` checks only the building's owner; no viewer test was found in it. The draw path of these island objects was not read for an owner filter.
 - **Rebuild default (stage B):** show icons on the local player's buildings only (the case the owner saw), and record the choice as provisional.
+- **Resolution (owner, 2026-11-17, relayed by the orchestrator):** asked "Show only your own buildings' status icons (original), or add an option to see all?", the owner answered "Own only". Stage B keeps the owner gate (local player's buildings, owner Volk 1) with no `rules` option. Whether the original filters by viewer in its draw path stays unread; the owner's answer settles the rebuild's behaviour.
 - **How to resolve:** HE: a game with a computer opponent; look at its farms early (lack of raw material is common) at the closest zoom. Or read the object pass in `AnnoWelt` `0x1009f870` and the figure draw for an owner or visibility test.
 
 ## OQ-724: Whether status icons survive a save and load (UI-HARVEST-ICON-1, 2026-11-17; OPEN)

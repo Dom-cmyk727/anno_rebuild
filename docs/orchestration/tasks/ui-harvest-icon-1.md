@@ -39,3 +39,27 @@ buildings.
 
 Rules: GOG code by address (`py -3.14 E:\anno1503-worktrees\anno1503-UI-STATUS-1\cache\ui-status-1\adis.py`),
 HE pixels only. If a frame is needed, write an HE recipe for the owner. No code, builds or tests in A.
+
+## Stage B (released 2026-11-17)
+
+Released by the orchestrator after accepting stage A (`13a2eb53`); plan = the stage A fix round 1 entry in
+REPORTS. UI lane, read-only app work, about 3 h. **No sim changes**: if a read needs state the snapshot
+cannot get read-only, stop and report.
+
+1. `PlaySnapshot::status_icons`: per turn, for the local player's buildings, the icon = the lowest of
+   {Zzz (every line switched off), `status.icons` bit 1, bit 2}, all only while the owner's Volk is 1;
+   footprint, rotation, height byte. Republished unchanged while equal.
+2. The window draws figures 1555 / 1570 / 1572 (1571 mapped for later) at the footprint centre as live
+   units (CPU and GPU), frame = (ms / 40) mod 16 (OQ-722 default), the anchor on the top of the
+   building's picture (OQ-721 default), own buildings only (OQ-723 default; the orchestrator asks the
+   owner separately about a rules option for other players' icons: not built here).
+3. The known divergence ("no road" shows icon 1 or 2, OQ-720) is named in the report and in a
+   viewer comment.
+4. Tests: the payload rule, two-line buildings, the 16-bit due test through the sim's StatusTracker,
+   the collect pass (own city only, Volk gate), the frame rule, and the layer's frames against
+   `tools/figuren.py`'s decode. Focused gate (`run_selected.py --jobs 8`, log
+   `cache\gates\ui-harvest-icon-1-B-01.log`): the new tests, the hud/ui/selection `anno_app_tests`,
+   `^viewer_wiring_` and the oracle tests (`live_screen_matches_oracle`, `ui_dynamic_draw_check`,
+   `info_panel_gog_compare`, `selected_house_pixel_check`, `ui_panels_match_gog`), all required. WSL
+   `check_unix_warnings.sh`, clang-format 23.1.3, a failure proof, a wiring script for the forester's
+   no-harvest state and an owner-test recipe side by side with HE `c5_icon.png`.

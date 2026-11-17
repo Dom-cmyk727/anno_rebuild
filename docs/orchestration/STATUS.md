@@ -170,6 +170,17 @@ says who is doing what, where the work is, and what it waits on.
   order?", the owner answered "Yes". They run in the UI lane, then UI-RANGE-1. Also, asked "Delete the public
   task branch with the data table after landing, and recreate it clean?", the owner answered "Yes, clean it
   up": `task/BUILDINGS-REF-1` is recreated as one clean commit.
+- **UI-GHOST-1 B `912f1d3a`: the owner's test FAILED** 2026-11-17 ("no house, no lines, no sidebar"); not
+  stacked. The UI lane's analysis (`E:\1503_test_videos\ui_10_rca.md`):
+  - **No sidebar:** the test build held GHOST-1 alone, without the accepted-but-unlanded BUILDCAT-1.
+    **Process rule from now on:** every owner test runs on a local integration build of main plus all
+    accepted-but-unlanded UI branches (never pushed), and the test message lists its branches.
+  - **No house, no lines:** the dev tool's pick only returned tiles inside the developer city's island,
+    so with the owner's view elsewhere the ghost was always hidden; the scripted tests all started with
+    `look 1148 522`, a blind spot. It also explains ui_9's "nothing is to be placed".
+  - **Fix round R1:** a whole-map pick (any island, the sea), the refused footprint everywhere as in the
+    original, OQ-760 resolved, a wiring case from the default start view with a failure proof. Then the
+    owner retests on an integration build of GHOST-1 R1 + BUILDCAT-1 + UI-INFO-2d.
 - **RENDER-DIRECT-1d ACCEPTED** 2026-11-17, head `16f2d9f6` (CI 44160833294 green on every job). The
   texture-ceiling bisection hung on CI's software OpenGL adapter (it doubled toward a huge reported limit).
   The orchestrator's technical call (the commit message says "owner's call"; it was the orchestrator's):

@@ -289,8 +289,10 @@ def terrain_class(flags_word):
         return 'ordinary-land', True                    # no class, bit 4, mode 0, bit 0x10 clear
     if f & 0x7017 == 0x2007:
         return 'coast', True                            # the evidenced coast rule
-    if f & 3 == 1:
-        return 'tile-object (single quad, average height)', False
+    if f & 3 == 1 and not f & 0x10:
+        # FERTILITY-1 1a: 0x10008fa1 returns the four-vertex mean before any class test; 0x1007c790 then applies
+        # the overlap rows, the class/group exemptions and the threshold (place() transcribes all of it)
+        return 'tile-object (single quad, average height)', True
     if f & 0x7000 == 0x4000:
         return 'road/bridge/pier-on-road (accepted at once)', False
     if f & 0x7000 == 0x3000:

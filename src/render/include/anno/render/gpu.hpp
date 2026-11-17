@@ -20,6 +20,7 @@
 // compute pass before the render passes, as gpu.rs does.
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -301,12 +302,15 @@ struct GpuLimits {
     std::uint32_t max_atlas_layers = 0;
     /// Device memory in MiB that the sprite atlas may use at most (whole layers
     /// of atlas_size^2 texels; docs/render/gpu-chunks.md 4.3 rule 6, residency.hpp).
-    /// 0 = from the adapter: 512 on a discrete adapter, 256 otherwise, clamped to
-    /// the device's array layers and buffer size. Reason: WebGPU reports no memory
-    /// size; the largest original scenario needs 197 MiB for all three groups
-    /// (330 MiB with enhanced water's smoothed copies, estimated), so the discrete
-    /// default never evicts original content and the integrated one only other
-    /// groups' frames. An owner decision (open question C3 of gpu-chunks.md).
+    /// 0 = from the adapter: 512 on a discrete adapter, 384 otherwise, clamped to
+    /// the device's array layers and buffer size (atlas_budget_bytes_before_sprite,
+    /// below). Reason: WebGPU reports no memory size; the largest original
+    /// scenario needs 197 MiB for all three groups (330 MiB with enhanced water's
+    /// smoothed copies, estimated), so the discrete default never evicts original
+    /// content. **Decided by the owner 2026-11-17** (OQ-096/OQ-096b,
+    /// docs/render/atlas.md §4): the integrated default was raised from a 256 MiB
+    /// proposal to 384 MiB so the direct-rendering path's resident static+water
+    /// atlas can hold the adjacent zoom-group pair with one mip level there too.
     /// Not read by the compositor yet (stage 2).
     std::size_t atlas_budget_mb = 0;
     /// Texel bytes of sprite frames written into the atlas per frame at most
@@ -363,6 +367,24 @@ struct GpuLimits {
     /// frame time within 0.1 ms of the unsplit one); for benchmarks.
     bool gpu_timing = false;
 };
+
+/// The chunk atlas budget in bytes, before the per-frame sprite (Hot) atlas's current footprint
+/// is subtracted (gpu-chunks.md 4.3 rule 6, GpuLimits::atlas_budget_mb's own doc comment): a pure
+/// function so the default and the device-layer clamp are each testable without a real adapter
+/// (RENDER-DIRECT-1b step 1). `atlas_budget_mb` (0 = unset) always wins when non-zero; 0 defaults
+/// to 512 MiB on a discrete adapter, 384 MiB otherwise (owner decision 2026-11-17, OQ-096/
+/// OQ-096b). The result never exceeds `max_layers` whole layers of `layer_bytes` each - the
+/// device's own clamp, unconditional of which MiB value was used.
+[[nodiscard]] inline std::uint64_t atlas_budget_bytes_before_sprite(std::uint64_t atlas_budget_mb,
+                                                                    WGPUAdapterType adapter_type,
+                                                                    std::uint32_t max_layers,
+                                                                    std::uint64_t layer_bytes) {
+    std::uint64_t mb = atlas_budget_mb;
+    if (mb == 0) {
+        mb = adapter_type == WGPUAdapterType_DiscreteGPU ? 512 : 384;
+    }
+    return std::min(mb << 20, std::uint64_t{max_layers} * layer_bytes);
+}
 
 /// How many chunks' worth of texture planes to pre-create for a window of `w` x `h` pixels
 /// (GpuLimits::prewarm_chunks, OQ-093): the chunks of the largest composed grid a window

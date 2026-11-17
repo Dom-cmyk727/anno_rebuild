@@ -1428,18 +1428,13 @@ struct GpuFrame::Impl {
         return atlas ? std::uint64_t{atlas->layers} * cb_layer_bytes() : 0;
     }
 
-    /// The chunk atlas budget in bytes (gpu-chunks.md 4.3 rule 6, OQ-096):
-    /// GpuLimits::atlas_budget_mb, or 512 MiB on a discrete adapter / 256 MiB
-    /// otherwise, clamped to what the device's array layers hold. The OQ-096
-    /// budget covers BOTH atlases together, so the per-frame sprite atlas's
-    /// current footprint is subtracted (G3): the two never exceed the budget.
+    /// The chunk atlas budget in bytes (gpu-chunks.md 4.3 rule 6, OQ-096/OQ-096b):
+    /// atlas_budget_bytes_before_sprite (gpu.hpp), the default/clamp as a pure, directly
+    /// testable function. The OQ-096 budget covers BOTH atlases together, so the per-frame
+    /// sprite atlas's current footprint is subtracted here (G3): the two never exceed the budget.
     std::uint64_t cb_atlas_budget_bytes() const {
-        std::uint64_t mb = limits.atlas_budget_mb;
-        if (mb == 0) {
-            mb = adapter_type == WGPUAdapterType_DiscreteGPU ? 512 : 256;
-        }
-        const std::uint64_t total =
-            std::min(mb << 20, std::uint64_t{max_layers} * cb_layer_bytes());
+        const std::uint64_t total = atlas_budget_bytes_before_sprite(
+            limits.atlas_budget_mb, adapter_type, max_layers, cb_layer_bytes());
         const std::uint64_t sprite = sprite_atlas_bytes();
         return sprite >= total ? 0 : total - sprite;
     }

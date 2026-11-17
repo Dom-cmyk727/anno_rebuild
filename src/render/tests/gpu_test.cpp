@@ -44,6 +44,32 @@ namespace gpu = anno::render::gpu;
 namespace render = anno::render;
 namespace fig = anno::formats::figuren;
 
+TEST_CASE("atlas_budget_bytes_before_sprite: the default, the override and the layer clamp "
+          "(RENDER-DIRECT-1b step 1, no adapter needed)") {
+    constexpr std::uint64_t kMiB = 1024ULL * 1024;
+    // 0 (unset) picks the adapter default: discrete 512 MiB, anything else 384 MiB
+    // (owner decision 2026-11-17, OQ-096/OQ-096b).
+    CHECK(gpu::atlas_budget_bytes_before_sprite(0, WGPUAdapterType_DiscreteGPU, 1000, kMiB) ==
+          512 * kMiB);
+    CHECK(gpu::atlas_budget_bytes_before_sprite(0, WGPUAdapterType_IntegratedGPU, 1000, kMiB) ==
+          384 * kMiB);
+    CHECK(gpu::atlas_budget_bytes_before_sprite(0, WGPUAdapterType_CPU, 1000, kMiB) == 384 * kMiB);
+    CHECK(gpu::atlas_budget_bytes_before_sprite(0, WGPUAdapterType_Unknown, 1000, kMiB) ==
+          384 * kMiB);
+    // An explicit, non-zero atlas_budget_mb wins over the adapter default either way.
+    CHECK(gpu::atlas_budget_bytes_before_sprite(7, WGPUAdapterType_DiscreteGPU, 1000, kMiB) ==
+          7 * kMiB);
+    CHECK(gpu::atlas_budget_bytes_before_sprite(7, WGPUAdapterType_IntegratedGPU, 1000, kMiB) ==
+          7 * kMiB);
+    // The result never exceeds what max_layers whole layers of layer_bytes each hold, whichever
+    // MiB value (default or explicit) was chosen.
+    CHECK(gpu::atlas_budget_bytes_before_sprite(0, WGPUAdapterType_DiscreteGPU, 10, kMiB) ==
+          10 * kMiB);
+    CHECK(gpu::atlas_budget_bytes_before_sprite(9999, WGPUAdapterType_DiscreteGPU, 3, kMiB) ==
+          3 * kMiB);
+    CHECK(gpu::atlas_budget_bytes_before_sprite(0, WGPUAdapterType_DiscreteGPU, 0, kMiB) == 0);
+}
+
 TEST_CASE("the shared WGSL shaders compile on the device") {
     auto c = gpu::headless_context();
     if (!c) {

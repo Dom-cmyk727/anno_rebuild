@@ -592,3 +592,126 @@ TEST_CASE("ship start: the three unchanged candidates load against the original 
     // The candidate files are not rewritten and not selected: reading them did not touch them
     // (the hash of the active map is checked by the task's gate, not here).
 }
+
+namespace {
+// Real registry and unchanged candidate; no injected scenario or post-creation rules mutation.
+sm::Manifest extension_candidate() {
+    const auto bytes =
+        read_all(fs::path(ANNO_REPO_DIR) / "data/maps/candidates/ship-start-v2/lan5-ship-a.json");
+    auto parsed = sm::parse(bytes);
+    REQUIRE(parsed.ok());
+    return std::move(parsed).value();
+}
+} // namespace
+
+TEST_CASE(
+    "ship start extensions: omitted and empty retain default save bytes for load and install") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto types = original_types(*dir);
+    const auto manifest = extension_candidate();
+    auto omitted = sl::load_ship_start(manifest, *dir, types);
+    auto empty = sl::load_ship_start(manifest, *dir, types, {}, {}, sim::serial_executor(), {}, {});
+    REQUIRE_MESSAGE(omitted.ok(), message_of(omitted));
+    REQUIRE_MESSAGE(empty.ok(), message_of(empty));
+    const auto bytes = omitted.value().save();
+    const auto hash = omitted.value().state_hash();
+    CHECK_FALSE(omitted.value().fisher_enabled());
+    CHECK_FALSE(empty.value().fisher_enabled());
+    CHECK(sl::expedition_baseline_problem(omitted.value()).empty());
+    CHECK(sl::expedition_baseline_problem(empty.value()).empty());
+    CHECK(empty.value().save() == bytes);
+    CHECK(empty.value().state_hash() == hash);
+    auto target = std::move(empty).value();
+    target.advance(2);
+    REQUIRE_FALSE(sl::install_ship_start(target, manifest, *dir, types));
+    CHECK(target.save() == bytes);
+    CHECK(target.state_hash() == hash);
+    target.advance(2);
+    REQUIRE_FALSE(sl::install_ship_start(target, manifest, *dir, types, {}, {},
+                                         sim::serial_executor(), {}, {}));
+    CHECK_FALSE(target.fisher_enabled());
+    CHECK(target.save() == bytes);
+    CHECK(target.state_hash() == hash);
+}
+
+TEST_CASE("ship start extensions: load forwards enabled context and native reload preserves it") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto types = original_types(*dir);
+    sim::ExtensionContext extensions;
+    extensions.fisher_rules.enabled = 1;
+    auto loaded = sl::load_ship_start(extension_candidate(), *dir, types, {}, {},
+                                      sim::serial_executor(), {}, extensions);
+    REQUIRE_MESSAGE(loaded.ok(), message_of(loaded));
+    CHECK(loaded.value().fisher_enabled());
+    CHECK(sl::expedition_baseline_problem(loaded.value()).empty());
+    auto again = sim::World::load(loaded.value().save(), types);
+    REQUIRE_MESSAGE(again.ok(), message_of(again));
+    CHECK(again.value().fisher_enabled());
+    CHECK(again.value().save() == loaded.value().save());
+    CHECK(again.value().state_hash() == loaded.value().state_hash());
+}
+
+TEST_CASE(
+    "ship start extensions: install forwards enabled context and native reload preserves it") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto types = original_types(*dir);
+    const auto manifest = extension_candidate();
+    auto initial = sl::load_ship_start(manifest, *dir, types);
+    REQUIRE_MESSAGE(initial.ok(), message_of(initial));
+    auto target = std::move(initial).value();
+    REQUIRE_FALSE(target.fisher_enabled());
+    sim::ExtensionContext extensions;
+    extensions.fisher_rules.enabled = 1;
+    const auto error = sl::install_ship_start(target, manifest, *dir, types, {}, {},
+                                              sim::serial_executor(), {}, extensions);
+    REQUIRE_MESSAGE(!error, error.value_or(""));
+    CHECK(target.fisher_enabled());
+    CHECK(sl::expedition_baseline_problem(target).empty());
+    auto again = sim::World::load(target.save(), types);
+    REQUIRE_MESSAGE(again.ok(), message_of(again));
+    CHECK(again.value().fisher_enabled());
+    CHECK(again.value().save() == target.save());
+    CHECK(again.value().state_hash() == target.state_hash());
+}
+
+TEST_CASE(
+    "ship start extensions: invalid context refuses load and install without replacing target") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto types = original_types(*dir);
+    const auto manifest = extension_candidate();
+    auto initial = sl::load_ship_start(manifest, *dir, types);
+    REQUIRE_MESSAGE(initial.ok(), message_of(initial));
+    auto target = std::move(initial).value();
+    target.advance(2);
+    const auto before = target.save();
+    const auto hash = target.state_hash();
+    sim::ExtensionContext invalid;
+    invalid.fisher_rules.enabled = 2;
+    const auto refused =
+        sl::load_ship_start(manifest, *dir, types, {}, {}, sim::serial_executor(), {}, invalid);
+    REQUIRE_FALSE(refused.ok());
+    CHECK(refused.error() == "extension fisher_rules: enabled must be 0 or 1");
+    const auto error = sl::install_ship_start(target, manifest, *dir, types, {}, {},
+                                              sim::serial_executor(), {}, invalid);
+    REQUIRE(error.has_value());
+    CHECK(*error == refused.error());
+    CHECK(target.save() == before);
+    CHECK(target.state_hash() == hash);
+    CHECK_FALSE(target.fisher_enabled());
+}

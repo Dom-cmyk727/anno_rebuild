@@ -182,8 +182,8 @@ formats::Result<fs::path, std::string> resolve_content_path(const fs::path& cont
 formats::Result<sim::World, std::string>
 load_ship_start(const sm::Manifest& manifest, const fs::path& game_dir,
                 std::shared_ptr<const sim::TypeRegistry> types, const sim::SimConfig& config,
-                const sim::Rules& rules_in, const sim::Executor& ex,
-                const ShipStartPolicy& policy) {
+                const sim::Rules& rules_in, const sim::Executor& ex, const ShipStartPolicy& policy,
+                const sim::ExtensionContext& extension_rules) {
     if (!types) {
         return std::string("registry: is null");
     }
@@ -440,7 +440,8 @@ load_ship_start(const sm::Manifest& manifest, const fs::path& game_dir,
             rules.shared_visibility.push_back(std::move(group));
         }
     }
-    auto world = sim::World::create(out.spec, std::move(types), config, rules, {}, ex);
+    auto world =
+        sim::World::create(out.spec, std::move(types), config, rules, {}, ex, extension_rules);
     if (!world) {
         return world.error();
     }
@@ -450,13 +451,13 @@ load_ship_start(const sm::Manifest& manifest, const fs::path& game_dir,
     return world;
 }
 
-std::optional<std::string> install_ship_start(sim::World& target, const sm::Manifest& manifest,
-                                              const fs::path& game_dir,
-                                              std::shared_ptr<const sim::TypeRegistry> types,
-                                              const sim::SimConfig& config, const sim::Rules& rules,
-                                              const sim::Executor& ex,
-                                              const ShipStartPolicy& policy) {
-    auto built = load_ship_start(manifest, game_dir, std::move(types), config, rules, ex, policy);
+std::optional<std::string>
+install_ship_start(sim::World& target, const sm::Manifest& manifest, const fs::path& game_dir,
+                   std::shared_ptr<const sim::TypeRegistry> types, const sim::SimConfig& config,
+                   const sim::Rules& rules, const sim::Executor& ex, const ShipStartPolicy& policy,
+                   const sim::ExtensionContext& extension_rules) {
+    auto built = load_ship_start(manifest, game_dir, std::move(types), config, rules, ex, policy,
+                                 extension_rules);
     if (!built) {
         return built.error();
     }

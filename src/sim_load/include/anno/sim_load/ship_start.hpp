@@ -70,12 +70,13 @@ struct ShipStartPolicy {
 /// Builds the world. `game_dir` holds the manifest's `base` scenario and Scenes/Islands.
 /// The manifest must be the supported baseline (ship_manifest::baseline_ok). The world has
 /// developer_start semantics OFF: no Kontor, no city, no owned tile.
-[[nodiscard]] formats::Result<sim::World, std::string>
-load_ship_start(const formats::ship_manifest::Manifest& manifest,
-                const std::filesystem::path& game_dir,
-                std::shared_ptr<const sim::TypeRegistry> types, const sim::SimConfig& config = {},
-                const sim::Rules& rules = {}, const sim::Executor& ex = sim::serial_executor(),
-                const ShipStartPolicy& policy = {});
+/// Optional extension rules are validated by World::create before the world is built.
+/// An empty context preserves the existing default bytes and behaviour.
+[[nodiscard]] formats::Result<sim::World, std::string> load_ship_start(
+    const formats::ship_manifest::Manifest& manifest, const std::filesystem::path& game_dir,
+    std::shared_ptr<const sim::TypeRegistry> types, const sim::SimConfig& config = {},
+    const sim::Rules& rules = {}, const sim::Executor& ex = sim::serial_executor(),
+    const ShipStartPolicy& policy = {}, const sim::ExtensionContext& extension_rules = {});
 
 /// load_ship_start into `target`: `target` is assigned only when the whole load succeeded; on
 /// an error it is untouched. Returns the error, or nullopt.
@@ -83,7 +84,8 @@ load_ship_start(const formats::ship_manifest::Manifest& manifest,
     sim::World& target, const formats::ship_manifest::Manifest& manifest,
     const std::filesystem::path& game_dir, std::shared_ptr<const sim::TypeRegistry> types,
     const sim::SimConfig& config = {}, const sim::Rules& rules = {},
-    const sim::Executor& ex = sim::serial_executor(), const ShipStartPolicy& policy = {});
+    const sim::Executor& ex = sim::serial_executor(), const ShipStartPolicy& policy = {},
+    const sim::ExtensionContext& extension_rules = {});
 
 /// The baseline expectation on a loaded world, stricter than the generic graph rules: five
 /// seats, ids 3 * seat + 1 .. 3 * seat + 3 = ship 1502, scout 717, donkey 718 of that owner;

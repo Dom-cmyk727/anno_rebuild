@@ -404,4 +404,22 @@ The ship-start loader is unchanged. Streams 119 and PRNG timeline 3 add per-isla
 
 ## Start policy: peace and shared visibility (MAP-FOUND-3 D)
 
-`load_ship_start` takes a `ShipStartPolicy` (last parameter). Default = the owner decision C5: the five seats form one shared-visibility group, no `DIPL` rows exist (all relations zero = peace, no alliance). `ShipStartPolicy{std::vector<uint32_t>{...}}` names other participants (seats of the start, ascending, at least two); an empty list switches sharing off. The group is written to `Rules::shared_visibility`, so it is part of the world's rules digest, state hash (stream 121) and replay header; the manifest `content_hash` still describes the candidate geometry only. See `docs/sim/shared-visibility.md`.
+`load_ship_start` takes a `ShipStartPolicy` (followed by the optional extension context). Default = the owner decision C5: the five seats form one shared-visibility group, no `DIPL` rows exist (all relations zero = peace, no alliance). `ShipStartPolicy{std::vector<uint32_t>{...}}` names other participants (seats of the start, ascending, at least two); an empty list switches sharing off. The group is written to `Rules::shared_visibility`, so it is part of the world's rules digest, state hash (stream 121) and replay header; the manifest `content_hash` still describes the candidate geometry only. See `docs/sim/shared-visibility.md`.
+
+### Optional setup extensions (TOWN-START-SETUP-1, 2026-11-17)
+
+`load_ship_start` and `install_ship_start` accept a final
+`const sim::ExtensionContext& extension_rules = {}`. The installer forwards it to
+the loader, which forwards it unchanged to `World::create`. Creation performs
+the existing extension validation and initialisation; no existing world is patched.
+An omitted or explicitly empty context retains the default-off behaviour and
+identical saved bytes/hash. An explicit fisher context is an opt-in setup choice,
+not a changed default. Invalid contexts propagate the existing creation error;
+failed installation leaves the target unchanged. No tag, section version, global
+state version, PRNG timeline or manifest changes.
+
+| Setup requirement | Positive proof | Negative control | Review |
+|---|---|---|---|
+| Default identity | Omitted/empty load and install save bytes/hash equal | Existing pins and baseline expectation | pending |
+| Explicit context arrives at creation | Enabled load/install and reload | Drop each forwarding edge: enabled assertion fails, default passes | pending |
+| Invalid input is atomic | Existing enabled=2 creation refusal propagated | Failed install target bytes/hash remain unchanged | pending |

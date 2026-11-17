@@ -21,9 +21,11 @@ says who is doing what, where the work is, and what it waits on.
   TRACE-COLS-1), each with CI green on its reviewed head. **The owner, 2026-11-17:** asked whether both zoom
   branches join the next candidate with the Metal and warning fixes, "yes both". One conflict, in
   `src/app/src/viewer.cpp`: both sides' helpers kept (ZOOM-SMOOTH-2's live-resize trace and move fallback,
-  ZOOM-SMOOTH-3's GPU-only `hitch_tracking_enabled`). Fetchable as `refs/candidates/zoom-diag`. The Windows
-  PC's part (GPU tests on the RTX 4090, the app lanes, the window-trace contract, the WSL warning check) is
-  running. They land in order, `784b5a27` first.
+  ZOOM-SMOOTH-3's GPU-only `hitch_tracking_enabled`). Fetchable as `refs/candidates/zoom-diag`. **The Windows
+  PC's part PASSED** 2026-11-17: GPU tests on the RTX 4090 (selected by name, `ANNO_GPU_ADAPTER=RTX`), the app
+  lanes and the window-trace contract with the game files, 520 selected, 517 executed, 0 failed, 3 opt-in
+  skips; the WSL warning check clean under GCC 13 and Clang 18, with and without the viewer's GPU code, both
+  negative controls caught. They land in order, `784b5a27` first.
 - **Landing candidate `09315620`** (tree `78444576`), **stacked on `945c3216`**: UI-TABS-1 stage A `a79499cf`
   (the tab and sub-tab switching; CI green; accepted by the UI lane on the owner's viewer test). **The owner,
   2026-11-17:** asked whether stage A lands with this batch, "Yes stack it". Two conflicts were resolved: both

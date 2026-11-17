@@ -1,9 +1,14 @@
 # UI-STATUS-1: the status bar shows the island under the cursor
 
 **Written 2026-11-17** by the UI lane on the owner's go ("Yes, write it"). Branch `task/UI-STATUS-1`, base
-origin/main `09315620`, worktree `E:\anno1503-worktrees\anno1503-UI-STATUS-1`. Stage A is released with
-this packet. Stage B waits for the UI lane's review of A; if A's code read disagrees with the owner's rule
-below, it also waits for the owner's choice.
+origin/main `09315620`, worktree `E:\anno1503-worktrees\anno1503-UI-STATUS-1`.
+
+Status:
+- Stage A is done and accepted by the UI lane (head `f8827b0a`; the section was renumbered to
+  `docs/re/ui.md` 5.6 in `52222a7f`, because UI-TABS-1 B adds 5.5).
+- The owner answered OQ-703 on 2026-11-17: "Like original" on all three points.
+- Stage B is released 2026-11-17. Code can start now. Builds and tests wait until the orchestrator says
+  the PC is free.
 
 ## Why
 
@@ -90,37 +95,76 @@ Owner rules:
 4. **Report** in `docs/orchestration/REPORTS.md` with a "Decisions and reasoning" list, and stop. B starts
    on the UI lane's go.
 
-## Stage B: draw the status bar for the island under the cursor (2-4 h, code; after A's review)
+## Stage B: draw the status bar for the island under the cursor (2-4 h, code; released 2026-11-17)
 
-Written in full when A is reviewed. The plan from today's knowledge, which A may change:
+The rule is `docs/re/ui.md` 5.6, with the owner's OQ-703 answer: the original on all three points. The
+summary below is for orientation only; 5.6 is authoritative.
+- **The point:** the map tile under the cursor, re-read every frame. What the bar shows while the mouse is
+  over the panel or the bar is OQ-700: keep the last map tile, which is what the HE frames suggest.
+- **Gold:** always.
+- **The four materials and the residents:** only while that tile is inside the territory of a city of
+  the local player. They are that city's stock / 256 (wares WERKZEUG, HOLZ, ZIEGEL, MAMOR) and its
+  residents. With two own cities on one island, it is the city whose territory holds the tile.
+- **A foreign city's territory:** gold, plus its residents when its `City::player_mask` has the local
+  player. Never its materials.
+- **Island land outside every territory, or sea:** gold only. When a building is armed, its four corner
+  tiles pick the first own city among them (5.6).
+- **The fertility row:** over every island the local player has discovered (`Island::players_present`
+  has the local player), with or without a city. The segments come from the island's climate mask (5.6
+  table: NORD 6, 8, 11 and so on, at most 4, x = 547 + 40k). Over open sea the row hides at the next
+  frame; over sea inside the island's chunks it hides after 2 s; returning to land within 2 s cancels the
+  hide.
+- **The green bars (`STATUSBAR_BALKEN`):** the sim has no source for island property 11 (OQ-702), and
+  `Terrain::fertility` is a per-tile stand-in, not property 11. So draw **no bars**: the icons without
+  bars are a named placeholder (`hud.txt` comment plus OQ-702). Do not invent 50 or 100.
+- The "Always show my city" fallback (R4) and the view-centre point (`centre_tile()` for the status bar)
+  go. Remove them, do not keep them behind an option; there is no `rules` option (owner).
 
-1. **Snapshot** (`play.cpp`, read-only accessors, no sim change):
-   - Per island the local player has discovered (by A's flag): its rectangle, its fertility slots for the
-     status bar (A's mapping from `Island::fertility`) and the bar values.
-   - The local player's cities with goods and population, as today.
-   - No per-frame allocation beyond today's `cities` list. Measure with `ANNO_PUBLISH_STATS`.
-2. **Viewer:**
-   - Resolve the point A names (the cursor tile, or the last map tile) to an island.
-   - Show the groups by A's rule: gold always; BAUMAT + EINWOHNER for the local player's city on that
-     island; ROSHTOFFE + BALKEN as A decides and the owner confirms.
-   - The static `rosh_46/48/51` elements in `hud.txt` become data-driven slots: positions stay data, and
-     the segment comes from the island.
-   - The "Always show my city" fallback goes, by the owner's 2026-11-17 decision. Add no rules option
-     unless A or the owner asks for one.
+Steps:
+1. **Snapshot** (`src/app/src/play.cpp`; read-only accessors, no sim change, no new sim field):
+   - for the tile under the cursor, the island and the city whose territory holds it (find the
+     rebuild's territory or tile-owner accessor; the minimap's `refresh_territory()` already reads
+     owners);
+   - per own city, its goods and population, as today;
+   - per foreign city, its population and whether its `player_mask` has the local player;
+   - per discovered island, its climate (find the sim's field; `SimConfig::raw_climate_mask` is the
+     mask table) or the segment list.
+
+   The window thread sends the cursor tile; the sim thread answers in the next snapshot (the pattern the
+   `inspection` request uses). Measure the cost with `ANNO_PUBLISH_STATS`.
+2. **Viewer** (`src/app/src/viewer.cpp`):
+   - resolve the cursor's map tile (the hover pick the building ghost uses) and keep the last map tile
+     while the mouse is over chrome;
+   - choose the groups by the rule above;
+   - turn the static `rosh_46/48/51` elements in `data/ui/hud.txt` into four data-driven slots: x from
+     data, segment from the island;
+   - the 2 s hide timer uses the window's clock: UI only, never sim state.
+   - Both the CPU and GPU UI paths.
 3. **Facts:**
-   - `hud.status.island` (index, or `sea`, or `undiscovered`).
-   - `hud.counters` and `hud.counters.city`, as today.
-   - `hud.fertility` (the shown segments).
+   - `hud.status.tile` (x,y or `none`);
+   - `hud.status.island` (index, or `sea`);
+   - `hud.status.city` (island:city, or `none`);
+   - `hud.counters` (`materials+residents`, `residents`, `gold`);
+   - `hud.fertility` (the shown segments, or `hidden`).
+
+   Keep `hud.counters.city` working, or rename it and update every script that reads it.
 4. **Tests:**
-   - Unit tests for the island choice: sea, own city, foreign city, no city, undiscovered, two own
-     cities if A says how.
-   - A wiring script `tools/test/viewer_wiring/ui_status_island.script`: hover an own island, a foreign
-     one, the sea and an undiscovered one; read the facts.
-   - A pixel check of the bar against the GOG shots that show it (`r2_construction_public`,
-     `hud_idle_running`, `f13_hud_cursor_map`), with live digits masked as today.
-   - A failure proof: the wiring case fails on today's centre-based code.
-5. **The owner's test:** in the viewer, hover over his own island, a foreign island, the sea and an
-   unexplored island. Side by side with HE where A recorded a capture.
+   - Unit tests for the choice function (pure, no viewer): own territory, own island outside the
+     territory, foreign city known and unknown, sea, sea within the chunks (timer), undiscovered
+     island, two own cities, armed-building corners, every climate's segment list.
+   - A wiring script `tools/test/viewer_wiring/ui_status_island.script` on lan5: hover own territory,
+     own island outside it, a foreign island, the sea and an undiscovered island if lan5 has one (else
+     say so and cover it in the unit test); read the facts.
+   - Pixel checks of the bar against the GOG shots that show it (`hud_idle_running`: gold plus the NORD
+     row; `r2_construction_public`, `f13_hud_cursor_map`: the counters), with live digits masked as
+     today. The bars are absent by design; mask their 5 × 29 rectangles with a reason. Check the
+     residents icon's x (code 400, `hud.txt` 401) and record the answer.
+   - Existing tests that assumed the centre rule or "Always show my city" (find them with `git grep
+     counters`) are updated, each named in the report.
+   - Failure proof: the wiring case fails on the old centre-based code.
+5. **The owner's test** (viewer, `--rules living`): hover his territory, his island outside the
+   territory, a foreign island, the sea, and an unexplored island if there is one. Watch the fertility
+   row hide 2 s after leaving land over the island's sea.
 
 ## Acceptance
 

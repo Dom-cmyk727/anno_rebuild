@@ -3562,9 +3562,9 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **How to resolve:** find the writer of type `+0x8` (stores to `[reg+8]` in `AnnoGame` `0x10001d10`-`0x1000a860` near the type constructor) and the writers of building `+0x0f`; check with an HE crop of a small and a tall building with an icon at the same zoom.
 
 ## OQ-722: How fast the status icon turns, and whether its turn restarts every production step (UI-HARVEST-ICON-1, 2026-11-17; OPEN)
-- **Question:** the icon figures have 16 frames and `ANIM` 80 ms. The object draw picks frame `tick / (ANIM_ms / 2) + phase` (`docs/re/annowelt.md`), and while a status is due the icon object is removed and re-created at every production step (`0x10073059`-`0x100730a3`, every ≥ 500 t). Is one turn 16 × 40 ticks long, in which unit, and does a new object start at frame 0 (a visible jump about once a second) or at the global phase (no jump)?
+- **Question:** the icon figures' `ANIM` field is (0, 16, 80): 16 frames, 80 read as ms. The object draw picks frame `tick / (ANIM_ms / 2) + phase` (`docs/re/annowelt.md`), and while a status is due the icon object is removed and re-created at every production step (`0x10073059`-`0x100730a3`, every ≥ 500 t). Is one turn 16 × 40 ticks long, in which unit, and does a new object start at frame 0 (a visible jump about once a second) or at the global phase (no jump)?
 - **What we know:** the tick unit of the object draw is open (`annowelt.md` "Tick unit"). HE `c5_icon.png` shows two different phases 4 s apart (8:52 and 8:56), too few to measure.
-- **Rebuild default (stage B):** frame = (game ms / 80) mod 16 from the global clock, no restart.
+- **Rebuild default (stage B):** frame = (game ms / 40) mod 16 from the global clock, no restart: the original's confirmed divisor `ANIM_ms / 2` with the tick read as a game millisecond (0.64 s per turn). The tick unit and the no-restart choice are adaptations until this closes.
 - **How to resolve:** the HE recipe in REPORTS (UI-HARVEST-ICON-1 stage A): record an icon at 60 fps for 10 s and count frames per turn and look for jumps.
 
 ## OQ-723: Who sees a building's status icon (UI-HARVEST-ICON-1, 2026-11-17; OPEN)

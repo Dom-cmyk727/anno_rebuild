@@ -1030,7 +1030,8 @@ bytes `13 06 22 06 24 06 23 06`). The figures in `FigurenHeader.dat` (P, `tools/
 
 - Each figure has one sprite set of **16 frames per zoom group** (group 0 / 1 / 2: 1570 is 48 × 43,
   24 × 22, 12 × 11; anchor 24,34 / 12,17 / 6,9), format `BSH_RGBV`, sprite-set prefix kind byte 9
-  (`tHausAnim`, `annodisplay.md` §5), `ANIM` = (0, **16 frames, 80 ms**) (P). The 16 frames are one
+  (`tHausAnim`, `annodisplay.md` §5), `ANIM` field = (0, **16, 80**) (P; read as 16 frames and 80 ms, the unit and the real period are U, OQ-722).
+  The 16 frames are one
   turn of the question mark (or the Zzz) about its vertical axis; the frame box stays still.
 - **No ToolGfx ACCESS name, no tooltip** (P): these are world figures, not HUD textures. No `*.inc`
   under `ToolGfx/` and no `Data/*.dat` names them, and `Texte.dat` has no section for them (a byte
@@ -1040,9 +1041,11 @@ bytes `13 06 22 06 24 06 23 06`). The figures in `FigurenHeader.dat` (P, `tools/
   `COMPHELP_STRASSEFEHLT` (`InstantHelpLinks.txt`, read by `AnnoFrame.dll`), which open the help pages
   above; how they are raised is not part of this packet.
 - **The HE "vertical red-to-yellow bar" is the question mark seen edge-on** (H, high confidence). The
-  HE crop at 8:56 matches frame k = 5 (or k = 13) of 1570 in shape and colour (the HE picture is scaled, so not pixel for pixel): a thin
+  HE crop at 8:56 matches frame k = 13 of 1570 best (its yellow top shows in the crop; k = 5 is mostly
+  red-orange) in shape and colour (the HE picture is scaled, so not pixel for pixel): a thin
   orange-to-red column at the frame's top right, red at the bottom where the question mark's foot is.
-  At 8:52 the curl of the question mark shows behind the cursor (frames k = 1-3 or 14-15). The sheaf,
+  At 8:52 the cursor hides part of the icon; only the curl of the question mark is visible, which fits
+  frames k = 1-3 or 14-15. Other orange icons in the same HE frames (other foresters) were not checked. The sheaf,
   leaf and the stones under it are the same in both HE frames and in every decoded frame (`cmp.py`).
   So **the bar measures nothing**; there is no growth or production bar on this icon. (The 10-segment
   bar over a farm's ghost, `he_01-report.md` 5:56-6:30, is a different thing; figure 1557
@@ -1059,8 +1062,8 @@ status code (`production.md` §3; sim: `StatusTracker`). Only three call sites c
 
 | Icon | Set by | Cleared by | Evidence |
 |---|---|---|---|
-| 0 Zzz | the switch helper `0x10072a60(old, new)` (caller pushes new, then old: workshop `0x100684cd`-`0x100684cf`) calls `0x10073010(0, old)` at `0x10072aca`. The helper returns early when `old == new` (`0x10072a6e`), so the icon is on exactly after a switch-off and off after a switch-on. | the same call when switched on | D `0x10072a60`-`0x10072b44`; switch callers `economy-booking.md` |
-| 1 KeinRohstoff | the status helper `0x10072ed0(code 1, t, repeat, input)` once the condition has lasted `repeat` ticks: `0x10073010(1, 1)` at `0x10072f8b` | `0x10072fb0(0x0e)` after a production step that made something (`0x10072ff1`) | D; `production.md` §4.1 |
+| 0 Zzz | the switch helper `0x10072a60(old, new)` (caller pushes new, then old: workshop `0x100684cd`-`0x100684cf`) calls `0x10073010(0, old)` at `0x10072aca`. The helper returns early when `old == new` (`0x10072a6e`), so the icon is on exactly after a switch-off and off after a switch-on. Two-line buildings pass the **combined** state (`0x100690b0`, `0x1006910c`: new = this line or the other line), so the Zzz shows only when every line is off. Reading the byte 1 as "running" is L; it agrees with `+0x0c` bit 3 = (new == 0) at `0x10072ae4`-`0x10072af3`. When the owner gate fails (`0x1007302f`) the bit is not stored at all. | the same call when switched on | D `0x10072a60`-`0x10072b44`, `0x100690b0`, `0x1006910c`; switch callers `economy-booking.md` |
+| 1 KeinRohstoff | the status helper `0x10072ed0(code 1, t, repeat, input)` once the condition has lasted `repeat` ticks: `0x10073010(1, 1)` at `0x10072f8b` | `0x10072fb0(0x0e)` (`0x10072ff1`), which acts only when a bit of the mask is set; its callers are the production steps (L for "a step that made something": not every call site's gate was traced, e.g. `0x1006a0d4` is gated by `+0x29 == 0`) | D; `production.md` §4.1 |
 | 2 KeinLager | the same helper with code 2 | the same clear | D |
 | 3 KeineStrasse | the same helper: a due code 1 whose input is **not** a crop (goods `0x38`-`0x4b`) or an animal (`0x89`-`0x8d`) calls `0x10071f40(input, 0)`; a due code 2 calls `0x10072390(input, 0)`; a **zero** result rewrites the code to 3 (`+0x0d & 0x1f` OR `0x60`, `0x10072f77`-`0x10072f83`) and raises icon 3 instead | the same clear | D for the rewrite; the meaning "no road" is **L**: the figure is `KeineStrasse`, and the help page says the road sign shows when a workshop "has no connection to a road". What `0x10071f40` / `0x10072390` test is **U** (OQ-720) |
 
@@ -1068,17 +1071,29 @@ Rules around it (D):
 - **Repeat intervals** (the condition must last this long before the icon appears; `push` before
   each `call 0x10072ed0`): workshop, two-output and weapons workshops 45 000 t for both codes; farm
   `0x1006ea90` 60 000 t missing input, 45 000 t full; mine 30 000 t missing deposit, 45 000 t full;
-  small farm 75 000 t missing input; whaler tick `0x10073720` 90 000 t missing input, 45 000 t full
-  (new here; the whaler is unported, `docs/sim/state.md` Appendix C). Every direct caller passes code 1
-  or 2; code 3 only comes from the rewrite, and nothing sets bit 4.
+  small farm 75 000 t missing input (`0x1006f57c`), 45 000 t full (`0x1006f5f3`); whaler tick
+  `0x10073720` 90 000 t missing input (`0x10073a5a`), 45 000 t full (`0x10073ad0`) (the whaler is
+  unported, `docs/sim/state.md` Appendix C). Every direct caller passes code 1 or 2 and input index 0;
+  code 3 only comes from the rewrite, and nothing sets bit 4.
+- **A repeat above 65 535 never falls due.** The due test masks the elapsed time to 16 bits
+  (`and ecx, 0xffff`, `0x10072f1a`) and returns while `repeat > elapsed` (`jg`, `0x10072f20`). So the
+  small farm's icon 1 **never appears** (its status code is still set; `production.md` §4.5, ISS-150),
+  and neither does the whaler's icon 1 (a new case of the same issue; the whaler is unported). Their
+  icon 2 (45 000) works. The sim's `StatusTracker::report` keeps the u16 elapsed time and so
+  reproduces this.
+- **The elapsed time wraps mod 65 536.** If more than `65 536 − repeat` ticks pass between two reports
+  of a still-set code, the wrapped elapsed time can fall below `repeat` again and the icon comes later
+  (the sim reproduces this too).
 - **Priority.** A report with a lower code than the current one is ignored (`0x10072ee3`), so once
   "storage full" is current a later "raw material missing" does not replace it until a production step
   clears both.
-- **Owner gate.** `0x10073010` does nothing unless the building's city owner returns 1 from slot
-  `+0xc4(3)` (`0x1007302f`), which `docs/sim/production.md` resolved as the owner's Volk `+0x7a` == 1
-  (human and computer seats; OQ-033). Who may **see** the icon is a separate question (OQ-723).
+- **Owner gate.** `0x10073010` does nothing (and stores no bit) unless `[building+0x10].slot+0x1c` →
+  `slot+0xc4(3)` returns 1 (`0x1007302f`). Slot `+0xc4` is `AnnoWelt` `0x1001bea0` (vtable
+  `0x100c2238`), which returns the u16 at `[ecx+0x7a]` for argument 3 (D). That this object is the
+  player and the field its Volk (human and computer seats) is OQ-033's resolution (L, not re-traced
+  here). Who may **see** the icon is a separate question (OQ-723).
 - **The forester case (HE).** The forester 801 is a `PLANTAGE` farm whose input is `BAUM` (goods 70 =
-  `0x46`, `forestry.md` §2.1), inside the crop range, so its missing-input report never reaches the road
+  `0x46`, from `forestry.md` §2.1, `0x1006ee06`-`0x1006ee56`, not re-disassembled here), inside the crop range, so its missing-input report never reaches the road
   test: it always shows icon 1, `KeinRohstoff`. The farm reports code 1 when a step has
   `raw << 7 / need0 < 64` (for 801: raw stock below 16 of the 32 needed per step) and the store is not
   full (`production.md` §4.2). Young trees cannot be cut (`forestry.md` §2), so the workers bring
@@ -1097,7 +1112,13 @@ Rules around it (D):
 3. Store the new bit (`+0x0d` bit `code` = `on`, `0x100730a5`-`0x100730cc`).
 4. **Create one icon, for the lowest set bit among 0-3** (`0x100730d3`-`0x100730e4`; bit 4 is never
    drawn). So Zzz wins over the others, then KeinRohstoff, KeinLager, KeineStrasse. The figure type is
-   `game.slot+0x6c(table[i])` (`0x1007311f`).
+   `game.slot+0x6c(table[i])` (`0x1007311f`). The call sets or clears bit `code` and then draws the
+   lowest set bit, so **the drawn figure need not be the passed code**:
+   - switching on (clearing bit 0) while bit 1 is still set shows KeinRohstoff at once;
+   - a still-set bit 1 hides a later bit 2 (a code can rise from 1 to 2, the higher code is accepted)
+     until `0x10072fb0(0x0e)` clears both;
+   - a call with `on = 0` for a code whose bit was clear still re-creates the icon of the lowest set
+     bit.
 5. Position (floats, x87): x = `B.x + B.w · 0.5`, y = `B.y + B.h · 0.5` (constant `0x100c1288` = 0.5),
    i.e. the **footprint centre**; height = `type.slot+0x58()` + building byte `+0x0f` · **0.04**
    (constant `0x100c92ac`). Type slot `+0x58` is `AnnoGame` `0x10007d50` = `fld [ecx+8]`, a float at
@@ -1110,14 +1131,20 @@ Rules around it (D):
 Consequences:
 - The icon is an **island object** drawn by the world's object pass like any animated figure
   (`tHausAnim` frame selection, `annowelt.md` "Frame selection"): frame = `tick / (ANIM_ms / 2) +
-  phase`, i.e. `tick / 40` mod 16. How long a turn takes depends on the tick unit (`annowelt.md`
-  "Tick unit", open) and whether recreating the object restarts the turn is **U** (OQ-722).
+  phase`, i.e. `tick / 40` mod 16 (the divisor is confirmed in `annowelt.md` for island items; that
+  the same path draws these objects is L). How long a turn takes depends on the tick unit
+  (`annowelt.md` "Tick unit", open): 16 × 40 = 640 ticks, 0.64 s if the tick is a millisecond.
+  Whether recreating the object restarts the turn is **U** (OQ-722).
 - **Every zoom level** has frames (groups 0-2, P), and nothing in `0x10073010` looks at the zoom; that
   the object pass draws these objects at all three zooms is **L** (it draws other figures there).
+  The height source `AnnoGame` `0x10007d50` is slot `+0x58` of the building-type vtables
+  `0x1002185c`, `0x10021a88`, `0x10021bbc`; those vtable starts come from a heuristic scan (L), and
+  derived overrides of the slot were not excluded.
 - **Update rate.** The bits change only inside production steps (≥ 500 t apart) and switch commands.
   While a status is due, the helper sets the status time to `t − repeat` (`0x10072f96`-`0x10072f9b`),
   so every later step re-raises it and `0x10073010(code, 1)` removes and re-creates the icon object
-  each step (D). There is no blink and no fade in this code.
+  each step (D). There is no blink and no fade in `0x10073010` or `0x10072ed0`; the draw side is not
+  traced (OQ-722, OQ-723).
 - **Who draws it:** `AnnoWelt` creates the object; `AnnoDisplay` draws it with the other island
   objects (L: the object is created in the island's object container, and its sprite set is a
   `tHausAnim`). A use of the ids by `View.dll` or `AnnoFrame.dll` was not ruled out: the 32-bit values
@@ -1140,16 +1167,16 @@ Consequences:
 |---|---|---|---|
 | E1 | code → figure: 0 → 1555, 1 → 1570, 2 → 1572, 3 → 1571 | D `0x10073114`; P table `0x100c92b0` | confirmed |
 | E2 | the four pictures and names (Zzz, KeinRohstoff, KeinLager, KeineStrasse) | P `FigurenHeader.dat` colour tables; decoded frames (`sheet.py`) | confirmed |
-| E3 | HE's sheaf icon is 1570; its "bar" is the question mark edge-on | H `c5_icon.png` 8:52/8:56 vs frames k = 1-3, 5, 13 (`cmp.py`) | high |
-| E4 | 16 frames, 80 ms field, `tHausAnim` | P `ANIM`, prefix byte 2 = 9 | confirmed (data); period U (OQ-722) |
-| E5 | icon 0 = switched off | D `0x10072a60`, `0x10072aca`, caller `0x100684c0` | confirmed |
-| E6 | icons 1/2 after `repeat` ticks of the condition, cleared by the next producing step | D `0x10072ed0`, `0x10072fb0`; `production.md` §4.1 | confirmed |
+| E3 | HE's sheaf icon is 1570; its "bar" is the question mark edge-on | H `c5_icon.png` 8:56 vs frame k = 13 (best; k = 5 close), 8:52 only the curl visible (cursor) vs k = 1-3 (`cmp.py`) | high |
+| E4 | `ANIM` field (0, 16, 80), `tHausAnim` | P `ANIM`, prefix byte 2 = 9 | confirmed (data); unit and period U (OQ-722) |
+| E5 | icon 0 = switched off (two-line buildings: all lines off); not stored on a failed owner gate | D `0x10072a60`, `0x10072aca`, callers `0x100684c0`, `0x100690b0`, `0x1006910c`; `0x1007302f` | confirmed; "1 = running" L |
+| E6 | icons 1/2 after `repeat` ticks of the condition (never for a repeat above 65 535: 16-bit elapsed, `0x10072f1a`/`0x10072f20`), cleared by `0x10072fb0(0x0e)` when a mask bit is set ("the next producing step" L) | D `0x10072ed0`, `0x10072fb0`; `production.md` §4.1 | confirmed |
 | E7 | code 3 rewrite for non-crop, non-animal inputs and for full stores | D `0x10072f24`-`0x10072f83` | confirmed (control flow); meaning L (OQ-720) |
 | E8 | forester → always icon 1 | D crop range `0x10072f51`-`0x10072f67`; P BAUM = 70 | confirmed |
-| E9 | one icon at a time, lowest bit first | D `0x100730d3`-`0x100730e4` | confirmed |
-| E10 | footprint centre, height type `+8` + `+0x0f` · 0.04 | D `0x10073122`-`0x100731b4`; P constants | position confirmed; height inputs U (OQ-721) |
-| E11 | removed and re-created on every raise | D `0x10073059`-`0x100730a3`, `0x10072f96` | confirmed |
-| E12 | owner gate Volk == 1 | D `0x1007302f`; OQ-033 | confirmed |
-| E13 | whaler `0x10073720`: code 1 after 90 000 t, code 2 after 45 000 t | D `0x10073a50`, `0x10073ac6` | confirmed |
+| E9 | one icon at a time, lowest set bit 0-3 first, whatever code was passed | D `0x100730a5`-`0x10073114` | confirmed |
+| E10 | footprint centre, height type `+8` (`AnnoGame` `0x10007d50`) + `+0x0f` · 0.04; frames for groups 0-2 | D `0x10073122`-`0x100731b4`; P constants and frames | position confirmed; height inputs U (OQ-721); drawn at all zooms L |
+| E11 | removed and re-created on every raise; no blink or fade in `0x10073010`/`0x10072ed0` | D `0x10073059`-`0x100730a3`, `0x10072f96` | confirmed; draw side U (OQ-722) |
+| E12 | owner gate `[+0x10].slot+0x1c` → `slot+0xc4(3)` == 1, slot `0x1001bea0` = u16 `[ecx+0x7a]` | D `0x1007302f`, `0x1001bea0`; Volk meaning OQ-033 | gate confirmed; "player Volk" L |
+| E13 | small farm and whaler `0x10073720`: icon 1 never raised (75 000 / 90 000 > 65 535), icon 2 after 45 000 t | D `0x1006f57c`, `0x1006f5f3`, `0x10073a5a`, `0x10073ad0`, `0x10072f1a`; ISS-150 | confirmed |
 | E14 | who sees it (own buildings only?) | not traced | U (OQ-723) |
 | E15 | the help texts name the icons | P `help/Auslastung.htm`, `IH_Lager_Voll.htm`, `IH_Betrieb_Strasse_Fehlt.htm`, `Produktion_stilllegen.htm` | confirmed (text) |

@@ -63,14 +63,29 @@ says who is doing what, where the work is, and what it waits on.
   conflict in `docs/open-questions.md`, both sides kept (OQ-690 after the candidate's entries). Fetchable as
   `refs/candidates/atlas-layers`. **The Windows PC's part PASSED** 2026-11-17: the residency cases and both
   layer-check tests, 10 selected, 10 executed, 0 failed; `bench_frame --atlas-report` on `lan5.txt` ran (worst
-  group 0, 134,217,728 bytes); the WSL warning check clean. The Mac's run on it is requested; it lands after
-  `09315620`.
+  group 0, 134,217,728 bytes); the WSL warning check clean. **The Mac's run PASSED** 2026-11-17:
+  - HEAD `4dfdd9b7` and tree `e218b8f5` verified, `ui-tabs-a` an ancestor;
+  - 2,761 selected, 2,718 executed, **0 failed**;
+  - 43 skips, unchanged: platform 9, opt-in 29, gpu 2, other 3. The only gpu skips are the two play tests
+    pinned to this PC's adapters;
+  - the warning script exits 0;
+  - Apple M5 Max, macOS 27.0.1; log sha256 `bf704b97...6ed6`.
+  **Landing** through `land.py` as `land/atlas-layers` (gate run 44038235036), under the standing rule.
 - **Standing rule, the owner 2026-11-17:** asked whether every packet the orchestrator accepts lands without
   asking from now on, the owner answered "Yes standing rule". So an accepted packet (CI green on the reviewed
   head) lands through the usual gates (a landing candidate, this PC's changed lanes and GPU tests, the Mac's
   full run with the same tree, `land.py`) without a separate landing OK. Owner decisions (defaults, anything
   that may change the feel, open questions marked for the owner) still go to the owner, and a candidate whose
   gates show a new failure does not land.
+- **The owner's zoom recording after ZOOM-SMOOTH-3** (2026-11-17, `rendering_01.mp4`, narrated):
+  [findings](../render/zoom-session-2026-11-17.md).
+  - Late islands are gone: a fast zoom-out shows every island at once, and the owner said "working really,
+    really well".
+  - Not-ready frames remain only on the first visit to the closest zoom: up to 59 chunks at once.
+  - Dissolves remain in every zooming window. The owner pointed at one, a lake turning from hazy to its final
+    water as the camera stopped.
+  - So the zoom does not meet the owner's rule yet. RENDER-DIRECT removes stand-ins and dissolves.
+  - Window move and resize kept drawing at 64-72 fps during the held drag.
 - **The owner decided OQ-096 and OQ-096b** 2026-11-17. Asked "Raise it to 384 MiB, one mipmap level on both
   cards (my recommendation)", against keeping 256 MiB with no mips on the iGPU or deciding on a build, the
   owner answered "your recommendation". So `atlas_budget_mb` defaults to 512 MiB discrete and 384 MiB
@@ -102,7 +117,17 @@ says who is doing what, where the work is, and what it waits on.
   [RENDER-DIRECT-1b](tasks/render-direct-1b.md) (Windows, **RELEASED** 2026-11-17, to start after
   LAYER-CHECK-1: the atlas pages built on the CPU with premultiplied alpha, dilated padding and one mip level,
   proven equal to the decoder texel for texel, and the 384 MiB integrated default in code; nothing uploaded or
-  drawn).
+  drawn; **reviewed** `c7a1e77b`, [review](reviews/2026-11-17-render-direct-1b-review.md): **CHANGES
+  REQUESTED**:
+  - F1: every timing came from the Debug `dev` build;
+  - F2: the proof sampled every 7th frame and left out `lan5.txt`;
+  - F3: duplicate frame ids race;
+  - F4: the mip rectangle is one texel short for odd sizes;
+  - F5: the iGPU's adjacent pair is to be measured with real pages.
+  The lan5 case goes into the app tests, so `anno_render_tests` does not link `anno_app_core`. CI on
+  `c7a1e77b` failed the evidence preflight: a new skip message for a missing game file, which must be a
+  failure. The 4090 gate ran by mistake in WSL on llvmpipe, so it is no result; it reruns from the msvc
+  build. The fix round, the Release bench rerun and the 4090 gate are running on this PC).
 - **UI lane: UI-TABS-1 started** (2026-11-16, the owner's go in the UI lane's session, as reported by it):
   `task/UI-TABS-1` from `main` `ac02d4a2`, packet `tasks/ui-tabs-1.md` on that branch (`6d20d16e`). Stage A: the
   tab and sub-tab switching (player, city view, options) with clicks and the keys D, S and C; stage B (the
@@ -115,6 +140,11 @@ says who is doing what, where the work is, and what it waits on.
   - new OQ-691 to 695;
   - when A is on `main`, the lane merges `origin/main` into the branch and reports B's head and CI for the
     orchestrator's review; it then lands under the standing rule once the owner's test has passed.
+  **Stage B ACCEPTED** 2026-11-17, head `5e6c1ad5`, CI green (run 44023629594). The owner's viewer test is
+  `ui_6.mp4`; [review](reviews/2026-11-17-ui-tabs-1-b-review.md). **Landing candidate `004a26f4`** (tree
+  `7ab5576f`), stacked on `4dfdd9b7`; one end-of-file conflict in `docs/open-questions.md`, both sides kept.
+  Fetchable as `refs/candidates/ui-tabs-b`. Next: this PC's changed lanes and the day's full game-file run on
+  this tree, after the Windows executor's bench, plus the Mac's full run.
   **Two questions for the sim lane**, raised by stage B; the rows stay empty until they are answered:
   1. `Player::upkeep_a/b` and `stat_a/b` are held and decayed by the sim but fed by nothing. The overview's
      rows 3 to 6 need them; the History Edition shows military 17 for the start ship.

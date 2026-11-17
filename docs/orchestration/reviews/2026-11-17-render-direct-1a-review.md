@@ -128,3 +128,10 @@ the owner. The measurement itself (tool, test, corpus run) is accepted as it is.
 
 **Verdict: ACCEPTED once CI is green on the renumbered head.** The packet's result is a measurement and a QUESTION
 for the owner (OQ-096b together with OQ-096). RENDER-DIRECT-1b is written once the owner has answered.
+
+## Acceptance (added 2026-11-17)
+
+`30a42f55` renumbered the new question to OQ-690. `5fb98192` records the owner's decision on OQ-096 and OQ-096b
+in the OQs, `atlas.md` and `gpu-chunks.md` (docs only). The code's integrated default (`gpu.cpp`
+`cb_atlas_budget_bytes`, 256) follows in RENDER-DIRECT-1b. **CI green on `5fb98192`** (run 44010395552).
+**ACCEPTED.** It lands under the owner's standing rule in the candidate `4dfdd9b7`.

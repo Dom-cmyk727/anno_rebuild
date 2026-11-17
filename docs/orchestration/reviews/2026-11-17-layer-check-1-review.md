@@ -53,3 +53,20 @@
 
 **CHANGES REQUESTED**, about 45 minutes, on the same branch. ACCEPTED once F1 and F2 are done and CI is green on
 that head.
+
+## Fix round and acceptance (added 2026-11-17)
+
+`c9a3bb23`:
+- **F1:** `classify_include` is an allow list now:
+  - the C++20 standard headers;
+  - the library's own area or one below it;
+  - a quoted header resolved next to its includer or in the library's include or tests directory;
+  - doctest in tests;
+  - `NAMED_EXCEPTIONS` scoped to one file each, with a reason. The tree's only two are `<sys/resource.h>` and
+    `"freight_original.inc"`, both in `founding_assets_test.cpp`, and a staleness check fails an exception that
+    is no longer used.
+- **The self-test** fails on injected `<vulkan/vulkan.h>` and `<windows.h>`.
+- **F2:** the docs section is at the end of `docs/testing/README.md`, and the `CLAUDE.md` claim is gone.
+
+**CI green on `c9a3bb23`** (run 44010921049). **ACCEPTED.** It lands under the owner's standing rule in the
+candidate `4dfdd9b7`.

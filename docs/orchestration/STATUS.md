@@ -40,6 +40,11 @@ says who is doing what, where the work is, and what it waits on.
 - **The owner, 2026-11-17, on RENDER-DIRECT-1a and LAYER-CHECK-1:** "You will land them once you approve
   them". They land without a further ask once accepted (CI green on the reviewed head), through the usual
   candidate gates: a candidate stacked on `09315620`, this PC's changed lanes and the Mac's full run.
+  **Both ACCEPTED** 2026-11-17: RENDER-DIRECT-1a `5fb98192` (run 44010395552) and LAYER-CHECK-1 `c9a3bb23`
+  (run 44010921049). **Landing candidate `4dfdd9b7`** (tree `e218b8f5`), stacked on `09315620`: one end-of-file
+  conflict in `docs/open-questions.md`, both sides kept (OQ-690 after the candidate's entries). Fetchable as
+  `refs/candidates/atlas-layers`. The PC part (the residency cases, the layer check, an atlas report on
+  `lan5.txt`, the WSL warning check) is running. The Mac's run on it covers all four candidates.
 - **Standing rule, the owner 2026-11-17:** asked whether every packet the orchestrator accepts lands without
   asking from now on, the owner answered "Yes standing rule". So an accepted packet (CI green on the reviewed
   head) lands through the usual gates (a landing candidate, this PC's changed lanes and GPU tests, the Mac's

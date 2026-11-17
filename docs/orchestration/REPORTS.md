@@ -12860,3 +12860,18 @@ verdict stand as quoted, not to declare acceptance in an executor's own heading.
 from here on.
 
 READY FOR REVIEW.
+
+## RENDER-DIRECT-1a — the owner's decision on OQ-096/OQ-096b, recorded (docs only)
+
+The owner decided both OQ-096 (the atlas budget) and OQ-096b (the mip level) 2026-11-17, via the
+orchestrator: asked "Raise it to 384 MiB, one mipmap level on both cards (my recommendation),"
+against keeping 256 MiB with no mips on the iGPU or deciding later on a build; answer, verbatim,
+**"your recommendation."** Recorded, docs only, one commit: `docs/open-questions.md` (both OQs'
+status, with the question and answer quoted); `docs/render/atlas.md` §4 (the decision replaces the
+open QUESTION: the iGPU's adjacent-pair worst case, 340 MiB with one mip level, fits the decided
+384 MiB with 44 MiB headroom; all three groups fit the 4090's 512 MiB with 152 MiB headroom) and §7
+(the mip-level and budget rows now say "decided", not "open"); `docs/render/gpu-chunks.md` 4.3 rule
+6 and the section 9 `atlas_budget_mb` row (384 for the integrated default, citing the OQ). No code
+touched; RENDER-DIRECT-1b is written on this basis.
+
+READY FOR REVIEW.

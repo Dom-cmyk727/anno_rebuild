@@ -873,21 +873,24 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Faithful default:** no look change while the budget holds.
 
 ## OQ-096: GPU-built chunks: the sprite atlas budget (new, T11 stage 0, C3)
-- **Status:** open, owner decides (a limit default)
+- **Status:** **decided by the owner 2026-11-17** (together with OQ-096b). Question asked: "Raise it
+  to 384 MiB, one mipmap level on both cards (my recommendation), against keeping 256 MiB with no
+  mips on the iGPU, or deciding later on a build." Owner's answer, verbatim: **"your
+  recommendation."** `GpuLimits::atlas_budget_mb` is **384 MiB on the integrated adapter** (was the
+  256 MiB proposed default), **512 MiB on the discrete adapter** (unchanged).
 - **Area:** render (GPU memory)
 - **What:** T11 keeps sprite frames resident on the GPU per scene (`docs/render/gpu-chunks.md` section 4). WebGPU reports no memory size, so the budget is a config value. Measured: every original scenario's frames for all three groups fit in 197 MiB (330 MiB estimated with enhanced water's smoothed copies); one chunk needs at most 7.8 MiB.
-- **Proposed default:** `GpuLimits::atlas_budget_mb` 512 on a discrete adapter, 256 on an integrated one, clamped to the device's texture array and buffer limits; above the budget the least recently used atlas layer is emptied, and a chunk whose frames cannot fit at all is built on the CPU and counted.
-- **Owner decides:** accept 512 / 256, or another rule (for example a share of the adapter's reported VRAM where a backend exposes it). Decide after the stage 2a owner check, when the measured resident MiB are in the perf README.
+- **Decided default:** `GpuLimits::atlas_budget_mb` 512 on a discrete adapter, **384** on an integrated one, clamped to the device's texture array and buffer limits; above the budget the least recently used atlas layer is emptied, and a chunk whose frames cannot fit at all is built on the CPU and counted.
 - **Faithful default:** no look-and-feel stake; the original keeps all sprites in system memory.
 
-## OQ-096b: The direct renderer's resident atlas: a mip level, and the iGPU budget's adjacent-group pair (RENDER-DIRECT-1a, 2026-11-17; OPEN)
-- **Status:** open, owner decides (two related questions ADR 0007/RENDER-DIRECT-1a found, next to OQ-096's own budget default)
+## OQ-096b: The direct renderer's resident atlas: a mip level, and the iGPU budget's adjacent-group pair (RENDER-DIRECT-1a, 2026-11-17; DECIDED)
+- **Status:** **decided by the owner 2026-11-17**, together with OQ-096 (same question, same
+  answer, quoted there): one mip level on **both** the RTX 4090 and the integrated adapter, with
+  2 px padding; the integrated budget raised to 384 MiB (OQ-096) rather than kept at 256 MiB with
+  no mips.
 - **Area:** render (GPU memory), direct-rendering path (ADR 0007)
-- **What:** ADR 0007 keeps all three zoom groups' static+water atlases resident at once and draws the finer groups minified with mips (decisions 2, 3). Measured (`docs/render/atlas.md` §3-4, `bench_frame --atlas-report`, 519 scenes): at 2 px padding only one mip level is valid (a level *n* needs 2ⁿ px of padding or atlas neighbours bleed in; a full chain needs far more padding than any candidate measured), costing +25% over the base. The RTX 4090 (512 MiB) holds all three groups with one level at every candidate measured (worst: 360 MiB). The iGPU (256 MiB, OQ-096's own proposed default) does **not** hold the adjacent pair a zoom crosses for the worst scene found, `Scenes/0010SingleEndlos/02_1024_easy_128.sze` groups 0+1: 272 MiB at the cheapest candidate (2048 px page, 2 px padding), **16 MiB over budget, even with no mips at all**; every other candidate measured is worse (288-320 MiB).
-- **Two decisions:**
-  1. Keep one mip level for the static+water atlas, none, or device-specific (one on the 4090, none on the iGPU)? The zoom groups already form a mip ladder (tile widths 84/42/20/10 px, never shrinking more than ~2.1x before the next group takes over), so one level does nearly all the useful work; dropping it changes how a zoom looks (shimmer near a group switch).
-  2. If the iGPU cannot hold the worst scene's adjacent pair under its 256 MiB budget even without mips, which of `docs/render/atlas.md` §4's options: raise the iGPU budget (OQ-096 itself), accept a visible upload mid-zoom on the iGPU for that scene (breaks the owner's seamless-zoom rule), a packing strategy not yet measured, or a documented reduced mode on the iGPU for scenes like this one.
-- **Owner decides:** both, together with OQ-096's own number if it changes as a result.
+- **What:** ADR 0007 keeps all three zoom groups' static+water atlases resident at once and draws the finer groups minified with mips (decisions 2, 3). Measured (`docs/render/atlas.md` §3-4, `bench_frame --atlas-report`, 519 scenes): at 2 px padding only one mip level is valid (a level *n* needs 2ⁿ px of padding or atlas neighbours bleed in; a full chain needs far more padding than any candidate measured), costing +25% over the base. The RTX 4090 (512 MiB) holds all three groups with one level at every candidate measured (worst: 360 MiB). At the original 256 MiB proposed default the iGPU did **not** hold the adjacent pair a zoom crosses for the worst scene found, `Scenes/0010SingleEndlos/02_1024_easy_128.sze` groups 0+1: 272 MiB at the cheapest candidate (2048 px page, 2 px padding, no mips), 16 MiB over; with one mip level, 340 MiB — **fits the 384 MiB decided default**, with 44 MiB headroom. All three groups together, one level: 360 MiB at worst, fitting the 4090's 512 MiB with 152 MiB headroom.
+- **Decided:** one mip level for the static+water atlas, on both adapters; the integrated budget raised to 384 MiB (OQ-096) rather than kept at 256 MiB with no mips, or decided later on a real build.
 - **Faithful default:** no look-and-feel stake for the budget; the mip level affects only the enhanced, non-original direct-rendering path's own zoom quality.
 
 ## OQ-100: Up to 8 players: how the world grows above 4 players (new, owner decision 2026-10-22, PLAN §0.6 / M4.1)

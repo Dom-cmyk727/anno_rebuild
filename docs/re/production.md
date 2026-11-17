@@ -95,9 +95,11 @@ Results are stored with 16-bit moves, except the `T·128` values, which use 32-b
 | `[0x0a]` | u8 | `+0x7a` | rubble pattern (slot `+0x104`) |
 | `[0x10]` | u8 | `+0x66` | stage count `S` |
 | `[0x11]` | u8 | `+0x65` | action radius (market search radius, §3) |
+| `[0x14..0x17]` | f32 | `+0x08` | building height in world height units (slot `+0x58` = `0x10007d50`, `fld [ecx+8]`; loader `0x10009372`/`0x10009384`). Forester 1.0, sheep 1.5, grain 2.0, wine 2.4 (P). Read by the fertility indicator's anchor (`docs/re/ui.md` 4.1). |
 | `[0x18]` | u8 | `+0x6e` | shift `k` |
 | `[0x19]` | u8 | `+0x77` | fertility influence |
 | `[0x1c..0x1d]` | **u16** | `+0x12` | type flag word (`0x2000` coast, `0x1000` mountain, `0x4000` road/bridge; `0x100093bd`/`0x100093d7`, `movw`) |
+| `[0x1a]`, `[0x2a]`, `[0x28]`, `[0x26]` | u16 each | `+0x7e`, `+0x80`, `+0x82`, `+0x84` | object list, slot `+0xf8(i)` = `0x1000a4d0` (`word [+0x7e + 2i]`; loader `0x10009485`-`0x100094a6`). i = 2 (`[0x28]`) is the **crop object** a farm plants (801 → 104, 811 → 712, 822 → 716; 807, 809, 820 → 1; P). The fertility indicator reads it (`ui.md` 4.1). i = 3 (`[0x26]`) is a crop object's dry variant (712 → 714). |
 | `[0x2c..0x2d]` | u16 | `+0x70` | maximum hit points |
 | `[0x31]` | u8 | `+0x79` | can burn |
 
@@ -208,6 +210,13 @@ if ratio < 0x80 and no worker slot is set and 384 / rate0 >= raw / need0:
 ```
 
 Differences from the farm: input before capacity; "missing input" repeats after 45,000 ticks instead of 60,000; nothing is made while any trapper is out (the farm only stops for a single-worker farm); `max_figures` is not read: at most one trapper is out. Since `ratio < 0x80` with no trapper out means `raw < need0`, `raw / need0` is 0 there and the 384 test never fails in practice. 824: rate 26, need 25, 5 t (P).
+
+### 4.2b The placement fertility indicator: a reader of 4.3, not a production input (UI-PRODBAR-1, 2026-11-17)
+The bar over a farm's ghost (AnnoFrame `0x10047940`; `docs/re/ui.md` 4.1) is computed only in the build cursor's draw. It takes the type's crop object (HEAD u16 `[0x28]`) and the island's climate. It counts the tiles of a midpoint-circle disc of radius HEAD `[0x11]` around the footprint, clamped to the island rectangle and without the footprint (N). A tile is good when two tests pass:
+- the crop test (island slot `+0x140` = `0x100817c0`; read in 4.3 on branch `task/UI-STATUS-1`, restated in `ui.md` 4.1 row (a)) does not answer "dry";
+- the island placement predicate (`0x1007c790`, flag word `0x29`: overlappable objects only, mean corner height ≥ 32) accepts the crop object there.
+
+It shows frame trunc(10 · good / N) of figure 1557. No production tick reads the value and nothing stores it (**D**). It predicts the share of tiles where a new field or tree would grow healthy. It is not the farm's output rate.
 
 ### 4.3 Growing fields and trees — island chunk scan `0x1008b5f0`
 Fields, forests and other `ROHSTWACHS`/`ROHSTDUERR` items are not buildings: they are tile objects in the island's 8-byte-per-tile grid (`+0x0c`: u16 object id at +0, phase byte at +3 = bits 0–5 counter, bit 6 parity, bit 7 kept). On every chunk visit (≥ every 2000 `t`, §1), for every tile whose object type has `P ≠ 0` (§2.3) (**confirmed**):

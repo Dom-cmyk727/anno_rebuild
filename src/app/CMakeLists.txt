@@ -30,6 +30,7 @@ add_library(anno_app_core
   src/scene_picture.cpp
   src/ship_layer.cpp
   src/ship_motion.cpp
+  src/status_icons.cpp
   src/still.cpp
   src/ui_layout.cpp
   src/ui_mock.cpp
@@ -90,7 +91,7 @@ if(ANNO_BUILD_TESTS)
     tests/opening_ui_test.cpp tests/opening_test.cpp tests/ship_motion_test.cpp
     tests/ui_layout_test.cpp tests/ui_transform_test.cpp tests/ui_construction_eligibility_test.cpp
     tests/construction_menu_test.cpp tests/inspect_building_test.cpp tests/selection_test.cpp
-    tests/minimap_test.cpp tests/hud_tabs_test.cpp)
+    tests/minimap_test.cpp tests/hud_tabs_test.cpp tests/status_icons_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   target_compile_definitions(anno_app_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic"
@@ -229,6 +230,14 @@ if(ANNO_BUILD_TESTS)
         set_tests_properties(viewer_wiring_fisher_view_${case} PROPERTIES
           SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       endforeach()
+      # UI-HARVEST-ICON-1 B: the status icon over a forester with nothing to harvest (lan5).
+      add_test(NAME viewer_wiring_status_icon_forester
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> status_icon_forester
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --speed --app-arg 200)
+      set_tests_properties(viewer_wiring_status_icon_forester PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # UI-PLACE-1: the pickaxe with nothing armed, a cell chosen while demolishing, the cancel-X.
       # UI-PLACE-2: ESC and the right click one step back, a right drag still pans.
       # UI-PAN-1: a click (under the 4 px slop) moves the map not at all, either button.

@@ -26,6 +26,7 @@
 #include <anno/app/loader.hpp>
 #include <anno/app/minimap.hpp>
 #include <anno/app/opening_view.hpp>
+#include <anno/app/status_icons.hpp>
 #include <anno/app/territory_view.hpp>
 #include <anno/formats/result.hpp>
 #include <anno/sim/world.hpp>
@@ -228,6 +229,11 @@ struct PlaySnapshot {
     std::shared_ptr<const TerritoryView> territory;
     /// UI-MINIMAP-1 B2: the figures the minimap marks (collect_map_figures), every turn.
     std::shared_ptr<const std::vector<MapFigure>> map_figures;
+    /// UI-HARVEST-ICON-1 B: the status icons over the local player's buildings
+    /// (collect_status_icons, read-only), every turn. The same object is republished while the
+    /// content does not change, so the window re-places the icons only on a change. Never null
+    /// after the runner's constructor.
+    std::shared_ptr<const std::vector<StatusIconView>> status_icons;
 };
 
 /// UI-MINIMAP-1 B2: the minimap's owner rule (minimap.hpp MinimapOwnerRule) for a loaded game,
@@ -555,6 +561,9 @@ class PlayRunner {
     std::optional<sim::CityRef> developer_city_;
     /// UI-MINIMAP-1 B2: the territory last published (sim thread only).
     std::shared_ptr<const TerritoryView> territory_;
+    /// The last published status icons (PlaySnapshot::status_icons); replaced only on a change.
+    std::shared_ptr<const std::vector<StatusIconView>> status_icons_;
+    void refresh_status_icons();
     /// Takes the world's territory and keeps territory_ when its content is the same (sim thread).
     void refresh_territory();
     /// developer_city_ has a value: the window's title reads it, developer_city_ is the sim

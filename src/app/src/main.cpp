@@ -63,6 +63,7 @@
 #include <anno/app/png.hpp>
 #include <anno/app/scene_picture.hpp>
 #include <anno/app/ship_layer.hpp>
+#include <anno/app/status_icons.hpp>
 #include <anno/app/still.hpp>
 #include <anno/app/ui_layout.hpp>
 #include <anno/app/window_trace.hpp>
@@ -639,6 +640,16 @@ int run(const std::vector<std::string>& raw) {
         play_rules_digest = play->world.rules().digest();
         runner = std::make_unique<anno::app::PlayRunner>(std::move(play->world), args->play_speed);
         runner->set_record_hashes(!session_dir.empty());
+        // UI-HARVEST-ICON-1 B: the status icon figures (docs/re/ui.md 11). Without them the window
+        // draws no icons; nothing else depends on them.
+        if (dir.ok()) {
+            if (auto icons = anno::app::StatusIconLayer::load(dir.value()); icons.ok()) {
+                hooks.status_icons = icons.value();
+            } else {
+                std::fprintf(stderr, "%s: no status icons: %s\n", name.c_str(),
+                             icons.error().c_str());
+            }
+        }
         if (!opening && args->play_player) {
             runner->set_local_player(tool_player); // the snapshot reports the tool's player
         }

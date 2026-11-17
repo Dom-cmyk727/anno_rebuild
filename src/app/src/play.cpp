@@ -398,6 +398,8 @@ PlayRunner::PlayRunner(sim::World world, unsigned speed_percent, PlaySchedule* s
         first->territory = territory_;
         first->map_figures =
             std::make_shared<const std::vector<MapFigure>>(collect_map_figures(world_));
+        refresh_status_icons();
+        first->status_icons = status_icons_;
         snap_ = std::move(first);
     }
     // The picture was built from these buildings at load, so the first diff starts here.
@@ -947,6 +949,9 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
     refresh_territory();
     next->territory = territory_;
     next->map_figures = std::make_shared<const std::vector<MapFigure>>(collect_map_figures(world_));
+    // UI-HARVEST-ICON-1 B: the status icons (republished unchanged while equal).
+    refresh_status_icons();
+    next->status_icons = status_icons_;
     // UI-WINDOW-1 fix round R2/R4: the local player's cities, in (island, city) order, for the
     // status bar: it shows the city on the island the view is centred on, else the first of these
     // (the owner's "Always show my city", 2026-11-14). Read-only accessors only (CityCounters's own
@@ -1192,6 +1197,14 @@ void PlayRunner::fill_inspection(PlaySnapshot& next) {
     if (auto found = inspect_building(world_, *developer_city_, *inspect_tile)) {
         next.inspection = std::make_shared<const BuildingInspection>(std::move(*found));
     }
+}
+
+void PlayRunner::refresh_status_icons() {
+    std::vector<StatusIconView> now = collect_status_icons(world_, local_player_);
+    if (status_icons_ && *status_icons_ == now) {
+        return;
+    }
+    status_icons_ = std::make_shared<const std::vector<StatusIconView>>(std::move(now));
 }
 
 void PlayRunner::refresh_territory() {

@@ -396,7 +396,8 @@ class Viewer {
           construction_masks_(construction_menu_ != nullptr ? hooks->construction_masks : nullptr),
           script_(dev_ != nullptr ? hooks->script : nullptr),
           hold_(dev_ != nullptr && hooks->script != nullptr ? hooks->hold : nullptr),
-          opening_(hooks != nullptr && play != nullptr ? hooks->opening : nullptr) {
+          opening_(hooks != nullptr && play != nullptr ? hooks->opening : nullptr),
+          status_layer_(hooks != nullptr && play != nullptr ? hooks->status_icons : nullptr) {
         if (dev_ != nullptr) {
             knowledge_.emplace(dev_->setup());
             attach_occupancy(*play_, *knowledge_, *dev_); // follows the takes; ensure() seeds
@@ -934,6 +935,17 @@ class Viewer {
     /// Takes the newest snapshot, revalidates the controls against its view, retargets the building
     /// tool at a city that appeared, and builds the ships to draw. Frame boundary; window thread.
     void opening_refresh();
+    // ---- the status icons over buildings (UI-HARVEST-ICON-1 B; status_icons.hpp) ----
+    std::shared_ptr<const StatusIconLayer> status_layer_;
+    /// The icon list and the scene the placement was made for (re-placed when either changes).
+    std::shared_ptr<const std::vector<StatusIconView>> status_icons_shown_;
+    const render::Scene* status_scene_ = nullptr;
+    std::uint64_t status_generation_ = 0;
+    std::vector<PlacedStatusIcon> status_placed_;
+    /// This frame's icons, and what the GPU frame draws: the ships, then the icons.
+    std::vector<render::UnitSprite> status_units_;
+    std::vector<render::UnitSprite> frame_units_;
+    void status_refresh(const render::Scene& scene);
     [[nodiscard]] UiFeed opening_feed() const;
     /// The named facts a scripted session waits on and expects (DevScriptState::facts).
     [[nodiscard]] std::map<std::string, std::string> opening_facts() const;
@@ -1824,6 +1836,28 @@ void Viewer::opening_refresh() {
         play_->runner().request_found_probe(*want);
         asked_probe_ = want;
     }
+}
+
+void Viewer::status_refresh(const render::Scene& scene) {
+    status_units_.clear();
+    if (status_layer_ == nullptr || play_ == nullptr) {
+        return;
+    }
+    const std::shared_ptr<const PlaySnapshot> snap = play_->runner().snapshot();
+    if (!snap || !snap->status_icons) {
+        return;
+    }
+    if (snap->status_icons != status_icons_shown_ || &scene != status_scene_ ||
+        scene.generation() != status_generation_) {
+        status_icons_shown_ = snap->status_icons;
+        status_scene_ = &scene;
+        status_generation_ = scene.generation();
+        status_placed_ = place_status_icons(*status_icons_shown_, scene);
+    }
+    // KNOWN DIVERGENCE (docs/re/ui.md 11.4, OQ-720): where the original shows the "no road"
+    // icon 1571 (a due code 1 or 2 rewritten to code 3), the sim reports code 1 or 2 and this
+    // draws KeinRohstoff or KeinLager.
+    status_units_ = status_layer_->units(status_placed_, time_ms());
 }
 
 void Viewer::opening_apply(const UiResult& result) {
@@ -3034,9 +3068,24 @@ void Viewer::script_tick() {
                 st.facts["inspection.raw_88"] = std::to_string(insp->farm->raw_88);
                 st.facts["inspection.workers_out"] = std::to_string(insp->farm->workers_out);
             }
+            // UI-HARVEST-ICON-1 B: the status icon the snapshot gives the hovered building (its
+            // code, docs/re/ui.md 11.1), "none" when it has none.
+            std::string icon = "none";
+            if (st.snapshot->status_icons) {
+                for (const StatusIconView& v : *st.snapshot->status_icons) {
+                    if (v.id == insp->id) {
+                        icon = std::to_string(static_cast<int>(v.icon));
+                    }
+                }
+            }
+            st.facts["inspection.status_icon"] = icon;
         }
         // FISHER-VIEW-1: the game time the facts above belong to (the snapshot's clock).
         st.facts["game.ms"] = std::to_string(st.snapshot->game_ms);
+        // UI-HARVEST-ICON-1 B: the icons the snapshot carries, and the units this frame drew.
+        st.facts["status_icons.count"] =
+            std::to_string(st.snapshot->status_icons ? st.snapshot->status_icons->size() : 0);
+        st.facts["status_icons.drawn"] = std::to_string(status_units_.size());
     }
     // Row 18's selection (W4-NEXT-2 F1/G1, finding 1 of the 2026-11-11 fix review): a script that
     // waits on a fixed frame count to know a click's selection resolved races the sim thread's
@@ -3550,6 +3599,7 @@ void Viewer::draw() {
     follow_picture();
     opening_refresh(); // the ships of the newest snapshot (an opening only)
     const std::shared_ptr<const render::Scene> gen = current();
+    status_refresh(*gen); // the status icons of the newest snapshot (--play only)
     if (knowledge_ && play_ != nullptr) {
         // The first seed, and the reseed after a spell with the tool off, from the picture's
         // per-island list (O(the city), once); the takes keep it current otherwise (R4).
@@ -3803,9 +3853,13 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
             steps_.push_back({"ui scale", since_ms(scale_start, Clock::now())});
         }
     }
+    // The ships, then the status icons (UI-HARVEST-ICON-1 B): one list of live units.
+    frame_units_.clear();
+    frame_units_.insert(frame_units_.end(), live_units_.begin(), live_units_.end());
+    frame_units_.insert(frame_units_.end(), status_units_.begin(), status_units_.end());
     const auto s =
         g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(), resample,
-                        overlay, live_units_, ui_overlay_ptr, hitch_tracking_enabled());
+                        overlay, frame_units_, ui_overlay_ptr, hitch_tracking_enabled());
     fluid_windows_ = s.fluid_windows;
     fluid_resamples_ = s.fluid_resamples;
     // ZOOM-SMOOTH-3c item 3: this frame's own new-window count, saved before windows_seen_ is
@@ -4039,6 +4093,8 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         play_->visibility().begin_frame(view, group_); // the CPU path's frame, as draw_gpu's
     }
     const auto s = frames_.render(gen, view, group_, time_ms(), water_, buffer_.data());
+    // The status icons over the buildings, after the scene's objects (UI-HARVEST-ICON-1 B).
+    blend_units(status_units_, *gen, group_, view, buffer_.data());
     if (opening_ != nullptr) {
         // The live ships after every object of the scene (the scene's own units are drawn last
         // too), then the founding cursor over them.

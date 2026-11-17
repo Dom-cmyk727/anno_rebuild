@@ -642,12 +642,19 @@ TEST_CASE("section versions: all ten native sections refuse another base version
     CHECK(loaded.value().state_hash() == world.state_hash());
     const auto ranges = section_ranges(good);
     REQUIRE(sim::kSectionVersions.size() == section_names.size());
+    // Base versions: header 2 and islands 2 since ISLAND-CROPS-1 1b (SimConfig::crops,
+    // Island::crops), every other section 1 (docs/sim/state.md §9.7). Literal on purpose.
+    constexpr std::array<std::uint32_t, 10> expected{2, 1, 1, 1, 1, 2, 1, 1, 1, 1};
     for (std::size_t i = 0; i < section_names.size(); ++i) {
         INFO(section_names[i]);
         CHECK(sim::kSectionVersions[i].name == section_names[i]);
-        CHECK(sim::kSectionVersions[i].version == 1);
-        REQUIRE(island_test::get32(good, ranges[i].begin) == 1);
-        for (const std::uint32_t version : {0u, 2u}) {
+        CHECK(sim::kSectionVersions[i].version == expected[i]);
+        REQUIRE(island_test::get32(good, ranges[i].begin) == expected[i]);
+        std::vector<std::uint32_t> others{0u, expected[i] + 1};
+        if (expected[i] > 1) {
+            others.push_back(expected[i] - 1); // the previous base is refused, never read
+        }
+        for (const std::uint32_t version : others) {
             auto bad = good;
             island_test::put32(bad, ranges[i].begin, version);
             island_test::reseal(bad);
@@ -655,7 +662,8 @@ TEST_CASE("section versions: all ten native sections refuse another base version
             REQUIRE_FALSE(result.ok());
             CHECK(contains(result.error(), "section " + std::string(section_names[i]) +
                                                ": base version " + std::to_string(version) +
-                                               " is not supported (this build reads 1)"));
+                                               " is not supported (this build reads " +
+                                               std::to_string(expected[i]) + ")"));
             CHECK_FALSE(contains(result.error(), "checksum"));
         }
     }

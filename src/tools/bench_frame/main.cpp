@@ -75,25 +75,34 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 #include <anno/app/cli.hpp>
 #include <anno/app/loader.hpp>
 #include <anno/app/opening.hpp>
+#include <anno/app/picture_trace.hpp>
 #include <anno/app/play.hpp>
 #include <anno/app/png.hpp>
 #include <anno/app/zoom.hpp>
+#include <anno/assets/building.hpp>
+#include <anno/assets/figure.hpp>
+#include <anno/formats/anlagen.hpp>
+#include <anno/formats/figuren.hpp>
 #include <anno/render/frame.hpp>
+#include <anno/render/frame_table.hpp>
+#include <anno/render/iso.hpp>
 #include <anno/render/profile.hpp>
 #include <anno/render/resample.hpp>
+#include <anno/render/residency.hpp>
 #include <anno/render/scene.hpp>
 #ifdef ANNO_BENCH_GPU
-#include <fstream>
-
 #include <anno/render/gpu.hpp>
 
 #ifdef _WIN32
@@ -115,6 +124,8 @@ namespace fs = std::filesystem;
 namespace render = anno::render;
 namespace app = anno::app;
 namespace formats = anno::formats;
+namespace assets = anno::assets;
+namespace fig = anno::formats::figuren;
 
 #ifdef ANNO_BENCH_GPU
 /// System RAM in bytes, without SDL (bench_frame links anno_app_core, not anno_app_sdl, so
@@ -282,6 +293,18 @@ struct Options {
     /// resample pass; CPU: render::cpu_resample, in the frame's time).
     double zoom_factor = 1.0;
     std::optional<render::ResampleFilter> resample;
+    /// --atlas-report out.tsv (RENDER-DIRECT-1a): measures what keeping every sprite the direct
+    /// renderer draws resident on the GPU would cost, and writes the table to out.tsv. <file> "-"
+    /// walks the whole scene corpus (<game_dir>/Scenes plus the repo's own fixed-map/ship-start
+    /// files, resolved against the current working directory - run from the repo root); any other
+    /// <file> measures only that one scene (a quick check; a scene that fails to load is reported
+    /// the same way as in the full corpus, not silently skipped). Empty = off.
+    std::string atlas_report;
+    /// --atlas-gpu-limits (RENDER-DIRECT-1a step 6): with --atlas-report, also queries the open
+    /// adapter's maxTextureDimension2D/maxTextureArrayLayers/maxBufferSize (a few seconds, needs a
+    /// real GPU device: tell the orchestrator first, as for any other GPU run). Off by default so
+    /// the rest of the report needs no GPU at all.
+    bool atlas_gpu_limits = false;
 };
 
 std::vector<std::string_view> split(std::string_view s, char sep) {
@@ -1989,7 +2012,10 @@ constexpr const char* kUsage =
     "       bench_frame <game_dir> <file> --fill-time [--derive old|cache] [--threads n] "
     "[--res WxH]\n"
     "       bench_frame --list-adapters\n"
-    "       bench_frame <game_dir> <file> --river-cost\n";
+    "       bench_frame <game_dir> <file> --river-cost\n"
+    "       bench_frame <game_dir> - --atlas-report out.tsv [--atlas-gpu-limits] (- walks "
+    "<game_dir>/Scenes and the repo's own fixed-map/ship-start files, resolved against the "
+    "current working directory; a real <file> measures only that one scene)\n";
 
 std::optional<Options> parse_options(const std::vector<std::string>& args) {
     Options o;
@@ -2017,6 +2043,10 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
         }
         if (a == "--zoom-sweep-warm") {
             o.zoom_sweep_warm = true;
+            continue;
+        }
+        if (a == "--atlas-gpu-limits") {
+            o.atlas_gpu_limits = true;
             continue;
         }
         if (i + 1 >= args.size()) {
@@ -2210,6 +2240,9 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             }
         } else if (a == "--chunk-limit") {
             ok = parse(v, o.chunk_limit);
+        } else if (a == "--atlas-report") {
+            ok = !v.empty();
+            o.atlas_report = std::string(v);
         } else if (a == "--zoom-dump") {
             ok = !v.empty();
             o.zoom_dump = std::string(v);
@@ -2291,6 +2324,716 @@ formats::Result<app::LoadedScene, std::string> load_any_scene(const fs::path& di
     return app::load_scene(dir, file);
 }
 
+// --- RENDER-DIRECT-1a: --atlas-report ---------------------------------------------------------
+// ADR 0007 step 1, first half (docs/orchestration/tasks/render-direct-1a.md): measures what
+// keeping every sprite the direct renderer draws resident on the GPU would cost. Measurement and
+// document only - nothing here is read by any render path.
+
+/// Frames and their total decoded bytes (header sizes, no decode).
+struct FrameTotals {
+    std::uint64_t frames = 0, bytes = 0;
+};
+
+/// A distinct resident-atlas frame and its decoded size, keyed as render::SpriteKey (ANLAGEN or
+/// FigurenHeader id, variant, shadow, group, frame index) so objects that share a frame (the same
+/// id, rotation block and step) are counted once, SpriteCache's own granularity (iso.hpp
+/// "SpriteCache", "SpriteKey").
+struct AtlasFrames {
+    std::map<render::SpriteKey, std::pair<std::uint32_t, std::uint32_t>> frames;
+    std::uint64_t failed = 0;
+
+    [[nodiscard]] FrameTotals totals() const {
+        FrameTotals t;
+        t.frames = frames.size();
+        for (const auto& [key, wh] : frames) {
+            t.bytes += std::uint64_t{wh.first} * wh.second * 4;
+        }
+        return t;
+    }
+};
+
+/// Every frame placed object `p` can ever show at `group`, added to `out` (shadow included when
+/// its set has one). Mirrors place_prepared's own frame selection (iso.hpp "place_prepared";
+/// iso.cpp animation()/frame_index(), lines 331-357) by calling the SAME public animation()
+/// function, not a second implementation of it: frame_index's formula is
+/// `step = (time_ms/ms + phase) % n` (ms == 0: step is the constant `phase % n`, no animation;
+/// ms > 0: as time_ms grows without bound, step takes every value 0..n-1, so the full set an
+/// object can show does not depend on sampling any particular time_ms). `id == kSurfAnlage`'s
+/// position-derived phase is the one case frame_index's own caller special-cases (iso.hpp
+/// place_prepared); every other object uses its own stored phase byte.
+void add_object_frames(const render::Prepared& p, const formats::anlagen::AnlagenFile& anlagen,
+                       std::uint32_t group, AtlasFrames& out) {
+    const auto& o = p.first;
+    const std::uint32_t id = o.anlage;
+    const fig::Entry* entry = anlagen.entry(id);
+    if (entry == nullptr || entry->gfx.empty()) {
+        ++out.failed;
+        return;
+    }
+    const fig::GfxSet& set = entry->gfx.front();
+    const fig::FrameSet* frames = nullptr;
+    for (const auto& fs : set.frame_sets) {
+        if (fs.group == group) {
+            frames = &fs;
+            break;
+        }
+    }
+    if (frames == nullptr) {
+        ++out.failed;
+        return;
+    }
+    const std::size_t n = std::max<std::size_t>(render::animation(set).first, 1);
+    const std::uint64_t ms = render::animation(set).second;
+    const std::size_t total = frames->frames.size();
+    const std::size_t rotations = std::max<std::size_t>(total / n, 1);
+    const std::size_t block = (std::size_t{o.rotation} % rotations) * n;
+    const std::size_t phase = id == render::kSurfAnlage
+                                  ? (3 * std::size_t{o.y} + 5 * std::size_t{o.x}) % 32
+                                  : std::size_t{o.phase()};
+    const bool animated = ms != 0 && n > 1;
+    const std::size_t step_count = animated ? n : 1;
+    const std::size_t first_step = phase % n;
+    const fig::FrameSet* shadow_frames = nullptr;
+    if (set.shadow) {
+        for (const auto& fs : set.shadow->frame_sets) {
+            if (fs.group == group) {
+                shadow_frames = &fs;
+                break;
+            }
+        }
+    }
+    for (std::size_t i = 0; i < step_count; ++i) {
+        const std::size_t step = animated ? i : first_step;
+        const std::size_t k = block + step;
+        if (k >= total || frames->frames[k].length == 0) {
+            continue;
+        }
+        const fig::Frame& f = frames->frames[k];
+        out.frames.emplace(render::SpriteKey{id, 0, false, group, k},
+                           std::pair<std::uint32_t, std::uint32_t>{f.width, f.height});
+        if (shadow_frames != nullptr && k < shadow_frames->frames.size() &&
+            shadow_frames->frames[k].length != 0) {
+            const fig::Frame& sf = shadow_frames->frames[k];
+            out.frames.emplace(render::SpriteKey{id, 0, true, group, k},
+                               std::pair<std::uint32_t, std::uint32_t>{sf.width, sf.height});
+        }
+    }
+}
+
+/// `entry`'s own gfx set and its shadow, each with whether it is the shadow (mirrors
+/// sprite_fidelity_test.cpp's own `sets()` helper, a trivial traversal, not scene/object
+/// preparation).
+std::vector<std::pair<const fig::GfxSet*, bool>> gfx_sets_of(const fig::Entry& entry) {
+    std::vector<std::pair<const fig::GfxSet*, bool>> out;
+    for (const auto& s : entry.gfx) {
+        out.emplace_back(&s, false);
+        if (s.shadow) {
+            out.emplace_back(s.shadow.get(), true);
+        }
+    }
+    return out;
+}
+
+/// The whole FigurenHeader.dat catalog per group (frames unconditionally resident, scene-
+/// independent, docs/orchestration/tasks/render-direct-1a.md step 4) and, of those, the frames of
+/// player-coloured types (step 5): `assets::figure::player_coloured` is the only place that checks
+/// this (figure.cpp), and only non-shadow frames are ever recoloured (BSH_ALPHA shadows carry no
+/// palette, figure.hpp's own header comment). `kGroups` groups (render::kGroups).
+std::array<FrameTotals, render::kGroups>
+whole_figure_catalog(const fig::FigurenHeader& header,
+                     std::array<FrameTotals, render::kGroups>& player_colourable) {
+    std::array<FrameTotals, render::kGroups> totals{};
+    for (const auto& e : header.entries) {
+        const bool coloured = assets::figure::player_coloured(e);
+        for (const auto& [set, shadow] : gfx_sets_of(e)) {
+            for (const auto& fs : set->frame_sets) {
+                if (fs.group >= render::kGroups) {
+                    continue;
+                }
+                for (const auto& f : fs.frames) {
+                    if (f.length == 0) {
+                        continue;
+                    }
+                    const std::uint64_t b = std::uint64_t{f.width} * f.height * 4;
+                    totals[fs.group].frames += 1;
+                    totals[fs.group].bytes += b;
+                    if (coloured && !shadow) {
+                        player_colourable[fs.group].frames += 1;
+                        player_colourable[fs.group].bytes += b;
+                    }
+                }
+            }
+        }
+    }
+    return totals;
+}
+
+/// Pixels and frames of the whole Anlagen.dat catalog that the decoder's own player-colour test
+/// would match, measured by decoding (not assumed from `player_coloured`/`recolour` never being
+/// called on this path): `figure::recolour`'s test is `G^2 > trunc(1.5 (R^2 + B^2))` on a decoded
+/// pixel's palette colour (figure.cpp); a pixel the test matches changes when recolour() is given
+/// a real player colour and stays the same otherwise ("other colours stay", figure.hpp), so
+/// comparing the decoded colour against `recolour(colour, test_player)` applies the real test
+/// without reimplementing its formula. Decodes with `assets::building::to_rgba`, not
+/// `figure::decode`: a building entry's palette is `entry.palette_ids[frame.palette]` against the
+/// file-wide `AnlagenFile::colors` table, not `entry.palettes` (figure.hpp's per-entry COLORS,
+/// FigurenHeader.dat's own convention) - the same function iso.cpp's SpriteCache::get calls for
+/// every static frame it decodes (iso.cpp:322), confirming the decode path, not just the palette
+/// lookup, is identical to the real one. `building::to_rgba` also has no colour parameter at all:
+/// further, structural evidence that static frames are never recoloured. Shadows are skipped:
+/// BSH_ALPHA frames carry no palette (figure.hpp's own header comment), so the test cannot apply.
+struct ColourEligibility {
+    std::uint64_t frames_checked = 0, frames_with_eligible_pixels = 0;
+    std::uint64_t pixels_checked = 0, pixels_eligible = 0;
+    std::uint64_t decode_failed = 0;
+};
+
+ColourEligibility static_player_colour_eligibility(const formats::anlagen::AnlagenFile& anlagen) {
+    ColourEligibility result;
+    const assets::figure::Rgb test_player = assets::figure::kOriginalPlayerColours[0];
+    for (const auto& e : anlagen.entries) {
+        for (const auto& [set, shadow] : gfx_sets_of(e)) {
+            if (shadow) {
+                continue;
+            }
+            for (const auto& fs : set->frame_sets) {
+                for (const auto& frame : fs.frames) {
+                    if (frame.length == 0) {
+                        continue;
+                    }
+                    const auto decoded = assets::building::to_rgba(anlagen, e, fs.group, frame);
+                    if (!decoded) {
+                        ++result.decode_failed;
+                        continue;
+                    }
+                    ++result.frames_checked;
+                    bool frame_has_eligible = false;
+                    const assets::Rgba& img = decoded.value();
+                    for (std::size_t i = 0; i + 3 < img.pixels.size(); i += 4) {
+                        if (img.pixels[i + 3] == 0) {
+                            continue; // not covered: no palette colour to test.
+                        }
+                        ++result.pixels_checked;
+                        const assets::figure::Rgb rgb{img.pixels[i], img.pixels[i + 1],
+                                                      img.pixels[i + 2]};
+                        if (assets::figure::recolour(rgb, test_player) != rgb) {
+                            ++result.pixels_eligible;
+                            frame_has_eligible = true;
+                        }
+                    }
+                    if (frame_has_eligible) {
+                        ++result.frames_with_eligible_pixels;
+                    }
+                }
+            }
+        }
+    }
+    return result;
+}
+
+/// The figure (ship/soldier) frames `scene.units` actually uses at `group`, distinct by
+/// render::FrameKey::unit (frame_table.hpp), the engine's own identity for a unit frame - the same
+/// key the frame table itself dedups by, so this counts exactly the atlas entries those units
+/// would need. Empty when `scene.units` was never populated (load_placed_scene, unlike load_scene,
+/// does not call load_units - app/src/loader.cpp): reported as "n/a", not zero.
+FrameTotals figures_used_by_scene(const render::Scene& scene, std::uint32_t group) {
+    FrameTotals t;
+    std::map<render::FrameKey, std::uint32_t> seen; // -> bytes
+    for (const auto& u : scene.units) {
+        auto add = [&](const std::vector<std::optional<render::UnitFrame>>& frames, bool shadow) {
+            if (group >= frames.size() || !frames[group]) {
+                return;
+            }
+            const render::UnitFrame& f = *frames[group];
+            seen.emplace(render::FrameKey::unit(f.id, group, shadow),
+                         std::uint32_t{f.frame.width} * f.frame.height * 4);
+        };
+        add(u.frames, false);
+        add(u.shadows, true);
+    }
+    for (const auto& [key, bytes] : seen) {
+        t.frames += 1;
+        t.bytes += bytes;
+    }
+    return t;
+}
+
+/// `only_file` alone, when it names a real file (not "-"): --atlas-report then measures just that
+/// one scene (a quick check), instead of walking the whole corpus. Otherwise every `.sze`/`.scp`
+/// under `game_dir/Scenes` (recursive: no fixed subfolder list, so a mod's own scenario folder is
+/// covered the same way), then the repo's own lan5 fixed map and its three ship-start-v2
+/// candidates, resolved against the current working directory (the report must be run from the
+/// repo root).
+std::vector<fs::path> discover_scenes(const fs::path& game_dir, const fs::path& only_file) {
+    if (!only_file.empty() && only_file != "-") {
+        return {only_file};
+    }
+    std::vector<fs::path> out;
+    std::error_code ec;
+    const fs::path scenes_dir = game_dir / "Scenes";
+    for (auto it = fs::recursive_directory_iterator(
+             scenes_dir, fs::directory_options::skip_permission_denied, ec);
+         !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        if (!it->is_regular_file(ec)) {
+            continue;
+        }
+        std::string ext = it->path().extension().string();
+        for (char& c : ext) {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        if (ext == ".sze" || ext == ".scp") {
+            out.push_back(it->path());
+        }
+    }
+    std::sort(out.begin(), out.end());
+    out.push_back("data/maps/lan5.txt");
+    for (const char* name : {"lan5-ship-a.json", "lan5-ship-b.json", "lan5-ship-c.json"}) {
+        out.push_back(fs::path("data/maps/candidates/ship-start-v2") / name);
+    }
+    return out;
+}
+
+/// `frames` packed into layers of `page_size`^2 texels, `padding` px added to each frame's width
+/// and height (2 * padding: both sides), with `AtlasResidency` (src/render/include/anno/render/
+/// residency.hpp), the shelf packer RENDER-DIRECT-1b is to use (task step 3). One `ensure()` call
+/// packs the whole set at once (no eviction: the budget is sized for every layer `ensure()` could
+/// ever need), so `stats().layers` is the real page count, not an estimate. A frame that does not
+/// fit one page at all (`EnsureStatus::Overflow` on its own) is reported separately, not silently
+/// dropped.
+struct PackResult {
+    std::uint64_t pages = 0, bytes = 0;
+    /// Texel bytes of the packed rectangles themselves (ResidencyStats::resident_bytes, already
+    /// padding-inflated): `bytes - rect_bytes` is shelf waste, not something a reader has to
+    /// recompute to see whether a page count is a tight fit or has headroom to spare.
+    std::uint64_t rect_bytes = 0;
+    std::vector<std::uint32_t> oversized_ids; // padded w/h > page_size
+};
+
+PackResult
+pack_frames(const std::map<render::SpriteKey, std::pair<std::uint32_t, std::uint32_t>>& frames,
+            std::uint32_t page_size, std::uint32_t padding) {
+    PackResult result;
+    std::vector<render::FrameRef> refs;
+    refs.reserve(frames.size());
+    std::uint32_t next_id = 0;
+    for (const auto& [key, wh] : frames) {
+        const std::uint32_t w = wh.first + 2 * padding, h = wh.second + 2 * padding;
+        if (w > page_size || h > page_size) {
+            result.oversized_ids.push_back(next_id);
+        }
+        refs.push_back(render::FrameRef{next_id, w, h});
+        ++next_id;
+    }
+    // Budget: as many layers as every frame could ever need, one per frame in the worst case
+    // (never reached in practice), so ensure() never evicts within this single call.
+    const std::uint64_t budget =
+        std::uint64_t{page_size} * page_size * 4 * (refs.empty() ? 1 : refs.size());
+    render::AtlasResidency residency(page_size, budget);
+    const auto ensured = residency.ensure(refs, render::AtlasClass::Static);
+    (void)ensured;
+    const auto stats = residency.stats();
+    result.pages = stats.layers;
+    result.bytes = stats.layer_bytes;
+    result.rect_bytes = stats.resident_bytes;
+    return result;
+}
+
+/// One extra mip level's GPU byte cost, on top of the base page bytes `pack_frames` reports: a
+/// level at half resolution in each dimension is a quarter of the base area, so +25%. Not a full
+/// chain: a mip level n needs 2^n px of padding on every packed frame or its neighbours in the
+/// atlas bleed into it when the GPU samples past the edge, so with the padding this task measures
+/// (2 px, 4 px) only one level (2^1 = 2 px) is ever valid without more padding than either
+/// candidate gives - a genuine full chain down to 1x1 for a 2048 px page would need 11 levels,
+/// i.e. 2^11 = 2048 px of padding, not a usable candidate. One level is also most of the benefit
+/// the zoom groups themselves give: their tile widths (84/42/20/10 px, docs/app/window-trace.md
+/// "Zoom groups and their tile widths") never shrink more than about 2.1x before the next group
+/// takes over, so a single half-resolution mip covers nearly all of the minification a zoom
+/// between groups needs. This is a formula, not a measurement: flagged as one, not a guess.
+inline constexpr double kOneMipLevelFactor = 1.25;
+
+/// Whole file, no decode (mirrors app/src/loader.cpp's own private read_all: plain file I/O).
+std::optional<std::vector<std::uint8_t>> atlas_read_all(const fs::path& p) {
+    std::ifstream in(p, std::ios::binary);
+    if (!in) {
+        return std::nullopt;
+    }
+    return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(in), {});
+}
+
+#ifdef ANNO_BENCH_GPU
+/// `maxTextureDimension2D`/`maxTextureArrayLayers`/`maxBufferSize` of the adapter `which` names
+/// (list_adapters()'s order, or a case-insensitive part of its name - render::pick_adapter),
+/// opened through ANNO_GPU_ADAPTER (render::headless_context's own env var; wgpu.hpp), the same
+/// mechanism --list-adapters and every other GPU path here already uses. A few seconds: one
+/// device open, one wgpuDeviceGetLimits call (the pattern at src/render/src/gpu.cpp
+/// GpuFrame::create), no frame rendered.
+struct GpuLimitsRow {
+    std::string adapter;
+    std::uint32_t max_texture_dimension_2d = 0, max_texture_array_layers = 0;
+    std::uint64_t max_buffer_size = 0;
+    std::string error;
+};
+
+GpuLimitsRow query_gpu_limits(std::string_view which) {
+    GpuLimitsRow row;
+    row.adapter = std::string(which);
+#ifdef _WIN32
+    _putenv_s("ANNO_GPU_ADAPTER", std::string(which).c_str());
+#else
+    setenv("ANNO_GPU_ADAPTER", std::string(which).c_str(), 1);
+#endif
+    auto cx = gpu::headless_context();
+    if (!cx) {
+        row.error = cx.error();
+        return row;
+    }
+    row.adapter = cx.value().name;
+    WGPULimits limits = WGPU_LIMITS_INIT;
+    wgpuDeviceGetLimits(cx.value().device.get(), &limits);
+    row.max_texture_dimension_2d = limits.maxTextureDimension2D;
+    row.max_texture_array_layers = limits.maxTextureArrayLayers;
+    row.max_buffer_size = limits.maxBufferSize;
+    return row;
+}
+#endif
+
+/// Runs RENDER-DIRECT-1a's measurement over discover_scenes(game_dir, file) and writes the table
+/// to `o.atlas_report`. Returns the process exit code.
+int run_atlas_report(const fs::path& game_dir, const fs::path& file, const Options& o) {
+    const auto started = std::chrono::steady_clock::now();
+    std::string tsv;
+    // "group" is a zoom group (0/1/2) for a per-group row, or one of "0+1+2"/"0+1"/"1+2" for a
+    // row summing that group's own frame sets (F1: ADR 0007 keeps all three resident at once; a
+    // zoom crosses one adjacent pair). A sum row's descriptive columns (static_frames ..
+    // figures_used_bytes) are 0: those facts are per group, not summable into one number.
+    tsv += "# scenes\n";
+    tsv += "scene\tgroup\tstatic_frames\tstatic_bytes\tstatic_instances\twater_frames\t"
+           "water_bytes\twater_shadow_frames\twater_shadow_bytes\tenhanced_extra_frames\t"
+           "enhanced_extra_bytes\tfigures_used_frames\tfigures_used_bytes\tpage_size\t"
+           "padding_px\tmips\tpack_pages\tpack_bytes\trect_bytes\tfill_ratio\terror\n";
+
+    struct PageSpec {
+        std::uint32_t page_size, padding;
+    };
+    static constexpr std::array<PageSpec, 4> kSpecs = {
+        {{2048, 2}, {2048, 4}, {4096, 2}, {4096, 4}}};
+    static constexpr std::array<const char*, 2> kMipNames = {"none", "one_level"};
+
+    const std::vector<fs::path> scenes = discover_scenes(game_dir, file);
+    std::size_t loaded_ok = 0, refused = 0;
+    std::uint64_t worst_combined_bytes = 0;
+    std::string worst_scene;
+    std::uint32_t worst_group = 0;
+
+    std::vector<std::string> oversized_notes;
+    for (const fs::path& scene_file : scenes) {
+        std::string ext = scene_file.extension().string();
+        for (char& c : ext) {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        const bool is_placed = ext == ".txt" || ext == ".json"; // load_placed_scene: no units.
+        auto loaded = load_any_scene(game_dir, scene_file);
+        if (!loaded) {
+            // 19 empty fields (group .. fill_ratio) between scene and error: one tab per field
+            // boundary, so 20 tabs for 19 empty fields plus the one before error. Built by
+            // repetition, not counted by eye (TRACE-COLS-1's own lesson).
+            tsv += scene_file.string() + std::string(20, '\t') + loaded.error() + "\n";
+            ++refused;
+            continue;
+        }
+        ++loaded_ok;
+        const render::Scene& scene = *loaded.value().scene;
+        const std::size_t group_count =
+            std::min<std::size_t>(scene.levels().size(), render::kGroups);
+        // F1 (orchestrator review, 2026-11-17): ADR 0007 keeps all three groups' atlases resident
+        // at once (decision 2), and the owner's seamless-zoom rule means a zoom crossing two
+        // groups needs both resident together, not one evicted while the zoom runs. Kept per
+        // group here so the sums below are computed from the same frame sets, not re-walked.
+        std::array<std::map<render::SpriteKey, std::pair<std::uint32_t, std::uint32_t>>,
+                   render::kGroups>
+            combined_by_group;
+        std::array<bool, render::kGroups> group_present{};
+        for (std::size_t g = 0; g < group_count; ++g) {
+            const auto group = static_cast<std::uint32_t>(g);
+            AtlasFrames static_frames, water_frames, enhanced_eligible;
+            std::uint64_t static_instances = 0;
+            for (const auto& island : scene.islands) {
+                const auto statics = render::prepare_objects(
+                    island, scene.anlagen, render::kObjectRecords, render::Objects::NotWater);
+                static_instances += statics.size();
+                for (const auto& p : statics) {
+                    add_object_frames(p, scene.anlagen, group, static_frames);
+                }
+                const auto below = render::prepare_objects(
+                    island, scene.anlagen, render::kObjectRecords, render::Objects::WaterBelowSea);
+                for (const auto& p : below) {
+                    add_object_frames(p, scene.anlagen, group, water_frames);
+                    const std::uint32_t id = p.first.anlage;
+                    const bool is_fall = std::find(render::kRiverFallAnlagen.begin(),
+                                                   render::kRiverFallAnlagen.end(),
+                                                   id) != render::kRiverFallAnlagen.end();
+                    if (id != render::kSurfAnlage && !is_fall) {
+                        add_object_frames(p, scene.anlagen, group, enhanced_eligible);
+                    }
+                }
+                const auto above = render::prepare_objects(
+                    island, scene.anlagen, render::kObjectRecords, render::Objects::WaterAboveSea);
+                for (const auto& p : above) {
+                    add_object_frames(p, scene.anlagen, group, water_frames);
+                    const std::uint32_t id = p.first.anlage;
+                    const bool is_river =
+                        std::find(render::kRiverAnlagen.begin(), render::kRiverAnlagen.end(), id) !=
+                        render::kRiverAnlagen.end();
+                    const bool is_fall = std::find(render::kRiverFallAnlagen.begin(),
+                                                   render::kRiverFallAnlagen.end(),
+                                                   id) != render::kRiverFallAnlagen.end();
+                    if (!is_river && !is_fall) {
+                        add_object_frames(p, scene.anlagen, group, enhanced_eligible);
+                    }
+                }
+            }
+            const FrameTotals static_totals = static_frames.totals();
+            std::uint64_t water_nf = 0, water_nb = 0, water_sf = 0, water_sb = 0;
+            for (const auto& [key, wh] : water_frames.frames) {
+                const std::uint64_t b = std::uint64_t{wh.first} * wh.second * 4;
+                if (std::get<2>(key)) {
+                    ++water_sf;
+                    water_sb += b;
+                } else {
+                    ++water_nf;
+                    water_nb += b;
+                }
+            }
+            std::uint64_t extra_f = 0, extra_b = 0;
+            for (const auto& [key, wh] : enhanced_eligible.frames) {
+                if (!std::get<2>(key)) {
+                    ++extra_f;
+                    extra_b += std::uint64_t{wh.first} * wh.second * 4;
+                }
+            }
+            const FrameTotals figs =
+                is_placed ? FrameTotals{} : figures_used_by_scene(scene, group);
+
+            std::map<render::SpriteKey, std::pair<std::uint32_t, std::uint32_t>> combined =
+                static_frames.frames;
+            combined.insert(water_frames.frames.begin(), water_frames.frames.end());
+            combined_by_group[g] = combined;
+            group_present[g] = true;
+
+            for (const PageSpec& spec : kSpecs) {
+                const PackResult packed = pack_frames(combined, spec.page_size, spec.padding);
+                if (!packed.oversized_ids.empty()) {
+                    oversized_notes.push_back(scene_file.string() + " group " +
+                                              std::to_string(group) + " page " +
+                                              std::to_string(spec.page_size) + " padding " +
+                                              std::to_string(spec.padding) + ": " +
+                                              std::to_string(packed.oversized_ids.size()) +
+                                              " frame(s) too large for one page even alone");
+                }
+                if (packed.bytes > worst_combined_bytes) {
+                    worst_combined_bytes = packed.bytes;
+                    worst_scene = scene_file.string();
+                    worst_group = group;
+                }
+                for (std::size_t mip = 0; mip < kMipNames.size(); ++mip) {
+                    const std::uint64_t bytes =
+                        mip == 0 ? packed.bytes
+                                 : static_cast<std::uint64_t>(static_cast<double>(packed.bytes) *
+                                                              kOneMipLevelFactor);
+                    // fill_ratio is always against the un-mipped page bytes: mips are extra GPU
+                    // storage on top of the same pages, not a second packing of the rectangles.
+                    const double fill_ratio = packed.bytes == 0
+                                                  ? 0.0
+                                                  : static_cast<double>(packed.rect_bytes) /
+                                                        static_cast<double>(packed.bytes);
+                    char line[1024];
+                    std::snprintf(
+                        line, sizeof line,
+                        "%s\t%u\t%llu\t%llu\t%llu\t%llu\t%llu\t%llu\t%llu\t%llu\t%llu\t%llu\t"
+                        "%llu\t%u\t%u\t%s\t%llu\t%llu\t%llu\t%.4f\t\n",
+                        scene_file.string().c_str(), group,
+                        static_cast<unsigned long long>(static_totals.frames),
+                        static_cast<unsigned long long>(static_totals.bytes),
+                        static_cast<unsigned long long>(static_instances),
+                        static_cast<unsigned long long>(water_nf),
+                        static_cast<unsigned long long>(water_nb),
+                        static_cast<unsigned long long>(water_sf),
+                        static_cast<unsigned long long>(water_sb),
+                        static_cast<unsigned long long>(extra_f),
+                        static_cast<unsigned long long>(extra_b),
+                        static_cast<unsigned long long>(figs.frames),
+                        static_cast<unsigned long long>(figs.bytes), spec.page_size, spec.padding,
+                        kMipNames[mip], static_cast<unsigned long long>(packed.pages),
+                        static_cast<unsigned long long>(bytes),
+                        static_cast<unsigned long long>(packed.rect_bytes), fill_ratio);
+                    tsv += line;
+                }
+            }
+        }
+
+        // F1: the sums ADR 0007's own "all three resident" rule and the owner's seamless-zoom
+        // rule need - all three groups together, and the two adjacent pairs a zoom crosses - from
+        // the same per-group frame sets above, not a second corpus walk. Descriptive columns
+        // (static_frames, water_frames, ...) are per-group facts with no single meaning for a
+        // sum, so they are left at 0; only the packing columns are. "group" names the sum.
+        struct GroupSum {
+            const char* label;
+            std::array<std::size_t, 3> groups;
+            std::size_t count;
+        };
+        static constexpr std::array<GroupSum, 3> kSums = {
+            {{"0+1+2", {0, 1, 2}, 3}, {"0+1", {0, 1, 0}, 2}, {"1+2", {1, 2, 0}, 2}}};
+        for (const GroupSum& sum : kSums) {
+            bool all_present = true;
+            for (std::size_t i = 0; i < sum.count; ++i) {
+                if (sum.groups[i] >= group_count || !group_present[sum.groups[i]]) {
+                    all_present = false;
+                    break;
+                }
+            }
+            if (!all_present) {
+                continue;
+            }
+            std::map<render::SpriteKey, std::pair<std::uint32_t, std::uint32_t>> merged;
+            for (std::size_t i = 0; i < sum.count; ++i) {
+                merged.insert(combined_by_group[sum.groups[i]].begin(),
+                              combined_by_group[sum.groups[i]].end());
+            }
+            for (const PageSpec& spec : kSpecs) {
+                const PackResult packed = pack_frames(merged, spec.page_size, spec.padding);
+                if (!packed.oversized_ids.empty()) {
+                    oversized_notes.push_back(scene_file.string() + " groups " + sum.label +
+                                              " page " + std::to_string(spec.page_size) +
+                                              " padding " + std::to_string(spec.padding) + ": " +
+                                              std::to_string(packed.oversized_ids.size()) +
+                                              " frame(s) too large for one page even alone");
+                }
+                for (std::size_t mip = 0; mip < kMipNames.size(); ++mip) {
+                    const std::uint64_t bytes =
+                        mip == 0 ? packed.bytes
+                                 : static_cast<std::uint64_t>(static_cast<double>(packed.bytes) *
+                                                              kOneMipLevelFactor);
+                    const double fill_ratio = packed.bytes == 0
+                                                  ? 0.0
+                                                  : static_cast<double>(packed.rect_bytes) /
+                                                        static_cast<double>(packed.bytes);
+                    char line[1024];
+                    std::snprintf(line, sizeof line,
+                                  "%s\t%s\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t%u\t%u\t%s\t%llu\t"
+                                  "%llu\t%llu\t%.4f\t\n",
+                                  scene_file.string().c_str(), sum.label, spec.page_size,
+                                  spec.padding, kMipNames[mip],
+                                  static_cast<unsigned long long>(packed.pages),
+                                  static_cast<unsigned long long>(bytes),
+                                  static_cast<unsigned long long>(packed.rect_bytes), fill_ratio);
+                    tsv += line;
+                }
+            }
+        }
+    }
+
+    tsv += "\n# figures (whole FigurenHeader.dat catalog, scene-independent)\n";
+    tsv += "group\tframes\tbytes\tplayer_colourable_frames\tplayer_colourable_bytes\n";
+    auto header_buf = atlas_read_all(game_dir / "FigurenHeader.dat");
+    if (header_buf) {
+        auto header = fig::FigurenHeader::parse(*header_buf);
+        if (header) {
+            std::array<FrameTotals, render::kGroups> coloured{};
+            const auto whole = whole_figure_catalog(header.value(), coloured);
+            for (std::size_t g = 0; g < render::kGroups; ++g) {
+                char line[256];
+                std::snprintf(line, sizeof line, "%zu\t%llu\t%llu\t%llu\t%llu\n", g,
+                              static_cast<unsigned long long>(whole[g].frames),
+                              static_cast<unsigned long long>(whole[g].bytes),
+                              static_cast<unsigned long long>(coloured[g].frames),
+                              static_cast<unsigned long long>(coloured[g].bytes));
+                tsv += line;
+            }
+        } else {
+            tsv += "# FigurenHeader.dat: " + header.error() + "\n";
+        }
+    } else {
+        tsv += "# cannot read FigurenHeader.dat\n";
+    }
+
+    tsv += "\n# static_player_colour (whole Anlagen.dat catalog, decoded, scene-independent: "
+           "pixels/frames the decoder's own test would recolour, not assumed from the engine\n"
+           "# never calling recolour() on this path)\n";
+    tsv += "frames_checked\tframes_with_eligible_pixels\tpixels_checked\tpixels_eligible\t"
+           "decode_failed\n";
+    {
+        auto anlagen_buf = atlas_read_all(game_dir / "Anlagen.dat");
+        if (anlagen_buf) {
+            auto anlagen = formats::anlagen::AnlagenFile::parse(*anlagen_buf);
+            if (anlagen) {
+                const auto elig = static_player_colour_eligibility(anlagen.value());
+                char line[256];
+                std::snprintf(line, sizeof line, "%llu\t%llu\t%llu\t%llu\t%llu\n",
+                              static_cast<unsigned long long>(elig.frames_checked),
+                              static_cast<unsigned long long>(elig.frames_with_eligible_pixels),
+                              static_cast<unsigned long long>(elig.pixels_checked),
+                              static_cast<unsigned long long>(elig.pixels_eligible),
+                              static_cast<unsigned long long>(elig.decode_failed));
+                tsv += line;
+            } else {
+                tsv += "# Anlagen.dat: " + anlagen.error() + "\n";
+            }
+        } else {
+            tsv += "# cannot read Anlagen.dat\n";
+        }
+    }
+
+#ifdef ANNO_BENCH_GPU
+    if (o.atlas_gpu_limits) {
+        tsv += "\n# gpu_limits\n";
+        tsv += "adapter\tmax_texture_dimension_2d\tmax_texture_array_layers\tmax_buffer_size\t"
+               "error\n";
+        // Not "4090": pick_adapter treats a numeric string as an index, never a substring match
+        // (wgpu.hpp), and 4090 is not a valid index into list_adapters() (--list-adapters: 0
+        // "NVIDIA GeForce RTX 4090 (Vulkan)" .. 5). "RTX"/"Radeon" match by name instead.
+        for (std::string_view which : {"RTX", "Radeon"}) {
+            const auto row = query_gpu_limits(which);
+            char line[512];
+            std::snprintf(line, sizeof line, "%s\t%u\t%u\t%llu\t%s\n", row.adapter.c_str(),
+                          row.max_texture_dimension_2d, row.max_texture_array_layers,
+                          static_cast<unsigned long long>(row.max_buffer_size), row.error.c_str());
+            tsv += line;
+        }
+    }
+#endif
+
+    if (!oversized_notes.empty()) {
+        tsv += "\n# oversized (a frame too large for one page even alone: its row's pack_pages/"
+               "pack_bytes/rect_bytes/fill_ratio reflect the frames placed before ensure()\n"
+               "# returned Overflow, not the true need)\n";
+        for (const std::string& note : oversized_notes) {
+            tsv += "# " + note + "\n";
+        }
+    }
+
+    const std::string err = app::save_whole(o.atlas_report, tsv);
+    const double ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started)
+            .count();
+    if (!oversized_notes.empty()) {
+        std::fprintf(stderr,
+                     "atlas-report: %zu oversized-frame case(s), see the TSV's "
+                     "# oversized section\n",
+                     oversized_notes.size());
+    }
+    std::fprintf(stderr,
+                 "atlas-report: %zu scenes loaded, %zu refused, %.0f ms\n"
+                 "worst combined (static+water) packed bytes: %llu (%s, group %u)\n",
+                 loaded_ok, refused, ms, static_cast<unsigned long long>(worst_combined_bytes),
+                 worst_scene.c_str(), worst_group);
+    if (!err.empty()) {
+        std::fprintf(stderr, "atlas-report: %s\n", err.c_str());
+        return 1;
+    }
+    std::fprintf(stderr, "atlas-report: wrote %s\n", o.atlas_report.c_str());
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -2325,6 +3068,9 @@ int main(int argc, char** argv) {
         return 2;
     }
     const fs::path dir = args[0], file = args[1];
+    if (!o->atlas_report.empty()) {
+        return run_atlas_report(dir, file, *o);
+    }
 #ifdef ANNO_BENCH_GPU
     if (o->river_cost) {
         auto cx = gpu::headless_context();

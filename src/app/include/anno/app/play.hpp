@@ -151,12 +151,16 @@ inspect_building(const sim::World& world, sim::CityRef city, sim::TileXY tile);
 /// World::city_population. No state, stream, hash or draw changes.
 struct CityCounters {
     sim::CityRef city;
-    /// A city of the local player.
-    bool own = false;
+    /// A city of the local player (the default; another player's city that knows the local
+    /// player is published with false).
+    bool own = true;
     /// The city's goods stock (8.8 tons per goods number); empty for another player's city (the
     /// original never shows a foreign city's materials).
     std::vector<std::uint32_t> goods;
     std::optional<std::int64_t> population;
+    /// UI-TABS-1 stage B: a read-only copy of the city's accounts (sim::City::accounts: the
+    /// statistics 0, 4, 5 and the cost buckets 1, 2 the balance pages read; docs/re/ui.md 5.5).
+    sim::CityAccounts accounts;
 };
 
 struct PlaySnapshot {
@@ -231,6 +235,16 @@ struct PlaySnapshot {
     std::shared_ptr<const TerritoryView> territory;
     /// UI-MINIMAP-1 B2: the figures the minimap marks (collect_map_figures), every turn.
     std::shared_ptr<const std::vector<MapFigure>> map_figures;
+    /// UI-TABS-1 stage B: whether the sim keeps the cities' accounts up to date
+    /// (sim::Rules::city_booking: the cost buckets follow building creation and removal and the
+    /// statistics decay at each booking only while it is on; docs/sim/economy-booking.md). The
+    /// balance pages draw an account row only while this is true (docs/re/ui.md 5.5).
+    bool accounts_live = false;
+    /// UI-TABS-1 stage B: the scale the original shows statistics 0, 4 and 5 at, `x * num / den`
+    /// (AnnoWelt 0x1002dc70: `15 * x / 105`; docs/re/population.md section 8 and 9: the 15
+    /// bookings per game minute and the 105 of the 104/105 decay), copied from
+    /// SimConfig::upkeep_slices and SimConfig::stat_decay_den.
+    std::uint32_t stat_shown_num = 0, stat_shown_den = 0;
 };
 
 /// UI-MINIMAP-1 B2: the minimap's owner rule (minimap.hpp MinimapOwnerRule) for a loaded game,

@@ -243,3 +243,39 @@ TEST_CASE("residency: shelf packing keeps frames inside the layer and apart") {
         CHECK(res.uploads[i].second == res2.uploads[i].second);
     }
 }
+
+TEST_CASE("residency: padding changes the page count by hand-computable amounts "
+          "(RENDER-DIRECT-1a step 3: the packer 1b will use)") {
+    // Four 30 x 30 frames, no padding: two fit side by side (30 + 30 = 60 <= 64, the layer
+    // size), and two rows of two fit in one layer's height the same way, so the whole set
+    // packs into exactly one layer.
+    const std::vector<FrameRef> unpadded = {{1, 30, 30}, {2, 30, 30}, {3, 30, 30}, {4, 30, 30}};
+    AtlasResidency none(kSize, 4 * kLayer);
+    const auto res_none = none.ensure(unpadded, AtlasClass::Static);
+    REQUIRE(res_none.status == EnsureStatus::Uploaded);
+    CHECK(none.stats().layers == 1);
+    // The same four frames with 2 px of padding on every side (RENDER-DIRECT-1a's own
+    // inflation: width/height + 2 * padding) become 34 x 34: two no longer fit side by side
+    // (34 + 34 = 68 > 64) or stacked (same sum), so each one starts its own layer - four
+    // layers for four frames, not one.
+    constexpr std::uint32_t kPad = 2;
+    const std::vector<FrameRef> padded = {{1, 30 + 2 * kPad, 30 + 2 * kPad},
+                                          {2, 30 + 2 * kPad, 30 + 2 * kPad},
+                                          {3, 30 + 2 * kPad, 30 + 2 * kPad},
+                                          {4, 30 + 2 * kPad, 30 + 2 * kPad}};
+    AtlasResidency four(kSize, 4 * kLayer);
+    const auto res_four = four.ensure(padded, AtlasClass::Static);
+    REQUIRE(res_four.status == EnsureStatus::Uploaded);
+    CHECK(four.stats().layers == 4);
+    // A frame padding inflates past the page size is Overflow, not a silent drop: the same
+    // check atlas-report's own pack_frames applies before trusting a page count. Two fresh
+    // models (not `four`/`none` above) and distinct ids, so neither check sees a frame the
+    // other already placed under the same id.
+    const FrameRef too_big{9, kSize - 2 * kPad + 1, 8};
+    AtlasResidency fits(kSize, kLayer);
+    CHECK(fits.ensure({&too_big, 1}, AtlasClass::Static).status != EnsureStatus::Overflow);
+    const FrameRef too_big_padded{10, kSize - 2 * kPad + 1 + 2 * kPad, 8};
+    CHECK(too_big_padded.width > kSize);
+    AtlasResidency over(kSize, kLayer);
+    CHECK(over.ensure({&too_big_padded, 1}, AtlasClass::Static).status == EnsureStatus::Overflow);
+}

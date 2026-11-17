@@ -23,3 +23,13 @@ mask balken_2 pos 652 735 size 5 29 reason fertility-bar-not-drawn anchor bottom
 mask balken_3 pos 692 735 size 5 29 reason fertility-bar-not-drawn anchor bottom
 mask category_column pos 779 300 size 29 400 reason viewbautab-clip anchor right
 mask nameplate pos 800 258 size 200 22 reason live-banner-text anchor right
+# UI-TABS-1 stage B: the balance pages' live figures (hud.txt player_row_* / city_row_*, the text
+# gadgets 195 x 15; docs/re/ui.md 5.5). The two pages share rows 0..6.
+mask balance_row_0 pos 814 323 size 195 15 reason live-digits anchor right
+mask balance_row_1 pos 814 353 size 195 15 reason live-digits anchor right
+mask balance_row_2 pos 814 383 size 195 15 reason live-digits anchor right
+mask balance_row_3 pos 814 413 size 195 15 reason live-digits anchor right
+mask balance_row_4 pos 814 443 size 195 15 reason live-digits anchor right
+mask balance_row_5 pos 814 473 size 195 15 reason live-digits anchor right
+mask balance_row_6 pos 814 533 size 195 15 reason live-digits anchor right
+mask balance_row_7 pos 814 633 size 195 15 reason live-digits anchor right

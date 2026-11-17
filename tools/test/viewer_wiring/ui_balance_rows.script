@@ -1,0 +1,42 @@
+# UI-TABS-1 stage B: the balance pages' figures (docs/re/ui.md 5.5) with the accounts kept
+# (`--rules living`: Rules::city_booking on). lan5's developer city is a fresh Kontor: no residents,
+# civil running cost 15, nothing else, so the city page reads 0, 0, 15, 0, 0, 0, -15 (the GOG shot
+# f15_kontor's figures) and row 7 (knowledge, no sim source) stays empty; the overview sums the one
+# city (0, 0, 15) and leaves rows 3..6 empty (the player's own terms, OQ-694). `hud.row.<value>` is
+# the text a row draws, or `empty`. Screenshots for tools/test/ui_balance_rows_compare.py.
+# Launch: --play data/maps/lan5.txt --rules living --construction-menu on --layout data/ui
+resize 1024 768
+wait frames 5
+expect fact hud.view == player
+expect fact hud.subtab == 0
+expect fact hud.row.player.0 == 0
+expect fact hud.row.player.1 == 0
+expect fact hud.row.player.2 == 15
+expect fact hud.row.player.3 == empty
+expect fact hud.row.player.4 == empty
+expect fact hud.row.player.5 == empty
+expect fact hud.row.player.6 == empty
+screenshot balance_player
+click_px 931 212
+wait frames 5
+expect fact hud.view == info
+expect fact hud.subtab == 0
+expect fact ui.tab == info
+expect fact hud.row.city.0 == 0
+expect fact hud.row.city.1 == 0
+expect fact hud.row.city.2 == 15
+expect fact hud.row.city.3 == 0
+expect fact hud.row.city.4 == 0
+expect fact hud.row.city.5 == 0
+expect fact hud.row.city.6 == -15
+expect fact hud.row.city.7 == empty
+screenshot balance_city
+click_px 783 372
+wait frames 3
+expect fact hud.subtab == 1
+expect fact ui.tab == info_tab_1
+click_px 870 212
+wait frames 3
+expect fact hud.view == player
+expect fact ui.tab == player
+quit

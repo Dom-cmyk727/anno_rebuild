@@ -17,6 +17,7 @@
 #include <thread>
 #include <vector>
 
+#include <anno/app/balance_rows.hpp>
 #include <anno/app/dev_feedback.hpp>
 #include <anno/app/dev_script.hpp>
 #include <anno/app/frame_projection.hpp>
@@ -826,6 +827,9 @@ class Viewer {
     /// Re-reads the cursor's map tile from the last drawn frame and updates the pick and the row:
     /// every frame, before the status bar is drawn (AnnoFrame 0x10005a10 -> 0x100052a0).
     void update_status_bar();
+    /// UI-TABS-1 stage B: the balance pages' figures the last frame had (HudCounters::rows; the
+    /// `hud.row.<value>` facts).
+    std::map<std::string, std::int64_t> hud_rows_;
     /// Shows view `view` at the sub-tab it showed last (a main-tab press), closing the
     /// construction menu first.
     void select_hud_view(const std::string& view);
@@ -3100,6 +3104,17 @@ void Viewer::script_tick() {
                                                  : std::string("none");
     st.facts["hud.view"] = hud_tabs_ ? hud_tabs_->view().name : std::string("none");
     st.facts["hud.subtab"] = hud_tabs_ ? std::to_string(hud_tabs_->subtab()) : std::string("none");
+    // UI-TABS-1 stage B: each balance row's figure as drawn (balance_text) while its page shows,
+    // or "empty" (no source), for every hud.txt element with a `value` (docs/re/ui.md 5.5).
+    if (construction_menu_ != nullptr) {
+        for (const UiElement& el : construction_menu_->hud().elements) {
+            if (el.value.empty())
+                continue;
+            const auto it = hud_rows_.find(el.value);
+            st.facts["hud.row." + el.value] =
+                it != hud_rows_.end() ? balance_text(it->second) : std::string("empty");
+        }
+    }
     // UI-INFO-2: the rotation the info panel's preview shows (DevInput's, the one the keys and
     // the rotate arrows turn), and the turn the map ghost is drawn and a click builds at
     // (DevTool::turn: the same, or the coast's turn for a coast kind such as the Kontor).
@@ -3793,6 +3808,7 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
         hud_counters_ = in.counters_groups;
         hud_gold_ = in.counters.gold;
         hud_counters_city_ = in.counters_city;
+        hud_rows_ = in.counters.rows;
         hud_counters_drawn_ = true;
         // UI-INFO-1: the armed type's name, preview, costs and upkeep (live registry).
         auto info = construction_placement_open_ && dev_ != nullptr && dev_->setup().registry &&
@@ -4047,6 +4063,27 @@ Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
                              ? std::optional<std::int64_t>(shown->population.value_or(0))
                              : std::nullopt,
                          fertility_row_.shown()};
+    // UI-TABS-1 stage B (docs/re/ui.md 5.5): the balance pages' figures. The player overview sums
+    // over every city of the local player (none yet: the sums are 0, as the original's loop over
+    // an empty list; balance_rows.cpp skips the foreign cities CityCounters also lists). The "?"
+    // view's city page shows the status bar's city when it is the local player's, else the
+    // player's first city in (island, city) order - the original shows the city whose Kontor or
+    // marketplace was clicked, which the rebuild does not open yet (OQ-691). (UI-STATUS-1 merge:
+    // the status bar no longer has R4's centred city.)
+    if (snapshot != nullptr) {
+        const CityCounters* page_city = shown != nullptr && shown->own ? shown : nullptr;
+        if (page_city == nullptr && snapshot->cities) {
+            for (const CityCounters& c : *snapshot->cities) {
+                if (c.own) {
+                    page_city = &c;
+                    break;
+                }
+            }
+        }
+        counters.rows = balance_row_values(
+            BalanceInputs{snapshot->cities.get(), page_city, snapshot->accounts_live,
+                          snapshot->stat_shown_num, snapshot->stat_shown_den});
+    }
     // ADR 0004 row 18 (W4-NEXT-2 K): draw only once the sim's own answer for the selected
     // building, not the click itself, confirms it is a house - selection.hpp's own doc comment
     // ("the answer selects it... every later answer re-checks the building's id").
@@ -4125,6 +4162,7 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         hud_counters_ = in.counters_groups;
         hud_gold_ = in.counters.gold;
         hud_counters_city_ = in.counters_city;
+        hud_rows_ = in.counters.rows;
         hud_counters_drawn_ = true;
         // UI-INFO-1: the armed type's name, preview, costs and upkeep (live registry).
         auto info = construction_placement_open_ && dev_ != nullptr && dev_->setup().registry &&

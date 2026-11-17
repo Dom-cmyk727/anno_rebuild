@@ -9,6 +9,7 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -109,6 +110,9 @@ struct HudCounters {
     std::optional<std::uint32_t> tools, wood, bricks, marble;
     std::optional<std::int64_t> residents;
     std::vector<std::uint32_t> fertility;
+    /// UI-TABS-1 stage B: the balance pages' figures by hud.txt `value` name
+    /// (balance_rows.hpp balance_row_values); a row whose name is absent draws nothing.
+    std::map<std::string, std::int64_t> rows;
 };
 
 /// UI-STATUS-1 B: the name of the fertility row's slot `k` in hud.txt ("rosh_<k>") and how many

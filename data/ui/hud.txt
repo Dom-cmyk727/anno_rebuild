@@ -222,6 +222,37 @@ element info_subtab_5 pos 762 533 size 42 46 file toolgfx/fenster.tex access VIE
 element info_subtab_6 pos 762 579 size 42 46 file toolgfx/fenster.tex access VIEWINFOSTADTTAB tex_id 673 frame_idle 673 frame_selected 674 view info subtab 6 body info_tab_6 anchor right panel info,info_tab_1,info_tab_2,info_tab_3,info_tab_4,info_tab_5,info_tab_6,info_tab_7 method sprite-565 shot r2_tab_help
 element info_subtab_7 pos 762 625 size 42 46 file toolgfx/fenster.tex access VIEWINFOSTADTTAB tex_id 675 frame_idle 675 frame_selected 676 view info subtab 7 body info_tab_7 anchor right panel info,info_tab_1,info_tab_2,info_tab_3,info_tab_4,info_tab_5,info_tab_6,info_tab_7 method sprite-565 shot r2_tab_help
 element info_build_stop pos 858 674 size 112 60 file toolgfx/fenster.tex access VIEWINFOSTADTAUSBAUSTOP tex_id 678 anchor right panel info method sprite-565 shot r2_tab_help
+# UI-TABS-1 stage B (docs/re/ui.md 5.5): the balance pages' figure rows, text gadgets class 0xb1c
+# 195 x 15 (size: View.dll 0x1006c859, 0x1008002c `push 0xf; push 0xc3`), alignment property
+# 0x1c6 = 1 (0x1006c86d, 0x10080040; the info panel's centred boxes set 2), font = the page's
+# [+0x5c0] as the info panel's boxes (0x1006c884, 0x10080057; 0x100300e5). Positions from the
+# pages' layout functions (city 0x1006c4c0, player 0x1007fcf0): x = page x + 35.0f (0x1009e75c),
+# y = page y + C - 244.0f (0x1009c3f0) with C = 323, 353, 383, 413, 443, 473, 533, 633
+# (0x1009c610, 0x100a0a6c, 0x1009cf70, 0x100a0a68, 0x100a0a64, 0x100a0a60, 0x100a0a5c, 0x1009f478);
+# the page sits at (779, 244): its deny button, 79.0f / 674.0f (0x1009deec / 0x100a0a58), is
+# measured at (858, 674). Text: right edge on the gadget's right edge, top 3 rows above the
+# gadget, cut to the gadget (method glyph-match: MainSmall.zei by the assets::render_text advance
+# rule, levels 255,255,255 / 0,0,0 / 66,61,66; 0 differing pixels after RGB565 on every row of
+# hud_idle_running (0 0 15 0 0 16 -31), f15_kontor (0 0 15 0 0 0 -15 0) and r2_tab_help row 0;
+# the '1' glyph's top outline row falls above the gadget and is not drawn). The balance row is
+# red below 0: colour property 0x1c5 = 0xffffff, 0xff0000 below 0 (0x1006c32f..0x1006c357,
+# 0x1007fb63..0x1007fb90), glyph-matched red on both shots. `value` names the figure
+# (src/app balance_rows.hpp), `page` the panel it is drawn on.
+element player_row_0 pos 814 323 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value player.0 page player anchor right method glyph-match shot hud_idle_running
+element player_row_1 pos 814 353 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value player.1 page player anchor right method glyph-match shot hud_idle_running
+element player_row_2 pos 814 383 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value player.2 page player anchor right method glyph-match shot hud_idle_running
+element player_row_3 pos 814 413 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value player.3 page player anchor right method glyph-match shot hud_idle_running
+element player_row_4 pos 814 443 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value player.4 page player anchor right method glyph-match shot hud_idle_running
+element player_row_5 pos 814 473 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value player.5 page player anchor right method glyph-match shot hud_idle_running
+element player_row_6 pos 814 533 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value player.6 page player negative_rgb ff0000 anchor right method glyph-match shot hud_idle_running
+element city_row_0 pos 814 323 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value city.0 page info anchor right method glyph-match shot f15_kontor
+element city_row_1 pos 814 353 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value city.1 page info anchor right method glyph-match shot f15_kontor
+element city_row_2 pos 814 383 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value city.2 page info anchor right method glyph-match shot f15_kontor
+element city_row_3 pos 814 413 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value city.3 page info anchor right method glyph-match shot f15_kontor
+element city_row_4 pos 814 443 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value city.4 page info anchor right method glyph-match shot f15_kontor
+element city_row_5 pos 814 473 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value city.5 page info anchor right method glyph-match shot f15_kontor
+element city_row_6 pos 814 533 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value city.6 page info negative_rgb ff0000 anchor right method glyph-match shot f15_kontor
+element city_row_7 pos 814 633 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value city.7 page info anchor right method glyph-match shot f15_kontor
 element menu_bk pos 779 301 size 245 467 file toolgfx/fenster.tex access OPTION_BACKGROUND tex_id 1475 anchor right panel main_menu,options_load,options_save,options_music,options_speech method sprite-565 shot r2_options
 element menu_statistics pos 793 348 size 94 82 file toolgfx/fenster.tex access ADDON_SPIELERSTATISTIK tex_id 1580 anchor right panel main_menu method sprite-565 shot r2_options
 element menu_tab_0 pos 762 303 size 42 46 file toolgfx/fenster.tex access OPTION_TABS tex_id 1477 frame_idle 1476 frame_selected 1477 view options subtab 0 body main_menu anchor right panel main_menu,options_load,options_save,options_music,options_speech method sprite-565 shot r2_options

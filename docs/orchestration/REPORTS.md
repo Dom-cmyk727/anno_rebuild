@@ -14970,3 +14970,77 @@ decodes them).
   unlanded §5 hunks and next to the placement text it extends.
 
 READY FOR REVIEW.
+
+### UI-PRODBAR-1 stage A, fix round 1 — the UI lane's independent check (4 skeptics, 1 critic) — READY FOR REVIEW
+
+Input: `cache/wf/verify-summary.txt` (critic §1). The core held: who draws it, which buildings, the disc counts
+36/52/88, trunc(10·good/N), and figure 1557. I re-checked each correction myself before writing it.
+
+**Accepted and verified:**
+- **Draw gates.** `[B+0x48] < [B+0x50]` (`0x10048491`-`0x1004849d`), the registry lookup non-null
+  (`0x100484e3`-`0x100484e8`), and the projection non-zero (`0x10047de0`, `je 0x10047e23`). All three are in
+  `ui.md` 4.1 and OQ-715.
+- **Disc centre.** The disc is centred on the footprint's centre cell(s); r 1 gives 0 tiles on a 3 × 3 and
+  r 2 gives 16. Re-emulated.
+- **Height test.** (b) is AnnoWelt `0x1007c790`. The height is the **floor** of the four-corner mean
+  (`AnnoGame 0x10008fd3`: `cdq`/`and 3`/`sar 2`). The threshold 32 is now D via `0x1007b340`/`0x1007b3a0`
+  (1.28f / 0.04f).
+- **Polar halving.** "Trees and pasture never halved" was wrong for `ANBAU`-loaded polar islands. I re-read it
+  myself: `0x10089885`-`0x10089897` starts property 11 at 0 for climate 0 (else `0xF009`), and the name loop
+  stops at goods `0x44` (`0x1008992c`), so `BAUM`/`GRAS` cannot be listed. The rows were rewritten.
+- **50 % cap.** It is about 50 %, not at most 5/10: 3-6/10 for r 3 farms, 4-5/10 for r 4 and r 5 (`cap.py`
+  re-run). The confidence went from high to medium. OQ-716 step 5 now expects 4-6/10 and has a control step.
+- **OQ-719.** Partly answered (D): object 1 mask `0xfe` → 0/10 for sheep, cattle and small farm on POLAR.
+  The polar forester depends on the island source.
+- **Frame = value.** Now D (the value is the drawer's 3rd argument) + P; the drawer's internals are unread.
+  Frame 0 is a 2 px red sliver (index 235). The ramp is 234, 234, 237…244 (`sp1557.py` re-run). All zoom groups
+  are 54 × 12.
+- **Smaller tags.**
+  - The well bit's name is L, and the factor order is spelled out.
+  - The climate test uses the passed object's mask.
+  - `B+0x2e5` = multi is L.
+  - "No reader" is D (locals) + L (no global xref).
+  - The exclusion reasons are given per building.
+  - "Property 7 = climate" is cited, not re-read.
+
+**Kept, with the reason:**
+- **Crop-table index.** It stays `(y − y0) & 3` / `(x − x0) & 7` with the **island** origin, pinned at
+  `0x100817dd`/`0x100817e9` (subtracting words `+4`/`+6`) through `0x100819b9`-`0x100819d6`. A skeptic's
+  `y & 3` / `x & 7` agrees only when the island origin is aligned to 8 in x and 4 in y. That is now written in
+  the row, so S3 can start from it.
+
+**New open point, without a new OQ id:** when `0x10084370` rebuilds the nibble grid. It has no direct caller,
+only the island vtable slot `+0x1a4` (data refs `0x100cadd0`, `0x100ca340`, `0x100ca6d4`). I added it to OQ-715
+because the reserved range 715..719 is used up; it can move to its own OQ if the UI lane hands out an id.
+
+**Sim split (revised):**
+- **S1 dropped.** Island property 11 is ISLAND-CROPS-1 1b, already in flight (1a decoded `ANBAU`; 1b stores
+  the field, including the climate-0 → 0 loader case and the `0xF009 | marks` link path).
+- **S2a, about 2 h:** the `Wachstum.dat` Proz table per texture cell, with a format/oracle check.
+- **S2b, about 3 h:** the `0x10084370` grid build: the HEAD `[0x19]` blend, the per-climate 5 × 5 weights
+  `0x100ca008`, cap 10, and a Python oracle over the shipped islands.
+  - It needs the trigger read first (OQ-715) or a stated assumption.
+  - Whether the grid is hashed or saved goes to the owner (proposal: derived, neither).
+- **S3, about 2-3 h:** the crop test `0x100817c0` as a const query.
+  - It covers the table index as pinned above, the ×2/3 → ×133/100 order, the property-11 halving and the
+    next-id goods rule; the well bit and the drought flag sit behind named seams.
+  - It also takes the crop-object resolver (registry `+0x7c`, climate tree table `0x1002137c`), so the UI holds
+    no second copy.
+  - It depends on ISLAND-CROPS-1 1b and S2b.
+- **S4, about 2 h:** the placement class for flag word `& 3 == 1` (floor of the mean ≥ 32, the per-object
+  overlap table verified, not assumed). It is independent of S2-S3 and can go first or in parallel.
+
+Order: ISLAND-CROPS-1 1b, S2a → S2b and S4 in parallel; then S3; then stage B wiring. New sim work is about
+9-10 h in four packets.
+
+**Stage B (revised):**
+- **B1, about 1 h:** all four gates, the sprite and the anchor. It has no visible output until the sim queries
+  exist (placeholder `fertility-indicator-needs-sim`, OQ-715); its acceptance is a test on an injected value.
+- **B2, smaller:** the disc and the scaling only. The crop-object resolver moves to S3.
+- **B3a, now:** the disc tables 36/52/88, the scaling edges, eligibility (801 yes, 810 no).
+- **B3b, after S2-S4 and OQ-716:** the pixel check against HE.
+
+**Changed:** `docs/re/ui.md` 4.1, `docs/re/production.md` 4.2b, OQ-715/716/718/719. Docs only; no build or test.
+NOT_RUN as before.
+
+READY FOR REVIEW.

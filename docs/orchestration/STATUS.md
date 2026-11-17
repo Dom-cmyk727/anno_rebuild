@@ -26,7 +26,12 @@ says who is doing what, where the work is, and what it waits on.
   fails any case whose edit changes nothing; the bounce branch is ready for a landing candidate on the owner's OK);
   [RENDER-DIRECT-1a](tasks/render-direct-1a.md) (Windows, **RELEASED** 2026-11-17: the resident atlases'
   needs measured with the engine's own code over every scene and the LAN map, and their layout fixed in
-  `docs/render/atlas.md`; measurement and document only).
+  `docs/render/atlas.md`; measurement and document only; **reviewed** `9773d4d0`,
+  [review](reviews/2026-11-17-render-direct-1a-review.md): the measurement is accepted, **CHANGES REQUESTED**
+  in the document: the fit is checked per group, not for all groups or the pair a zoom crosses; dropping the
+  mips is the owner's decision; figure needs are start units only; the static green test is not player
+  colour. Known, separate: `scene_reclaim_test` fails when `anno_render_tests` runs whole in its default
+  order, on `main` too).
 - **UI lane: UI-TABS-1 started** (2026-11-16, the owner's go in the UI lane's session, as reported by it):
   `task/UI-TABS-1` from `main` `ac02d4a2`, packet `tasks/ui-tabs-1.md` on that branch (`6d20d16e`). Stage A: the
   tab and sub-tab switching (player, city view, options) with clicks and the keys D, S and C; stage B (the

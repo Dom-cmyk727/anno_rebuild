@@ -36,11 +36,9 @@ enum class GhostState : std::uint8_t { Hidden, Refused, Unaffordable, Valid };
 
 /// What the state is chosen from.
 struct GhostInputs {
-    /// The tool builds (on, not demolishing, a type selected) and the pointer is over a tile of
-    /// the city's island rectangle (DevTool::hover). ADAPTATION (OQ-760): over open sea outside
-    /// that rectangle the tool has no hover, so the ghost is hidden there, where the original
-    /// draws the refused footprint (AnnoFrame 0x10041050 has no island test). Follow-up: a pick
-    /// over the whole map.
+    /// The tool builds (on, not demolishing, a type selected) and the pointer is over a map tile
+    /// (DevTool::ghost_hover: anywhere on the map, UI-GHOST-1 R1; off the city's island the sim's
+    /// verdict refuses, as the original draws the refused footprint everywhere).
     bool armed = false;
     /// The selected type's footprint has no tile (AnnoFrame 0x10048491: nothing is drawn).
     bool footprint_empty = false;

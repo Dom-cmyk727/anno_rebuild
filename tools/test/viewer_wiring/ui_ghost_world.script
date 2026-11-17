@@ -1,0 +1,38 @@
+# UI-GHOST-1 R1: the ghost and the click anywhere on the map, from the default --play start view (no
+# `look` first: the camera starts on the map's centre, lan5's middle island 100 at (648, 648),
+# T_128X128_0038, land around its centre; the developer city is on island 1 at (1048, 440)).
+# Off the city's island the ghost is refused (the sim's OutOfIsland) and a click there reaches the
+# sim and is refused with the same reason; over open sea (1380, 680; no lan5 island holds it) the
+# same; on the city's island, free land is valid. Run with ANNO_DEV_GOODS_TONS=3 like ui_ghost.
+resize 1024 768
+wait frames 5
+key b
+wait frames 5
+click_px 833 330
+wait frames 5
+expect title build 501
+# the middle island's land under the view's centre-left: refused, the footprint outline drawn
+hover_px 400 384
+wait fact tool.ghost == refused
+wait frames 3
+expect fact tool.ghost.pixels > 0
+# a click there is sent and the sim refuses it, as the ghost said
+click_px 400 384
+wait outcome
+expect outcome Refused OutOfIsland
+# open sea between the islands: refused too, and the click is refused the same way
+lookw 1380 680
+wait frames 5
+hover_px 512 384
+wait fact tool.ghost == refused
+wait frames 3
+expect fact tool.ghost.pixels > 0
+click_px 512 384
+wait outcome
+expect outcome Refused OutOfIsland
+# the city's island: free land is valid
+look 1148 522
+wait frames 5
+hover-land 1140 516
+wait fact tool.ghost == valid
+quit

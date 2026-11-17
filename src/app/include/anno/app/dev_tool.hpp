@@ -1,11 +1,12 @@
 // The developer building tool in the play window (W4.4 round ee, package B): drawable-pixel
 // pointer events and tool keys in, sim commands out. It picks the tile under the pointer from the
-// frame that was drawn (its screen map, zoom geometry and owning scene handle), keeps the pick on
-// the developer city's island, and drives DevInput, which makes the commands. It never reads the
-// World: the type registry, the buildable types and the city's island come from DevToolSetup,
-// taken at load. The window's SDL mapping (sdl_input.hpp) and the tests feed it the same
-// ToolInput. A test tool (the owner's round-dr decision), not UI.2: UI.2 can reuse the pick, the
-// commands and the feedback.
+// frame that was drawn (its screen map, zoom geometry and owning scene handle): hover() on the
+// developer city's island, the whole-map tile elsewhere (ghost_hover(), UI-GHOST-1 R1: a click off
+// the island is sent and the sim refuses it), and drives DevInput, which makes the commands. It
+// never reads the World: the type registry, the buildable types and the city's island come from
+// DevToolSetup, taken at load. The window's SDL mapping (sdl_input.hpp) and the tests feed it the
+// same ToolInput. A test tool (the owner's round-dr decision), not UI.2: UI.2 can reuse the pick,
+// the commands and the feedback.
 #pragma once
 
 #include <cstdint>
@@ -139,6 +140,12 @@ class DevTool {
     }
     /// The tile under the pointer at the last pointer input (nullopt off the city's island).
     [[nodiscard]] std::optional<sim::TileXY> hover() const { return hover_; }
+    /// UI-GHOST-1 R1: the tile under the pointer anywhere on the map, for the placement ghost (the
+    /// original draws the refused footprint everywhere, AnnoFrame 0x10041050 has no island test):
+    /// hover() where it gives a tile (the city island's exact pick), else pick_point's tile (any
+    /// island's ground, else the sea-level tile). Presses and releases use it too: a click off the
+    /// city's island sends its record, and the sim refuses it with its own reason.
+    [[nodiscard]] std::optional<sim::TileXY> ghost_hover() const { return ghost_hover_; }
     /// Where the press in progress started.
     [[nodiscard]] std::optional<sim::TileXY> press() const { return press_; }
     /// The last hint or local refusal ("" when none), DevInput's included.
@@ -168,6 +175,7 @@ class DevTool {
     /// The tool is on only for the demolish mode the pickaxe turned on (nothing armed).
     bool demolish_only_ = false;
     std::optional<sim::TileXY> hover_, press_;
+    std::optional<sim::TileXY> ghost_hover_;
     std::string message_;
 };
 

@@ -338,6 +338,18 @@ if(ANNO_BUILD_TESTS)
       set_tests_properties(viewer_wiring_ui_ghost PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4
         ENVIRONMENT "ANNO_DEV_GOODS_TONS=3")
+      # UI-GHOST-1 R1: the ghost and the click anywhere on the map, from the default start view (no
+      # `look`): refused on another island and over open sea, the click refused by the sim with the
+      # same reason (OutOfIsland), valid on the city's island.
+      add_test(NAME viewer_wiring_ui_ghost_world
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_ghost_world
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_ghost_world PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4
+        ENVIRONMENT "ANNO_DEV_GOODS_TONS=3")
       # UI-GHOST-1: the same session's screenshots, the outline's exact 0xffff00 pixels counted
       # (ghost_pixel_check.py; the hidden shot is the negative control).
       add_test(NAME viewer_wiring_ui_ghost_pixel_check

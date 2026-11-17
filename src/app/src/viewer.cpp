@@ -2866,7 +2866,7 @@ bool Viewer::ghost_refresh() {
     std::optional<BuildProbe> probe;
     const sim::BuildingType* type = dev_ != nullptr ? dev_->input().selected_type() : nullptr;
     const std::optional<sim::TileXY> hover =
-        dev_ != nullptr ? dev_->hover() : std::optional<sim::TileXY>{};
+        dev_ != nullptr ? dev_->ghost_hover() : std::optional<sim::TileXY>{};
     if (dev_ != nullptr && dev_->enabled() && !dev_->input().demolish_mode() && type != nullptr &&
         hover && dev_->setup().city) {
         in.armed = true;
@@ -2877,8 +2877,9 @@ bool Viewer::ghost_refresh() {
         probe = BuildProbe{*dev_->setup().city,
                            sim::PlacementWire{type->id, o.x, o.y, dev_->turn(), 0, 0}};
     }
-    // No hover off the city's island rectangle: hidden there (ADAPTATION, OQ-760; the original
-    // draws the refused footprint over open sea too). A pick over the whole map is a follow-up.
+    // The whole-map hover (DevTool::ghost_hover, UI-GHOST-1 R1): off the city's island the sim
+    // answers OutOfIsland / TileNotOwned / TerrainRefused, so the refused footprint shows there as
+    // the original's does everywhere (OQ-760 resolved).
     // HE-observed, GOG unread (OQ-757): the ghost and its radius outline hide while the pointer is
     // over the drawn chrome (docs/BUILDINGSOBJECTS.md part B 5.1 (4)).
     if (construction_menu_ != nullptr && ghost_pointer_) {
@@ -2929,7 +2930,7 @@ std::optional<Viewer::GhostLines> Viewer::ghost_lines(const render::Scene& scene
     if (dev_ == nullptr || ghost_ == GhostState::Hidden) {
         return std::nullopt;
     }
-    const auto hover = dev_->hover();
+    const auto hover = dev_->ghost_hover();
     const sim::BuildingType* type = dev_->input().selected_type();
     if (!hover || type == nullptr) {
         return std::nullopt;
@@ -2956,9 +2957,13 @@ std::optional<Viewer::GhostLines> Viewer::ghost_lines(const render::Scene& scene
             break;
         }
     }
+    // The ground, never below the sea surface the whole-map pick reads open water at (R1).
     out.projection.height = [&scene](double u, double v) {
-        return static_cast<double>(
-            scene.ground_height(static_cast<float>(u), static_cast<float>(v)).value_or(0.0F));
+        const double sea = static_cast<double>(render::kSeaLevel);
+        return std::max(
+            sea,
+            static_cast<double>(
+                scene.ground_height(static_cast<float>(u), static_cast<float>(v)).value_or(0.0F)));
     };
     return out;
 }

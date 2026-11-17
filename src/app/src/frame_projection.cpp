@@ -19,7 +19,10 @@ std::pair<double, double> pixel_of(const render::ScreenMap& m, double sx, double
 } // namespace
 
 std::optional<PickedPoint> FrameProjection::pick(double px, double py) const {
-    const PointerFrame& frame = frame_;
+    return pick_point(frame_, px, py);
+}
+
+std::optional<PickedPoint> pick_point(const PointerFrame& frame, double px, double py) {
     if (!(px >= 0.0) || !(py >= 0.0) || !(px < frame.drawable_w) || !(py < frame.drawable_h) ||
         !frame.scene) {
         return std::nullopt;

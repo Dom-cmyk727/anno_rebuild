@@ -34,7 +34,20 @@ says who is doing what, where the work is, and what it waits on.
   run on `09315620` covers all three candidates**. **The Windows PC's part PASSED** 2026-11-17: the same
   selection plus `ui_subtabs_compare` (with the GOG shots) and `viewer_wiring_ui_subtabs`, 531 selected, 528
   executed, 0 failed, 3 opt-in skips; the WSL warning check clean, both negative controls caught. Waiting for
-  the Mac's run.
+  the Mac's run. **The Mac's run on `09315620`** 2026-11-17 (HEAD and tree verified, both ancestors; Apple M5 Max,
+  macOS 27.0.1, Metal; log sha256 `2e1b9439...016c`):
+  - 2,758 selected, 2,715 executed, **0 failed**;
+  - 43 skips: platform 9, opt-in 29 (the new one is `ui_subtabs_compare` without the GOG shots), gpu 2, other 3;
+  - the three Metal timestamp tests now pass;
+  - the warning script exits 0 (Apple Clang only on that host).
+  Its verdict line reads FAIL only because the prompt's `--allow-skip other` did not admit the two `gpu`
+  skips. They are `play: GPU matches the CPU path on one scene` and its Radeon variant, which are pinned to this
+  PC's named adapters and skip on every Mac run (the same two in the 42 of the previous run). Both ran and
+  passed in this PC's part. The orchestrator counts the Mac's evidence as passed for the three candidates; the
+  next Mac prompt admits `gpu` skips and names the two expected ones. Landing `09315620` (which contains
+  `784b5a27` and `945c3216`) through `land.py`, as `land/batch-zoom-tabs`. Found in passing: the two tests'
+  skip message prints the adapter name as a pointer (`play_gpu_test.cpp:75`, a `const char*` streamed into
+  doctest), a one-line fix for the Windows lane.
   **The owner's landing OK for all three, 2026-11-17:** "Also land everything once the test is done". So they land
   in order once this PC's parts and the Mac's run pass with nothing new failing.
 - **The owner, 2026-11-17, on RENDER-DIRECT-1a and LAYER-CHECK-1:** "You will land them once you approve

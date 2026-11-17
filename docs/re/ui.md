@@ -787,6 +787,65 @@ composer against the GOG shots above, the window's CPU path against the composer
 built: the pages' bodies (the panel packets), tooltips, the header plank with the view's name
 (not drawn on any view's page since R2), the "?" view's selection-dependent content (OQ-642).
 
+### 5.5 The balance pages (UI-TABS-1 stage B, 2026-11-17)
+
+The player view's overview (sub-tab 0, `SPIELER_BILANZ_BK`) and the "?" view's city status page
+(sub-tab 0, `STADT_BILANZ_BK`) print a column of figures. Code: GOG 2.0.0.5 View.dll and
+AnnoWelt.dll, static disassembly (pefile/capstone). Shots: GOG Wine runner (`cache/orig/ui-1/shots`),
+glyph-match = `MainSmall.zei` drawn by the `assets::render_text` advance rule with the info
+panel's level colours (2.5), compared after the RGB565 reduction. History Edition: `HE_UI_1.mp4`
+44.5 s (overview, ship start) and `ui_5.mp4` 405 s = 6:45 (city page, Bad Aussee); the videos are
+0.75 recordings of a 2542 x 1351 client (`ui-warehouse-trade.md` on `task/UI-PANELS-PREP`, section
+3): `x_video = 7 + 0.75 (x + 1518)`, `y_video = 24 + 0.75 y`.
+
+| Fact | Evidence | Confidence |
+|---|---|---|
+| The rows are text gadgets class `0xb1c`, 195 x 15, alignment property `0x1c6` = 1, default text "00", the font the page's `[+0x5c0]` (the same member the info panel's boxes use, `0x100300e5`); city page 8 (`cmp esi, 7; jle` at `0x1006c8e5`), overview 7 (`cmp edi, 6; jle` at `0x100800c8`) | builders city `0x1006c7e0` (`0x1006c855..0x1006c8be`), overview `0x1007ffa0` (`0x10080028..0x10080091`); the info panel's centred boxes set `0x1c6` = 2 (`0x100300ce`) | D |
+| Positions are set by each page's layout function (vtable slot 29), not by the builder: gadget i at (page x + 35, page y + C_i - 244), C = 323, 353, 383, 413, 443, 473, 533 (overview and city), 633 (city row 7); the city page's deny button at (page x + 79, page y + 674 - 244) | city `0x1006c4c0` (`0x1006c557..0x1006c739`), overview `0x1007fcf0` (`0x1007fd87..0x1007fefd`); floats `0x1009e75c` 35, `0x1009c3f0` 244, `0x1009c610` 323, `0x100a0a6c` 353, `0x1009cf70` 383, `0x100a0a68` 413, `0x100a0a64` 443, `0x100a0a60` 473, `0x100a0a5c` 533, `0x1009f478` 633, `0x1009deec` 79, `0x100a0a58` 674; `_ftol` `0x1008c128`, gadget slot `+0x5c` (x, y) | D; answers OQ-651 for these two pages (`task/UI-PANELS-PREP`) |
+| The page origin is (779, 244): the deny button measured at (858, 674) = (779 + 79, 244 + 674 - 244); so the gadgets are at (814, C_i), right edge 1009 | `r2_tab_help`, `f15_kontor` (`hud.txt` `info_build_stop`, sprite-565) | A from D + M-GOG |
+| Text right edge on the gadget's right edge (x = 1009 - text width), top 3 rows above the gadget, pixels above the gadget not drawn | glyph-match, 0 differing pixels on every row: `hud_idle_running` 0, 0, 15, 0, 0, 16, -31; `f15_kontor` 0, 0, 15, 0, 0, 0, -15, 0; `r2_tab_help` row 0. Without the cut the '1' and '5' glyphs' top outline row (glyph row 2) differs by 2 pixels each | M-GOG, high; the vertical rule itself is not read (OQ-692) |
+| The figure is `_itoa(value, buffer, 10)`: '-' and the digits, no thousands separator | `0x1008d919` -> `0x1008d946` (radix 10 and value < 0 set the sign flag) | D |
+| The balance row (row 6 on both pages) gets colour property `0x1c5` = `0xffffff`, or `0xff0000` below 0; the other rows never set it (white) | city `0x1006c32f..0x1006c357`, overview `0x1007fb63..0x1007fb90` (`setge; dec; and 0xffff0001; add 0xffffff`); glyph-match with level 1 = (255, 0, 0): 0 differing pixels on `hud_idle_running` "-31" and `f15_kontor` "-15", 41+ with white | D, M-GOG |
+| City page values (update `0x1006c0f0`, city = `[page+0x634]`): row 0 city `+0x5c` -> `+4` (AnnoWelt `0x1002dfb0` = city+0x2ec, `0x10022df0` sums the five groups' residents); row 1 city `+0x6c(0)`; row 2 `+0x6c(1)` + `+0x6c(2)`; row 3 `+0x6c(4)`; row 4 `+0x6c(5)`; row 5 `+0x6c(2)`; row 6 = row 4 - row 5 - row 3 - row 2 + row 1 (the military bucket counts twice); row 7 city `+0x64` -> `+0x20`, divided by 256 toward zero (`cdq; and edx, 0xff; add; sar 8`) | `0x1006c10c..0x1006c11e`, `0x1006c145..0x1006c167`, `0x1006c1a7`, `0x1006c1e6..0x1006c1fc`, `0x1006c234`, `0x1006c275`, `0x1006c2b4`, `0x1006c2ef..0x1006c2fd` | D; answers OQ-655's signs (`task/UI-PANELS-PREP`) |
+| AnnoWelt's city getter `+0x6c` (`0x1002dc70`): index 0 `+0x60c`, 4 `+0x5fc`, 5 `+0x600` shown as `15 x / 105` (32-bit product, unsigned divide, magic `0x38138139`); 1 `+0x604` and 2 `+0x608` raw. City slot `+0x64` = `0x1002dfd0` (city+0x320) | `0x1002dc84..0x1002dccc`, table `0x1002dd04` | D |
+| Overview values (update `0x1007f8f0`, player = `[page+0x618]`): over the player's cities (player `+0x84(2)`, list loop `0x1007f977..0x1007f9ee`) row 0 sums city `+0x5c` -> `+4`, row 1 city `+0x6c(0)`, row 2 city `+0x6c(1)`; row 3 = player `+0x9c(4)` + the cities' `+0x6c(4)`; row 4 = player `+0x9c(5)` + cities' `+0x6c(5)`; row 5 = player `+0x9c(2)` + `+0x9c(3)` + cities' `+0x6c(2)`; row 6 = row 4 - row 3 - row 5 - row 2 + row 1 | `0x1007f921..0x1007f96d`, `0x1007f9f0..0x1007fa0e`, prints `0x1007fa0a..0x1007fb60` | D |
+| Player getter `+0x9c` (`0x1001c0f0`, table `0x1001c140` from index 2): 2 `+0x88`, 3 `+0x8c` (the unit upkeep sums, `players.md`), 4 `+0x80`, 5 `+0x84` (the decaying statistics), raw | `0x1001c103..0x1001c124` | D |
+| The sum over an empty city list is 0: HE on the ship start shows 0, 0, 0, 0, 0, 17, -17 (17 = the player's own upkeep terms) | `HE_UI_1.mp4` 44.5 s | M-HE, high |
+| HE shows the same layout: digits' white core ends at video x 1900-1901 (predicted 1900.75 for the gadget edge 1009 less the outline column), rows at video y 267, 290, 312, 335, 357, 380, 424 (500 for row 7), predicted 267.0, 289.5, 312.0 ... within 1 px; balance red | `HE_UI_1.mp4` 44.5 s, `ui_5.mp4` 405 s | M-HE (lossy video), medium-high |
+| HE city page values 120, 91, 248, 0, 0, 0, -157, 9: 91 - 248 = -157 with rows 3-5 at 0 | `ui_5.mp4` 405 s | M-HE |
+
+**Rebuild (UI-TABS-1 stage B).** `data/ui/hud.txt` `player_row_0..6` and `city_row_0..7`: the
+gadget rectangles (814, C_i) 195 x 15, `align right`, `text_dy -3`, `clip box`, `value
+player.<k>` / `city.<k>`, `page player` / `info`, `negative_rgb ff0000` on row 6, font
+`toolgfx/mainsmall.zei` (byte-identical to MainMedium and HelpNormal, 2.5). `src/app`
+`balance_rows.hpp` computes the figures from the play snapshot (`PlaySnapshot::cities` with a copy
+of each city's `sim::City::accounts`, `accounts_live` = `Rules::city_booking`, the shown scale
+`SimConfig::upkeep_slices` / `stat_decay_den` = 15 / 105). The sim's names for the original's
+statistics: `sales` = index 0 (`+0x60c`), `trade_sales` = index 4 (`+0x5fc`), `trade_purchases` =
+index 5 (`+0x600`) (HEAD2 0x28 / 0x38 / 0x3c, `scenario_formats.cpp`), `civil_cost` = index 1,
+`military_cost` = index 2 (`city_booking.cpp`); the rows follow the index (OQ-693 for the names).
+Both UI paths draw them (`draw_balance_rows` in `ui_mock.cpp`). Facts `hud.row.<value>` (the text,
+or `empty`).
+
+| Row | Overview (`player.k`) | City page (`city.k`) |
+|---|---|---|
+| 0 | sum of the cities' `World::city_population`: drawn | the city's population: drawn |
+| 1 | sum of `15 sales / 105`: drawn while the accounts are live (always with no city) | `15 sales / 105`: live accounts |
+| 2 | sum of `civil_cost`: as row 1 | `civil_cost + military_cost`: live accounts |
+| 3 | + player `+0x80`: **empty** (OQ-694) | `15 trade_sales / 105`: live accounts |
+| 4 | + player `+0x84`: **empty** (OQ-694) | `15 trade_purchases / 105`: live accounts |
+| 5 | + player `+0x88 + 0x8c`: **empty** (OQ-694) | `military_cost`: live accounts |
+| 6 | balance: **empty** (needs 3-5) | the balance as the original: live accounts |
+| 7 | - | knowledge: **empty** (OQ-695) |
+
+Decisions: (1) the account rows are drawn only while `Rules::city_booking` is on, because only
+then does the sim keep the buckets and statistics (`create.cpp`, `apply.cpp`, `scheduler.cpp`);
+with it off they would show figures the game does not have. (2) The "?" page shows the status
+bar's city (5.2's rule), because the rebuild has no Kontor/marketplace click into this page yet;
+the original shows the city its message `0x1a00` named (`0x1006c030`: `[page+0x634]`) (OQ-691).
+(3) The original's 32-bit products and sums wrap; the rebuild computes in 64 bits and leaves a row
+empty when a figure does not fit (adaptation, no visible difference below 2^31).
+
 ## 6. `data/ui/` layout format
 
 Documented in [`data/ui/README.md`](../../data/ui/README.md). Derived facts only: ids, coordinates, sizes, file names, ACCESS names, frame/segment indices, `Texte.dat` section+index, Anlagen type ids, hotkey codes. No pixels, no English/German UI strings, no screenshots.

@@ -3162,3 +3162,33 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **What we know:** the overview's `SPIELER_BILANZ_BK` (0.94 exact on `hud_idle_running`), the city view's `STADT_BILANZ_BK` and the options main page's icons are sub-tab 0's own (0.00-0.03 exact on the other pages); the crest `GRPLAYERSCHILDER` 1407 is the player view's on every page (1.00 on `f15_ship_list` and `f15_city_list`).
 - **Rebuild default (UI-TABS-1):** a placeholder page draws its view's column and crest and, in the options view, `OPTION_BACKGROUND`; nothing else (data/ui/hud.txt, `body` names the packet that fills it).
 - **How to resolve:** each page's builder (`ui-ships-diplomacy.md` 2.6-2.7, `ui-warehouse-trade.md`, `ui-options-mainmenu.md` 2.6) and its GOG shot.
+
+## OQ-691: Which city the "?" view's city status page shows (UI-TABS-1 stage B, 2026-11-17; OPEN)
+- **Question:** which city the city status page (the "?" view's sub-tab 0) shows in each state: after a click on an own Kontor or marketplace, after a click on a foreign one, with nothing selected, and after a main-tab press.
+- **What we know:** the page's update `0x1006c0f0` reads the city at `[page+0x634]`, which the message handler `0x1006c030` stores from a message object whose kind (slot `+0x14`) is `0x1a00` (slot `+0x18` gives the city); a click on the own Kontor (GOG `f15_kontor`) or marketplace (HE `ui_5.mp4` 6:41) opens it. HE with nothing selected shows only the castle background (OQ-642).
+- **Rebuild default (UI-TABS-1 B):** the page shows the status bar's city (docs/re/ui.md 5.2: the city on the island the view is centred on, else the player's first), because no Kontor click opens it yet; the fact `hud.counters.city` names it.
+- **How to resolve:** read who sends message `0x1a00` (the Kontor/market click path in View.dll and AnnoFrame.dll) and capture the page after clicks on two different own cities.
+
+## OQ-692: The balance rows' text placement rule, cut and refresh (UI-TABS-1 stage B, 2026-11-17; OPEN)
+- **Question:** why the text of a 195 x 15 text gadget (class `0xb1c`, alignment `0x1c6` = 1) starts 3 rows above the gadget, whether the gadget also cuts at its bottom and at its left edge, and how often the original refreshes the figures.
+- **What we know:** measured, not read: right edge on the gadget's right edge, top at gadget y - 3, the glyph rows above the gadget not drawn (glyph-match on `hud_idle_running`, `f15_kontor`, `r2_tab_help`, 0 differing pixels; the '1' and '5' lose their top outline row); digits never reach the bottom (glyph rows 2..16 of 25). The update functions run from vtable slot 40 (`0x1006c070`: every call, the deny toggle only after a 1000 ms stamp; overview `0x1007f8d0`); what calls slot 40 and how often is not read.
+- **Rebuild default (UI-TABS-1 B):** `text_dy -3`, `clip box` (cut to the whole gadget), figures refreshed every frame from the latest snapshot.
+- **How to resolve:** the text gadget's draw method (class `0xb1c`, View.dll factory `0x10019d60`) and its caller chain; a shot with a figure wider than the gadget.
+
+## OQ-693: The names of the city statistics 4 and 5 (UI-TABS-1 stage B, 2026-11-17; OPEN)
+- **Question:** which of the city statistics 4 (`+0x5fc`) and 5 (`+0x600`) holds the city's trade sales and which its trade purchases.
+- **What we know:** the sim names index 4 `trade_sales` and index 5 `trade_purchases` (`docs/re/population.md` section 8, HEAD2 0x38 / 0x3c in `scenario_formats.cpp`). The city status page prints index 4 on row 3 ("Purchase costs" / "Einkaufskosten", tooltip `TOOLTIP:INFOSTADT_STADTMAIN`) and subtracts it, index 5 on row 4 ("Sales revenue" / "Verkaufserlöse") and adds it (View.dll `0x1006c234`, `0x1006c275`, `0x1006c2ef..0x1006c2fd`); the overview does the same with the player's `+0x80` / `+0x84`. So either the sim's names are swapped or the page's labels name the other side of the trade.
+- **Rebuild default (UI-TABS-1 B):** the rows follow the original's index (row 3 = `trade_sales`, row 4 = `trade_purchases`); no sim field is renamed. Both are 0 until the sim trades (no trade stage yet).
+- **How to resolve:** the trade function `0x100ac360` (AnnoWelt), which adds to them: which one grows when a city sells.
+
+## OQ-694: The player's own terms of the overview's rows 3-5 (UI-TABS-1 stage B, 2026-11-17; OPEN)
+- **Question:** what feeds the player's statistics `+0x80` / `+0x84` and the unit upkeep sums `+0x88` / `+0x8c`, which the overview adds to the cities' purchase costs (row 3), sales revenue (row 4) and military costs (row 5).
+- **What we know:** player getter `+0x9c` (`0x1001c0f0`): 2 `+0x88`, 3 `+0x8c`, 4 `+0x80`, 5 `+0x84`, raw; the overview adds them at `0x1007f921..0x1007f96d`. The sim holds them (`Player::upkeep_a/b`, `stat_a/b`) and books and decays them (`player.cpp`), but nothing adds to them: no unit upkeep is charged for ships or soldiers, and the writers of `+0x80` / `+0x84` are not read. HE on the ship start shows 17 in row 5 (`HE_UI_1.mp4` 44.5 s), GOG `hud_idle_running` 16.
+- **Rebuild default (UI-TABS-1 B):** overview rows 3, 4, 5 and the balance row 6 stay empty.
+- **How to resolve:** the writers of player `+0x80..+0x8c` (figure creation and removal, the trade function), then a sim rule that feeds them.
+
+## OQ-695: The city's knowledge on the city status page (UI-TABS-1 stage B, 2026-11-17; OPEN)
+- **Question:** what the "Knowledge in city" figure (row 7) counts.
+- **What we know:** row 7 = city slot `+0x64` (`0x1002dfd0`: the object at city `+0x320`), its slot `+0x20`, divided by 256 toward zero (View.dll `0x1006c145..0x1006c167`); GOG `f15_kontor` 0, HE `ui_5.mp4` 6:45 9. The sim has no research sub-object for a city (OQ-157).
+- **Rebuild default (UI-TABS-1 B):** row 7 stays empty.
+- **How to resolve:** the object at city `+0x320` and its slot `+0x20` (AnnoWelt), with OQ-157.

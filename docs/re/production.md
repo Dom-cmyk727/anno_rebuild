@@ -212,11 +212,11 @@ if ratio < 0x80 and no worker slot is set and 384 / rate0 >= raw / need0:
 Differences from the farm: input before capacity; "missing input" repeats after 45,000 ticks instead of 60,000; nothing is made while any trapper is out (the farm only stops for a single-worker farm); `max_figures` is not read: at most one trapper is out. Since `ratio < 0x80` with no trapper out means `raw < need0`, `raw / need0` is 0 there and the 384 test never fails in practice. 824: rate 26, need 25, 5 t (P).
 
 ### 4.2b The placement fertility indicator: a reader of 4.3, not a production input (UI-PRODBAR-1, 2026-11-17)
-The bar over a farm's ghost (AnnoFrame `0x10047940`; `docs/re/ui.md` 4.1) is computed only in the build cursor's draw. It takes the type's crop object (HEAD u16 `[0x28]`) and the island's climate. It counts the tiles of a midpoint-circle disc of radius HEAD `[0x11]` around the footprint, clamped to the island rectangle and without the footprint (N). A tile is good when two tests pass:
+The bar over a farm's ghost (AnnoFrame `0x10047940`; `docs/re/ui.md` 4.1) is computed only in the build cursor's draw. It takes the type's crop object (HEAD u16 `[0x28]`) and the island's climate. It counts the tiles of a midpoint-circle disc of radius HEAD `[0x11]` around the footprint's centre cell(s), clamped to the island rectangle and without the footprint (N). A tile is good when two tests pass:
 - the crop test (island slot `+0x140` = `0x100817c0`; read in 4.3 on branch `task/UI-STATUS-1`, restated in `ui.md` 4.1 row (a)) does not answer "dry";
-- the island placement predicate (`0x1007c790`, flag word `0x29`: overlappable objects only, mean corner height ≥ 32) accepts the crop object there.
+- the island placement predicate (`AnnoWelt 0x1007c790`, flag word `0x29`: overlappable objects only (L, `ship-placement.md` §4), floor of the four-corner mean ≥ 32, the threshold being the runtime global 1.28f / 0.04f from `0x1007b340`/`0x1007b3a0`) accepts the crop object there.
 
-It shows frame trunc(10 · good / N) of figure 1557. No production tick reads the value and nothing stores it (**D**). It predicts the share of tiles where a new field or tree would grow healthy. It is not the farm's output rate.
+It shows frame trunc(10 · good / N) of figure 1557. Nothing stores the value (**D**: the counts are stack locals); no production tick reads it (**D** for the locals, **L**: no global xref was run). It predicts the share of tiles where a new field or tree would grow healthy. It is not the farm's output rate.
 
 ### 4.3 Growing fields and trees — island chunk scan `0x1008b5f0`
 Fields, forests and other `ROHSTWACHS`/`ROHSTDUERR` items are not buildings: they are tile objects in the island's 8-byte-per-tile grid (`+0x0c`: u16 object id at +0, phase byte at +3 = bits 0–5 counter, bit 6 parity, bit 7 kept). On every chunk visit (≥ every 2000 `t`, §1), for every tile whose object type has `P ≠ 0` (§2.3) (**confirmed**):

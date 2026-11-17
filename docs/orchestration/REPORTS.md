@@ -12862,7 +12862,7 @@ Decisions and reasoning:
 
 READY FOR REVIEW.
 
-## TRACE-COLS-1 follow-up — the CI-caught regression, fixed and guarded — ACCEPTED (same branch task/ZOOM-BOUNCE-1, commit `ba32d939`)
+## TRACE-COLS-1 follow-up — the CI-caught regression, fixed and guarded — READY FOR REVIEW (same branch task/ZOOM-BOUNCE-1, commit `ba32d939`)
 
 CI on `bf5cc055` was red on every non-Windows job (`window_table_contract`, case `junk_present`):
 the column reorder above made `outcome` `frames.tsv`'s last column, so `junk_present`'s and

@@ -80,3 +80,15 @@ owner asks for one.
   that goes to the render lane.
 - The minimap's own zoom (+/- top right): the owner called it "perfectly fine the way it is".
 - The view turn (chevrons): the render lane's VIEW-TURN work.
+
+## Fix round R2 (2026-11-17, from the owner's ui_7.mp4)
+
+The owner's test `ui_7.mp4` (0:48-1:58, transcript in `E:\1503_test_videos\ui_7_work\`) ran the
+UI-STATUS-1 build, which lacks this change, so his "nothing changed" was a build mix-up. He also
+asked for the near side: "even from level one, which is zoomed in, I can zoom in further, still
+need to fix that". In the continuous zoom the magnifier's + now also reaches the wheel's closest
+zoom-in: stages past level 0, one per doubling while narrower than `zoom_ceiling` (the wheel's
+upper clamp, `levels.tile_w(0) * kZoomEndFactor`, factored out of `zoom_target_after`), then the
+ceiling itself. At the original levels that is 84 x sqrt 2 = 118.8, so the ceiling alone. Same
+rules as the far side (no duplicate within 1e-6, none when the ceiling is not above level 0,
+computed at each press); stepped mode keeps the clamp. Facts `zoom.max_tile`, `zoom.at_max`.

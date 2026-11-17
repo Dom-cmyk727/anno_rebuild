@@ -170,6 +170,16 @@ says who is doing what, where the work is, and what it waits on.
   order?", the owner answered "Yes". They run in the UI lane, then UI-RANGE-1. Also, asked "Delete the public
   task branch with the data table after landing, and recreate it clean?", the owner answered "Yes, clean it
   up": `task/BUILDINGS-REF-1` is recreated as one clean commit.
+- **The owner's "go for all", 2026-11-17,** to the two open questions (prune the co-dev share repo; install
+  the Linux viewer dev packages in WSL):
+  - the share repo's reflog was expired and `gc --prune=now` run: `c0c3f3a0` is gone, `fsck` clean, the
+    branch stays `cc2c6e80`, `receive.denyNonFastForwards` still true;
+  - WSL Ubuntu: `dpkg --configure -a` (an interrupted dpkg state) then the 20 SDL X11/Wayland/audio dev
+    packages of ci.yml, all installed, so the viewer's ASan build configures locally.
+- **UI-BUILDCAT-1 ACCEPTED**, head `79ab3079` (CI 44148359924 attempt 2 green; owner test "good, works").
+  **Candidate 10 `refs/candidates/ui-info-2d-buildcat` = `95897a55`** (tree `d6509925`) on candidate 9:
+  UI-INFO-2d and UI-BUILDCAT-1. Hand-resolved: `docs/open-questions.md` (block by block), `data/ui/masks.txt`
+  (BUILDCAT removes the category-column mask), REPORTS. Its PC part runs at the next quiet slot.
 - **UI-INFO-2d ACCEPTED** 2026-11-17, head `e4ae2b16` (CI 44139437510 green after a macOS-runner rerun;
   owner test "Yes, they looked right"): the OBJECTPOS sub-record reader/writer moved into `formats` (round
   trip and corpus tests), the CONPO2 entrance arrows and the further sprite sets on the info picture.

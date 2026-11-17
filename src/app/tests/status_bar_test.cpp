@@ -180,7 +180,7 @@ TEST_CASE("status bar: sea inside a discovered island hides the row after the de
     CHECK_FALSE(now.hide_at().has_value());
 }
 
-TEST_CASE("status bar: an undiscovered island hides the row; its counters do not test it") {
+TEST_CASE("status bar: an undiscovered island hides the row, its counters do not test it") {
     auto v = world();
     v.islands[0].discovered_by = {kOther};
     const auto p = app::pick_status(v, sim::TileXY{113, 202}, kLocal);

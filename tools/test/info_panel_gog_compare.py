@@ -9,9 +9,10 @@ info_panel_pixel_check.py) checked against the original GOG game's own Wine-runn
 Reads ANNO1503_GAME_DIR (the original files) and ANNO_UI_ORACLE_SHOTS (a folder holding the
 `r2_info_*` / `f12_info_*` PNGs from cache/orig/ui-1/shots/; screenshots are never in git), and
 skips with a message when either is missing. Passes when, on every shot, the name, the figures
-and the chrome differ in 0 pixels, and the whole panel differs in 0 pixels for the three types
-whose preview rule is proven (2520, 104, 708). The other previews are OQ-612: their counts are
-printed, not judged.
+and the chrome differ in 0 pixels, and the whole panel differs in 0 pixels for the types
+whose preview rule is proven (2520, 104, 708, and since UI-INFO-2b the stalls 1310 and 1314,
+whose pictures carry entrance arrows). The other previews are OQ-612: their counts are printed,
+not judged.
 
 Exit: 0 pass, 1 fail, 77 skipped.
 """
@@ -29,7 +30,7 @@ SHOTS = {
     807: "r2_info_sheep_807", 805: "r2_info_hunter_805", 809: "f12_info_farm_809",
     1023: "r2_info_tannery_1023", 1001: "r2_info_weaver_1001", 810: "f12_info_fisher_810",
 }
-PREVIEW_PROVEN = {2520, 104, 708}
+PREVIEW_PROVEN = {2520, 104, 708, 1310, 1314}
 
 
 def main() -> int:

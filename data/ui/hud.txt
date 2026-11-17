@@ -106,9 +106,15 @@ element info_upkeep pos 852 684 size 145 25 file toolgfx/mainsmall.zei align cen
 # frame 0, centred in the box, reduced to RGB565 the way the 16-bit frame shows it): the whole
 # 135 x 135 box is pixel-identical on r2_info_dirt_road, f12_info_field_104, f12_info_field_708.
 # info_preview_shadow pos is the shadow's offset from the sprite (its silhouette in 66,65,66),
-# not a screen position. Larger sprites and the 1 x 1 stalls do not follow this rule yet (OQ-612).
+# not a screen position. UI-INFO-2b: the picture is the building and its entrance arrows
+# (Anlagen OBJECTPOS/CONPO2, drawn with FigurenHeader entry `figure`, the green
+# "Strassenanschluss" arrows: AnnoGame.dll 0x1000bb60 asks figure 0x625 for its display object)
+# composed in one canvas sized over all four turns, centred; the shadow is that canvas's
+# silhouette. Exact on f12_info_stall_1310 and f12_info_stall_1314. Canvases larger than the box
+# are drawn at the original's scaled size with a placeholder sampler (OQ-612).
 element info_preview pos 844 360 size 135 135 anchor right method sprite-565 shot r2_info_dirt_road
 element info_preview_shadow pos 5 10 method sprite-565 shot r2_info_dirt_road
+element info_preview_arrows figure 1573 method view-dll shot f12_info_stall_1310
 element no_klick pos 860 305 size 50 50 file toolgfx/fenster.tex access NO_KLICK tex_id 56 anchor right method sprite-sad shot r2_construction_public
 element option_exit pos 927 660 size 92 100 file toolgfx/fenster.tex access OPTION_EXIT tex_id 1492 anchor right method sprite-sad shot r2_options
 element rating_bg pos 0 0 size 1024 768 file toolgfx/fenster.tex access STATISTIK_UNTERGRUND tex_id 1509 method sprite-sad shot f15_rating

@@ -1,8 +1,8 @@
 # TOWN-START-1: from the ship to a living pioneer town, measured
 
-**Status:** refreshed 2026-11-17 by the Mac orchestrator for **EXECUTOR II MAC**, wave 1.1.
-Queued after GATE-RUN ui-info-2d-buildcat and the MAC-HEAVY-1b packaging checkpoint.
-Start only on the Mac orchestrator's release in chat and `mac-lane.md`; no overlap with a GATE-RUN.
+**Status:** RELEASED 2026-11-17 by the Mac orchestrator to **EXECUTOR II MAC**, wave 1.1,
+after the candidate gate closed with a preserved FAIL and MAC-HEAVY-1b was accepted.
+Start from main, not the failed UI candidate; no overlap with a GATE-RUN.
 This refresh preserves the original measurement scope from the 2026-11-16 packet.
 
 **Base:** `origin/main` at the time of starting (name the commit in the report). Branch `task/TOWN-START-1`, a new

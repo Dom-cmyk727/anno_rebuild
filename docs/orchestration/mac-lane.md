@@ -15,8 +15,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wave / packet | Status | Head / tree | CI | Review |
 |---|---|---|---|---|
 | 0.1 [GATE-RUN ui-info-2d-buildcat](tasks/gate-run-ui-info-2d-buildcat.md) | CLOSED with FAIL: two no-frame cases; warning check passed; candidate NOT ACCEPTED | Candidate `95897a55bc939a185766b7207e69d098997cdb1d`; tree `d65099256a598f7ce82d37ea303b81ff87088542` | Exact-head lookup: no run found | [Final failure review](reviews/2026-11-17-gate-ui-info-2d-buildcat-review.md); eight extra GPU skips also need policy reconciliation |
-| 0.2 [MAC-HEAVY-1b](tasks/mac-heavy-1b.md) | RELEASED; executor proceeding after gate jobs ended | To cut from fetched main; old report `ce35bb7b` is not the new candidate | Pending new head | Pending |
-| 1.1 [TOWN-START-1](tasks/town-start-1.md) | WRITTEN; queued after 0.2 checkpoint; explicit release required | To cut from fetched main; candidate A stays a test fixture | Pending | Pending |
+| 0.2 [MAC-HEAVY-1b](tasks/mac-heavy-1b.md) | ACCEPTED: publication correction only; Windows landing pending | `8c7155080fbe3e4544f4d4908518859b8e80c4fe` | [44193521811](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44193521811), exact-head docs gate green | [Acceptance](reviews/2026-11-17-mac-heavy-1b-review.md) |
+| 1.1 [TOWN-START-1](tasks/town-start-1.md) | RELEASED to EXECUTOR II MAC | To cut from fetched main; candidate A stays a test fixture | Pending | Pending |
 | 1.2 [WILDLIFE-1a](tasks/wildlife-1a.md) | WRITTEN; queued after 1.1 review; explicit release required | Pure helpers only; to cut from fetched main | Pending | Pending |
 
 ## Review and reporting contract

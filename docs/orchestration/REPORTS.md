@@ -12861,3 +12861,20 @@ Decisions and reasoning:
   verification entirely.
 
 READY FOR REVIEW.
+
+## TRACE-COLS-1 follow-up — the CI-caught regression, fixed and guarded — ACCEPTED (same branch task/ZOOM-BOUNCE-1, commit `ba32d939`)
+
+CI on `bf5cc055` was red on every non-Windows job (`window_table_contract`, case `junk_present`):
+the column reorder above made `outcome` `frames.tsv`'s last column, so `junk_present`'s and
+`count`'s own `sed` patterns (each relying on a trailing tab that no longer exists after
+`outcome`) silently matched nothing — the cases passed for the wrong reason instead of exercising
+the corruption they name. Fixed both patterns (anchored to end-of-line instead of a trailing
+tab) and added a guard after the case statement: every `.orig` a case's `sed` left behind must
+differ from what it edited, or the case fails by name. **Verified the guard itself, not just the
+fix**: ran `window_table_test.sh` in WSL against a Linux `bench_picture` build twice — once with
+the old (broken) `junk_present` pattern restored, which the new guard caught
+(`FAIL: junk_present: sed left .../frames.tsv unchanged (pattern matched nothing)`); then the
+real, fixed script, which passed all 45 `window_table_contract` checks including `junk_present`
+and `count`. Pushed; CI green on `ba32d939` (run `43989860151`).
+
+READY FOR REVIEW.

@@ -1,10 +1,10 @@
 # Engine recording, complete normal Tutorial input, state138 ECONBK1.
 # Re-recorded on the combined binary; gameplay and arithmetic assertions remain independent.
 # entry tick hash
-39 1950 1a04667bfc89b815
-41 2000 a74aed2e02833657
-3002 150000 3f96edcaed9e588f
-3804 190000 fcbcf6e25f65a0cb
-5405 270000 864ccb0a0f67bb10
-6207 310000 51ecaedda2612bc9
-10208 510000 0b853e19c906634a
+39 1950 f40ca8f880e002a5
+41 2000 cd19d8eb61d69496
+3002 150000 5b61b91c2149617a
+3804 190000 1bc112b8fa238702
+5405 270000 c4aee5dde9226b9f
+6207 310000 7b74f513765da116
+10208 510000 d277e41eb542be12

@@ -22,7 +22,11 @@
 // skip); question 3 has no game-file escape, so it falls back to whatever adapter is available
 // via on_preferred_or_any_adapter instead of skipping when "Radeon" is absent (OQ-089's own
 // point: the method is what matters, not necessarily this specific adapter, on a runner that
-// has no Radeon at all).
+// has no Radeon at all) - EXCEPT question 3's bisection itself, a hardware measurement that is
+// skipped outright on a non-Vulkan/Metal/D3D12 backend or a CPU adapter type (the owner's own
+// call, 2026-11-17): a software rasterizer's permissive allocator and a CI runner's limited RAM
+// make an unbounded-looking probe there meaningless and risky (it hung two CI jobs, exit 143,
+// before this skip and a practical 256-layer probe ceiling were both added).
 // No production code changed here, and OQ-096b's 384 MiB default is NOT touched (the packet's
 // own "don't change the default, prepare the options and numbers"): this file is diagnostic
 // only, added to anno_render_gpu_tests.
@@ -396,27 +400,69 @@ TEST_CASE("RENDER-DIRECT-1d question 3: the largest single 2048x2048 texture arr
           "allocates on the Radeon iGPU (or, if absent, whatever adapter is available), found "
           "by bisecting the layer count") {
     on_preferred_or_any_adapter("Radeon", [&](const gpu::Context& ctx) {
+        // Orchestrator, 2026-11-17: this bisection is a HARDWARE measurement (a real allocator's
+        // own ceiling) - meaningless on a software rasterizer, and a multi-GiB probe there can
+        // still be OOM-killed or run slowly on a CI runner's limited RAM even with the practical
+        // ceiling below as a second guard. Skip (not run) on anything other than Vulkan/Metal/
+        // D3D12, or on a CPU adapter type, the same backend check RENDER-DIRECT-1c's own
+        // adapter-agnostic synthetic case (atlas_upload_test.cpp) uses, with the same reason:
+        // lavapipe/llvmpipe on CI's linux-gcc-release/linux-clang-asan jobs (no Vulkan ICD there)
+        // is a CI-runner artifact to skip past, not a target platform to measure.
+        if (ctx.adapter_type == WGPUAdapterType_CPU) {
+            MESSAGE("skipping: adapter " << ctx.name
+                                         << " is a CPU (software) adapter - this bisection "
+                                            "measures a real hardware allocator's own ceiling, "
+                                            "meaningless on a software rasterizer");
+            return;
+        }
+        WGPUAdapterInfo backend_info = WGPU_ADAPTER_INFO_INIT;
+        if (wgpuAdapterGetInfo(ctx.adapter.get(), &backend_info) == WGPUStatus_Success) {
+            const WGPUBackendType backend = backend_info.backendType;
+            wgpuAdapterInfoFreeMembers(backend_info);
+            if (backend != WGPUBackendType_Vulkan && backend != WGPUBackendType_Metal &&
+                backend != WGPUBackendType_D3D12) {
+                MESSAGE("skipping: adapter " << ctx.name
+                                             << "'s backend is not one this bisection is "
+                                                "validated on (Vulkan/Metal/D3D12 only) - an "
+                                                "OpenGL/OpenGLES/D3D11 fallback happens when no "
+                                                "Vulkan ICD is installed, a CI-runner artifact, "
+                                                "not a target platform, and this bisection is a "
+                                                "hardware measurement, meaningless there anyway");
+                return;
+            }
+        }
         WGPULimits limits = WGPU_LIMITS_INIT;
         wgpuDeviceGetLimits(ctx.device.get(), &limits);
         constexpr std::uint32_t kPageSize = 2048;
+        // A practical probe ceiling (second guard, independent of and far tighter than the
+        // device's own reported maxTextureArrayLayers): bounds this bisection's own worst-case
+        // probe memory even on real hardware, since the device limit stays the real bound in
+        // practice (a real GPU refuses long before this ceiling - the ~12-13 layer ceiling
+        // already found on the Radeon, this question's own earlier result). The backend check
+        // above is the primary guard against a software rasterizer's own permissive limit (which
+        // can make every layer count up to that reported limit allocate, trying tens of
+        // gigabytes of dummy probe data and hanging a CI job, exit 143, killed on timeout, before
+        // this ceiling's own 256-layer/~5 GiB top end is even reached).
+        constexpr std::uint32_t kPracticalCeiling = 256;
+        const std::uint32_t ceiling = std::min(limits.maxTextureArrayLayers, kPracticalCeiling);
 
         std::uint32_t lo = 1;
         REQUIRE_MESSAGE(layers_allocate(ctx, kPageSize, lo),
                         "even 1 layer (~21 MB) failed to allocate on " << ctx.name
                                                                        << " - unexpected");
-        std::uint32_t hi = std::min<std::uint32_t>(limits.maxTextureArrayLayers, 2);
-        // Double hi until it refuses (or we hit the device's own layer limit): a quick way to
-        // bracket the real ceiling before bisecting between the last-known-good and first-known-
-        // bad counts.
-        while (hi < limits.maxTextureArrayLayers && layers_allocate(ctx, kPageSize, hi)) {
+        std::uint32_t hi = std::min<std::uint32_t>(ceiling, 2);
+        // Double hi until it refuses (or we hit the practical ceiling): a quick way to bracket
+        // the real ceiling before bisecting between the last-known-good and first-known-bad
+        // counts.
+        while (hi < ceiling && layers_allocate(ctx, kPageSize, hi)) {
             lo = hi;
-            hi = std::min(hi * 2, limits.maxTextureArrayLayers);
+            hi = std::min(hi * 2, ceiling);
         }
         if (layers_allocate(ctx, kPageSize, hi)) {
-            MESSAGE("every layer count up to the device's own maxTextureArrayLayers ("
-                    << hi << ") allocated on " << ctx.name
-                    << " - no ceiling found below the "
-                       "device's own reported limit");
+            MESSAGE("every layer count up to the practical probe ceiling ("
+                    << hi << "; the device's own maxTextureArrayLayers is "
+                    << limits.maxTextureArrayLayers << ") allocated on " << ctx.name
+                    << " - no ceiling found within the practical probe range");
             return;
         }
         while (hi - lo > 1) {

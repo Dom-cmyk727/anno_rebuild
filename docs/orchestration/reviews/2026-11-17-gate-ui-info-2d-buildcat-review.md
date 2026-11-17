@@ -4,8 +4,8 @@
 not a green landing gate. Reviewer: Mac orchestrator (Orchestrator II Mac), read-only inspection.
 Candidate `95897a55bc939a185766b7207e69d098997cdb1d`, tree
 `d65099256a598f7ce82d37ea303b81ff87088542`; the detached worktree remains clean.
-The preliminary full-gate receipt is final for that run; the warning check is still running
-at this review checkpoint. No source repair or test rerun was requested.
+Final execution receipt reviewed: the full-gate failure and completed warning check are retained.
+No source repair or test rerun was requested. The executor reports all owned gate jobs ended.
 
 ## Verified result
 
@@ -57,17 +57,22 @@ All evidence below is relative to the candidate gate worktree, under
 | full-01.log.inventory.json | 885fbc667f2d3bf0148974f625b4d794d327c010b0fcab15b679039d971d7133 |
 | outcomes-artifacts/1084/run.stderr.txt | 68498a87d1518f9855931bce29892df518cf5f43218ff05307986d2da31cb7d6 |
 | outcomes-artifacts/1085/run.stderr.txt | 6d2356a0f66a7fb263d07213ccce6fa2c65d415129fcc5b2d2fb01cc44a54c8a |
+| warnings-01.log | 83c24b4da897e3110ac33012d5a0cc158ba7e3d099aca948d3350d516bd9edf8 |
 
 The public GitHub Actions lookup by exact head returned zero workflow runs when independently
 checked. **CI run: none found**, not green; landing validation remains the Windows orchestrator's.
-The executor finishes the already-running warning check and supplies its final receipt. Native
-Windows/GCC/Clang target verification is not supplied by Apple Clang under another script label.
+The warning script finished once, exit 0, in 206.936 seconds. Independently reconciled 1,054
+project compile invocations and two rejected shadow-warning controls. Both script compiler labels
+used Apple Clang 21; Bash 3 mapfile, BSD xargs capacity and CMake's c2y-warning suppression were
+documented launch adaptations. Native Windows/GCC 13/Clang 18 remain NOT_RUN. Three duplicate-library
+link warnings were retained; this is not an entirely warning-free build claim. The final evidence
+manifest's artifact hashes were independently checked without rerunning the suite.
 
 Hand off the two failed window cases to the Windows orchestrator for assignment to the owning
 UI/render lane: diagnose the first absent-frame boundary on this source, preserve the initial
 failure, then run only the repair's affected tests/lanes. No full repeat of the passing suite on
 the unchanged source is requested. No Mac engine/coordinator repair is added to wave 0.
 
-**Next Mac packet:** MAC-HEAVY-1b is released once the final gate report is sent and all owned
-gate/warning work ends. It starts from main, not this failed candidate, and only repackages earlier
+**Next Mac packet:** MAC-HEAVY-1b is RELEASED; the final gate report is received and the executor
+reports gate/warning work ended. It starts from main, not this failed candidate, and only repackages earlier
 evidence. This keeps TOWN-START-1's gameplay measurement independent of the viewer failure.

@@ -162,3 +162,10 @@ The placement class for flag word `& 3 == 1` (single-quad tile objects such as f
 2. May 1a run before ISLAND-CROPS-1 1b lands? It is independent and touches `placement.hpp` only.
 3. 1d's seams: confirm "no wells" and "no drought" as the defaults until those sim states exist, or name
    the packet that owns drought (S13?) so 1d can read it.
+
+## Carried into stage 1b (orchestrator review of 1a, 2026-11-17, board 73ff5554; non-blocking nits)
+
+1. `placement.cpp`: clang-format split the comment "flag word & 3 == 1" over three lines. Rewrite the comment so
+   the expression stays on one line.
+2. `docs/sim/ship-placement.md` §2a: note that `level_exempt_classes` is read only by the tile-object branch,
+   although `0x1007cbc2` applies to every class.

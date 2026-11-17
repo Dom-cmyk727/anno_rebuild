@@ -170,6 +170,12 @@ says who is doing what, where the work is, and what it waits on.
   order?", the owner answered "Yes". They run in the UI lane, then UI-RANGE-1. Also, asked "Delete the public
   task branch with the data table after landing, and recreate it clean?", the owner answered "Yes, clean it
   up": `task/BUILDINGS-REF-1` is recreated as one clean commit.
+- **RENDER-DIRECT-1c ACCEPTED** 2026-11-17, head `46991ff8` (CI 44129323379 green). The CI fix rounds:
+  - the game-file check now runs before the named-adapter pick, so a runner without game files skips as
+    `required-asset`, the order `play_gpu_test` uses;
+  - the synthetic exactness case and the one-byte-short refusal are adapter-agnostic, so CI's lavapipe
+    runs the upload path for real (OQ-089); the non-Vulkan software adapters skip with a reason.
+  1d (`849aa4c4`, 1c merged in plus the same fix) is accepted when its CI run 44146266934 is green.
 - **Candidate 8 `refs/candidates/refs-crops-fertility` = `c4b79447`** (tree `cda6649b`), stacked on
   `c01d5806`: BUILDINGS-REF-1 `cc2c6e80`, UNITS-REF-1 `8a8086e4`, FERTILITY-1a `3637c288`, ISLAND-CROPS-1 1b
   `1eef2cfb`, UI-INFO-2b `1a6f5ef5`, UI-PRODBAR-1 B `be6e13ed`.

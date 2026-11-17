@@ -13672,3 +13672,71 @@ nonzero on this platform - stays open only in the sense that no platform this bu
 the SDL-source argument yet.
 
 READY FOR REVIEW.
+
+
+## GATE-MAC-1 — READY FOR REVIEW (Mac, 2026-11-16)
+
+- Base `ac02d4a2`, branch `task/GATE-MAC-1`; no rebase/main push/reviewer subagent.
+- Read the released board packet; Apple M5 Max / Metal, macOS 27.0.1, 48 GiB,
+  Apple Clang 21.0.0; Release, original files available, admission control enabled.
+- [Measurements, rules and primary sources](../render/gpu-timestamp-evidence.md).
+- Each baseline test ran alone 30 times, CTest jobs 1, no competing build/test:
+
+  | Test (gpu_test.cpp) | Baseline pass/fail | Trace pass/fail | Final pass/fail |
+  |---|---:|---:|---:|
+  | River cost per tier | 0/30 | 0/30 | 30/0 |
+  | Every frame pass and identical picture | 0/30 | 0/30 | 30/0 |
+  | Sea pass timing | 30/0 | 29/1 | 30/0 |
+
+- Logs: `cache/gate-mac-1/baseline/`, `trace/`, `fixed-03/`; final binary/source
+  provenance in fixed-03/provenance.json. Trace changes timing; its rate is a separate measurement.
+- Raw period 1 ns throughout. Reversed end/begin: river Sea 2801/3061;
+  frame Objects 1/120, Resample 118/120; sea-test Sea 2/120, Objects 112/120.
+- Other real passes were valid; equal/over-10-second/map failures: 0/0/0.
+  Frame and Sea+Objects composites are counted separately in the note, not as extra passes.
+- Independent WebGPU triangle probe (no GpuFrame): 27/30 reversed, 3 valid,
+  0 validation errors. Raw first pair: begin 429653162488541, end 0.
+- Decision (a): preserve the engine's invalid-reading rejection and wall fallback.
+  No resolve/copy/order defect of GpuFrame is needed to reproduce this backend result.
+- Tests permit missing individual readings only for API-reported Metal devices whose
+  device name starts with Apple; Vulkan/D3D12 and Intel/AMD Metal remain strict.
+- A supported device must still yield a mapped timing-record object. Present values
+  must be finite and > 0; available frame/pass span checks remain, and timing-off
+  and one-shot reading checks remain. Timed pixels must equal untimed bytes.
+- River costs must stay positive, normalized correctly and report their source;
+  trace observed 93 wall-fallback rows, minimum 0.378833 ms. Quality checks remain.
+- Zero-wall-fallback mutant: applied once, rejected by c.ms > 0.0; source restored
+  byte-for-byte and rebuilt. No invalid span is accepted as 0 or negative time.
+- ANNO_GPU_TIMESTAMP_TRACE=1 prints pass/raw ticks/period/reason, map failure detail
+  and wall fallback. Default-off silence verified in both suite gate logs.
+- Wgpu-native v29.0.1.1 uses wgpu 29.0.1; pinned Metal code and upstream issue 9414
+  are linked in the note. The zero-counter issue is context, not proof of our exact root cause.
+- Canonical GPU gate, `cache/gate-mac-1/gpu-final-01.log`:
+  `COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`
+  `COUNTS: selected=118 executed=116 failed=0 empty=0 skipped=2 (required-asset=0 platform=0 opt-in=0 gpu=2 other=0) incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`
+- Canonical CPU render gate, `cache/gate-mac-1/render-final-01.log`:
+  `COUNTS: selected=212 executed=212 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`
+- No memory refusal, timeout or empty test; the two named play-adapter skips are explicit.
+- Format: clang-format 23.1.3 dry-run/Werror and git diff --check pass.
+- Warning script: audited 986 actual Apple-Clang compiles (413 files twice, plus
+  80 app files twice without GPU). Only errors: extensions_test.cpp lacks the
+  script's ANNO_EXTENSION_ORACLE_FILE definition. Both targeted retries with its
+  actual CMake definition pass; final strengthened GPU test also passes the same flags.
+- Warning history preserved: warnings-01's BSD xargs launcher failure is NOT evidence
+  of clean compiles; warnings-02 retains the two macro errors. The tracked script is unchanged.
+- Build-fix-01's doctest syntax error and subsequent old-binary fixed/ runs are retained
+  and EXCLUDED from post-fix evidence; fixed-03 follows a successful build with provenance.
+- NOT_RUN: Windows GPU adapters, native GCC 13/Clang 18 locally (not installed);
+  independent review remains the orchestrator's. No sim/default/pin/version changes.
+- Decisions and reasoning:
+  - Use raw data and an independent API probe before changing expectations.
+  - Allow missing only on the measured Apple/Metal family; retain strict other adapters.
+  - Keep positivity, mapped-record, pixel equality and validation-error checks active.
+  - Adapt only private warning launchers; retain failed evidence and retry failed compiles only.
+- QUESTIONs: none for the Metal disposition; the standalone warning script's missing
+  CMake definition remains an explicit tooling limitation for separate workflow maintenance.
+
+READY FOR REVIEW.

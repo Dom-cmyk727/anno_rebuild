@@ -119,6 +119,9 @@ says who is doing what, where the work is, and what it waits on.
   4. their B stages;
   5. the PLANKEGROSS banner text.
   Analysis: `E:\1503_test_videos\he_01_work\he_01-report.md`, outside git.
+- **OQ number reservations (2026-11-17):** 690 RENDER-DIRECT-1a; 691-695 UI-TABS-1 B; 700-707 UI-STATUS-1;
+  708-709 ISLAND-CROPS-1; 710 RE-HE-PRODUCTION-1; 711-714 UI-INFO-2b; 715-719 UI-PRODBAR-1; 720-724
+  UI-HARVEST-ICON-1. The next free number is 725.
 - **[MAC-HEAVY-1](tasks/mac-heavy-1.md) written** 2026-11-17 for the Mac executor, on the owner's request
   ("I also need a new mac job. This can be more comprehensive once this time, it may contain CPU and or RAM
   heavy test jobs"). Released when the owner pastes the prompt, after GATE-RUN ui-tabs-b. Verification of

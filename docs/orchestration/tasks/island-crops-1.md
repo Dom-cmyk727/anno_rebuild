@@ -3,7 +3,8 @@
 **Draft 2026-11-17** by the UI lane, for the orchestrator's review as a sim packet (orchestrator, 2026-11-17:
 "D1 goes to your lane ... Send it to me before any code; I review it as a sim packet. One concern per
 packet"). Branch `task/ISLAND-CROPS-1`, base origin/main `4dfdd9b7`, worktree
-`E:\anno1503-worktrees\anno1503-ISLAND-CROPS-1`. **Not released.** It is split into **1a** (format) and
+`E:\anno1503-worktrees\anno1503-ISLAND-CROPS-1`. **Approved by the orchestrator 2026-11-17 as written; 1a released 2026-11-17
+in the UI lane; 1b starts after the orchestrator accepts 1a.** It is split into **1a** (format) and
 **1b** (World field), one concern each. 1b starts after 1a is accepted. UI-STATUS-1's D2 (the status bar's
 green bars) follows 1b.
 
@@ -116,7 +117,21 @@ Evidence (task/UI-STATUS-1 `0ee20000`, independently verified 2026-11-17,
 - Nothing in this packet changes gameplay: no reader of the list exists yet.
 - Evidence contract (`docs/testing/evidence-contract.md`). No original bytes in git.
 
-## Open points for the orchestrator's review
+## The orchestrator's answers (2026-11-17, binding)
+
+1. **Writer:** an ANBAU writer in `formats` (CLAUDE.md: parse → write → byte-identical for every parser;
+   the record-level writer would round-trip the bytes without proving the name list). Test it on synthetic
+   fixtures and over the whole corpus.
+2. **Representation:** the ordered set of ware ids. Add one test that rebuilds the original 16-bit word
+   from the set, for a template island and an INSELLNK island, and compares it with the value the original
+   computes from the same input. That keeps the widening honest.
+3. **Bits 13-15:** keep them as listed ware ids from `SimConfig`, with an OQ. The OQ states that D2 must
+   not draw a bar for a ware it cannot name. The faithful value stays stored; readers decide.
+4. **Before 1b's code:** the constructor value for an island without ANBAU is read, or made an OQ.
+5. **The unknown-name warning** cites what the original does, or an OQ.
+6. **1b changes the state stream:** its landing needs the Mac's full game-file run on the candidate.
+
+## Open points for the orchestrator's review (answered above)
 
 - Is a `formats` writer for ANBAU wanted (needed for the round-trip test), or does the round trip use the
   existing record-level writer?

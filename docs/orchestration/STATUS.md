@@ -128,8 +128,8 @@ says who is doing what, where the work is, and what it waits on.
   Analysis: `E:\1503_test_videos\he_01_work\he_01-report.md`, outside git.
 - **OQ number reservations (2026-11-17):** 690 RENDER-DIRECT-1a; 691-695 UI-TABS-1 B; 700-707 UI-STATUS-1;
   708-709 ISLAND-CROPS-1; 710 RE-HE-PRODUCTION-1; 711-714 UI-INFO-2b; 715-719 UI-PRODBAR-1; 720-724
-  UI-HARVEST-ICON-1; 725 INFO-2b spare; 726 UI-PRODBAR-1 (the fertility grid rebuild). The next free number is
-  727. UI-HARVEST-ICON-1 A (ccaab768, with ISS-151 the whaler) and UI-PRODBAR-1 A (6b6758b9) are ACCEPTED
+  UI-HARVEST-ICON-1; 725 INFO-2b spare; 726 UI-PRODBAR-1 (the fertility grid rebuild); 727 RENDER-DIRECT-1d;
+  728-749 BUILDINGS-REF-1; 750 held for the UI lane; 751-754 UNITS-REF-1. The next free number is 755. UI-HARVEST-ICON-1 A (ccaab768, with ISS-151 the whaler) and UI-PRODBAR-1 A (6b6758b9) are ACCEPTED
   2026-11-17 (docs only, CI green) and land with the next candidate; their B stages are released. FERTILITY-1
   (the Wachstum table, the nibble grid, the crop test, single-tile placement; about 9-10 h in four stages) goes
   to the UI lane after ISLAND-CROPS-1 1b, drafted for the orchestrator's review. **The owner, OQ-723,

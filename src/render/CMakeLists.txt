@@ -50,18 +50,7 @@ if(ANNO_BUILD_TESTS)
     tests/shore2_fix_round1_test.cpp
     tests/sprite_fidelity_test.cpp
   )
-  # anno_app_core (never anno_app_sdl/anno_render_gpu - no SDL/GPU dependency added): the fixed-
-  # map game-file case (atlas_pages_corpus_test.cpp, review F2) loads data/maps/lan5.txt through
-  # app::load_play/load_placed_scene, the same app-layer loader bench_frame's own load_any_scene
-  # uses, rather than a second loading path for one test case. anno_render_gpu_tests already links
-  # anno_app_core for its own tests, so this is not a new kind of dependency for a render-layer
-  # test binary, just this target's first use of it.
-  target_link_libraries(anno_render_tests PRIVATE anno_render anno_app_core anno_test_support
-    doctest::doctest)
-  # data/maps/lan5.txt, resolved from the repo root (the same ANNO_FIXTURES_DIR convention
-  # anno_render_gpu_tests and several app tests already use).
-  target_compile_definitions(anno_render_tests PRIVATE
-    ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")
+  target_link_libraries(anno_render_tests PRIVATE anno_render anno_test_support doctest::doctest)
   anno_target_defaults(anno_render_tests)
   anno_stage_budget_coord(anno_render_tests)
   anno_add_doctest(anno_render_tests)

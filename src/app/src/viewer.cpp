@@ -4062,7 +4062,8 @@ Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
                          shown != nullptr && groups != StatusCounters::Gold
                              ? std::optional<std::int64_t>(shown->population.value_or(0))
                              : std::nullopt,
-                         fertility_row_.shown()};
+                         fertility_row_.shown(),
+                         {}};
     // UI-TABS-1 stage B (docs/re/ui.md 5.5): the balance pages' figures. The player overview sums
     // over every city of the local player (none yet: the sums are 0, as the original's loop over
     // an empty list; balance_rows.cpp skips the foreign cities CityCounters also lists). The "?"

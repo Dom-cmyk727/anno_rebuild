@@ -10,6 +10,12 @@
 //    webgpu.h, exposes no memory sizes at all)?
 // 3. What is the largest single 2048x2048 texture array that actually allocates on the Radeon,
 //    found by bisecting the layer count with RENDER-DIRECT-1c's own error-scope detection?
+// A follow-up question, after question 3's bisected ceiling was found (the orchestrator's own
+// renumbering reply, OQ-727):
+// 4. Does the Radeon's heap hold endless02.sze's full pair's bytes once split under the
+//    single-resource ceiling (12+5 layers, not tied to either group's own layer count), both
+//    resident and byte-exact? And where does the TOTAL heap stop - the largest total that
+//    allocates, found by adding more blocks until one is refused, then bisecting the last one?
 // No production code changed here, and OQ-096b's 384 MiB default is NOT touched (the packet's
 // own "don't change the default, prepare the options and numbers"): this file is diagnostic
 // only, added to anno_render_gpu_tests.
@@ -130,6 +136,22 @@ render::AtlasPages dummy_pages(std::uint32_t page_size, std::uint32_t layers) {
     return p;
 }
 
+/// `src`'s own layers `[begin, end)`, copied into a new, smaller `AtlasPages` at the same
+/// `page_size` - a real-data split of an already-built combined page set at an arbitrary layer
+/// boundary (not tied to where one zoom group's own frames end, unlike question 1's per-group
+/// split): the orchestrator's follow-up asks for a 12+5 split of `endless02.sze`'s 17-layer
+/// pair, which does not line up with either group's own layer count (14 and 3 within the
+/// combined set, in collection order).
+render::AtlasPages slice_pages(const render::AtlasPages& src, std::size_t begin, std::size_t end) {
+    render::AtlasPages out;
+    out.page_size = src.page_size;
+    out.level0.assign(src.level0.begin() + static_cast<std::ptrdiff_t>(begin),
+                      src.level0.begin() + static_cast<std::ptrdiff_t>(end));
+    out.level1.assign(src.level1.begin() + static_cast<std::ptrdiff_t>(begin),
+                      src.level1.begin() + static_cast<std::ptrdiff_t>(end));
+    return out;
+}
+
 /// True if a single `layers`-layer, `page_size` texture array allocates on `ctx`'s device (every
 /// device call that can fail is inside `upload_atlas_pages`'s own error scope, RENDER-DIRECT-1c's
 /// fix). `wait_idle` afterward encourages the allocator to reclaim the released texture (RAII,
@@ -140,6 +162,24 @@ bool layers_allocate(const gpu::Context& ctx, std::uint32_t page_size, std::uint
     const bool ok = bool(gpu::upload_atlas_pages(ctx, pages, gpu::atlas_pages_bytes(pages)));
     gpu::wait_idle(ctx.instance.get(), ctx.device.get(), ctx.queue.get());
     return ok;
+}
+
+/// Attempts one more `layers`-layer dummy block ON TOP of whatever is already resident in
+/// `held` - every earlier entry in `held` stays alive (held, not released) for the whole
+/// attempt, since the orchestrator's own follow-up question is the TOTAL heap's own capacity
+/// with other resident textures present, not one resource allocated in isolation (RENDER-
+/// DIRECT-1d question 3's own `layers_allocate` always starts from an otherwise-empty device).
+/// On success the new texture is appended to `held` (stays resident, counted toward the total);
+/// on failure `held` is unchanged.
+bool try_hold_another(const gpu::Context& ctx, std::uint32_t page_size, std::uint32_t layers,
+                      std::vector<gpu::AtlasTexture>& held) {
+    const auto pages = dummy_pages(page_size, layers);
+    auto uploaded = gpu::upload_atlas_pages(ctx, pages, gpu::atlas_pages_bytes(pages));
+    if (!uploaded) {
+        return false;
+    }
+    held.push_back(std::move(uploaded.value()));
+    return true;
 }
 
 #if defined(_WIN32)
@@ -335,5 +375,117 @@ TEST_CASE("RENDER-DIRECT-1d question 3: the largest single 2048x2048 texture arr
                                   << " MiB) - " << hi << " layers (" << bytes_at_hi << " bytes, "
                                   << (static_cast<double>(bytes_at_hi) / (1024.0 * 1024.0))
                                   << " MiB) refused");
+    });
+}
+
+TEST_CASE("RENDER-DIRECT-1d question 4 (orchestrator follow-up): endless02.sze's full pair "
+          "split under the single-resource ceiling, both resident and byte-exact, then the "
+          "total heap's own stopping point on the Radeon iGPU") {
+    on_named_adapter("Radeon", [&](const gpu::Context& ctx) {
+        const auto dir = anno::test::game_dir();
+        if (!dir) {
+            MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+            return;
+        }
+        const auto file = *dir / "Scenes" / "0011SingleEndlosAddon" / "endless02.sze";
+        std::error_code ec;
+        if (!std::filesystem::exists(file, ec)) {
+            FAIL("missing named scene: " << file.string());
+        }
+        std::deque<std::vector<std::uint8_t>> keep;
+        const render::Scene scene = load_scene_direct(*dir, file, keep);
+
+        // The same combined 17-layer page set RENDER-DIRECT-1c's worst_pair_scene built: both
+        // groups' frames folded into one shared FrameTable/SpriteCache (bench_frame's own
+        // collect_static_water_groups, folded here by hand - both groups are wanted regardless
+        // of what resident_atlas_groups would return for this adapter, since the question is
+        // about the real worst pair specifically, not this adapter's own residency choice).
+        render::SpriteCache cache;
+        render::FrameTable table;
+        std::vector<render::AtlasFrameInput> frames;
+        for (const std::uint32_t group : {0U, 1U}) {
+            frames = anno::test::collect_static_water(scene, group, cache, table);
+        }
+        const auto pair_pages = render::build_atlas_pages(frames, 2048, 2, 4);
+        REQUIRE_MESSAGE(pair_pages.level0.size() == 17,
+                        "endless02.sze's pair is " << pair_pages.level0.size()
+                                                   << " layers, not the 17 RENDER-DIRECT-1c "
+                                                      "measured - re-check before trusting the "
+                                                      "12+5 split below");
+
+        constexpr std::size_t kSplit = 12;
+        std::vector<render::AtlasPages> slices;
+        slices.push_back(slice_pages(pair_pages, 0, kSplit));
+        slices.push_back(slice_pages(pair_pages, kSplit, pair_pages.level0.size()));
+
+        std::vector<gpu::AtlasTexture> held;
+        std::uint64_t resident_bytes = 0;
+        for (const auto& slice : slices) {
+            const auto needed = gpu::atlas_pages_bytes(slice);
+            auto uploaded = gpu::upload_atlas_pages(ctx, slice, needed);
+            REQUIRE_MESSAGE(bool(uploaded), "endless02.sze's pair split "
+                                                << slice.level0.size() << " layers (" << needed
+                                                << " bytes) failed to allocate - under "
+                                                   "the single-resource ceiling "
+                                                   "(question 3), so this would be a "
+                                                   "new, different finding, not the "
+                                                   "one asked about: "
+                                                << (uploaded ? "" : uploaded.error()));
+            resident_bytes += needed;
+            held.push_back(std::move(uploaded.value()));
+        }
+        // Byte-exact (first and last layer of each half) while BOTH halves are resident at once.
+        for (std::size_t i = 0; i < slices.size(); ++i) {
+            const auto l0_first = gpu::read_back_level(ctx, held[i], 0, 0);
+            CHECK(l0_first == slices[i].level0.front());
+            const auto last = static_cast<std::uint32_t>(slices[i].level0.size() - 1);
+            const auto l0_last = gpu::read_back_level(ctx, held[i], last, 0);
+            CHECK(l0_last == slices[i].level0.back());
+        }
+        MESSAGE("endless02.sze's full pair split 12+5 under the single-resource ceiling "
+                "(question 3): BOTH resident and byte-exact at once, "
+                << resident_bytes << " bytes ("
+                << (static_cast<double>(resident_bytes) / (1024.0 * 1024.0))
+                << " MiB) - splitting under the per-resource ceiling DOES hold the real worst "
+                   "case's full bytes, answering the orchestrator's own question: splitting is "
+                   "enough for the bytes themselves.");
+
+        // Where does the TOTAL heap stop? Add more page_size=2048, 12-layer (240 MiB) blocks on
+        // top of the 340 MiB already resident (dummy content: there is no more real scene data
+        // once the actual worst pair is fully resident, and the question is capacity, not
+        // content) until a whole block refuses, then bisect one smaller, partial block for a
+        // precise total rather than only knowing it is somewhere within one more 240 MiB step.
+        std::uint32_t whole_blocks_added = 0;
+        constexpr std::uint32_t kMaxWholeBlocks = 32; // generous: 32 * 240 MiB = 7.5 GiB, far
+                                                      // past any plausible total on this PC.
+        while (whole_blocks_added < kMaxWholeBlocks && try_hold_another(ctx, 2048, 12, held)) {
+            ++whole_blocks_added;
+            resident_bytes += gpu::atlas_pages_bytes(dummy_pages(2048, 12));
+            gpu::wait_idle(ctx.instance.get(), ctx.device.get(), ctx.queue.get());
+        }
+        REQUIRE_MESSAGE(whole_blocks_added < kMaxWholeBlocks,
+                        "every whole 12-layer block up to " << kMaxWholeBlocks
+                                                            << " allocated - no total ceiling "
+                                                               "found within a plausible range");
+        MESSAGE(whole_blocks_added << " additional whole 12-layer (240 MiB) block(s) also fit on "
+                                      "top of the resident 340 MiB pair before a further whole "
+                                      "block was refused.");
+        std::uint32_t lo = 0, hi = 12;
+        while (hi - lo > 1) {
+            const std::uint32_t mid = lo + (hi - lo) / 2;
+            if (try_hold_another(ctx, 2048, mid, held)) {
+                lo = mid;
+                resident_bytes += gpu::atlas_pages_bytes(dummy_pages(2048, mid));
+            } else {
+                hi = mid;
+            }
+            gpu::wait_idle(ctx.instance.get(), ctx.device.get(), ctx.queue.get());
+        }
+        MESSAGE("largest TOTAL that allocates on "
+                << ctx.name << ": " << resident_bytes << " bytes ("
+                << (static_cast<double>(resident_bytes) / (1024.0 * 1024.0))
+                << " MiB) = the resident 340 MiB pair + " << whole_blocks_added
+                << " whole 12-layer block(s) + a further " << lo
+                << "-layer block; the next block size tried (" << hi << " layers) was refused.");
     });
 }

@@ -15238,7 +15238,7 @@ READY FOR REVIEW.
 
 **Question 3, answered: the real single-resource ceiling, found by bisecting the layer count of a single 2048×2048 texture array with RENDER-DIRECT-1c's own error-scope detection: 12 layers (251,658,240 bytes, 240.0 MiB) allocate on the Radeon; 13 layers (272,629,760 bytes, 260.0 MiB) are refused.** Consistent with question 1 (group 1 at 80.0 MiB well under, group 0 at 280.0 MiB well over), and about **52% of the 465.8 MiB `DedicatedVideoMemory`** DXGI reports for this adapter (question 2) - a real allocator-level restriction, not simply "the dedicated VRAM is smaller than the budget."
 
-**For the owner, prepared not decided: `docs/open-questions.md` OQ-691.** OQ-096b's 384 MiB non-discrete default is well above the real ~240 MiB single-resource ceiling found on this adapter. Three non-exclusive options, none implemented: (a) lower the non-discrete default below the real per-resource ceiling; (b) split any resident set above a configured per-resource size into more than one texture at upload time (a stage 2/3 upload-granularity design, separate from the *total* budget number); (c) measure the real ceiling at runtime per-adapter instead of hardcoding a number that is specific to this PC's Radeon/driver/Vulkan combination on 2026-11-17 and may not transfer elsewhere.
+**For the owner, prepared not decided: `docs/open-questions.md` OQ-727.** OQ-096b's 384 MiB non-discrete default is well above the real ~240 MiB single-resource ceiling found on this adapter. Three non-exclusive options, none implemented: (a) lower the non-discrete default below the real per-resource ceiling; (b) split any resident set above a configured per-resource size into more than one texture at upload time (a stage 2/3 upload-granularity design, separate from the *total* budget number); (c) measure the real ceiling at runtime per-adapter instead of hardcoding a number that is specific to this PC's Radeon/driver/Vulkan combination on 2026-11-17 and may not transfer elsewhere.
 
 **Gates.**
 - clang-format 23.1.3: clean.
@@ -15254,6 +15254,31 @@ READY FOR REVIEW.
 - Called `wait_idle` after every bisection probe so a released texture's memory has a chance to be reclaimed before the next attempt - without it, back-to-back allocate/release cycles could show stale pressure and report a falsely low ceiling.
 - Duplicated `on_named_adapter`/`read_all`/`load_scene_direct` from `atlas_upload_test.cpp` rather than sharing them: both files already duplicate small per-binary helpers by this project's own established convention (`atlas_upload_test.cpp`'s own doc comment on `load_scene_direct`), and a new header for helpers only two files in one binary use would be more machinery than the ~30 lines it replaces.
 - Added DXGI as a Windows-only diagnostic dependency of the test binary only (not of `anno_render_gpu`/`anno_render`), guarded by `#if defined(_WIN32)`/`#ifdef WIN32` in both the CMakeLists.txt link and the source file - wgpu's own `WGPUAdapterInfo` has no memory-size fields to read instead, and this question is explicitly about what the OS/API expose, which on this project's Windows dev host means DXGI.
-- Did not touch OQ-096b's default or design a split-upload path: both are the owner's call (the packet's own "don't change the default. Prepare the options and numbers"), recorded as OQ-691 rather than acted on.
+- Did not touch OQ-096b's default or design a split-upload path: both are the owner's call (the packet's own "don't change the default. Prepare the options and numbers"), recorded as OQ-727 rather than acted on.
+
+READY FOR REVIEW.
+
+## RENDER-DIRECT-1d addendum — renumbered OQ-691 to OQ-727, and the orchestrator's follow-up question answered — READY FOR REVIEW (same branch, commit TBD)
+
+**Renumbering.** OQ-691-695 was already taken by UI-TABS-1 B (in candidate `c01d5806`). Checked `docs/orchestration/STATUS.md`'s "OQ number reservations" first this time, per the orchestrator's instruction - the next free number is 727. Renumbered everywhere: `docs/open-questions.md`'s heading and both cross-references (`docs/render/atlas.md` §13, this report).
+
+**Question 4 (the follow-up): does the Radeon's heap hold the real worst pair's full bytes once split under the per-resource ceiling, and where does the total heap stop?** New `TEST_CASE` in `src/render/tests/adapter_memory_diag_test.cpp` (same file, same branch):
+
+- `endless02.sze`'s real combined 17-layer pair split 12+5 at an arbitrary layer boundary (not either group's own layer count - `slice_pages`, a new helper, slices the already-built real `AtlasPages` rather than rebuilding dummy data, so the split texture's content is the real scene bytes, not a stand-in): **both halves allocated, both held resident at once, both byte-exact on readback** (first and last layer of each checked while the other half stayed resident) - **356,515,840 bytes (340.0 MiB) total**, confirming splitting under question 3's ~240 MiB ceiling does hold the real worst case's full bytes.
+- Continuing to add more 2048×2048, 12-layer (240 MiB) dummy blocks on top of that 340 MiB (`try_hold_another`, a new helper: every earlier texture stays resident, unlike `layers_allocate`'s own isolated single-resource test), one at a time, held resident, to find the TOTAL heap's own stopping point: **29 additional whole blocks also allocated** before a further whole block was refused; bisecting one more, smaller block on top found 0 additional layers fit (even 1 more layer was refused at that point). **Largest total found: 7,654,604,800 bytes (≈7,300.0 MiB, ≈7.3 GiB).**
+- This is far above both `DedicatedVideoMemory` (465.8 MiB) and even approaches half of `SharedSystemMemory` (15,930.6 MiB, question 2) - **the total heap is nowhere near the binding constraint for a 384 MiB budget; only the per-resource ceiling (question 3, ~240 MiB) is.** Updated `docs/render/atlas.md` §13 and OQ-727 with both new findings and a revised option ranking: option (a) "keep the 384 MiB default, split per-resource above the ceiling" now has the least evidence against it of the three prepared options, since the total-heap finding removes the main reason a smaller total default would have been needed.
+
+**Gates, rerun on this commit.**
+- clang-format 23.1.3: clean.
+- WSL GCC 13 / Clang 18 `-Werror`, whole tree, all four configurations: clean.
+- `anno_render_gpu_tests`, native MSVC Release, `ANNO_GPU_ADAPTER=RTX`, full suite: **135/135 test cases, 80,512,767/80,512,767 assertions, 0 failed** (one more case than the previous round: question 4).
+- `anno_render_gpu_tests`, native MSVC Release, every Radeon-named case (`--test-case=*Radeon*`): **9/9 test cases, 38,095,031/38,095,031 assertions, 0 failed**.
+- CI preflight: PASS.
+- No quiet slot needed or used, per the orchestrator's own note (allocation outcomes, not timings).
+
+**Decisions and reasoning (this addendum).**
+- Built the split pair's two textures from the REAL combined `AtlasPages` (`slice_pages`, a new layer-range copy), not from fresh dummy data: question 4 asks whether splitting holds the real worst case's bytes, which a dummy-data test could not answer - only the heap-stop search past that point (which has no more real data to exhaust) uses dummy blocks.
+- Capped the whole-block search at 32 iterations (`kMaxWholeBlocks`, `REQUIRE_MESSAGE` if exceeded) as a safety net against a runaway loop, even though 7.3 GiB (29 blocks) made it obviously finite in practice on this adapter.
+- Checked `docs/orchestration/STATUS.md`'s reservation list before taking a number this time, as asked, rather than guessing the next unclaimed-looking one.
 
 READY FOR REVIEW.

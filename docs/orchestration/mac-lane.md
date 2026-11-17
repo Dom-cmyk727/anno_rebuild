@@ -16,7 +16,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 |---|---|---|---|---|
 | 0.1 [GATE-RUN ui-info-2d-buildcat](tasks/gate-run-ui-info-2d-buildcat.md) | CLOSED with FAIL: two no-frame cases; warning check passed; candidate NOT ACCEPTED | Candidate `95897a55bc939a185766b7207e69d098997cdb1d`; tree `d65099256a598f7ce82d37ea303b81ff87088542` | Exact-head lookup: no run found | [Final failure review](reviews/2026-11-17-gate-ui-info-2d-buildcat-review.md); eight extra GPU skips also need policy reconciliation |
 | 0.2 [MAC-HEAVY-1b](tasks/mac-heavy-1b.md) | ACCEPTED: publication correction only; Windows landing pending | `8c7155080fbe3e4544f4d4908518859b8e80c4fe` | [44193521811](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44193521811), exact-head docs gate green | [Acceptance](reviews/2026-11-17-mac-heavy-1b-review.md) |
-| 1.1 [TOWN-START-1](tasks/town-start-1.md) | RELEASED to EXECUTOR II MAC | To cut from fetched main; candidate A stays a test fixture | Pending | Pending |
+| 1.1 prerequisite [TOWN-START-SETUP-1](tasks/town-start-setup-1.md) | RELEASED; existing extension context missing at loader boundary | Base `b5c0ada209d94a0082bc88d793c917c7222e6a21` | Pending | Orchestrator confirmed forwarding gap; no gameplay-policy choice |
+| 1.1 [TOWN-START-1](tasks/town-start-1.md) | Measurement waiting for setup-seam review; no world patch authorized | Branch created from `b5c0ada2`; no measurement code/run yet | Pending | Resume explicitly after prerequisite acceptance |
 | 1.2 [WILDLIFE-1a](tasks/wildlife-1a.md) | WRITTEN; queued after 1.1 review; explicit release required | Pure helpers only; to cut from fetched main | Pending | Pending |
 
 ## Review and reporting contract

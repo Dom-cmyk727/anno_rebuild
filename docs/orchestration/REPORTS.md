@@ -14933,3 +14933,81 @@ closest zoom, sound off:
 - `production.md` gets one pointer line; the full reading lives in `ui.md` §11, so it is written down once.
 
 READY FOR REVIEW.
+
+### UI-HARVEST-ICON-1 stage A, fix round 1 (2026-11-17)
+
+The UI lane's independent check (3 skeptics, 1 critic; `cache/uhi/wf/verify-summary.txt`) confirmed the table, the
+triggers, the "bar" as the spinning "?" and the split. I re-read every correction against the bytes before writing it;
+I agree with all of them. Changed in `docs/re/ui.md` §11 and OQ-722:
+- **(a) 16-bit due test.** `0x10072ed0` masks the elapsed time to 16 bits (`and ecx, 0xffff` at `0x10072f1a`) and
+  returns while `repeat > elapsed` (`jg` at `0x10072f20`), re-read. So the small farm's icon 1 (75 000, `0x1006f57c`)
+  and the whaler's icon 1 (90 000, `0x10073a5a`) never appear. The small farm is ISS-150 / `production.md` §4.5, which
+  §11 had contradicted. The whaler is a new case of the same issue (unported; whether to add an ISS row now or at the
+  port is the orchestrator's call). Added the small farm's code 2, 45 000 (`0x1006f5f3`), and the mod-65 536 wrap.
+  E13 rewritten.
+- **(b) Two-line switch.** Re-read `0x10069080`-`0x10069113`: the callers at `0x100690b0` and `0x1006910c` pass new =
+  this line OR the other line, so the Zzz shows only when every line is off. "1 = running" is marked L. A failed owner
+  gate stores no bit.
+- **(c) Drawn icon ≠ passed code.** `0x10073010` sets or clears bit `code`, then draws the lowest set bit 0-3. Added
+  the consequences: switching on with bit 1 set shows KeinRohstoff at once; a set bit 1 hides a later bit 2 until the
+  clear. Every direct caller of the helper passes input 0.
+- **(d)** The `ANIM` field is stated as (0, 16, 80); its unit and the real period are U (OQ-722).
+- **(e) Frame divisor: /40 chosen.** It is the original's confirmed `ANIM_ms / 2` (`annowelt.md`). OQ-722's stage B
+  default is now (game ms / 40) mod 16: 0.64 s per turn if the tick is a millisecond. The tick unit and the
+  no-restart behaviour are labelled adaptations.
+- **(f)** "No blink or fade" is limited to `0x10073010`/`0x10072ed0`; the draw side is not traced.
+- **(g)** "Frames exist for groups 0-2" is P; "drawn at all zooms" is L. The height-source vtables
+  `0x1002185c`/`0x10021a88`/`0x10021bbc` come from a heuristic scan (L).
+- **(h) Owner gate.** It is now written as `[+0x10].slot+0x1c` → `slot+0xc4(3)` == 1. I re-read slot `+0xc4` =
+  `0x1001bea0` (vtable `0x100c2238`): argument 3 → jump table `0x1001bf04` → `0x1001beb3` = u16 `[ecx+0x7a]` (D). That
+  the field is the player's Volk is OQ-033 (L, not re-traced). Side issue in tracked code: the comment on
+  `StatusTracker::shows_icons` in `production.hpp` still says "possibly human player". That is for the orchestrator
+  (code, not this docs packet).
+- **(i)** Frame 13 fits HE 8:56 best. At 8:52 only the curl is visible, because the cursor covers the icon. BAUM = 70 is
+  cited from `forestry.md`, not re-disassembled. Other orange icons in the HE frames were not checked.
+- **(j)** `0x10072fb0` acts only when a bit of the mask is set. "Cleared by the next producing step" is L: not every
+  call site's gate was traced (e.g. `0x1006a0d4`, gated by `+0x29 == 0`).
+
+**Stage B plan (replaces the one above; UI lane, read-only app work, about 3 h).**
+1. **Snapshot.** `PlaySnapshot` gets a per-turn list, collected like `map_figures`, with no state, stream, hash or draw
+   change in the sim. Each entry has: building id, footprint x/y/w/h, sprite height for the lift, and the icon.
+   - The icon is the lowest of {Zzz, bit 1, bit 2}, each counted only where `shows_icons` holds.
+   - Zzz = every line switched off: one switch byte, or all lines of a two-line building.
+   - Bits 1 and 2 come from `status.icons`. The sim never sets bit 0; it is not read.
+2. **Drawing.**
+   - The figure is 1555, 1570 or 1572, at the footprint centre, per zoom group from `assets::figure`, with the frame
+     anchor.
+   - Frame = (game ms / 40) mod 16 on the global clock, with no restart (OQ-722).
+   - The lift is the building's sprite height (OQ-721).
+   - Each of these is labelled an adaptation in the docs.
+3. **Visibility.** Own buildings only (OQ-723) is provisional and can change the "feeling", so the owner confirms that
+   default, or it becomes a `rules` option.
+4. **Known divergence, documented in the packet:** where the original rewrites a due code 1 (non-crop input) or a due
+   code 2 (any input) to code 3, the rebuild shows icon 1 or 2. The small farm's never-shown icon 1 falls out of the
+   sim's u16 test with no extra code.
+5. **Tests.** A collect-function fixture with these cases:
+   - a switched-off workshop → Zzz;
+   - a two-line building with one line off → none, both off → Zzz;
+   - icon bits 1 and 2 → 1;
+   - switch-on while bit 1 is set → 1;
+   - `shows_icons` false → none;
+   - another player's building → none;
+   - a small farm missing input for 80 000 t → none.
+
+   Plus a picture check of the icon against the decoded frame at each zoom, and an owner check of the forester case.
+
+**Sim proposal for the orchestrator: code 3 "no road".**
+- (a) RE packet, docs only, about 2-3 h: `0x100720e1`-`0x10072382` (rest of `0x10071f40`) and `0x10072390`, to close
+  OQ-720.
+- (b) Sim packet, 3-4 h if the existing road graph answers the query, about 6 h if it needs a new search:
+  - `Status::NoRoad = 3`;
+  - the rewrite in `StatusTracker::report` with a predicate per building class;
+  - the predicate itself;
+  - tests.
+
+  The code field keeps its width, but a new value appears in the saved building payload and in the checksummed state,
+  so the packet notes the save and checksum impact (the state-stream version, if the stream checks enum ranges).
+
+The UI then adds figure 1571 with no further RE.
+
+READY FOR REVIEW.

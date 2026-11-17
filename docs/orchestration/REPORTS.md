@@ -12805,3 +12805,58 @@ without GPU, 80 files, clean on both compilers. MSVC Release build clean (warnin
 Whether 2 px padding is enough for 1c's real dilation/upload code is for 1b/1c to confirm.
 
 READY FOR REVIEW.
+
+## RENDER-DIRECT-1a addendum — the orchestrator's CHANGES REQUESTED review, resolved — READY FOR REVIEW (same branch, new commits)
+
+Review: `docs/orchestration/reviews/2026-11-17-render-direct-1a-review.md`, orch/board-next `8281cd4d`.
+Verdict quoted: **CHANGES REQUESTED**. The measurement itself (tool, test, corpus run) was accepted
+as it was; four findings (F1-F4) asked for document and summary-output changes. No new corpus run
+beyond the one already made: `--atlas-report` was extended to also sum the existing per-group
+frame sets (not re-walk scene objects), then run once more to produce the new rows.
+
+**F1 (the real budget check: all three groups, and the adjacent pair a zoom crosses) — ends in a
+QUESTION, as the packet allows.** `--atlas-report` now also writes, per scene, the packed bytes of
+groups 0+1+2, 0+1 and 1+2 (same candidates, same run). The RTX 4090 holds all three groups with
+one mip level at every candidate measured (worst 360 MiB of 512). The iGPU does **not** hold the
+adjacent pair for the worst scene found even with no mips at all:
+`Scenes/0010SingleEndlos/02_1024_easy_128.sze` groups 0+1 need 272 MiB (2048 px/2 px, the cheapest
+candidate) against its 256 MiB budget — 16 MiB over, every other candidate worse. QUESTION written
+in `atlas.md` §4 (scene, bytes, four options with their costs); not decided here, as instructed.
+
+**F2 (mips are the owner's decision, not a layout choice) — the full-chain candidate was wrong at
+this padding.** A mip level *n* needs 2ⁿ px of padding or atlas neighbours bleed in; 2 px supports
+exactly one level, not a chain (a real chain for a 2048 px page would need 2048 px of padding).
+Replaced the `full`/4/3 rows with `one_level`/+25% (`kOneMipLevelFactor`, code comment has the
+derivation); re-ran. `atlas.md` §7 now calls the mip level a proposal with the measured facts
+(the groups' own ≤2.1x mip ladder, the full-chain padding problem, each option's cost against
+both budgets), not a chosen layout value. Added OQ-096b next to OQ-096 for both open decisions
+(the mip level, and F1's budget QUESTION).
+
+**F3 (figures are start units only) — reworded, no "trivial" claim left.** Removed "figures do not
+change the fit conclusion" and the "a few hundred KB to a few MB" estimate. `atlas.md` §5 now says
+plainly that `scene.units` is the scenario file's own starting ships/soldiers, not a running game's
+carriers/residents/animals/added ships, which the loader cannot see; gives the one number this
+measurement can give (the measured maximum across the whole corpus: 3,401,840 bytes / 74 frames,
+`Scenes/0201SingleAddOn/single38.sze` group 0) and says the figure class needs its own evicting
+budget sized later, from a running game. §6's player-colour byte estimates are marked as resting
+on the same start-units measurement.
+
+**F4 (the 40.6% static-pixel finding is green matching green, not player colour) — rephrased.**
+`atlas.md` §6 now says plainly that the decoder's green-dominance test cannot be applied to static
+frames to find player colour (it matches ordinary grass/trees/painted parts just as readily), not
+that "a meaningful share of pixels would be recoloured". Added OQ-641 (whether any placed static
+object is ever drawn in the owner's colour through a different mechanism than this test can see,
+referencing OQ-022's own `Flagge01_01.PCX`/`EffectsMulti` finding) since OQ-022 itself does not
+cover that practical question.
+
+**Gates re-run after the code change:** `clang-format` clean; WSL GCC 13/Clang 18 `-Werror`, same
+413/80-file split, same pre-existing `extensions_test.cpp` failure (untouched by this task), no new
+one; native MSVC build clean; full 519-scene corpus re-run, 0 refused, 7m13s (same timing and
+per-group worst case as before, confirming the extension did not disturb the existing measurement).
+
+**Also noted:** the earlier TRACE-COLS-1-follow-up REPORTS heading used "ACCEPTED" on its own
+authority; the project's convention is to report "READY FOR REVIEW" and let the review's own
+verdict stand as quoted, not to declare acceptance in an executor's own heading. Will follow this
+from here on.
+
+READY FOR REVIEW.

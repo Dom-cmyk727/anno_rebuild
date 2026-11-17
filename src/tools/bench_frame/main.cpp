@@ -2638,12 +2638,18 @@ pack_frames(const std::map<render::SpriteKey, std::pair<std::uint32_t, std::uint
     return result;
 }
 
-/// `page_size` layers' GPU byte cost with a full mip chain, on top of the base page bytes
-/// `pack_frames` reports: each halving level adds a quarter of the one before it, so the whole
-/// chain down to 1x1 is the geometric series 1 + 1/4 + 1/16 + ... -> 4/3 of the base (an exact
-/// limit for a square power-of-two texture; the few missing terms below 1x1 are negligible). This
-/// is the standard mip-chain memory formula, not a measurement: flagged as a formula, not a guess.
-inline constexpr double kMipChainFactor = 4.0 / 3.0;
+/// One extra mip level's GPU byte cost, on top of the base page bytes `pack_frames` reports: a
+/// level at half resolution in each dimension is a quarter of the base area, so +25%. Not a full
+/// chain: a mip level n needs 2^n px of padding on every packed frame or its neighbours in the
+/// atlas bleed into it when the GPU samples past the edge, so with the padding this task measures
+/// (2 px, 4 px) only one level (2^1 = 2 px) is ever valid without more padding than either
+/// candidate gives - a genuine full chain down to 1x1 for a 2048 px page would need 11 levels,
+/// i.e. 2^11 = 2048 px of padding, not a usable candidate. One level is also most of the benefit
+/// the zoom groups themselves give: their tile widths (84/42/20/10 px, docs/app/window-trace.md
+/// "Zoom groups and their tile widths") never shrink more than about 2.1x before the next group
+/// takes over, so a single half-resolution mip covers nearly all of the minification a zoom
+/// between groups needs. This is a formula, not a measurement: flagged as one, not a guess.
+inline constexpr double kOneMipLevelFactor = 1.25;
 
 /// Whole file, no decode (mirrors app/src/loader.cpp's own private read_all: plain file I/O).
 std::optional<std::vector<std::uint8_t>> atlas_read_all(const fs::path& p) {
@@ -2696,6 +2702,10 @@ GpuLimitsRow query_gpu_limits(std::string_view which) {
 int run_atlas_report(const fs::path& game_dir, const fs::path& file, const Options& o) {
     const auto started = std::chrono::steady_clock::now();
     std::string tsv;
+    // "group" is a zoom group (0/1/2) for a per-group row, or one of "0+1+2"/"0+1"/"1+2" for a
+    // row summing that group's own frame sets (F1: ADR 0007 keeps all three resident at once; a
+    // zoom crosses one adjacent pair). A sum row's descriptive columns (static_frames ..
+    // figures_used_bytes) are 0: those facts are per group, not summable into one number.
     tsv += "# scenes\n";
     tsv += "scene\tgroup\tstatic_frames\tstatic_bytes\tstatic_instances\twater_frames\t"
            "water_bytes\twater_shadow_frames\twater_shadow_bytes\tenhanced_extra_frames\t"
@@ -2707,7 +2717,7 @@ int run_atlas_report(const fs::path& game_dir, const fs::path& file, const Optio
     };
     static constexpr std::array<PageSpec, 4> kSpecs = {
         {{2048, 2}, {2048, 4}, {4096, 2}, {4096, 4}}};
-    static constexpr std::array<const char*, 2> kMipNames = {"none", "full"};
+    static constexpr std::array<const char*, 2> kMipNames = {"none", "one_level"};
 
     const std::vector<fs::path> scenes = discover_scenes(game_dir, file);
     std::size_t loaded_ok = 0, refused = 0;
@@ -2735,6 +2745,14 @@ int run_atlas_report(const fs::path& game_dir, const fs::path& file, const Optio
         const render::Scene& scene = *loaded.value().scene;
         const std::size_t group_count =
             std::min<std::size_t>(scene.levels().size(), render::kGroups);
+        // F1 (orchestrator review, 2026-11-17): ADR 0007 keeps all three groups' atlases resident
+        // at once (decision 2), and the owner's seamless-zoom rule means a zoom crossing two
+        // groups needs both resident together, not one evicted while the zoom runs. Kept per
+        // group here so the sums below are computed from the same frame sets, not re-walked.
+        std::array<std::map<render::SpriteKey, std::pair<std::uint32_t, std::uint32_t>>,
+                   render::kGroups>
+            combined_by_group;
+        std::array<bool, render::kGroups> group_present{};
         for (std::size_t g = 0; g < group_count; ++g) {
             const auto group = static_cast<std::uint32_t>(g);
             AtlasFrames static_frames, water_frames, enhanced_eligible;
@@ -2799,6 +2817,8 @@ int run_atlas_report(const fs::path& game_dir, const fs::path& file, const Optio
             std::map<render::SpriteKey, std::pair<std::uint32_t, std::uint32_t>> combined =
                 static_frames.frames;
             combined.insert(water_frames.frames.begin(), water_frames.frames.end());
+            combined_by_group[g] = combined;
+            group_present[g] = true;
 
             for (const PageSpec& spec : kSpecs) {
                 const PackResult packed = pack_frames(combined, spec.page_size, spec.padding);
@@ -2819,7 +2839,7 @@ int run_atlas_report(const fs::path& game_dir, const fs::path& file, const Optio
                     const std::uint64_t bytes =
                         mip == 0 ? packed.bytes
                                  : static_cast<std::uint64_t>(static_cast<double>(packed.bytes) *
-                                                              kMipChainFactor);
+                                                              kOneMipLevelFactor);
                     // fill_ratio is always against the un-mipped page bytes: mips are extra GPU
                     // storage on top of the same pages, not a second packing of the rectangles.
                     const double fill_ratio = packed.bytes == 0
@@ -2846,6 +2866,66 @@ int run_atlas_report(const fs::path& game_dir, const fs::path& file, const Optio
                         kMipNames[mip], static_cast<unsigned long long>(packed.pages),
                         static_cast<unsigned long long>(bytes),
                         static_cast<unsigned long long>(packed.rect_bytes), fill_ratio);
+                    tsv += line;
+                }
+            }
+        }
+
+        // F1: the sums ADR 0007's own "all three resident" rule and the owner's seamless-zoom
+        // rule need - all three groups together, and the two adjacent pairs a zoom crosses - from
+        // the same per-group frame sets above, not a second corpus walk. Descriptive columns
+        // (static_frames, water_frames, ...) are per-group facts with no single meaning for a
+        // sum, so they are left at 0; only the packing columns are. "group" names the sum.
+        struct GroupSum {
+            const char* label;
+            std::array<std::size_t, 3> groups;
+            std::size_t count;
+        };
+        static constexpr std::array<GroupSum, 3> kSums = {
+            {{"0+1+2", {0, 1, 2}, 3}, {"0+1", {0, 1, 0}, 2}, {"1+2", {1, 2, 0}, 2}}};
+        for (const GroupSum& sum : kSums) {
+            bool all_present = true;
+            for (std::size_t i = 0; i < sum.count; ++i) {
+                if (sum.groups[i] >= group_count || !group_present[sum.groups[i]]) {
+                    all_present = false;
+                    break;
+                }
+            }
+            if (!all_present) {
+                continue;
+            }
+            std::map<render::SpriteKey, std::pair<std::uint32_t, std::uint32_t>> merged;
+            for (std::size_t i = 0; i < sum.count; ++i) {
+                merged.insert(combined_by_group[sum.groups[i]].begin(),
+                              combined_by_group[sum.groups[i]].end());
+            }
+            for (const PageSpec& spec : kSpecs) {
+                const PackResult packed = pack_frames(merged, spec.page_size, spec.padding);
+                if (!packed.oversized_ids.empty()) {
+                    oversized_notes.push_back(scene_file.string() + " groups " + sum.label +
+                                              " page " + std::to_string(spec.page_size) +
+                                              " padding " + std::to_string(spec.padding) + ": " +
+                                              std::to_string(packed.oversized_ids.size()) +
+                                              " frame(s) too large for one page even alone");
+                }
+                for (std::size_t mip = 0; mip < kMipNames.size(); ++mip) {
+                    const std::uint64_t bytes =
+                        mip == 0 ? packed.bytes
+                                 : static_cast<std::uint64_t>(static_cast<double>(packed.bytes) *
+                                                              kOneMipLevelFactor);
+                    const double fill_ratio = packed.bytes == 0
+                                                  ? 0.0
+                                                  : static_cast<double>(packed.rect_bytes) /
+                                                        static_cast<double>(packed.bytes);
+                    char line[1024];
+                    std::snprintf(line, sizeof line,
+                                  "%s\t%s\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t%u\t%u\t%s\t%llu\t"
+                                  "%llu\t%llu\t%.4f\t\n",
+                                  scene_file.string().c_str(), sum.label, spec.page_size,
+                                  spec.padding, kMipNames[mip],
+                                  static_cast<unsigned long long>(packed.pages),
+                                  static_cast<unsigned long long>(bytes),
+                                  static_cast<unsigned long long>(packed.rect_bytes), fill_ratio);
                     tsv += line;
                 }
             }

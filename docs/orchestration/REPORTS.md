@@ -14774,3 +14774,48 @@ READY FOR REVIEW.
   - The OQ numbers used are 704-706, so 707-709 remain reserved.
 
 READY FOR REVIEW.
+
+**Stage C addendum (2026-11-17): corrections from the UI lane's independent check, and the updated stage D plan.**
+- **What I verified myself, all agreeing with the check:**
+  - the ship call `0x1004222e`-`0x10042273` (radius 14, flags 5, only while `(state & 7) == 1`);
+  - the scout call at `0x100365dc` (radius 8, flags 7);
+  - AnnoScene's clear `0x1000898f`-`0x100089d3`;
+  - the second owner-change OR at `0x100a869d`;
+  - the drought "+2" on the tile's object id (`0x1008b2d9`, `0x1008b2e5`);
+  - the table index `[(y − y0) & 3][(x − x0) & 7]`.
+
+  I have no disagreements. My first version had five errors: it called `0x1008041f`/`0x100804ca` world calls
+  (they are island SetHitPoints calls); it said a ship reveal was unproven; it read the "+2" as a counter; it gave
+  the wrong table index; and it said a crop the climate forbids has no icon (wine on WUESTE does have one).
+- **Docs:** `ui.md` 5.6 stage C rewritten, and the main table's climate-mask row annotated. Updated:
+  `production.md` 4.3 (the crop test, the dry-variant chain, the recoveries), `annoscene.md` §5 step 10 (the
+  overwrite is unconditional, on the INSELLNK path only, with random marks; the set-up clear), `annowelt.md`
+  (new section: the `+0xa6` writers, the reveal flags, world `+0xcc`/`+0x130`, island `+0xcc` = SetHitPoints),
+  `insel.md` (ANBAU semantics; 29 templates lack KARTOFFEL, 6 lack KRÄUTER, named).
+- **OQs:**
+  - 701 and 702: answered.
+  - 704: answered. Still open: the reach edge, the start-of-game discovered state, the scout's deposit pass.
+  - 705: answered. Still open: a foreign building on an undiscovered island.
+  - 706: answered. Still open: the output loss, a farm built after a well, objects 749/753/757.
+  - New OQ-707: desert islands show wine, which cannot grow there.
+  - OQ numbers 708-709 stay free.
+- **HE recipe**, now six steps in 5.6 stage C:
+  1. the start-of-game discovered state;
+  2. the reveal distance from a moving ship, and an anchored ship revealing nothing;
+  3. a click on an undiscovered island;
+  4. 50 % against 100 % (dry fields, output);
+  5. desert wine;
+  6. the scout.
+- **Stage D plan (updated; D3 and D5 are answered and dropped):**
+
+| # | Kind | Packet | Data parsed today? | Size |
+|---|---|---|---|---|
+| D1 | (b) sim | **Island crop list (property 11):**<br>- decode `ANBAU` (names → ware `0x38..0x44` bits, base `0xF009`, 0 for climate 0) with round-trip and corpus tests;<br>- add an `Island` field (state number or extension tag per ADR 0006, the orchestrator decides);<br>- on INSELLNK links, overwrite it with `0xF009 \| raw marks`;<br>- save and hash it | `ANBAU`: **no** (`insel.md` semantics only, not decoded; `tools/map2_opening.py` names it). Raw marks: **yes**, `src/sim/src/island_links.cpp` `resolve_island_links` → `ResolvedLink::raw_marks` (used today only for the `LinkRawMaterials` warning, `scenario_formats.cpp` ~2151) | 3-4 h |
+| D2 | (a) UI | **The bars:**<br>- publish the crop list in `TerritoryIsland`;<br>- draw `STATUSBAR_BALKEN` at 100 / 50;<br>- drop the `balken_*` masks;<br>- pixel check on `hud_idle_running`.<br>Keeps the raw-climate segment table, with desert wine (OQ-707) as the original shows it | needs D1 | 2-3 h |
+| D4 | (b) sim | **Discovery by a moving ship and by the scout:**<br>- a moving ship ORs its owner into `Island::players_present` for every island owning an 8 x 8 chunk within ± 14 tiles, every movement step;<br>- the scout does the same within ± 8 tiles on its own island;<br>- deterministic, no PRNG.<br>The map set-up clear and the owner-change path are optional extras | `DISCOVER`: **yes** (`scenario_formats.cpp` ~1211 → `players_present`). Founding: **yes** (`founding.cpp` 470). Ship movement steps: **yes** (sim navigation). The chunk map: **no** (approximate with island rectangles in 8-aligned chunks, as status_bar does). The scout: not in the sim | 3-4 h (ship); scout later |
+| D6 | (b) sim + (c) owner | **The dry-tile growth rule:**<br>- rebuild the fertility nibble grid (`0x10084370` from `Wachstum.dat`);<br>- add the crop test with the well/drought modifiers, the HEAD[0x13] climate check and the property-11 halving;<br>- turn tested tiles dry (712 → 714, 713 → 715) at its six callers.<br>**This changes farm output against today's rebuild** (at 50 % half the fields of a farm die; on desert, wine dies entirely), so its default goes to the owner as a `rules` option (the orchestrator raises it) | `FRUCHTBAR` raw: **yes** (`src/formats/src/insel.cpp` 183 → `Terrain::fertility`). The rebuilt nibble grid, `Wachstum.dat` tables, HEAD[0x13] climate masks: **no** in the sim. Dry variants 714/715: in `Anlagen.dat` (formats parse it) | 4-6 h, split (grid, test, callers) |
+
+  Order: D1 → D2 (visible bars). D4 is independent. D6 waits for the owner's default.
+- Docs only. No build; `ui_layout.py self-test` ok.
+
+READY FOR REVIEW.

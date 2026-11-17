@@ -245,3 +245,11 @@ The class `Load`s do not pass their switch bit *through* slot `+0xac`. In the wo
 - The world position passed to `AnnoDisplay` for buildings and figures (callers of `tDrawSegmentDD2` slot `+0xBC`); the object path in `0x1009f870` uses (tile x, `table[height byte]`, tile y) of the object's record.
 - Unit registry: which classes the pooled path (registry slot `+0x38`) creates and who marks them with `now == 0`; the callers of the reserved-slot bitmap (slot `+0x58`); the two hazards in `0x10097720`/`0x10097770` (OQ-134).
 - Whether a savegame load runs on a new world object or on a cleared one; where the registry's stamp, cursor and expiry list go in a save (OQ-135).
+
+## Island discovery word and the reveal (UI-STATUS-1 C, 2026-11-17)
+
+- Island word `+0xa6` (property `0xe`) writers: constructor/reset `0x1008cba0`, `0x1008c7b9`; `DISCOVER` loader `0x100899b6` (saver `0x1008a687`); founding registration `0x100862c5`-`0x100862dd`; city owner change `0x1002e283`-`0x1002e2a1` and world slot `+0x1b0` = `0x100a8460` (OR at `0x100a869d`; callers AnnoScene `0x100143d4`, AnnoWelt `0x1004607c`, `0x1008c26f`); the reveal with flag 4. AnnoScene's link placement clears one bit at set-up (`0x1000898f`-`0x100089d3`). During play it is only OR-ed. **D**
+- Island slot `+0x130` = `0x10080c10` (`ret 0x14`: x, y, radius, flags, player): flag 4 sets `+0xa6` (`0x10080c1d`), flag 1 the city pass (`0x10080c5f`, ship-founding.md §15.4), flag 2 the deposit/object pass (`0x10081336`). **D**
+- World slot `+0xcc` = `0x1009d9b0`: the square x ± r, y ± r in 8 x 8 chunks, island slot `+0x130` per chunk island (a repeat in a chunk row is skipped, `0x1009da99`). World slot `+0x130` = `0x100a59f0` (`ret 0x10`) is a different method (the chunk-map builder, not read). **D**
+- Callers: a moving ship (ship slot `+0x17c` = `0x10042210`, vtable `0x100c4da4`; `(state & 7) == 1`; world `+0xcc` at `0x10042273`, radius 14, flags 5); the scout (vtable `0x100c3758` slot `+0x18c` = `0x10036570`; island `+0x130` at `0x100365dc`, radius 8, flags 7); founding (flags 1); land units (hook `0x10047a90`, call `0x10047af0`, flags 1). **D**
+- Island slot `+0xcc` is SetHitPoints (`0x10093c10`; no-op `0x10087cd0` in the base vtable), not a reveal.

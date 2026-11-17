@@ -853,7 +853,7 @@ pixels, **L** likely (inferred, not read to the end), **U** unknown (an OQ). Thi
 | The x of the residents icon | The code's x is 400. `hud.txt` measures 401 (sprite-sad 4.74). The 1-pixel difference is not explained; B's pixel check decides. | | D / P |
 | Cost row (UI-STATUS-2, location only) | Source: the armed `iAnnoCursorBau`. Its slot `+4` is the gold cost (`0x10009b3e`); its slot `+0` (ware) / 256 is each material (`0x10009b99`-`0x10009bf5`). Flag 2 is set when the city's owner is the local player (`0x10009b45`-`0x10009b4b`). Drawn only with flags 1 and 2 together: figures raised, cost figures `+0x130..+0x140` shown (`0x10063b65`-`0x10063bdd`; layout `0x100635e7`, `0x1006391b`-`0x100639e5`). Each cost is compared with its stock (`0x10063d88`-`0x10063e22`). A cost above the stock blinks 0xaabbee / 0xee8888 every 250 ms (Tick `0x10064114`-`0x1006419e`); otherwise the colour is 0xaabbee. | | D |
 | `STATUSBAR_ROSHTOFFE` slots | 4 slots, made at `0x10063a17`-`0x10063a61`: x = 547 + 40k (k = 0..3) times the width factor, y = bar row + 2. Each is a 30 × 30 icon with a `STATUSBAR_BALKEN` (5 × 29) child at x + 25 (`0x100656b0`, `push 0x19` at `0x1006576c`), bar maximum 100 (`push 0x64`). The slots start hidden (`0x10064b9e`). `hud.txt`'s 547/587/627 are slots 0-2; slot 3 (667) is used only on DSCHUNGEL islands. | | D / P |
-| ROSHTOFFE content | Shown when the island is discovered (next row). Climate c = island property 7 (`+0xc0`). Mask M[c] comes from jump table `0x10009904`: 0 POLAR `0x18000`, 1 TUNDRA `0xf009`, 2 NORD `0xf949`, 3 PRAERIE `0xf06b`, 4 DSCHUNGEL `0xf6b9`, 5 STEPPE and 6 WUESTE `0xf04d`, any other 0. These are the values of `SimConfig::raw_climate_mask` (AnnoScene `0x10009010`). For i = 0..11 ascending, while fewer than 4 slots are filled, segment i is taken when bit i of M[c] is set, bit i is not in `0xf009`, and i ≠ 7. The slot gets segment i (`STATUSBAR_ROSHTOFFE` id 40 + i; the byte passed is i + `0x38`, which `0x10063ee9` takes back off). | `0x10009870`-`0x100098f6` | D |
+| ROSHTOFFE content | Shown when the island is discovered (next row). Climate c = island property 7 (`+0xc0`). Mask M[c] comes from jump table `0x10009904`: 0 POLAR `0x18000`, 1 TUNDRA `0xf009`, 2 NORD `0xf949`, 3 PRAERIE `0xf06b`, 4 DSCHUNGEL `0xf6b9`, 5 STEPPE and 6 WUESTE `0xf04d`, any other 0. These are the values of `SimConfig::raw_climate_mask` (AnnoScene `0x10009010`), not the crops' own HEAD[0x13] climate masks: on WUESTE the wine icon shows although wine cannot grow there (stage C, OQ-707). For i = 0..11 ascending, while fewer than 4 slots are filled, segment i is taken when bit i of M[c] is set, bit i is not in `0xf009`, and i ≠ 7. The slot gets segment i (`STATUSBAR_ROSHTOFFE` id 40 + i; the byte passed is i + `0x38`, which `0x10063ee9` takes back off). | `0x10009870`-`0x100098f6` | D |
 | Segments per climate | POLAR none; TUNDRA none; NORD 6, 8, 11; PRAERIE 1, 5, 6; DSCHUNGEL 4, 5, 9, 10; STEPPE and WUESTE 2, 6. With none, count 0 hides the row after 2 s. Slots past the count are hidden. A slot whose segment and bar are unchanged is not redrawn (`0x10063eba`-`0x10063ecc`). | as above | D |
 | The GOG shot | GOG `hud_idle_running` shows exactly 6, 8, 11 in slots 0-2: a NORD island. | 2.3 | D + P |
 | `STATUSBAR_BALKEN` | The bar is 100 when bit i is set in island property 11 (`+0xac`), else 50 (`0x100098cb`-`0x100098da`). Property 11 is set at map placement to `0xF009` OR the raw marks (`annoscene.md` §5 step 10). Drawn by `0x10065890`: the bar canvas offset is H − ⌊H · v / 100⌋ + 1, with H = the icon texture's height. So 100 is about the full 29 rows and 50 about half. B's pixel check fixes the exact rows. Reading "half bar = possible in the climate but not fertile here" is L (OQ-702). | `0x10065890` | D / L |
@@ -913,107 +913,111 @@ OQ-703).** `src/app` `status_bar.hpp` holds the rule as a pure function (`pick_s
 | Gold | Always, before the first founding too: the local player's money (`PlaySnapshot::money`, published whenever the local player exists), 0 when the world has no local player | As the original (`0x10063c38`/`0x10063c70`; GOG `hud_idle_running` 500000, HE 00:44); fact `hud.gold` |
 | Facts | `hud.counters` (`gold`, `residents`, `materials+residents`), `hud.counters.city`, `hud.gold`, `hud.status.tile`, `hud.status.island` (slot, `sea`, `none`), `hud.status.city`, `hud.fertility` (`6,8,11` or `hidden`) | `viewer_wiring_ui_status_island` |
 
-**Stage C (2026-11-17, the owner's ui_7 questions; GOG static reads, `py -3.14` capstone/pefile).**
+**Stage C (2026-11-17, the owner's ui_7 questions; corrected 2026-11-17 after the UI lane's independent check,
+`cache/ui-status-1/wf/verify-summary.txt`; GOG 2.0.0.5 static reads; I re-read the ship and scout calls, the
+set-up clear, the object-id store, the table index and the second owner-change writer myself).**
 
-*1. When an island's fertility row appears (the discovery word `+0xa6`, OQ-701).*
+*1. When an island's fertility row appears (the discovery word `+0xa6`, OQ-701, OQ-704).*
 
 | Writer of island word `+0xa6` | Address | When | Conf. |
 |---|---|---|---|
-| Island constructor / reset | AnnoWelt `0x1008cba0` (0), `0x1008c7b9` | New island: nobody | D |
+| Island constructor / reset | AnnoWelt `0x1008cba0`, `0x1008c7b9` | New island: nobody | D |
 | `DISCOVER` record (saves, scenario islands) | loader `0x100899b6`; saver `0x1008a687` | On load | D |
+| Map set-up clears one player's bit | AnnoScene `0x1000898f`-`0x100089d3` (`not`/`and` on property `0xe`, inside link placement `0x10008490`) | New game set-up only; which player and why: L (the pre-placed city's template owner) | D (purpose L) |
 | Founding registration: the founder's bit | `0x100862c5`-`0x100862dd` (setter `0x10087b90` key `0xe`) | A Kontor or market founds a city | D |
-| A city changes owner: the new owner's bit | `0x1002e283`-`0x1002e2a1` (after player slot `+0x8c(&, 2, city)`) | Conquest or takeover | D (trigger names L) |
-| The reveal with flag 4 | island slot `+0x130` = `0x10080c10`, `0x10080c1d`-`0x10080c58` | A caller passes flags with bit 4 | D |
+| A city changes owner: the new owner's bit | `0x1002e283`-`0x1002e2a1`; also world slot `+0x1b0` = `0x100a8460`, OR at `0x100a869d` (callers AnnoScene `0x100143d4`, AnnoWelt `0x1004607c`, `0x1008c26f`) | Takeover paths | D (trigger names L) |
+| **A moving ship of the player** | ship slot `+0x17c` = `0x10042210` (vtable `0x100c4da4`): when `(state & 7) == 1` (`0x1004222e`-`0x10042237`) it calls world slot `+0xcc` (`0x1009d9b0`) at `0x10042273` with radius 14, flags 5, the ship owner's index | Every movement step while sailing | D |
+| **The scout (ERKUNDER)** | vtable `0x100c3758` slot `+0x18c` = `0x10036570`: island slot `+0x130` directly at `0x100365dc`, radius 8, flags 7 | On the island it stands on | D |
 
-- The reveal's callers: founding passes flags 1 only (`0x10085f31`), which never writes `+0xa6`. The
-  only other caller is world slot `+0xcc` (`0x1009d9b0`, `ret 0x14`: x, y, radius, flags, player). It
-  walks the 8 x 8 chunks of the square x ± r, y ± r and calls the reveal once per island met
-  (`0x1009da89`-`0x1009dac4`).
-- Who calls world slot `+0xcc` with flag 4 was **not found**. A sweep of every module's
-  `call [reg+0xcc]` with five pushed arguments finds two world-shaped calls, `0x1008041f` and
-  `0x100804ca`, inside the event handler `0x1007f960` (17 callers, `0x1007cd11`-`0x1007d509`). Both pass
-  flags 0, with radius = an object's slot `+0xf0` value × 60 / 100 (or × 30 / 100). This is OQ-704.
-- So a ship's approach is still unproven in code. The manual says the opposite of "nothing until you
-  land": as the ship nears an island, the information bar shows its climate zone and which crops grow
-  best (`game-mechanics.md` §2, manual p. 11). The HE frames agree: the row shows over islands before
-  any founding (5.6 HE table, 00:52.75-01:41.5). Confidence that a ship reveals: medium (manual + HE),
-  not D.
-- No "explore the island" command exists in 1503's texts. `Texte.dat` (GOG, English) has no
-  "explor…" line. Exploring is the **Scout**'s job (`Scout status`, `Load/unload scout`,
-  `Ore deposit discovered!`, `Resource discovered`, `Culture discovered!`). Per the manual, the scout
-  explores agriculture and finds deposits on a mountain. P for the texts; the scout's effect on
-  `+0xa6` is not read (OQ-704).
-- A click on an undiscovered island: not read (OQ-705; HE recipe step 3).
+- The reveal (island slot `+0x130` = `0x10080c10`, `ret 0x14`): flag 4 sets `+0xa6` (`0x10080c1d`), flag 1
+  runs the city pass (`0x10080c5f`, 5.6/ship-founding §15.4), flag 2 the deposit/object pass (`0x10081336`).
+  Founding passes flags 1 (no `+0xa6`); land units pass flags 1 (hook `0x10047a90`, call `0x10047af0`): they
+  never discover an island. Ships pass 5 (discovery + city pass), the scout 7 (also the deposit pass).
+- World slot `+0xcc` walks the 8 x 8 chunks of the square x ± 14, y ± 14 and calls the island reveal per
+  chunk island, skipping only a repeat of the same island in a chunk row (`0x1009da99`): an island owning a
+  chunk inside that square is discovered, so the reach is about 14 to 21 tiles (the chunk-map builder,
+  world `+0x130` = `0x100a59f0`, was not read). An anchored ship or one just placed reveals nothing.
+- Correction: Stage C's first version called `0x1008041f`/`0x100804ca` world calls with flags 0. Their
+  receiver is the island (`this` of `0x1007f960`), whose slot `+0xcc` is SetHitPoints (`0x10093c10`); the
+  sweep missed the ship call because an `_ftol` call sits between its pushes.
+- During play the word is only OR-ed (permanent, saved in `DISCOVER`); at set-up one bit can be cleared.
+- Which islands are discovered at tick 0 of a new game is not read (OQ-704): a placed ship reveals nothing
+  until it moves; scenario `DISCOVER` words can pre-set bits.
+- No "explore the island" command or text exists in 1503 (`Texte.dat` P); the Scout explores ("Resource
+  discovered", deposit messages). The fertility row needs no scout: a passing ship is enough.
+- **A click on an undiscovered island shows nothing island-specific** (OQ-705): no click path tests the
+  discovery bit; the original has no island info page (island id `0x1300` is not handled by the "?" view,
+  `0x10039ae0`); bare land selects no object (selection factory `0x1001ae10`, kind-4 null at `0x1001977e`,
+  `0x100197eb`), so the "?" tab shows its empty page `0x1a` (P: HE 50.0 s, 142.75 s) and any other tab stays
+  (View `0x1003388a`-`0x10033899`). The status bar, hover-driven, shows gold only there.
 
-*2. What the bars mean (OQ-702).*
+*2. What the bars mean (OQ-702, OQ-706, OQ-707).*
 
-- The segments are crops. The slot keeps ware id `0x38 + i` (`0x10063ed2`). The tooltip's `%a` field
-  names `WARE_ANBAU` line `value − 0x38` (`0x10064e54`-`0x10064e92`; the group is loaded at
-  `0x1006348e`). The 12 `WARE_ANBAU` lines (GOG `Texte.dat`), in segment order:
-  - 0 Grain, 1 Tobacco, 2 Spices, 3 Flax, 4 Sugarcane, 5 Cotton;
-  - 6 Wine, 7 Cocoa, 8 Hops, 9 Silk, 10 Indigo plant, 11 Herbs.
+- The segments are crops: the slot keeps ware `0x38 + i` (`0x10063ed2`), the tooltip's `%a` names
+  `WARE_ANBAU` line `value − 0x38` (`0x10064e54`-`0x10064e92`). In segment order: 0 Grain, 1 Tobacco, 2
+  Spices, 3 Flax, 4 Sugarcane, 5 Cotton, 6 Wine, 7 Cocoa, 8 Hops, 9 Silk, 10 Indigo plant, 11 Herbs (GOG
+  `Texte.dat`). NORD: wine, hops, herbs; PRAERIE: tobacco, cotton, wine; DSCHUNGEL: sugarcane, cotton, silk,
+  indigo; STEPPE and WUESTE: spices, wine; POLAR and TUNDRA: none. Grain, flax and cocoa are never shown.
+- **The bar's climate table is not the crops' own climate mask** (OQ-707). The bar uses AnnoFrame's table
+  `0x10009904` (= `SimConfig::raw_climate_mask`); the growth test uses the crop object's HEAD[0x13] (slot
+  `+0xd4`; AnnoGame `0x1000a5e0`, stored at `0x100093c6`). Climate bits POLAR 0 … WUESTE 6 (order L). Wine
+  716/717 and plantation 822: 0x2c (NORD, PRAERIE, STEPPE). Every other shown pair agrees, but **on a
+  WUESTE island the wine icon shows while wine fields get v = 0 and always come out dry**. Whether HEAD[0x13]
+  also blocks building the wine plantation there is not read. P (Anlagen) + D (code).
+- Two levels, 100 (island property 11 has the crop bit) and 50; no 0 % (`0x100098cb`). D.
+- Where property 11 comes from:
+  - `ANBAU` record (templates, scenario islands, saves), loader `0x10089871`-`0x1008995f`: base `0xF009`
+    (0 when the climate byte `+0xc0` is 0) OR one bit per listed name (`0x1008988f`/`0x10089897`,
+    `0x10089933`-`0x1008993d`), names looked up as ware `0x38..0x44`, at most 13. Saver `0x1008a583`-
+    `0x1008a5b1`.
+  - The 465 `Scenes/Islands` templates list every crop except: 29 lack KARTOFFEL (bit 12, always set
+    anyway), 6 lack KRÄUTER: `D_128x128_0015_1B_Azteken`, `N_128x128_0023_1B`, `N_256x256_0002_2B` (lan5's
+    NORD island), `N_256x256_0006_2B`, `Pr_080x080_0003_2B`, `T_080x080_0001_0B_Po`. P (byte scan,
+    `wf/anbau/scan2.py`).
+  - A new game's INSELLNK link placement (`0x10008490` from `0x10009550`) overwrites it unconditionally
+    with `0xF009 | raw marks` (`annoscene.md` §5 step 10, POLAR included); the marks are drawn at random per
+    link from the scenario's `ROHSTOFF` counts (`0x10009170`, link `+0x112`). Scenario and save `INSEL5`
+    islands keep their `ANBAU` value.
+- Readers: the status bar (AnnoFrame `0x100097ef`); the AI (CompLogic `0x1001317f`, `0x10020eeb`,
+  `0x100210ca`, `0x10023c98`, `0x1002b602`; CompLogicClassic `0x1001179f`, `0x1001f48b`, `0x1001f66a`,
+  `0x10021638`, `0x10028d72`; purpose not read); the crop test below.
+- **The crop test** (island slot `+0x140` = `0x100817c0`, `ret 0xc`: x, y, crop object; answers "dry"):
+  1. v = the tile's fertility nibble × 10 (the nibble rebuilt by `0x10084370`; its 0..10 range is not
+     checked here).
+  2. Tile modifiers (`0x100818a7`-`0x10081959`): well bit only: × 133 / 100, capped at 100; well bit and
+     the chunk's drought flag (mask 0x2 at chunk `+4`, set by the drought spread `0x1008b0cd`): × 2/3, then
+     × 133 / 100, capped; drought only: × 55 / 128, no cap; neither: unchanged.
+  3. v = 0 when the crop's HEAD[0x13] climate mask lacks the island climate (`0x1008195d`-`0x1008197a`).
+  4. **v halved when island property 11 lacks the crop bit** (`0x1008197f`-`0x10081997`).
+  5. L = (v + 5) / 10; answer = table `0x100c9c28` byte `[L][(y − y0) & 3][(x − x0) & 7]` == 0
+     (`0x100819b9`-`0x100819e4`): "1" on 32, 29, 26, 23, 20, 16, 13, 10, 7, 3, 0 of 32 cells for L = 0..10.
+- **"1" means the tile's crop is, or becomes, the dry variant** (ROHSTDUERR, HEAD[0x26], ware UNUSED, never
+  harvested): 712 → 714, 713 → 715. Callers: player placement (AnnoFrame `0x1004ab37`), AI (CompLogic
+  `0x100353d6`), auto-plant (`0x1002c6e1`), the drought tick `0x1008aeb0` (`0x1008b359`, `0x1008b462`), a
+  well change (`0x100819f0`), EVENTINSEL (`0x1008ae1e`). In the drought tick the "+2" at `0x1008b368` adds 2
+  to the tile's object id (`0x1008b2d9`, `0x1008b2e5`). Healthy crops grow at normal speed: the growth visit
+  `0x1008b5f0` never calls the test. So at 50 % half the field tiles (16 of 32 per 8 x 4 block on full
+  fertility) are dead; the farm's output loss depends on the harvest cycle (production.md 4.5), not read.
 
-  So NORD's 6, 8, 11 are wine, hops and herbs. That matches HE's grapes and two plants
-  (`HE_UI_1-analysis.md` §(c)). Grain and flax (bits 0, 3) are always set and never shown; cocoa (7)
-  is skipped by `0x100098c1`. D (mechanism), P (texts).
-- **Where property 11 comes from:**
-  - Template, scenario-island and save records `ANBAU`, loader `0x10089871`-`0x1008995f`. The base is
-    `0xF009` (0 for climate byte 0, POLAR), then one bit per listed crop name. Each name is looked up
-    as ware `0x38..0x44`, bit = ware − `0x38`, up to 13 names. The saver is `0x1008a583`-`0x1008a5b1`.
-  - Every one of the 465 `Scenes/Islands` templates lists all crop names (GETREIDE … KRÄUTER,
-    KARTOFFEL), with small variants: 13 files lack KARTOFFEL and 5 lack KRÄUTER (P, byte scan). So a
-    template island has every crop at 100 %.
-  - A new game's link placement then overwrites the property with `0xF009 | raw marks`
-    (`annoscene.md` §5 step 10). The marks come from the scenario's `ROHSTOFF` counts (kinds 1, 2, 4,
-    5, 6, 7, 8, 9, 10, 11 = crop bits).
-  - There are two levels only, and no 0 % in the bar: 100 = the bit is set, 50 = not set
-    (`0x100098cb`). A crop that the climate does not allow has no icon at all.
-- **Who reads property 11:** the status bar (AnnoFrame `0x100097ef`); the AI (CompLogic `0x1001317f`,
-  `0x10020eeb`, `0x100210ca`, `0x10023c98`, `0x1002b602`; CompLogicClassic `0x1001179f`, `0x1001f48b`,
-  `0x1001f66a`, `0x10021638`, `0x10028d72`; purpose not read); and the island's crop-growth test.
-- **The crop-growth test** is island slot `+0x140` = `0x100817c0`, `ret 0xc` (x, y, crop object), called
-  from the island's field sweep (`0x1008b359`). The steps:
-  1. v = the tile's fertility nibble (0..10, rebuilt by `0x10084370`, production.md §4.3) × 10.
-  2. Two tile/object flag cases scale v (× 2 / 3, or × 55 / 128); not read further.
-  3. v is capped at 100.
-  4. v = 0 when the crop object's climate mask (object slot `+0xd4`) lacks the island's climate
-     (`0x1008195d`-`0x1008197a`).
-  5. **v is halved when island property 11 lacks the crop's bit** (`0x1008197f`-`0x10081997`).
-  6. L = (v + 5) / 10. The answer is the byte of the 11 × (4 × 8) table `0x100c9c28` at
-     `[L][x & 3][y & 7]` == 0 (`0x100819d6`-`0x100819e4`).
-
-  The table gives "1" on 32, 29, 26, 23, 20, 16, 13, 10, 7, 3 and 0 of the 32 cells for L = 0 … 10 (P).
-  So a crop at 50 % (L 5) gets "1" on half the cells, at 100 % (L 10) on none. On "1" the sweep adds 2
-  to a counter word and posts redraw 0xce (`0x1008b364`-`0x1008b386`).
-  - The arithmetic and the table are D.
-  - "1 = the plant does not grow / withers on that tile" is L. The owner's 1602 memory points that way:
-    at 50 % the crops grow less efficiently. This is OQ-706.
-  - The rebuild has no such rule today.
-
-*3. Own resources and citizens (5.6 re-confirmed, D).*
-
-- Before the first founding: gold only, plus the fertility row over discovered islands.
-- Own territory: gold, materials and residents.
-- Own island outside every territory: gold only, plus the row; with a building armed, its corners pick
-  an own city.
-- A foreign city: gold, plus its residents only if it knows the player.
-- The owner's "you have to settle on an island to have your own resources there" matches the
-  territory rule.
+*3. Own resources and citizens (5.6, D).* Before founding: gold, plus the fertility row over discovered
+islands. Own territory: gold, materials, residents. Own island outside every territory: gold and the row;
+with a building armed, its corners pick an own city. A foreign city: gold, plus its residents only if it
+knows the player. The owner's "you have to settle on an island to have your own resources there" matches.
 
 *4. HE recipe for the owner (sound at 0 %; the owner plays HE).*
 
-1. New endless game. Before founding, sail the start ship slowly towards an island you have not
-   passed yet, with the mouse on that island. Note the distance (in island widths) at which the
-   fertility icons first appear, and whether they stay after the ship sails away.
-2. Do the same with a second ship of yours, and note whether an AI ship passing an island changes
-   anything for you.
-3. Click (left) an island no ship of yours has been near. Note what the status bar and the right
-   panel show.
-4. On an island with a half bar and one with a full bar for the same crop (the status bar tooltip
-   names the crop), build the same farm. Compare its output in the production statistics after 10 game
-   minutes.
-5. If a scout is available: land it on an undiscovered island, and note when the icons and "Resource
-   discovered" appear.
+1. **Start state:** in a new endless game, before moving any ship, put the mouse on the start island and on
+   two near islands. Note which show fertility icons.
+2. **Reveal distance:** sail one ship slowly towards a new island with the mouse on it. Note the distance in
+   tiles (or island widths) when the icons appear (the code predicts about 14 to 21 tiles), and that they
+   stay after the ship sails away. Stop the ship before it gets close to another island: an anchored ship
+   should reveal nothing more.
+3. **Click:** left-click an island none of your ships has been near: expect nothing island-specific.
+4. **50 against 100 %:** build the same farm on an island with a half bar and on one with a full bar for
+   that crop; after 10 game minutes count the dry (brown) fields and compare the output.
+5. **Desert wine (OQ-707):** on a WUESTE (desert) island, check that the bar shows spices and wine; then
+   try to build a wine plantation there and, if it builds, whether its fields come out dry.
+6. **Scout:** land a scout on an undiscovered island; note when the icons and "Resource discovered" appear.
 
 ## 6. `data/ui/` layout format
 

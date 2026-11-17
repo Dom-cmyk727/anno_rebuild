@@ -30,6 +30,8 @@ says who is doing what, where the work is, and what it waits on.
   includes kept in `src/app/src/viewer.cpp`, and in `docs/open-questions.md` UI-TABS-1's code-read line plus
   OQ-641 to 644 after the candidate's entries. Fetchable as `refs/candidates/ui-tabs-a`. **The Mac's one full
   run on `09315620` covers all three candidates**; this PC runs its part after `945c3216`'s.
+  **The owner's landing OK for all three, 2026-11-17:** "Also land everything once the test is done". So they land
+  in order once this PC's parts and the Mac's run pass with nothing new failing.
 - **The owner decided OQ-096 and OQ-096b** 2026-11-17. Asked "Raise it to 384 MiB, one mipmap level on both
   cards (my recommendation)", against keeping 256 MiB with no mips on the iGPU or deciding on a build, the
   owner answered "your recommendation". So `atlas_budget_mb` defaults to 512 MiB discrete and 384 MiB

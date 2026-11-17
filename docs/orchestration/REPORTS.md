@@ -14849,3 +14849,34 @@ landing candidate's own build): both pass, run directly with `python3 -I tools/l
   silently inheriting someone else's justification.
 
 READY FOR REVIEW.
+
+## RE-HE-PRODUCTION-1 — History Edition production, worker and cart code against the GOG reading — READY FOR REVIEW
+
+Branch `task/RE-HE-PRODUCTION-1`, research only (docs). Owner request `he_01.mp4` 7:30. The full result is in `docs/re/forestry.md` §8, summarized in `production.md` ("HE comparison"). HE side: `AnnoWeltAddOn.dll` (x86, RTTI) and the running x64 `AnnoWelt.dll`, plus both `AnnoGame` builds. Module sha256 values are in §8.
+
+**Result.** Every function the forester (job `0x2a`, `tRouteMaeher`: step A find/claim/walk, step B wait/cut/+256, step C home), the farm and small-farm ticks, the growth visit, the claim/candidate/cut island slots, the send and the market cart's pickup use is **identical**: same logic recompiled, read D or S in both HE modules, with addresses in the §8.2 table. None is "relocated only", because a different compiler built HE. **One rules difference (changed):** HE converts `PROD3` at load in SSE single precision, which makes `need1` of 1010 and 3979 different (HE 7/4, GOG 6/3 at 53 or 64 bits); none of the forester or farm values differ. That settles OQ-032 for HE. **One open precision difference:** the figure tick is single precision in HE and x87 in GOG (new OQ-710). Data: `Anlagen.addon` = GOG `Anlagen.dat`. The 801 and 809 gameplay records are equal in HE `.dat`/`.classic` too; only `COLORS`, graphics and `VERSION2` differ, plus 709's gold cost in `.classic`. Figures 101/102/106/107/109/110/203/220 are equal. Small farm: line 0's figure 106 runs the forester's route on potato fields (709 → 708), capacity 3 t and 7.0 s per field, so up to three fields per trip and no separate sowing step. Line 1's animals run `tRouteWeide`, whose step B is the same cut on `GRAS`.
+
+**Changed files:** `docs/re/forestry.md` (§8, status line), `docs/re/production.md` (HE section), `docs/open-questions.md` (OQ-032 HE line, OQ-710), `docs/research/he-vs-gog-comparison.md` (one correction line). No code, no tests, and no original bytes or listings.
+
+**Gates:** docs only, so no build or test lane applies. `git diff --check` is clean. Evidence came from read-only scripts in the session scratchpad (RTTI lister, side-by-side function tables, token comparer, exact-rounding `PROD3` emulator over all 921 entries), not committed. Commit `836863a5`.
+
+**NOT_RUN:**
+- Every runtime observation: forestry NOT_RUN-1/2, and whether OQ-710 ever moves a tick. These need the HE runner.
+- The other modes of the claim read/write and the candidate list.
+- `tJobWalkRohstWeide`'s tile filter.
+- The fur trapper tick.
+- The HE64 job factory and the attach/release functions.
+- The HE64 route-type table start.
+
+**Decisions and reasoning:**
+- **Verdict scale.** "identical" means same logic recompiled; "relocated only" means byte-identical except for addresses; "changed" means a behavioural difference. HE was built by MSVC 14.16 and GOG by MSVC 6, so nothing can be "relocated only". Claiming it would overstate the evidence.
+- **Both HE modules.** HE86 carries the class names and the same architecture, so it is the precise twin. HE64 is what `Anno1503.exe` runs, which matters for the owner rule "HE for live behaviour". The key functions (farm tick, step A, callback, step B arrival, cut, claim, candidates, growth visit, small farm line, status helper) were therefore read in HE64 as well, not inferred from HE86.
+- **Locating functions.** HE86 functions were located by RTTI, with tables matched slot by slot. HE64 functions were located by content (constants and call patterns), not by slot arithmetic. HE64's tables reorder some slots (prod and island tables shift by one in places), so arithmetic would have picked wrong functions; the farm tick at HE64 row 35 is shared by both farm classes and is not the tick.
+- **Depth.** Where token comparison showed only compiler differences, the label is S. Every function with a real token difference was read (D): farm tick, send, small farm, cut, claim and candidates mode 0, growth visit, cart score.
+- **`PROD3` conversion.** The integers were checked over all 921 entries with exact rational rounding (24/53/64 bits against HE single), not a few spot values. HE computes every step in single precision, so its values follow from the code without a runtime capture.
+- **OQ numbers.** Main ends at OQ-690, `task/UI-TABS-1` uses 691-695, and UI-STATUS-1 holds 700-709. The new question takes **OQ-710**; 711-719 are left unused. The HE result for OQ-032 is a line in OQ-032 itself, not a new question, because it settles HE's side of that question.
+- **The `he-vs-gog-comparison.md` correction.** Its §5 "growth sweep" compared the 300 s event slot. A one-line correction there points to §8.2 rather than leaving a wrong lead.
+
+**QUESTIONs:** none.
+
+READY FOR REVIEW.

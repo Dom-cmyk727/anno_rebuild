@@ -14849,3 +14849,96 @@ landing candidate's own build): both pass, run directly with `python3 -I tools/l
   silently inheriting someone else's justification.
 
 READY FOR REVIEW.
+
+## UI-BUILDCAT-1: the construction menu's category column (2026-11-17)
+
+Branch `task/UI-BUILDCAT-1`, base origin/main `4dfdd9b7`, code head `89265776`.
+
+**Why the column was missing.** No draw path ever drew it. `data/ui/hud.txt` held one element
+`viewbautab_0` at (779, 302) (the part of tab 0 right of the panel edge), used only as the hit
+rectangle; `compose_screen` (C++ and Python), `draw_live_screen_xrgb` (CPU window) and
+`draw_live_screen_rgba_into` (GPU overlay) had no call for it. `masks.txt` `category_column`
+(779, 300) 29 x 400 hid the area from the GOG comparison, and `live_screen_matches_oracle` /
+`ui_mock_matches_oracle` compare against the Python oracle, which did not draw it either, so all
+checks agreed on "nothing there".
+
+**Evidence.**
+- GOG View.dll `0x1002bb4f`: copies `VIEWBAUTAB`; loop `0x1002bb93`..`0x1002bc8e` (`inc ebp; cmp
+  ebp, 8`) creates one gadget class `0xb0d` per category, size `push 0x2e; push 0x2a` (42 x 46,
+  `0x1002bbea`), property `0x198` = texture `esi` (+2 per tab, `0x1002bc88`), `0x1c9` = the k-th
+  `TOOLTIP:BAUMENUTAB` line (`0x1002bc6e`). No position in the loop (OQ-759).
+- Positions measured, sprite-565 exact: tab k at (762, 303 + 46k); all eight tabs 1879/1879 px
+  (tab 0 1880/1880) on `f13_construction_open`, `f13_hover_cat_{public,roads,farms}`,
+  `r2_construction_open`, `r2_place_pioneer_house`, `r2_info_pioneer_house`; on each
+  `r2_construction_<c>` the seven other tabs exact and the clicked tab in its selected frame
+  (17 + 2k) under the hover tooltip (rows click_y-23..-8). No hover frame. Not clipped: the tabs
+  stick out left of the panel like the other views' sub-tab columns.
+- HE (pixels only): `ui_9.mp4` 2:25 (`cache/ui-buildcat-1/he_ui9_145.png`): eight tabs stacked left
+  of the grid, the open category (ornamental) coloured.
+
+**Changes.**
+- `hud.txt`: `viewbautab_0..7` (pos, 42 x 46, frames 16+2k / 17+2k, `panel construction`);
+  `masks.txt`: `category_column` removed.
+- `construction_category_tab()` (ui_layout): tab = `viewbautab_<index-1>` of construction.txt, so
+  the count is the category count, no constant.
+- `draw_category_tabs()` in `compose_screen`, `draw_live_screen_xrgb`, `draw_live_screen_rgba_into`
+  (grid and info/placement panel both); `tools/ui_layout.py compose_screen` the same.
+- Hit test (OQ-714): each tab's gadget rectangle (x 762..803). Grid column 0 (808..857) is the grid's;
+  804..807 is nothing. The tabs are a press area while the menu shows (`ui_hit` panel
+  `construction`, viewer.cpp), so a press at x 762..778 is not a map click.
+- Facts `ui.category`, `ui.category_tab`.
+- Docs: docs/re/ui.md 2.4 row rewritten, mask row updated; OQ-759 (where the column position comes
+  from, hit-test slot unread). OQ-714 lives on `task/UI-INFO-2b` (not on this base); its answer is in
+  docs/re/ui.md 2.4 and should be copied into OQ-714 when INFO-2b lands. BUILDINGSOBJECTS.md is not on
+  this base either; part B section 1 can add: "category column x 762..803, tab k y 303 + 46k".
+
+**Tests.**
+- `construction_menu_test.cpp`: "one tab per category" (pos, size, frames, every row) and "the
+  column/grid boundary" (803 tab, 804/806 none, 808..820 on row 0 a cell, never a category switch);
+  the old band test updated to x 762.
+- `viewer_wiring_ui_buildcat` (new script `ui_buildcat.script`): key B, then a press at x 770 (left of
+  the panel) on each of the eight tabs, `ui.category` and `ui.category_tab` each time; x 803 still the
+  tab, x 806 nothing, x 762 military, `selection.clicks == 0`.
+- `ui_panels_match_gog`: new column check, every tab on each of the eight `r2_construction_*` shots
+  (all 8 x 8 tabs 0 bad, 14342-14426 px per shot), tooltip band masked; its control (public column vs
+  the farms shot) must fail: worst tab 0.0926 > 0.02.
+- `live_screen_matches_oracle`: the eight `viewbautab_*` rectangles added (live vs oracle exact).
+- `ui_mock_matches_oracle`: nine screens exact with the tabs in both composers.
+
+**Failure proof** (orchestrator's case included: main's drawing code, column unmasked).
+`src/app/src/ui_mock.cpp` replaced by main's `4dfdd9b7` version (no tab drawn), rebuilt, data and tests
+as in this branch, then restored and rebuilt:
+- `ui_panels_match_gog` FAIL: every category, e.g. `column public ... 8825 px, 5992 bad, worst tab
+  0.8271 (bound 0.02)` (`cache/ui-buildcat-1/failproof_ui_panels.log`).
+- `live_screen_matches_oracle` FAIL: `construction_public: 18400 of 287790 ... differ`, elements
+  `viewbautab_0..7` 1150 each plus `mainuntergrund` 9200 (`failproof_live_screen.log`).
+- `ui_mock_matches_oracle` FAIL: 15033 px per construction screen, first (769, 303)
+  (`failproof_ui_mock.log`).
+- For contrast, main's own Python GOG comparison (`compare_screen`, 8 % of the whole screen) with only
+  the mask removed still passes on all eight r2 shots (0.049-0.079,
+  `cache/ui-buildcat-1/oldproof_compare_screen.txt`): a whole-screen fraction cannot see a 42 px column,
+  which is why the new check is per tab.
+
+**Gate.** msvc Release, game dir, GOG shots, HE captures, rotation shots, head `89265776`,
+`run_selected.py --select 'hud|ui |ui_|construction|selection|^viewer_wiring_ui_|^viewer_wiring_construction|live_screen_matches_oracle|ui_dynamic_draw_check|info_panel_gog_compare|selected_house_pixel_check|ui_panels_match_gog|ui_mock_matches_oracle' --jobs 8`
+with all six oracle tests and `viewer_wiring_ui_buildcat` required, `cache/gates/ui-buildcat-1-01.log`
+(sha256 `012f320e...53cc3`): `COUNTS: selected=71 executed=71 failed=0 empty=0 skipped=0 ...
+incomplete=0 sanitizer_lines=0`, `VERDICT: PASS`. clang-format 23.1.3 clean. WSL: `check_unix_warnings.sh` GCC 13 and Clang 18, with and without GPU, all clean (negative controls fail as expected).
+NOT_RUN: GPU window live (the GPU overlay shares `draw_category_tabs`; `--renderer gpu` is a manual
+check), Linux/Mac CI.
+
+**Owner test (default rules, the developer city):** `anno1503 --play data/maps/lan5.txt
+--construction-menu on --layout data/ui` (no `--rules living`). Press B: eight tabs left of the grid,
+public coloured. Click each tab (also on its left part, over the map): its tab turns coloured, the
+others grey, the grid and the plank follow. Click grid column 0 right next to the column: it arms or
+locks the cell, never switches the category. Compare with HE `ui_9` 2:25-2:30.
+
+**Decisions and reasoning:**
+- Tab per category by name convention `viewbautab_<index-1>` instead of new layout keys: no parser
+  change, the count follows construction.txt.
+- Hit area = the drawn rectangle (the measured gadget), not the old click band; the class's hit-test
+  slot is still unread (OQ-759), but no shot contradicts it.
+- The selected frame is the open category's, also while the placement panel shows
+  (`r2_place_pioneer_house` shows public selected).
+
+READY FOR REVIEW.

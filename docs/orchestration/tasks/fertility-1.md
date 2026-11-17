@@ -132,7 +132,31 @@ The placement class for flag word `& 3 == 1` (single-quad tile objects such as f
 - 1c, if it changes the state stream, lands only after the Mac's full run on the candidate.
 - No gameplay change in any stage.
 
-## Open points for the orchestrator's review
+## The orchestrator's answers (2026-11-17, binding; draft approved)
+
+1. **1c's state:** derived and unhashed only if the grid is a pure function of hashed state at every moment,
+   so a load can rebuild it bit for bit.
+   - Add a test that rebuilds the grid after a save/load round trip and compares it with the live grid
+     after play.
+   - If the OQ-726 read shows the original rebuilds only at triggers, a derived-on-demand grid would differ
+     from the original's stale grid between triggers. In that case **store it**: save, hash, a version bump,
+     and the Mac's full run on landing.
+   - Decide from the read, and state which case it is in 1c's report.
+2. **1a may run before ISLAND-CROPS-1 1b**, in its **own worktree and branch** (`task/FERTILITY-1a`), since
+   one packet runs per worktree.
+   - It changes what placement accepts for single-tile objects, so list every golden, replay or scenario
+     fixture whose result changes, with the reason, and add a failure proof.
+   - It is a faithful fix, not a rules option, unless the corpus check shows a visible change in an existing
+     test map. Then the orchestrator must hear of it before landing.
+3. **1d's seams:** first check whether the sim already holds a drought state with that chunk flag (grep
+   `src/sim` for drought, `Duerre` and the S13 work, plus `docs/sim`).
+   - If it exists, read it.
+   - If not, "no wells" and "no drought" are the defaults behind named seams, each recorded as an
+     ADAPTATION with the address of the state it stands in for, not stated as the original.
+4. **Order:** 1a now; 1b-1d in order after ISLAND-CROPS-1 1b. Builds and tests pause during the Windows
+   executor's announced quiet slot.
+
+## Open points for the orchestrator's review (answered above)
 
 1. 1c's state: derived and unhashed (proposed), unless the trigger read says otherwise.
 2. May 1a run before ISLAND-CROPS-1 1b lands? It is independent and touches `placement.hpp` only.

@@ -14715,3 +14715,62 @@ the live_screen comparison. No other test expected no gold before founding (`git
 empty=0 skipped=0`, `VERDICT: PASS`. clang-format 23.1.3 clean on the changed files.
 
 READY FOR REVIEW.
+
+## UI-STATUS-1 stage C: READY FOR REVIEW (Windows, 2026-11-17; docs only)
+
+- Base `c58dab37`; this commit adds `docs/re/ui.md` 5.6 "Stage C", a `production.md` 4.3 note, OQ-701/702 (partly
+  answered) and OQ-704..706. GOG static reads (`py -3.14`, scripts in `cache/ui-status-1/`). No HE run (recipe
+  written). No code, no build, no test.
+- **Q1, when the fertility row appears** (OQ-701):
+  - The discovery word `+0xa6` is written by: the constructor; the `DISCOVER` loader `0x100899b6`; founding
+    registration `0x100862c5`; a city's owner change `0x1002e283`-`0x1002e2a1`; and the reveal with flag 4
+    (`0x10080c1d`-`0x10080c58`). All D.
+  - Founding calls the reveal with flags 1, which does not write the word. The flag-4 path runs through world slot
+    `+0xcc` (`0x1009d9b0`: x, y, r, flags, player; per 8 x 8 chunk island), but its caller is **not found** (OQ-704;
+    the only five-argument calls, in the event handler `0x1007f960`, pass flags 0).
+  - A ship's approach shows the row per the manual (p. 11) and HE (00:52-01:41): medium confidence, not D.
+  - 1503 has no "explore the island" text or command (`Texte.dat` P); exploring is the Scout's job ("Resource
+    discovered"). A click on an undiscovered island was not read (OQ-705).
+- **Q2, the bars** (OQ-702):
+  - The segments are the crops, ware `0x38 + i`, named by `WARE_ANBAU` line i (tooltip `%a`, `0x10064e54`-`0x10064e92`).
+    The order is grain, tobacco, spices, flax, sugarcane, cotton, wine, cocoa, hops, silk, indigo, herbs, so NORD
+    shows wine, hops and herbs. D + P.
+  - There are two levels only, 100 (crop bit in property 11) and 50; no 0 %. D.
+  - Property 11 comes from the `ANBAU` record (loader `0x10089871`; all 465 templates list every crop, so 100 % on a
+    template island, P) and, in a new game, from link placement (`0xF009 | raw marks`). D.
+  - Readers: the status bar, the AI (CompLogic, 10 sites), and the **crop-growth test** island slot `+0x140` =
+    `0x100817c0`. That test takes fertility nibble × 10, sets it to 0 when the climate forbids the crop, **halves it
+    when property 11 lacks the crop**, then maps L = (v+5)/10 to a 4 x 8 dither table (`0x100c9c28`: 16 of 32 cells
+    answer "1" at 50 %, none at 100 %). D.
+  - "1 = does not grow" is L (OQ-706).
+- **Q3, own resources and citizens:** the 5.6 territory rule is re-confirmed, D. Before founding: gold, plus the row
+  over discovered islands. Own territory: materials and residents. Own island outside the territory: gold only, or
+  the corner rule when a building is armed. A foreign city: residents only if it knows the player.
+- **Q4, HE recipe** (ui.md 5.6 stage C, 5 steps):
+  1. Sail the start ship towards a new island with the mouse on it (distance, persistence).
+  2. A second own ship and an AI ship.
+  3. A click on an undiscovered island.
+  4. The same farm on a 50 % and on a 100 % island (output after 10 minutes).
+  5. A scout.
+- **Stage D plan** (each packet one concern; "parsed today" says where the data is read now):
+
+| # | Kind | Packet | Data parsed today? | Size |
+|---|---|---|---|---|
+| D1 | (b) sim | **Island crop mask (property 11):** decode the `ANBAU` record (names → ware `0x38..0x44` bits, base `0xF009`, POLAR 0) with round-trip and corpus tests; an `Island` field in state (ADR 0006 extension tag or number, orchestrator); set at link placement to `0xF009 | raw marks`; save and hash | `ANBAU`: **no** (`docs/formats/insel.md` lists it as size-only, OQ-024; `tools/map2_opening.py` only names it). Raw marks: **yes**, `src/sim/src/island_links.cpp` `resolve_island_links` → `ResolvedLink::raw_marks`, used today only for the `LinkRawMaterials` warning (`scenario_formats.cpp` ~2151) | 3-4 h |
+| D2 | (a) UI | **The bars:** `TerritoryIsland` publishes the crop mask; `STATUSBAR_BALKEN` (5 x 29 at slot x + 25) drawn at 100 / 50 with the offset H − ⌊H·v/100⌋ + 1 (`0x10065890`); drop masks.txt `balken_*`; pixel check on `hud_idle_running`'s bars | needs D1 (the mask); everything else is in the app | 2-3 h |
+| D3 | research (docs) | **The reveal trigger:** read the ship tick and the scout for the world `+0xcc` flag-4 call (OQ-704); the owner's HE recipe 1, 2, 5 | n/a | 2-3 h |
+| D4 | (b) sim | **The reveal:** the trigger D3 finds (ship proximity or scout) ORs the player into `Island::players_present`, deterministic, per tick as the original | `DISCOVER`: **yes** (`scenario_formats.cpp` ~1211 → `players_present`); founding: **yes** (`founding.cpp` 470); owner change: not modelled; the trigger: **no** | 3-4 h after D3 |
+| D5 | research (docs) | **The crop-growth answer:** what "1" from slot `+0x140` does (the counter at `0x1008b364`, the two scaling flags), OQ-706; HE recipe 4 | n/a | 2 h |
+| D6 | (b) sim + (c) owner | **The growth rule:** the fertility nibble grid (`0x10084370` from `Wachstum.dat`) and the slot `+0x140` test with the property-11 halving. It changes farm output against today's rebuild, so its default goes to the owner as a `rules` option (the orchestrator raises it) | `FRUCHTBAR`: **yes**, raw (`src/formats/src/insel.cpp` 183 → `Terrain::fertility`); the rebuilt nibble grid and the `Wachstum.dat` tables: **no** in the sim (`Wachstum.dat` keyed file is readable by `tools/text.py`); crop climate masks: not read | 4-6 h, split after D5 |
+| — | (a) UI, later | Crop names in the bar's tooltip (`WARE_ANBAU`), with the tooltip packet (OQ-541) | **yes**, Texte.dat (`formats` data-text) | in that packet |
+
+  Order: D1 → D2 (the bars, visible to the owner), D3 → D4, D5 → D6 (owner decision before D6's default).
+- **Decisions and reasoning:**
+  - I stopped the OQ-704 hunt at the sweep of five-argument `+0xcc` calls. A register-held flag needs the ship
+    tick read, which is its own packet (D3) and too big for this one.
+  - "1 = does not grow" is left as L: the caller's counter was not read to its consumer.
+  - The bars' two levels and their source are D. The farm effect is D in arithmetic but not in meaning, so D6 waits
+    for D5.
+  - The OQ numbers used are 704-706, so 707-709 remain reserved.
+
+READY FOR REVIEW.

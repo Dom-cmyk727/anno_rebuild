@@ -166,6 +166,49 @@ Steps:
    territory, a foreign island, the sea, and an unexplored island if there is one. Watch the fertility
    row hide 2 s after leaving land over the island's sea.
 
+## Stage C: when the island's figures show, and what the bars mean (2-3 h, docs only; released 2026-11-17)
+
+The owner tested B in `ui_7.mp4` (2026-11-17; report and transcript in `E:\1503_test_videos\ui_7_work\`)
+and gave a direct task (2:54-5:52): "please double check that with the original and History Edition game
+files", "investigate both", "examine that thoroughly". Answer each question with GOG code (module and
+address) or HE frames, or open an OQ:
+
+1. **When does an island's resource availability (the fertility row) appear?**
+   - Find every writer of island word `+0xa6` (property `0xe`) and every caller of the reveal (island
+     slot `+0x130` = AnnoWelt `0x10080c10`; world slot `+0xcc`); this is OQ-701.
+   - Does a ship near the island reveal it? Which ships (own only? any?), what distance (tiles, chunks,
+     the ship's view range from its type data?), and is it checked every tick?
+   - Do the scenario's `DISCOVER` records, the start position, a Kontor, or a click on the island also
+     reveal it?
+   - The owner remembers 1602's "Erkunde die Insel" (explore the island). Check whether 1503 has such a
+     command or text (`Texte.dat`, the ship panel's orders).
+   - What does a click on an undiscovered island show (status bar, panel)?
+2. **What the bars mean (OQ-702):**
+   - Find who reads island property 11 (`+0xac`) besides the status bar, above all the farms' growth or
+     planting (production code, `production.md` §4 "which code reads fertility" is open).
+   - Is it two levels (50 / 100, as the owner remembers from 1602), and what does 50 do to a farm's
+     rate?
+   - Where does property 11 come from? Map placement sets `0xF009 | raw marks` (`annoscene.md` §5 step
+     10). Also check save files and the scenario `ROHSTOFF` records. Is there a 0 % case?
+   - Where can the rebuild read the raw marks today (`scenario_formats.hpp` `LinkRawMaterials` holds
+     them: "the sim has no field for it yet")?
+3. **Own resources and citizens:** re-confirm 5.6's territory rule against the owner's words ("you have
+   to settle on an island to have your own resources there") and list every case: before founding,
+   own territory, own island outside it, foreign city, and while a building is armed.
+4. **HE recipe for the owner** for each point that needs the running game: for example, sail a ship
+   towards an island never visited and note when the row appears; then compare a 50 % and a 100 %
+   island. Sound stays at 0 %. The owner plays HE himself.
+
+Write the result into `docs/re/ui.md` 5.6 (and `production.md` if a farm rule is found), update OQ-700..702
+with new OQs from OQ-704 on, and add a REPORTS entry with an implementation plan for stage D. Stage D
+implements, in the smallest safe pieces:
+- the reveal;
+- an island raw-material mask field, read from the files, for the bars;
+- the bars themselves;
+- any farm-efficiency rule.
+
+Sim parts follow the orchestrator's lane rules.
+
 ## Acceptance
 
 - A: every behaviour in the table has a GOG address or an HE frame, or is an OQ. The owner's statement is

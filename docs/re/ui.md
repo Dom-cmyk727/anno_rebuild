@@ -910,8 +910,8 @@ OQ-703).** `src/app` `status_bar.hpp` holds the rule as a pure function (`pick_s
 | Segments | `SimConfig::links.raw_climate_mask` by `Island::climate`, without `0xf009` and 7, at most the hud.txt slots | hud.txt `rosh_0..3` (x 547 + 40k), `tex_id` 40 + the segment |
 | Hide delay | 2000 ms of the window's clock (`std::chrono::steady_clock`) | Never sim time |
 | Bars | Not drawn: a named placeholder (hud.txt comment, masks.txt `balken_0..3`) | OQ-702 |
-| Gold | Unchanged: drawn once the player has a city (`PlaySnapshot::money` is filled only then) | The original draws gold always; not changed here |
-| Facts | `hud.counters` (`gold`, `residents`, `materials+residents`), `hud.counters.city`, `hud.status.tile`, `hud.status.island` (slot, `sea`, `none`), `hud.status.city`, `hud.fertility` (`6,8,11` or `hidden`) | `viewer_wiring_ui_status_island` |
+| Gold | Always, before the first founding too: the local player's money (`PlaySnapshot::money`, published whenever the local player exists), 0 when the world has no local player | As the original (`0x10063c38`/`0x10063c70`; GOG `hud_idle_running` 500000, HE 00:44); fact `hud.gold` |
+| Facts | `hud.counters` (`gold`, `residents`, `materials+residents`), `hud.counters.city`, `hud.gold`, `hud.status.tile`, `hud.status.island` (slot, `sea`, `none`), `hud.status.city`, `hud.fertility` (`6,8,11` or `hidden`) | `viewer_wiring_ui_status_island` |
 
 ## 6. `data/ui/` layout format
 

@@ -983,11 +983,15 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
             next->cities = std::move(cities);
         }
     }
+    // UI-STATUS-1 B: the local player's money with or without a city: the status bar's gold shows
+    // in every mode (AnnoFrame 0x10009b2b, docs/re/ui.md 5.6; GOG hud_idle_running shows 500000
+    // before the first founding).
+    if (const sim::Player* player = world_.players().find(local_player_)) {
+        next->has_local_player = true;
+        next->money = player->money;
+        next->costs_waived = player->free_build || world_.rules().free_build_cheat;
+    }
     if (developer_city_) {
-        if (const sim::Player* player = world_.players().find(local_player_)) {
-            next->money = player->money;
-            next->costs_waived = player->free_build || world_.rules().free_build_cheat;
-        }
         const auto& island = world_.islands()[developer_city_->island.v];
         if (island && developer_city_->city.v < island->cities.size() &&
             island->cities[developer_city_->city.v]) {

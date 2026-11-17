@@ -173,8 +173,10 @@ struct PlaySnapshot {
     /// The last turn this snapshot follows (its index), so a reader can check
     /// the snapshot against the mailbox.
     std::uint64_t turn = 0;
-    /// The developer player's money after the turn, and the goods stock (8.8 tons,
-    /// per goods number) of its city. Empty when the player has no city.
+    /// The local player's money after the turn (UI-STATUS-1 B: also before its first city; 0
+    /// when the world has no such player, `has_local_player` false), and the goods stock (8.8
+    /// tons, per goods number) of its city, empty when the player has no city.
+    bool has_local_player = false;
     std::int64_t money = 0;
     std::vector<std::uint32_t> goods;
     /// Build costs are waived for the developer player (its free-build flag, or the session's

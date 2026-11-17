@@ -8,6 +8,8 @@ wait frames 30
 # first founding (OQ-701), so the fertility row is hidden and live_screen_compare.py leaves its
 # slots out of this screen.
 expect fact hud.counters == gold
+# The gold figure is drawn before the first founding (its digits are live: masks.txt gold_digits).
+expect fact hud.gold != none
 expect fact hud.fertility == hidden
 screenshot hud_idle_live
 quit

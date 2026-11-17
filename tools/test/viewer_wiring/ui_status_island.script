@@ -14,6 +14,7 @@ wait frames 10
 # No map tile yet: gold only, the row hidden.
 expect fact hud.status.tile == none
 expect fact hud.counters == gold
+expect fact hud.gold != none
 expect fact hud.fertility == hidden
 # 1. The own territory: materials, residents and the NORD row (6, 8, 11).
 look 1140 516

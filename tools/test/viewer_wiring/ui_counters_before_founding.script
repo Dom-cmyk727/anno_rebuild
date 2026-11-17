@@ -1,11 +1,13 @@
 # UI-WINDOW-1 fix round R4: before the first founding the local player owns no city and the
 # status bar's materials and residents are hidden (hud_idle_running shows none; docs/re/ui.md
 # 5.2). The ship-start opening on lan5 begins with no city. UI-STATUS-1 B: the fact names the
-# groups shown (docs/re/ui.md 5.6): gold only, and no island under a cursor yet.
+# groups shown (docs/re/ui.md 5.6): gold only, and no island under a cursor yet. The gold figure
+# is drawn before the first founding too (GOG hud_idle_running: 500000; AnnoFrame 0x10063c70).
 # Launch: --ship-start <lan5-ship-a.json> --seat 0 --construction-menu on --layout data/ui
 resize 1024 768
 wait frames 30
 expect fact hud.counters == gold
+expect fact hud.gold != none
 expect fact hud.counters.city == none
 expect fact hud.fertility == hidden
 screenshot counters_before_founding

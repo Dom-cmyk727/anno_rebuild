@@ -810,6 +810,8 @@ class Viewer {
     std::optional<HudTabs> hud_tabs_;
     /// The groups the last frame's status bar drew (the `hud.counters` fact; UI-STATUS-1 B).
     StatusCounters hud_counters_ = StatusCounters::Gold;
+    /// The gold figure the last frame drew (the `hud.gold` fact; UI-STATUS-1 B), nullopt: none.
+    std::optional<std::int64_t> hud_gold_;
     /// And which city they showed (the `hud.counters.city` fact, fix round R4).
     std::optional<sim::CityRef> hud_counters_city_;
     /// Whether any frame drew the HUD yet (the fact says "not drawn" until then, R4).
@@ -3079,6 +3081,7 @@ void Viewer::script_tick() {
     // fertility row's segments (status_bar.hpp).
     st.facts["hud.counters"] =
         hud_counters_drawn_ ? status_counters_name(hud_counters_) : std::string("not drawn");
+    st.facts["hud.gold"] = hud_gold_ ? std::to_string(*hud_gold_) : std::string("none");
     st.facts["hud.status.tile"] = status_tile_text(status_pick_.tile);
     st.facts["hud.status.island"] = status_island_text(status_pick_);
     st.facts["hud.status.city"] = status_city_text(status_pick_.city);
@@ -3788,6 +3791,7 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
         update_status_bar();
         const auto in = construction_hud_inputs();
         hud_counters_ = in.counters_groups;
+        hud_gold_ = in.counters.gold;
         hud_counters_city_ = in.counters_city;
         hud_counters_drawn_ = true;
         // UI-INFO-1: the armed type's name, preview, costs and upkeep (live registry).
@@ -3999,9 +4003,14 @@ Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
     // comment). Goods are 8.8 fixed-point tons (PlaySnapshot::goods's own doc comment) - sim::kTon
     // (production.hpp) is the 256 that separates the whole-ton bits from the fractional ones; a
     // display counter only ever needs the whole tons (the original divides by 256 toward zero,
-    // AnnoFrame 0x10009c08..0x10009c6c). eligibility is null exactly when there is no city yet;
-    // the gold counter keeps that gate (PlaySnapshot::money is filled only with a city).
-    const bool has_city = snapshot != nullptr && snapshot->eligibility != nullptr;
+    // AnnoFrame 0x10009c08..0x10009c6c). The gold counter shows in every mode, before the first
+    // founding too (0x10063c38/0x10063c70; GOG hud_idle_running): the local player's money, or 0
+    // when the world has no local player (the original's Update(zeros) without a player,
+    // 0x10009949). No snapshot (no play session): nothing.
+    const std::optional<std::int64_t> gold =
+        snapshot == nullptr
+            ? std::nullopt
+            : std::optional<std::int64_t>(snapshot->has_local_player ? snapshot->money : 0);
     // UI-STATUS-1 B (docs/re/ui.md 5.6; the owner chose the original, OQ-703): the counters follow
     // the city whose territory holds the tile under the cursor (update_status_bar): a city of the
     // local player shows its four materials and its residents, another player's city that knows
@@ -4029,7 +4038,7 @@ Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
             return std::nullopt;
         return shown->goods[*id] / sim::kTon;
     };
-    HudCounters counters{has_city ? std::optional<std::int64_t>(snapshot->money) : std::nullopt,
+    HudCounters counters{gold,
                          whole_tons(goods_tools_),
                          whole_tons(goods_wood_),
                          whole_tons(goods_bricks_),
@@ -4114,6 +4123,7 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         update_status_bar();
         const auto in = construction_hud_inputs();
         hud_counters_ = in.counters_groups;
+        hud_gold_ = in.counters.gold;
         hud_counters_city_ = in.counters_city;
         hud_counters_drawn_ = true;
         // UI-INFO-1: the armed type's name, preview, costs and upkeep (live registry).

@@ -169,7 +169,7 @@ inline void check_pages_against_source(const std::vector<render::AtlasFrameInput
                 std::array<std::uint8_t, 4> expected{};
                 for (std::size_t c = 0; c < 4; ++c) {
                     unsigned s = 0;
-                    for (const auto [dx, dy] : {std::pair{0U, 0U}, {1U, 0U}, {0U, 1U}, {1U, 1U}}) {
+                    for (const auto& [dx, dy] : {std::pair{0U, 0U}, {1U, 0U}, {0U, 1U}, {1U, 1U}}) {
                         // Frame-local coordinate of this level-0 texel (place->x/y is the frame's
                         // own absolute origin); clamped exactly as write_level0 clamps the
                         // dilated padding.

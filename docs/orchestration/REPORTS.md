@@ -15011,3 +15011,109 @@ I agree with all of them. Changed in `docs/re/ui.md` §11 and OQ-722:
 The UI then adds figure 1571 with no further RE.
 
 READY FOR REVIEW.
+
+### UI-HARVEST-ICON-1 stage B (UI lane, read-only app work), 2026-11-17
+
+**What it does.** The window draws the original's status icons over the local player's buildings: the
+spinning "Zzz" (1555), "raw material missing" (1570, the sheaf the owner saw over the forester) and
+"storage full" (1572). It reads only sim state that already exists: `StatusTracker::icons` bits 1-2,
+the switch state, and the owner's Volk. **No sim change.**
+
+**Code.**
+- `src/app/include/anno/app/status_icons.hpp`, `src/app/src/status_icons.cpp`:
+  - `status_icon_of`: the lowest of {Zzz = every line off, bit 1, bit 2, bit 3}, nothing unless
+    Volk == 1;
+  - `collect_status_icons`: the viewer's cities only, read-only;
+  - `place_status_icons`: the footprint centre, the anchor raised to the top of the building's own
+    picture via `Scene::preview_sprites`;
+  - `status_icon_frame`: (ms / 40) mod 16;
+  - `StatusIconLayer`: figures 1555/1570/1572/1571 decoded once through `load_figure_facings`.
+- `PlaySnapshot::status_icons` (`play.hpp`/`play.cpp`), collected every turn and republished
+  unchanged while equal.
+- `viewer.cpp`: `status_refresh` re-places only on a new list or scene generation. The CPU path
+  draws the icons with `blend_units`; the GPU path draws them in the same live-unit list after the
+  ships. New script facts: `inspection.status_icon`, `status_icons.count`, `status_icons.drawn`.
+- `main.cpp` loads the layer for `--play`; without it, it prints a note and draws no icons.
+- Adaptations, labelled in the header comment:
+  - OQ-721: the anchor on the top of the building's picture;
+  - OQ-722: 40 ms per frame on the window clock, no restart;
+  - OQ-723 is **resolved by the owner** (2026-11-17, "Own only"): the original's owner gate,
+    the local player's buildings only, **no rules option**.
+- **KNOWN DIVERGENCE** (header and `Viewer::status_refresh` comments): where the original rewrites
+  a due code 1 or 2 to code 3 and shows the "no road" icon, the sim reports code 1 or 2, so the
+  rebuild shows KeinRohstoff or KeinLager. Figure 1571 is already loaded and mapped.
+- The small farm's never-shown icon 1 (ISS-150) and the whaler's (ISS-151) come out of the sim's
+  u16 due test with no extra code.
+
+**Tests** (`src/app/tests/status_icons_test.cpp`, 6 cases; all expected values hand-derived):
+- the payload rule: the lowest bit first; Zzz wins; bit 0 is not read; the owner gate;
+- two-line buildings: Zzz only when every line is off;
+- the 16-bit due test through the sim's own `StatusTracker::report`: the farm's 60 000 shows icon 1,
+  the small farm's 75 000 never does, and its code is still set;
+- the collect pass on a synthetic world: own city only; Volk 2 → none;
+- the frame rule and the layer's units: frame choice, anchor raise, a missing code skipped;
+- the layer's decoded frames against `tools/figuren.py` (an independent decoder): size, anchor,
+  opaque count and the RGB sum, for 1555 frame 0 at groups 0/2, 1570 frame 13 at groups 0/1/2 and
+  1572 frame 5 at groups 0/1.
+
+**Wiring:** `tools/test/viewer_wiring/status_icon_forester.script`, CTest
+`viewer_wiring_status_icon_forester`:
+- the sim allows the state: a forester (801) built on lan5 at (1156, 516) with no mature tree in
+  reach keeps raw 0;
+- before the interval: `status_icon == none`;
+- after the farm's 60 000-tick interval: icon 1 reached and drawn;
+- run alone: PASS in 72.3 s.
+
+**Failure proof** (`cache/gates/ui-harvest-icon-1-B-mutant.log`): a mutant that picks the highest bit
+and shows Zzz when any line is off fails 2 of the 6 cases, 3 assertions:
+- `0x06 → MissingInput`;
+- one line off → none;
+- a small farm with one line off → StorageFull.
+
+The source was restored from the saved copy and rebuilt before the gate.
+
+**Gates** (code as in `5d1e058b`, msvc Release, RTX 4090 PC):
+- **Focused gate** (`run_selected.py --jobs 8`, log `cache/gates/ui-harvest-icon-1-B-01.log`; select
+  `status icons|^viewer_wiring_|^anno_app_tests\.(hud|ui|selection|UI)`):
+  - required: `live_screen_matches_oracle`, `ui_dynamic_draw_check`, `info_panel_gog_compare`,
+    `selected_house_pixel_check`, `ui_panels_match_gog`, `viewer_wiring_status_icon_forester`; the
+    required-contract verdict was PASS;
+  - main selection: selected 70, executed passes 69, failed 1, empty 0, skipped 0, incomplete 0,
+    sanitizer lines 0.
+- **The failure:** `viewer_wiring_r4_occupancy` (`foreign is 0, wanted >= 1` six turns after
+  `foreign demolish`, at 9.8 s under the parallel run). Rerun alone it passes:
+  `cache/gates/ui-harvest-icon-1-B-02-r4-alone.log`, selected 1, executed 1, PASS.
+  - The script counts another island's batch within `wait turns 6`. The new per-turn
+    `collect_status_icons` pass is a scan of the local player's buildings and posts no batch.
+  - I read it as a timing flake under load, not caused by this package (likely, not proven).
+- **WSL** `check_unix_warnings.sh` (`cache/gates/ui-harvest-icon-1-B-wsl.log`): GCC 13 and Clang 18,
+  viewer and GPU on (418 files) and without GPU (85 files), all clean; both negative controls failed as
+  expected.
+- **clang-format** 23.1.3 `--dry-run --Werror` on the changed files: clean.
+
+**Owner test (recipe).**
+1. `anno1503 --play data/maps/lan5.txt --speed 200`, GPU renderer, closest zoom.
+2. Building tool (b), select 801, click tile (1156, 516).
+3. After about one real minute the framed sheaf with the spinning orange "?" appears over the
+   forester. Compare it side by side with HE `E:\1503_test_videos\he_01_work\c5_icon.png`: the
+   picture; the position (HE: above the house, left of the roof ridge; ours: on the top of the
+   building's picture over the footprint centre, OQ-721); the spin speed (ours: 0.64 s per turn,
+   OQ-722).
+4. Zoom out twice: the 24 × 22 and 12 × 11 frames.
+5. A switched-off building ("Zzz") cannot be made in the window yet: the window has no switch control,
+   and the command file has no switch verb (the sim command `SetProductionLineCmd` exists). The Zzz is
+   covered by the unit tests only. A small follow-up could add a `switch` verb to `--commands` or the
+   info panel's button.
+
+**Decisions and reasoning.**
+- The icons are live units (the ships' path), not scene objects: they change with the snapshot, and a
+  chunk rebuild per status change would be the wrong cost. They draw after the scene's objects, as the
+  ships do.
+- The raise is applied to each instance's anchor; the shared image is untouched. The GPU path places
+  units by image and per-instance anchor (`gpu.cpp` 2489-2496), the CPU path the same (`blend_units`),
+  so no new frame-table entries.
+- The window's animation clock rather than `game_ms`: it advances between turns, so the turn is smooth,
+  and it stops while paused like the scene's other animations.
+- Bit 3 is read already (a no-op today), so the sim packet for code 3 needs no window change.
+
+READY FOR REVIEW.

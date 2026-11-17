@@ -14977,6 +14977,9 @@ extraction only), `gpu_test.cpp` (new case), `bench_frame/main.cpp` (`--atlas-bu
 - WSL GCC 13 / Clang 18 `-Werror`, whole tree, after both `origin/main` merges (brings UNIX-WARN-1 and
   LAYER-CHECK-1): clean on all four configurations (GCC/Clang, viewer+GPU on and off) - the pre-existing
   `extensions_test.cpp` failure RENDER-DIRECT-1a's own report noted is gone (UNIX-WARN-1, not this task).
+  Caught a real GCC-only warning first (`-Werror=range-loop-construct`): the shared checker's
+  `for (const auto [dx, dy] : {...})` over a small `std::pair` initializer list copied each element;
+  `const auto&` instead. Fixed, rebuilt, re-verified (same assertion counts), clean on the rerun.
 - `layer_check_contract`/`layer_check_self_test` (LAYER-CHECK-1, new to this branch via the second merge):
   both pass.
 - `anno_render_tests`: the 8 synthetic cases (120/120) plus the two `.sze` game-file scenes

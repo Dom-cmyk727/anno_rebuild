@@ -37,7 +37,7 @@ What is known (part B, D unless marked):
 4. **When the ghost hides entirely:** the pointer over chrome (OQ-700).
 5. Write it into `docs/BUILDINGSOBJECTS.md` part B §5 if that file is on your branch (merge `origin/task/BUILDINGS-REF-1`
    first; it is docs-only), else into `docs/re/ui.md` §4.
-6. OQ ids: OQ-754..756; ask the UI lane for more.
+6. OQ ids: OQ-756..758 (corrected by the UI lane on 2026-11-17; OQ-754 belongs to another lane); ask the UI lane for more.
 7. Report, then stop. B starts on the UI lane's go.
 
 ## Stage B: draw it (code, about 2 h; after UI-INFO-2d)

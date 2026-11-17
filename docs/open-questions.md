@@ -3559,10 +3559,11 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Where:** `docs/BUILDINGSOBJECTS.md` part B (placement rules); raised by the owner-requested buildings reference.
 - **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
 
-## OQ-730: The writer of the draw-context byte +0x140c (the blink phase) and its period (BUILDINGS-REF-1, 2026-11-17; OPEN)
+## OQ-730: The writer of the draw-context byte +0x140c (the blink phase) and its period (BUILDINGS-REF-1, 2026-11-17; ANSWERED by UI-GHOST-1, 2026-11-17)
 - **Question:** The writer of the draw-context byte `+0x140c` (the blink phase) and its period. Not in AnnoWelt, AnnoFrame, AnnoGame, View, AnnoScene or AnnoDisplay by direct offset; likely a struct copy or an indexed store.
 - **Where:** `docs/BUILDINGSOBJECTS.md` part B (placement rules); raised by the owner-requested buildings reference.
 - **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+- **Answer (D + P):** the draw list is embedded at view frame `+0x14`, so the writer addresses `+0x1420`: AnnoFrame `0x100038c8`-`0x100038f2` (in `0x100037f0`, reached from `tFrameGameFull` slot `+0x6c`) adds the frame's milliseconds to the u16 at `+0x1422`. Above 699 it subtracts 699 and flips the phase byte. Phase 1 hides the unaffordable ghost. HE `ui_9` measures 0.700 s shown and 0.700 s hidden (56 frames each at 80 fps, 17 cycles). Details: `docs/BUILDINGSOBJECTS.md` part B §5.1 (1).
 
 ## OQ-731: The neighbour table of the road/wall autotiler 0x1007cc40 (ids 2500-2537, 2672/2673, PRODTYPE 0x181, flag 0x80 (BUILDINGS-REF-1, 2026-11-17; OPEN)
 - **Question:** The neighbour table of the road/wall autotiler `0x1007cc40` (ids 2500-2537, 2672/2673, PRODTYPE `0x181`, flag `0x800`).
@@ -3658,3 +3659,18 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Question:** Type property `0x479` played by `AnnoFrame 0x10046020`: confirm it is `BAUSAMPLE` and whether demolish has its own sample.
 - **Where:** `docs/BUILDINGSOBJECTS.md` part D (what placing does to the world); raised by the owner-requested buildings reference.
 - **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-756: The radius outline's exact vertex walk and the radius-0 case (UI-GHOST-1, 2026-11-17; OPEN)
+- **Question:** Does `AnnoFrame 0x100443c0` (`0x10044477`-`0x10044f79`) outline exactly the cells `cx ± w[i]` of rows `cy ± i` (half-width table in `docs/BUILDINGSOBJECTS.md` part B §5.1 (3))? What does a radius-0 type (141 types with `HEAD[0x11]` = 0, mostly `DENKMAL`/`ZIERDE`) show? There is no radius > 0 test.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part B §5.1 (3).
+- **How to resolve:** a GOG Wine capture of an armed ornamental (for example 2564 flower bed) and of a radius-4 type, compared with the table.
+
+## OQ-757: GOG ghost with the pointer on the panel (UI-GHOST-1, 2026-11-17; OPEN)
+- **Question:** In GOG, with a building armed and the pointer moved from the map onto the build panel, is the ghost (and its radius outline) hidden as in HE, or does it stay at the last map tile? Nothing in the cursor draw `0x10048450` tests the pointer; the input handler only skips the preview (`0x1004748a`).
+- **Where:** `docs/BUILDINGSOBJECTS.md` part B §5.1 (4); follows OQ-700 (answered for HE).
+- **How to resolve:** a Wine capture that arms a building, moves to the map, then onto the panel, and screenshots without moving back.
+
+## OQ-758: HE colour of the refused-site footprint outline (UI-GHOST-1, 2026-11-17; OPEN)
+- **Question:** GOG draws the refused footprint in `0xffff00`; HE draws the radius outline green. Which colour does HE use for the refused footprint?
+- **Where:** `docs/BUILDINGSOBJECTS.md` part B §5.1 (2).
+- **How to resolve:** a frame of a refused HE ghost (over water or another building) from an owner recording.

@@ -63,9 +63,12 @@ original text in git). This file keeps the method, the field meanings, findings 
 4. **What the player sees while placing (D + HE pixels, parts B/C):**
    - **A valid ghost:** the building, its radius outline (GOG yellow, HE green), and for crop-input buildings
      the fertility bar (UI-PRODBAR-1).
-   - **Refused ground:** a yellow footprint rectangle and no ghost.
-   - **Unaffordable:** the ghost **blinks** (HE about 0.75 s on, 0.5 s off). The preview ignores cost; the
+   - **Refused ground:** a yellow footprint rectangle and no ghost. It is a 1-pixel `0xffff00` outline
+     along the footprint's tile corners at ground height, also over water (§5.1).
+   - **Unaffordable:** the ghost **blinks**: 700 ms shown, 700 ms hidden (AnnoFrame `0x100038d0`; HE
+     measured 0.700 s / 0.700 s at 80 fps). The radius outline stays steady. The preview ignores cost; the
      click checks it.
+   - **Pointer over the panel:** HE hides the ghost and its radius outline (§5.1).
 5. **Entrance arrows (D + P + HE, part C):**
    - **Where they are drawn:** only in the **info panel's picture**, both in the build menu's preview and in
      a placed building's panel. **The map ghost draws no arrows**, in GOG or HE, valid or refused. The
@@ -267,14 +270,77 @@ Every cursor ends in `City::Build` (`AnnoWelt 0x100276a0`). That calls the islan
 |---|---|---|---|
 | Preview ignores cost | the preview passes flag `0x2000000`; `City::Build` then skips `0x100275d0`. The ghost/rectangle verdict (byte `B+0x2e4`) is about the site only | `0x1004754f`, `0x1002787d` | D |
 | Click checks cost | the click passes `0x8000000` (no `0x2000000`): `0x100275d0` must pass, meaning goods `0x29`-`0x2d` (tools, wood, bricks, marble, `0x2d`) in the city stock (slot `+0x7c`) and gold (player slot `+0x60`) >= the type's costs. Player option 7 skips it (OQ-126.1). An unaffordable click places nothing | `0x10027890`, `0x100275d0` | D |
-| Ghost of an unaffordable building **blinks** | after a valid preview the cursor sums the costs of the records listed so far plus this one against the stock (`0x10043d80`). The ghost is written into the island with flags `0x80000000` (ghost, no tile write) or, when unaffordable, `0xA0000000`. `0x1008dc10` sets the footprint bits in the chunk's ghost mask `+0x210` and, for `0x20000000`, also in the **unaffordable mask** `+0x218`. The chunk draw `0x1009e1d0` tests that mask together with a draw-context byte `+0x140c`. When both are set it copies the real tile instead of the ghost tile, so the ghost vanishes. `+0x140d` keeps the last value and a flip forces a redraw (`0x100a0098`) | `0x10047598`-`0x100475d3`; `0x1008ec90`; `0x1008e01d`-`0x1008e074`; `0x1009e2b5`-`0x1009e306`; `0x100a00a2` | D (masks, branch); **L** (that `+0x140c` toggles with time; its writer was not found, OQ-730). P: HE recording (ghost appears and disappears for lack of resources) |
+| Ghost of an unaffordable building **blinks** | after a valid preview the cursor sums the costs of the records listed so far plus this one against the stock (`0x10043d80`). The ghost is written into the island with flags `0x80000000` (ghost, no tile write) or, when unaffordable, `0xA0000000`. `0x1008dc10` sets the footprint bits in the chunk's ghost mask `+0x210` and, for `0x20000000`, also in the **unaffordable mask** `+0x218`. The chunk draw `0x1009e1d0` tests that mask together with a draw-context byte `+0x140c`. When both are set it copies the real tile instead of the ghost tile, so the ghost vanishes. `+0x140d` keeps the last value and a flip forces a redraw (`0x100a0098`) | `0x10047598`-`0x100475d3`; `0x1008ec90`; `0x1008e01d`-`0x1008e074`; `0x1009e2b5`-`0x1009e306`; `0x100a00a2` | D (masks, branch). **The writer is found (UI-GHOST-1, §5.1): a 700 ms toggle in AnnoFrame `0x100038d0`-`0x100038f2`, OQ-730 answered.** P: HE 0.700 s on / 0.700 s off |
 | Roads and walls, partial | the drag ghost shows the affordable prefix normally and the rest with `0x20000000` (blinking). The commit sends only the prefix that is valid; cost is checked again per record on apply (OQ-043: op 6 continues, op 9 stops) | `0x1004b762`-`0x1004b7d9`; `0x10049de0`-`0x10049e39` | D |
 | Mines | the same flag fold (`0xA0000000` when unaffordable) | SF §3.4 | D |
 | Status-bar cost row | while a building is armed over own territory, the cost figures show; a cost above the stock blinks `0xaabbee`/`0xee8888` every 250 ms | ST (UI-STATUS-2) `0x10064114`-`0x1006419e` | D |
 | **Yellow rectangle** on invalid ground | draw `0x10048450`: byte `B+0x2e4` clear (preview refused) draws the yellow empty rectangle `0x10041050` (colour `0xffff00`) and no ghost and no fertility bar; set draws the ghost `0x100443c0` | PB §4.1; `f13_place_water` | D + P |
 | Nothing drawn | gates: `[B+0x48] < [B+0x50]` (non-empty clamped footprint) and the type registered | `0x10048491`-`0x100484e8` | D |
-| Pointer over chrome | the input handler returns before any preview when `0x10041290` finds no map tile under the pointer (view slot `+0x94`). The ghost drawn then is the last one; whether it hides over the panel is OQ-700 | `0x1004748a`-`0x10047491`, `0x10041325` | D (gate); U (visible result) |
+| Pointer over chrome | the input handler returns before any preview when `0x10041290` finds no map tile under the pointer (view slot `+0x94`). HE hides the ghost and its radius outline while the pointer is over the panel (§5.1). GOG's visible result is uncaptured (OQ-757) | `0x1004748a`-`0x10047491`, `0x10041325` | D (gate); P (HE) |
 | Kontor ghost | the rebuild shows it only where valid (N); the original's Kontor draw `0x10049230` was not read | - | U |
+
+#### 5.1 The ghost's four states in detail (UI-GHOST-1 stage A, 2026-11-17)
+
+GOG code by address (AnnoFrame, AnnoWelt). HE pixels come from the owner's `ui_9.mp4` (2560x1440, **80 fps**). The
+GOG Wine captures are from UI-1 and UI-PLACE-1. Scripts and frames are in the task worktree's `cache/ghost/`
+(`scan.py`, `refs.py`, `blink.py`, `line.py`, `f*.txt`/`w*.txt` listings). They are not committed.
+
+**(1) The blink: the writer of `+0x140c` and its period (OQ-730, answered).**
+
+| # | Finding | Address | Tag | Conf. |
+|---|---|---|---|---|
+| 1.1 | The draw list (count `+0`, 0x38-byte entries from `+4`, phase byte `+0x140c`, last phase `+0x140d`, word accumulator `+0x140e`) is **embedded in the view frame at `+0x14`**. AnnoFrame passes `lea esi,[ebx+0x14]` to the world's slots `+0xd8` (build), `+0xe4` (draw, AnnoWelt `0x100a0080`) and `+0xdc`. So the writer addresses it as frame `+0x1420`/`+0x1422`. That is why a sweep for `+0x140c` found only the reader and the reset | AnnoFrame `0x10003974`-`0x10003999`, `0x100036ba`-`0x100036df`; AnnoWelt vtable `0x100cc92c` slots `0xd4`/`0xd8`/`0xe4` | D | high |
+| 1.2 | **The toggle:** `acc(+0x1422, u16) += dt; if acc > 0x2bb (699) { acc -= 699; phase(+0x1420) ^= 1 }`. The carry is kept (no reset to 0) | AnnoFrame `0x100038c8`-`0x100038f2` in `0x100037f0` | D | high |
+| 1.3 | `dt` is the frame's elapsed time in **milliseconds**: the elapsed-time argument the frame's slot `+0x6c` passes on to `0x100037f0`. The same value is clamped to 50 for arrow-key scrolling (`0x10005a65`). The unit is L from the code; the HE period below confirms it | `0x1000b1f4`-`0x1000b1fc`; `0x10005a61`-`0x10005a6e` | D (flow) + P (unit) | high |
+| 1.4 | **Phase meaning:** phase 1 = the chunk draw copies the real tile wherever the unaffordable mask `+0x218` is set (ghost hidden). Phase 0 = the ghost is drawn. A change of phase (`+0x140d` != `+0x140c`) forces the redraw | AnnoWelt `0x1009e2fd`-`0x1009e306` (arg 3 = `[list+0x140c]`, pushed at `0x1009f305` and `0x100a02ef`); `0x100a0098`-`0x100a00b2` | D | high |
+| 1.5 | **Who advances it:** only the frame pass called with view flag `0x40000`. `tFrameGameFull` slot `+0x6c` (`0x1000b090`) sets `0x40000` in its own flag register before it calls `0x100037f0`, so its pass toggles. `tFrameGame` slot `+0x6c` (`0x10005a10`) adds `0x40000` only to a copy for `0x10003560`, which has no toggle, so its blink would stand still. The in-game view is `tFrameGameFull` | `0x1000b1e6`; `0x10005b4a`; vtables `0x1008664c`, `0x10086428` (RTTI) | D (paths); L (which frame the game uses; HE blinks) | high / medium |
+| 1.6 | **Reset:** world slot `+0xd4` (AnnoWelt `0x1009eb10`) empties the list, sets phase 0 and loads the accumulator from world `+0x10c`. The callers are AnnoFrame `0x10003b96` and `0x10007b24`, on a view (re)build | `0x1009ebbb`-`0x1009ebca` | D | high (the meaning of world `+0x10c` is U) |
+| 1.7 | **Global, not per ghost:** one phase per view, shared by every masked tile (Default multi-placement records, the road/wall suffix, mines). The blink does not restart when a ghost becomes unaffordable, so the first visible phase is arbitrary | from 1.1-1.6 | D | high |
+| 1.8 | **HE measurement:** tanner 1023 over its own land, `ui_9` 4:03-4:31, crop (1560,340) 400x320, every frame (2240 frames at 80 fps). Metric: the share of non-grass pixels in the ghost's box (bimodal: 0.02-0.06 hidden, 0.74-0.78 shown). Result: **17 shown runs and 17 hidden runs of 56 frames (0.700 s) each, ±1 frame**, from 245.51 s to 269.29 s. This supersedes the earlier 4 fps estimate (0.75 s / 0.5 s) | `cache/ghost/blink.py`, `tanner80.txt` | P | high |
+| 1.9 | **The radius outline does not blink.** It is drawn by the cursor (`0x100443c0`), not through the chunk mask. The HE green outline in the water at (1960,60) 300x120 has 262-268 line pixels in both phases (246.0 s shown, 246.6 s hidden) | `cache/ghost/line.py` | D + P | high |
+
+**(2) The yellow footprint (the refused site).**
+
+| # | Finding | Address | Tag | Conf. |
+|---|---|---|---|---|
+| 2.1 | `0x10041050(rect, 0xffff00, dt, list)`: `rect` = the cursor's clamped rectangle (`B+0x2b0`: x0, y0, x1, y1). x1/y1 are exclusive corner coordinates (x1 = x0 + width). It returns at once when x0 == x1 | AnnoFrame `0x10041050`-`0x10041060`; caller `0x1004846b`-`0x10048483` | D | high |
+| 2.2 | **Shape:** four line strips (edge y0, edge y1, edge x0, edge x1), each with one vertex per tile corner along the edge. A vertex is (x, terrain height at the corner (world slot `+0x5c`) + 2 × 0.04, y) plus the colour. So the outline is the footprint rectangle in tile space, at ground level and **lifted 0.08** height units. It follows the terrain (it bends over slopes and the Kontor's pier in `r2_place_market_1301`) | `0x1004108f`-`0x10041271`; floats `0x10087de8` = 0.04, `0x10087dec` = 1.0 | D + P | high |
+| 2.3 | **Rotation:** the rectangle is the rotated footprint the cursor computed, with width and height swapped for odd turns. The outline is never a turned sprite | `B+0x2b0` set by the input handler | D | medium |
+| 2.4 | **Line:** strips handed to the draw list (slot `+0x9c` buffer, `+0xa4` submit). GOG Wine `f13_place_water` (pioneer house 501, 4x4, over open sea) has 334 pixels of exactly `(255,255,0)` and **one pixel per edge per column** (x 580: y 479 and 560). So the line is 1 pixel wide, not anti-aliased, drawn over the ground and over buildings (it shows over the Kontor's roof) | `f13_place_water.png` (UI-1 d91), `cache/ghost/f13_water_crop.png` | P | high |
+| 2.5 | **Water and off-island:** drawn the same way over open sea (flat corners give a clean 2:1 diamond, 169x82 px at that zoom). There is no island test in the draw. Only an empty clamped rectangle (pointer off the map) draws nothing | `f13_place_water`; `0x1004105d` | D + P | high |
+| 2.6 | HE's refused-site colour was not captured | — | U | — (OQ-758) |
+
+**(3) The radius outline (the valid site).**
+
+| # | Finding | Address | Tag | Conf. |
+|---|---|---|---|---|
+| 3.1 | `0x100443c0(fp, radius, 0xffff00, dt, list)`, `ret 0x14`. `fp` = {x0 u16, y0 u16, w u8, h u8} built from `B+0x2b0`. `radius` = type slot `+0x78` = `HEAD[0x11]` (part D P2). The colour is the same `0xffff00` | AnnoFrame `0x10048491`-`0x1004850a`; `0x10044f79` | D | high |
+| 3.2 | **Which types:** every type the **Default** cursor arms, whenever the site is valid. There is **no radius > 0 test** (only a negative radius skips, `0x1004445e`). Radius-0 types still draw a minimal outline (the half-width table gives 1 for r = 0). The road, wall, field and mine cursors have their own draw methods (not read) | `0x10048491`-`0x1004850a`; `0x1004445c` | D | high (Default); U (other cursors) |
+| 3.3 | **Shape:** a half-width table `w[0..r]` built by a midpoint-circle loop (`r²`, `(r-1)·r`, odd steps), plus 1 on the outer rows when r ≤ 3. For example r = 4 → 4,4,3,3,1; r = 24 → 24,24,24,24,24,23,23,23,23,22,22,21,21,20,19,19,18,17,16,15,13,12,10,8,4. Centre = (x0 + (w−1)/2, y0 + (h−1)/2), integer halves. Rows `cy ± i` span `cx ± w[i]` tiles. The outline is a staircase along tile corners (seen in iso as a zigzag), clipped to the map bounds (world slots `+0x54`/`+0x58`), not to the island. Vertices are at ground height + 0.08 (constants `0x100880f8` = 1.0, `0x100880fc` = 0.04), and it is drawn as several strips | `0x100443c0`-`0x10044439` (table), `0x10044477`-`0x10044f79` (strips) | D (table, centre, clip, lift); L (that the rows are the outline of exactly the cells `cx ± w[i]`; the vertex walk was not traced step by step) | high / medium |
+| 3.4 | **Colour and line:** GOG yellow `0xffff00`, 1 pixel wide (GOG `p1_a_armed`: pioneer house, radius 24; `p1_c_armed_1301`: market, radius 24). HE draws it **green** (`ui_9` 4:01-4:31). The packet follows GOG | pixels | P | high |
+| 3.5 | It does not blink (1.9), and it hides with the ghost when the pointer leaves the map in HE (4) | — | P | high |
+
+**(4) When the ghost hides entirely (OQ-700).**
+
+| # | Case | Evidence | Tag | Conf. |
+|---|---|---|---|---|
+| 4.1 | Nothing armed (`B+0x44` = 0 after cancel, right click or ESC to the grid) | §6 | D + P | high |
+| 4.2 | Empty clamped footprint (`[B+0x48] >= [B+0x50]`) or an unregistered type: no building and no outline (the refused path also returns when x0 == x1) | `0x10048491`-`0x100484e8`; `0x1004105d` | D | high |
+| 4.3 | **Pointer over the panel (HE):** the ghost **and** its radius outline vanish while the pointer is on the build panel and come back when it returns to the map. In `ui_9` the outline is present to 243.4 s, absent from 243.6 s to 244.8 s (pointer on the panel's rotate arrow, frames 244.2 s and 244.8 s), and back at 245.0 s (5 fps sampling) | `cache/ghost/he_244.2.png`, `line.py` | P | high |
+| 4.4 | GOG: the input handler skips the preview off the map (`0x10041290` finds no tile), but nothing in the cursor draw `0x10048450` tests the pointer. The GOG Wine captures `p1_a_armed`/`p1_c_armed_1301` cannot answer this: their action log moves the pointer back to the map (225,215) after every panel click | `0x1004748a`; UI-PLACE-1 `actions.jsonl` | D (gate); U (GOG visible result) | — (OQ-757) |
+| 4.5 | Refused site: the building is hidden and the yellow footprint shows (2). Unaffordable: the building alone hides in phase 1 (1) | — | D + P | high |
+
+**What stage B draws (window only, no sim state):**
+
+- `refused` (the sim's placement rule plus territory says no): a 1-pixel `0xffff00` outline of the rotated
+  footprint along its tile corners at ground height; no building, no radius.
+- `valid`: the building plus the radius staircase (table 3.3, centre on the footprint centre, clipped to the
+  map) in `0xffff00`.
+- `unaffordable` (valid site, the cumulative cost exceeds the stock): as `valid`, but the building is hidden while
+  the phase is 1. The phase is one window-clock accumulator: add the frame's milliseconds; above 699, subtract
+  699 and flip. The radius outline stays steady.
+- `hidden`: nothing armed, empty footprint, or the pointer over the panel/chrome (HE, 4.3).
+- Priority: hidden > refused > unaffordable > valid.
 
 ---
 
@@ -344,7 +410,7 @@ Existing ones this note touches:
 - **OQ-552**: see OQ-728.
 - **OQ-566**: the demolish cursor.
 - **OQ-627**: the orange frame on the armed cell.
-- **OQ-700**: the cursor over chrome.
+- **OQ-700**: the cursor over chrome. **Answered for HE (§5.1 (4))**: the ghost and its radius outline hide while the pointer is on the panel. GOG's visible result stays open as OQ-757.
 - **OQ-T15-PLACEREFUSE**: no road adjacency test was found in any check, so a building beside an unconnected road is placed (L).
 - RP **U-R1** (now located at `0x1007cc40`) and **U-R2** (still U).
 
@@ -352,7 +418,10 @@ Proposed new questions:
 
 - **OQ-728.** Does the build menu arm `tCursorAnlageBergwerk` (kind `0xe`) for `MINE` and `STEINBRUCH`? If it does, a player mine can only stand on a site record whose mask holds its ore bit (`0x10046300`). That is a UI-level deposit restriction OQ-552 did not consider, because OQ-552 read the Default cursor `0x10047170`. Next: the View.dll cell callback (from `0x1002c260`) and the source of the 6-byte records (island `+0x24`, object slot `+0xc`).
 - **OQ-729.** Which kind arms which cell: the per-cell rule in View.dll (PRODTYPE, flag class, or a table). Also which cursor places bridges, ramps and piers.
-- **OQ-730.** The writer of the draw-context byte `+0x140c` (the blink phase) and its period. Not in AnnoWelt, AnnoFrame, AnnoGame, View, AnnoScene or AnnoDisplay by direct offset; likely a struct copy or an indexed store.
+- **OQ-730.** The writer of the draw-context byte `+0x140c` (the blink phase) and its period. **Answered (UI-GHOST-1, §5.1 (1)):** the list is embedded at frame `+0x14`, so the writer is AnnoFrame `0x100038f2` `xor byte [ebx+0x1420],1`. It flips every 700 ms of frame time (accumulator `+0x1422`, threshold 699), and HE measures 0.700 s / 0.700 s.
+- **OQ-756.** The radius outline's exact vertex walk in `0x100443c0` (`0x10044477`-`0x10044f79`): confirm that it outlines exactly the cells `cx ± w[i]` of rows `cy ± i`, and what a radius-0 type (decorations, `DENKMAL`/`ZIERDE`, 141 types with `HEAD[0x11]` = 0) shows. Next: one GOG Wine capture of an armed ornamental (for example 2564 flower bed) and of a radius-4 type, compared with the table.
+- **OQ-757.** GOG with the pointer on the panel while a building is armed: is the ghost (and its radius outline) hidden as in HE, or does it stay at the last map tile? Nothing in the cursor draw `0x10048450` tests the pointer. Next: a Wine capture that arms a building, moves the pointer to the map, then onto the panel, and screenshots without moving back.
+- **OQ-758.** HE's colour for the refused-site footprint outline (GOG `0xffff00`; HE's radius outline is green). Next: a frame of a refused HE ghost (over water or another building) from an owner recording.
 - **OQ-731.** The neighbour table of the road/wall autotiler `0x1007cc40` (ids 2500-2537, 2672/2673, PRODTYPE `0x181`, flag `0x800`).
 - **OQ-732.** The meaning of event codes 1, 2 and 4 and of flag bit 8 in the cursor input handlers (L: press, release, right click, CTRL). One Wine capture would settle it.
 - **OQ-733.** The dry-tile swap in the field commit: what type slot `+0xf8(3)` returns (dry variant), and whether a tree on a dry tile is really dropped (id 0, `0x1004ab61`-`0x1004ab68`).
@@ -469,7 +538,8 @@ count differs from the ENTRANCE count: arrows and entrances are different data (
 (D + P) and HE (P). The OQ text ("he_01 3:32-4:21 shows green arrows on the placement ghost that turn with
 it") describes the panel picture, not the map ghost. Side findings for part B: the HE radius outline is
 **green** where GOG's is yellow `0xffff00`. The HE ghost **blinks** when unaffordable: on 0.75 s, off
-0.5 s, measured at 4 fps over 4:05-4:30 (`########..###...##...###...`).
+0.5 s, measured at 4 fps over 4:05-4:30 (`########..###...##...###...`). Superseded by the 80 fps measurement
+and the code in part B §5.1: 0.700 s on, 0.700 s off.
 
 ### 3. What the arrows mean in the world
 

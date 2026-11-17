@@ -14849,3 +14849,87 @@ landing candidate's own build): both pass, run directly with `python3 -I tools/l
   silently inheriting someone else's justification.
 
 READY FOR REVIEW.
+
+## UI-HARVEST-ICON-1 stage A (docs only), 2026-11-17
+
+**Branch** `task/UI-HARVEST-ICON-1`, base origin/main `4dfdd9b7`. Stage A only, as released. No code, builds or tests;
+small single-threaded Python scripts in the worktree's git-ignored `cache/uhi/`. Delivered: `docs/re/ui.md` §11
+"Status icons above buildings", OQ-720..724 in `docs/open-questions.md`, one pointer line in `docs/re/production.md`
+§4.1. Existing notes checked first: `git grep` over `origin/task/*` found OQ-033 and `production.md` §3/§4.1 (the
+`+0x0d` bits, `0x10073010`), nothing on the icon pictures or the drawing.
+
+**Findings.**
+- **The icon set** (D `0x10073114`, table `0x100c92b0` = 1555, 1570, 1572, 1571; P `FigurenHeader.dat`): code 0 →
+  1555 "Zzz" (switched off), 1 → 1570 `KeinRohstoff` (sheaf + leaf + spinning "?"), 2 → 1572 `KeinLager` (barrel and
+  sack + "?"), 3 → 1571 `KeineStrasse` (paved tile + "?"). All `BEWOHNTYPE PRODSYMBOL`, 16 frames per zoom group,
+  `ANIM` 80 ms, kind `tHausAnim`. No ToolGfx ACCESS names and no tooltips: they are world figures. The English help
+  pages name them (`help/Auslastung.htm`, `IH_Lager_Voll.htm`, `IH_Betrieb_Strasse_Fehlt.htm`,
+  `Produktion_stilllegen.htm`).
+- **The HE "vertical red-to-yellow bar" is the question mark turned edge-on** (H, high): HE 8:56 matches frame k =
+  5/13 of 1570, 8:52 shows its curl (frames 1-3/14-15). **The bar measures nothing.** The icon the owner saw over the
+  forester is 1570.
+- **Triggers** (D): icon 0 from the switch helper `0x10072a60` → `0x10073010(0, old)` (`0x10072aca`): on exactly
+  while switched off. Icons 1/2 from the status helper `0x10072ed0` once the condition has lasted the repeat
+  interval (workshop 45 000 t; farm 60 000 missing / 45 000 full; mine 30 000 / 45 000; small farm 75 000; whaler
+  `0x10073720` 90 000 / 45 000, new), removed by the next producing step (`0x10072fb0(0x0e)`). Icon 3 replaces a due
+  code 1 (non-crop, non-animal input) or code 2 when `0x10071f40` / `0x10072390` return 0 (meaning "no road" is
+  likely, OQ-720). The forester's input BAUM (70) is in the crop range, so it always shows icon 1.
+- **Drawing** (D `0x10073010`): owner gate (Volk 1); the building's old icon objects removed; one new island
+  object for the **lowest** set bit among 0-3 (Zzz first), at the **footprint centre**, height = type float `+0x8` +
+  building byte `+0x0f` · 0.04 (inputs OQ-721); re-created at every step while due. All three zoom groups have
+  frames. No blink or fade.
+- **The rebuild:** the sim holds codes 1-2, the icon bits, the time and `shows_icons` (`StatusTracker`) and
+  `switched_on`; no code 3; the play snapshot copies no status.
+
+**Acceptance table (stage A).**
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Disposition |
+|---|---|---|---|---|
+| Icon ids by code | table bytes `13 06 22 06 24 06 23 06` at `0x100c92b0`, read by `0x10073114` | the nearby `Symbole` figures (1556 ore, 1557 fertility, 1573/1574 road connection) are in no table | D + P | pending review |
+| HE icon = 1570, bar = "?" edge-on | `cmp.py`: HE 8:56 vs frame 5/13; 8:52 vs frames 1-3 | a growth bar would not reappear as the "?" curl; the sheaf part is identical in both HE frames | H | pending review |
+| Icon 0 = switched off | `0x10073010(0, old)`; the caller pushes new, then old (`0x100684cd`) | read the other way round, the Zzz would show while running; the early return on `old == new` makes `old = !new` | D | pending review |
+| Code 3 rewrite | `0x10072f77`-`0x10072f83` | crop/animal inputs skip it (`0x10072f51`-`0x10072f67`) | D | pending review; meaning OQ-720 |
+| One icon, lowest bit | loop `0x100730d3`-`0x100730e4` stops at the first set bit below 4 | bit 4 is never drawn (`cmp edi, 4`) and no direct caller sets it | D | pending review |
+
+**Stage B plan (2-3 h, UI lane, after this review).**
+1. A read-only per-turn list in `PlaySnapshot`: for each building of the local player whose payload has a
+   `StatusTracker`: (building id, footprint x, y, w, h, icon code), code = 0 if `shows_icons` and a line is switched
+   off, else the lowest set bit of `status.icons` among 1-2; buildings without an icon are left out. Same pattern as
+   `map_figures` (collect function + shared_ptr; rule 0.2: no state, stream, hash or draw change).
+2. The viewer draws figure 1555/1570/1572 (1571 kept in the table for later) at the footprint centre, frames from
+   `assets::figure` per zoom group, anchor from the frame header, lifted per the OQ-721 default; frame =
+   (game ms / 80) mod 16 (OQ-722 default); the local player's buildings only (OQ-723 default).
+3. Tests: the collect function on a world fixture (switched-off workshop → 0; farm with icon bit 1 → 1; bits 1 and 2
+   → 1; `shows_icons` false → none; another player's building → none); a picture check of the icon against the
+   decoded frame at each zoom; the owner checks the forester case in the viewer.
+
+**UI / sim split.**
+- **UI lane (read-only app work), stage B, about 2-3 h:** everything above. Icons 0, 1, 2 need no new sim state: codes
+  1/2 and the icon bits are in `StatusTracker`; icon 0 is derived from `switched_on` and `shows_icons`.
+- **Sim (proposal for the orchestrator), not in this packet:** code 3 "no road". (a) RE of `0x10071f40`
+  (`0x100720e1`-`0x10072382`) and `0x10072390` (OQ-720), about 2-3 h docs only. (b) A sim packet: `Status::NoRoad = 3`,
+  the rewrite in `StatusTracker::report` with a predicate per building class, the predicate itself (a road/supplier
+  reachability query; 3-4 h if the existing road graph answers it, more if it needs a new search), tests and the
+  state-stream note (the code field already has 3 bits, no layout change). Until then the rebuild shows icon 1 or 2
+  where the original shows the road icon; the forester and the farms are not affected. Optional, about 1 h: set
+  `icons` bit 0 in the switch command if the orchestrator wants the bits to mirror the original byte instead of
+  deriving icon 0.
+
+**HE recipe for the owner (optional; closes OQ-722 and OQ-723, checks icons 0 and 2).** A running History Edition game,
+closest zoom, sound off:
+1. Select a working forester and switch it off (the "Zzz" button in its panel): a "Zzz" should appear over it at once.
+   Record 10 s at 60 fps; switch it on and note when the "Zzz" goes.
+2. Find a building with the sheaf (or barrel) icon and record 10 s at 60 fps without moving the camera (OQ-722: frames
+   per turn of the "?", and a jump about once a second or not).
+3. With a computer opponent in the game: look at its farms early on and note whether any icon shows over them (OQ-723).
+4. Optional: save with a "Zzz" showing, load, and note whether it is there at once (OQ-724).
+
+**Decisions and reasoning.**
+- The "bar" was settled from the decoded frames, not by searching for a bar draw: the edge-on frames reproduce both
+  HE captures, and `0x10073010` passes no value to the icon.
+- Icon 0 is derived app-side, not added to the sim: the original's bit 0 is a function of the switch state and the
+  owner gate, both already in the sim.
+- OQ-723's default (own buildings only) is the narrower choice: it matches what the owner saw and is easy to widen.
+- `production.md` gets one pointer line; the full reading lives in `ui.md` §11, so it is written down once.
+
+READY FOR REVIEW.

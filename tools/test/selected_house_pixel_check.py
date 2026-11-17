@@ -64,16 +64,36 @@ def expected_image(layout_dir, game_dir, overrides):
     return Image.frombytes("RGB", (w, h), bytes(rgb))
 
 
-def compare(expected, live, rects, width, height, channel_tolerance=0):
-    """Only pixels inside `rects` where `expected` is opaque are checked - the same convention
-    ui_dynamic_draw_check.py's own compare() uses, duplicated rather than imported for the same
-    reason: this script's own negative control must not be confused with that script's screens."""
+def live_digit_pixels(layout_dir):
+    """UI-TABS-1 stage B: the pixels of data/ui/masks.txt's `live-digits` rectangles. The
+    deselected state shows the player overview, whose balance rows now draw live figures
+    (masks balance_row_0..7, docs/re/ui.md 5.5) that compose_screen's oracle cannot know - the
+    project's own exclusion for live digits, as live_screen_compare.py applies it."""
+    import ui_layout
+
+    out = set()
+    for m in ui_layout.parse_masks(os.path.join(layout_dir, "masks.txt"))["masks"]:
+        if m.get("reason") != "live-digits":
+            continue
+        x, y = m["pos"]
+        w, h = m["size"]
+        out.update((xx, yy) for yy in range(y, y + h) for xx in range(x, x + w))
+    return out
+
+
+def compare(expected, live, rects, width, height, channel_tolerance=0, masked=frozenset()):
+    """Only pixels inside `rects` where `expected` is opaque and not in `masked` are checked - the
+    same convention ui_dynamic_draw_check.py's own compare() uses, duplicated rather than imported
+    for the same reason: this script's own negative control must not be confused with that
+    script's screens."""
     e, l = expected.load(), live.load()
     bad = checked = 0
     first = None
     for x0, y0, w, h in rects:
         for y in range(max(0, y0), min(height, y0 + h)):
             for x in range(max(0, x0), min(width, x0 + w)):
+                if (x, y) in masked:
+                    continue
                 a = e[x, y]
                 if a == (0, 0, 0):
                     continue
@@ -154,6 +174,7 @@ def main(argv):
                                     [("pionier_bk", 974), ("house_portrait", 1),
                                      ("need_icon_0", 727)])
         no_panel = expected_image(str(layout_dir), game_dir, [])
+        digits = live_digit_pixels(str(layout_dir))
 
         png = session_dir / "selected_house_live.png"
         if not png.is_file():
@@ -187,7 +208,8 @@ def main(argv):
                 failures.append(
                     "deselected_live: the deliberately wrong input (the panel, still drawn) was "
                     "not rejected - the comparison cannot tell the panel is gone")
-            bad, checked, first = compare(no_panel, live, rects, width, height, channel_tolerance)
+            bad, checked, first = compare(no_panel, live, rects, width, height, channel_tolerance,
+                                          digits)
             if bad:
                 x, y, a, b = first
                 failures.append(f"deselected_live: {bad} of {checked} pixels differ; "

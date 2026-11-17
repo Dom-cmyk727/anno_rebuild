@@ -85,6 +85,7 @@
 #include <fstream>
 #include <map>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -3129,20 +3130,20 @@ int run_atlas_report(const fs::path& game_dir, const fs::path& file, const Optio
 // sizing them as --atlas-report does: real wall time, the real byte cost of the one mip level
 // that build actually produces (not kOneMipLevelFactor's formula), and the process's peak memory.
 
-/// `scene`'s static+water frames across every group below `group_count`, decoded and deduped into
+/// `scene`'s static+water frames across every group named in `groups`, decoded and deduped into
 /// one shared FrameTable + SpriteCache (the engine's own decode path - assets::building::to_rgba,
-/// iso.cpp's SpriteCache::get - no second decoder): the real combined set a session holds at once
-/// (ADR 0007 decision 2, all three groups resident together), not one group at a time. Mirrors
-/// atlas_pages_corpus_test.cpp's own collect_static_water, folded over every group into one table
-/// instead of called once per group with its own: `already` is declared once, outside the group
-/// loop, so a frame a later group's own object also reaches (a different SpriteKey, since the key
-/// carries `group`) is still only pushed into `out` once per distinct FrameId, and a frame two
-/// objects within the SAME group share (the dedup `add_object_frames`/this project's add_object
-/// itself already relies on) is not pushed twice either.
-std::vector<render::AtlasFrameInput> collect_static_water_all_groups(const render::Scene& scene,
-                                                                     std::size_t group_count,
-                                                                     render::SpriteCache& cache,
-                                                                     render::FrameTable& table) {
+/// iso.cpp's SpriteCache::get - no second decoder): `groups` names either all three groups
+/// together (ADR 0007 decision 2, the 4090's own case) or one adjacent pair (the iGPU's own case,
+/// review F5), the real combined set a session holds at once for that budget, not one group at a
+/// time. Mirrors atlas_pages_corpus_test.cpp's own collect_static_water, folded over every named
+/// group into one shared table instead of called once per group with its own. Dedup needs no
+/// extra tracking set: the final pass walks `table`'s own ids 0..size()-1, each visited exactly
+/// once regardless of how many objects/groups interned it (the dedup `add_object_frames`/this
+/// project's own `add_object` already relies on for two objects sharing a frame within one
+/// group).
+std::vector<render::AtlasFrameInput>
+collect_static_water_groups(const render::Scene& scene, std::span<const std::uint32_t> groups,
+                            render::SpriteCache& cache, render::FrameTable& table) {
     auto add_object = [&](const render::Prepared& p, std::uint32_t group, bool enhanced_eligible) {
         const std::uint32_t id = p.first.anlage;
         const fig::Entry* entry = scene.anlagen.entry(id);
@@ -3186,8 +3187,7 @@ std::vector<render::AtlasFrameInput> collect_static_water_all_groups(const rende
             }
         }
     };
-    for (std::size_t g = 0; g < group_count; ++g) {
-        const auto group = static_cast<std::uint32_t>(g);
+    for (const std::uint32_t group : groups) {
         for (const auto& island : scene.islands) {
             const auto statics = render::prepare_objects(
                 island, scene.anlagen, render::kObjectRecords, render::Objects::NotWater);
@@ -3278,15 +3278,20 @@ int run_atlas_build(const fs::path& game_dir, const fs::path& file, const Option
     const auto started = std::chrono::steady_clock::now();
     std::string tsv;
     // "collect" is decoding + dedup (sequential: one object/frame at a time, no worker split -
-    // see collect_static_water_all_groups/collect_figures_all_groups); "pack" is
+    // see collect_static_water_groups/collect_figures_all_groups); "pack" is
     // render::build_atlas_pages itself, split over `threads` workers. Reported separately (not
     // only their sum) because the two have very different parallelism, and a reader asking "is
     // this wall time with every worker busy, or one thread doing it all" needs the split, not
     // just the total - `*_cpu_ms` (process-wide user+sys time, cpu_time_ms()) answers that
     // directly: close to wall time at `threads == 1`, higher the more workers ran at once.
+    // pair01/pair12_static_bytes (review F5): the worst adjacent zoom-group pair's own static+
+    // water bytes, built from real pages - the iGPU's own case (its budget holds whichever pair
+    // a zoom is crossing, not all three groups at once; 1a's own atlas.md section 4). "n/a" when
+    // that pair's second group is not present (group_count < 2 or < 3).
     tsv += "scene\tthreads\tstatic_frames\tstatic_pages\tstatic_level0_bytes\t"
            "static_level1_bytes\tstatic_bytes\tstatic_oversized\tstatic_collect_ms\t"
-           "static_pack_ms\tstatic_ms\tstatic_cpu_ms\tfigures_frames\tfigures_pages\t"
+           "static_pack_ms\tstatic_ms\tstatic_cpu_ms\tpair01_static_bytes\t"
+           "pair12_static_bytes\tfigures_frames\tfigures_pages\t"
            "figures_level0_bytes\tfigures_level1_bytes\tfigures_bytes\tfigures_oversized\t"
            "figures_collect_ms\tfigures_pack_ms\tfigures_ms\tfigures_cpu_ms\ttotal_bytes\t"
            "total_ms\terror\n";
@@ -3298,6 +3303,10 @@ int run_atlas_build(const fs::path& game_dir, const fs::path& file, const Option
     };
     std::vector<BuildRow> rows;
     std::size_t loaded_ok = 0, refused = 0;
+    // Review F5: the worst adjacent pair's own static+water bytes, across every scene that has
+    // that pair (tracked running, not sorted: the packet asks for the worst, not a median here).
+    std::uint64_t worst_pair01_bytes = 0, worst_pair12_bytes = 0;
+    std::string worst_pair01_scene, worst_pair12_scene;
 
     const std::vector<fs::path> scenes = discover_scenes(game_dir, file);
     for (const fs::path& scene_file : scenes) {
@@ -3308,9 +3317,9 @@ int run_atlas_build(const fs::path& game_dir, const fs::path& file, const Option
         const bool is_placed = ext == ".txt" || ext == ".json"; // load_placed_scene: no units.
         auto loaded = load_any_scene(game_dir, scene_file);
         if (!loaded) {
-            // 24 empty fields (threads .. total_ms) between scene and error: built by
+            // 26 empty fields (threads .. total_ms) between scene and error: built by
             // repetition, not counted by eye (TRACE-COLS-1's own lesson).
-            tsv += scene_file.string() + std::string(24, '\t') + loaded.error() + "\n";
+            tsv += scene_file.string() + std::string(26, '\t') + loaded.error() + "\n";
             ++refused;
             continue;
         }
@@ -3319,12 +3328,17 @@ int run_atlas_build(const fs::path& game_dir, const fs::path& file, const Option
         const std::size_t group_count =
             std::min<std::size_t>(scene.levels().size(), render::kGroups);
 
+        std::vector<std::uint32_t> all_groups;
+        for (std::size_t g = 0; g < group_count; ++g) {
+            all_groups.push_back(static_cast<std::uint32_t>(g));
+        }
+
         render::SpriteCache cache;
         render::FrameTable static_table;
         const auto static_collect_t0 = std::chrono::steady_clock::now();
         const double static_cpu0 = cpu_time_ms();
         const auto static_frames =
-            collect_static_water_all_groups(scene, group_count, cache, static_table);
+            collect_static_water_groups(scene, all_groups, cache, static_table);
         const double static_collect_ms = std::chrono::duration<double, std::milli>(
                                              std::chrono::steady_clock::now() - static_collect_t0)
                                              .count();
@@ -3338,6 +3352,37 @@ int run_atlas_build(const fs::path& game_dir, const fs::path& file, const Option
         const double static_cpu_ms = cpu_time_ms() - static_cpu0;
         const std::uint64_t static_l0 = total_bytes(static_pages.level0);
         const std::uint64_t static_l1 = total_bytes(static_pages.level1);
+
+        // Review F5: the worst adjacent pair's own static+water bytes, from real pages (not the
+        // all-three-groups set above) - the iGPU's own case, unconfirmed by RENDER-DIRECT-1b
+        // until now.
+        std::optional<std::uint64_t> pair01_bytes, pair12_bytes;
+        if (group_count >= 2) {
+            render::SpriteCache pair_cache;
+            render::FrameTable pair_table;
+            const std::vector<std::uint32_t> pair01 = {0, 1};
+            const auto pair01_frames =
+                collect_static_water_groups(scene, pair01, pair_cache, pair_table);
+            const auto pair01_pages = render::build_atlas_pages(pair01_frames, 2048, 2, o.threads);
+            pair01_bytes = total_bytes(pair01_pages.level0) + total_bytes(pair01_pages.level1);
+        }
+        if (group_count >= 3) {
+            render::SpriteCache pair_cache;
+            render::FrameTable pair_table;
+            const std::vector<std::uint32_t> pair12 = {1, 2};
+            const auto pair12_frames =
+                collect_static_water_groups(scene, pair12, pair_cache, pair_table);
+            const auto pair12_pages = render::build_atlas_pages(pair12_frames, 2048, 2, o.threads);
+            pair12_bytes = total_bytes(pair12_pages.level0) + total_bytes(pair12_pages.level1);
+        }
+        if (pair01_bytes && *pair01_bytes > worst_pair01_bytes) {
+            worst_pair01_bytes = *pair01_bytes;
+            worst_pair01_scene = scene_file.string();
+        }
+        if (pair12_bytes && *pair12_bytes > worst_pair12_bytes) {
+            worst_pair12_bytes = *pair12_bytes;
+            worst_pair12_scene = scene_file.string();
+        }
 
         bool have_figures = !is_placed;
         render::FrameTable figure_table;
@@ -3366,18 +3411,22 @@ int run_atlas_build(const fs::path& game_dir, const fs::path& file, const Option
         const std::uint64_t scene_total_bytes = static_bytes + figures_bytes;
         const double scene_total_ms = static_ms + figures_ms;
 
+        const std::string pair01_col = pair01_bytes ? std::to_string(*pair01_bytes) : "n/a";
+        const std::string pair12_col = pair12_bytes ? std::to_string(*pair12_bytes) : "n/a";
+
         char line[1536];
         if (have_figures) {
             std::snprintf(
                 line, sizeof line,
-                "%s\t%zu\t%zu\t%llu\t%llu\t%llu\t%llu\t%zu\t%.3f\t%.3f\t%.3f\t%.3f\t%zu\t%llu\t"
-                "%llu\t%llu\t%llu\t%zu\t%.3f\t%.3f\t%.3f\t%.3f\t%llu\t%.3f\t\n",
+                "%s\t%zu\t%zu\t%llu\t%llu\t%llu\t%llu\t%zu\t%.3f\t%.3f\t%.3f\t%.3f\t%s\t%s\t%zu\t"
+                "%llu\t%llu\t%llu\t%llu\t%zu\t%.3f\t%.3f\t%.3f\t%.3f\t%llu\t%.3f\t\n",
                 scene_file.string().c_str(), o.threads, static_frames.size(),
                 static_cast<unsigned long long>(static_pages.level0.size()),
                 static_cast<unsigned long long>(static_l0),
                 static_cast<unsigned long long>(static_l1),
                 static_cast<unsigned long long>(static_bytes), static_pages.oversized.size(),
-                static_collect_ms, static_pack_ms, static_ms, static_cpu_ms, figure_frames.size(),
+                static_collect_ms, static_pack_ms, static_ms, static_cpu_ms, pair01_col.c_str(),
+                pair12_col.c_str(), figure_frames.size(),
                 static_cast<unsigned long long>(figure_pages.level0.size()),
                 static_cast<unsigned long long>(figures_l0),
                 static_cast<unsigned long long>(figures_l1),
@@ -3387,15 +3436,16 @@ int run_atlas_build(const fs::path& game_dir, const fs::path& file, const Option
         } else {
             std::snprintf(
                 line, sizeof line,
-                "%s\t%zu\t%zu\t%llu\t%llu\t%llu\t%llu\t%zu\t%.3f\t%.3f\t%.3f\t%.3f\tn/a\tn/a\t"
-                "n/a\tn/a\tn/a\tn/a\tn/a\tn/a\tn/a\tn/a\t%llu\t%.3f\t\n",
+                "%s\t%zu\t%zu\t%llu\t%llu\t%llu\t%llu\t%zu\t%.3f\t%.3f\t%.3f\t%.3f\t%s\t%s\tn/a\t"
+                "n/a\tn/a\tn/a\tn/a\tn/a\tn/a\tn/a\tn/a\tn/a\t%llu\t%.3f\t\n",
                 scene_file.string().c_str(), o.threads, static_frames.size(),
                 static_cast<unsigned long long>(static_pages.level0.size()),
                 static_cast<unsigned long long>(static_l0),
                 static_cast<unsigned long long>(static_l1),
                 static_cast<unsigned long long>(static_bytes), static_pages.oversized.size(),
-                static_collect_ms, static_pack_ms, static_ms, static_cpu_ms,
-                static_cast<unsigned long long>(scene_total_bytes), scene_total_ms);
+                static_collect_ms, static_pack_ms, static_ms, static_cpu_ms, pair01_col.c_str(),
+                pair12_col.c_str(), static_cast<unsigned long long>(scene_total_bytes),
+                scene_total_ms);
         }
         tsv += line;
         rows.push_back(BuildRow{scene_file.string(), scene_total_bytes, scene_total_ms});
@@ -3430,6 +3480,23 @@ int run_atlas_build(const fs::path& game_dir, const fs::path& file, const Option
         std::snprintf(line, sizeof line, "median_total_ms\t%.3f (%s)\n", median_ms.total_ms,
                       median_ms.scene.c_str());
         tsv += line;
+    }
+    // Review F5: the worst adjacent pair's own static+water bytes, against the iGPU's 384 MiB
+    // (OQ-096/096b) - a finding for the owner if either exceeds it, not fixed here.
+    {
+        char line[512];
+        if (!worst_pair01_scene.empty()) {
+            std::snprintf(line, sizeof line, "worst_pair01_static_bytes\t%llu (%s)\n",
+                          static_cast<unsigned long long>(worst_pair01_bytes),
+                          worst_pair01_scene.c_str());
+            tsv += line;
+        }
+        if (!worst_pair12_scene.empty()) {
+            std::snprintf(line, sizeof line, "worst_pair12_static_bytes\t%llu (%s)\n",
+                          static_cast<unsigned long long>(worst_pair12_bytes),
+                          worst_pair12_scene.c_str());
+            tsv += line;
+        }
     }
     {
 #if defined(_WIN32)

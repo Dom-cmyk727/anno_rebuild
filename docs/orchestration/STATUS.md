@@ -170,6 +170,16 @@ says who is doing what, where the work is, and what it waits on.
   order?", the owner answered "Yes". They run in the UI lane, then UI-RANGE-1. Also, asked "Delete the public
   task branch with the data table after landing, and recreate it clean?", the owner answered "Yes, clean it
   up": `task/BUILDINGS-REF-1` is recreated as one clean commit.
+- **RENDER-DIRECT-1d ACCEPTED** 2026-11-17, head `16f2d9f6` (CI 44160833294 green on every job). The
+  texture-ceiling bisection hung on CI's software OpenGL adapter (it doubled toward a huge reported limit).
+  The orchestrator's technical call (the commit message says "owner's call"; it was the orchestrator's):
+  the measurement is opt-in (`ANNO_MEASURE_TEXTURE_CEILING=1`, classified `opt-in`), with a 256-layer cap
+  as a second guard; the GPU correctness cases still run on lavapipe. Documented in `docs/render/atlas.md`
+  §13. Local: 135/135 on the RTX 4090, WSL clean.
+- **Candidate 9 `refs/candidates/render-direct-1cd` = `45384a64`** (tree `5f933507`): RENDER-DIRECT-1d
+  (which contains 1c) on top of candidate 8. Its PC part (render and GPU lanes on the 4090 and the Radeon,
+  WSL) runs at the next quiet slot. One Mac run on `45384a64` covers candidates 5-9.
+- **[FLAKE-RESIZE-1](tasks/flake-resize-1.md) released** to the Windows executor.
 - **RENDER-DIRECT-1c ACCEPTED** 2026-11-17, head `46991ff8` (CI 44129323379 green). The CI fix rounds:
   - the game-file check now runs before the named-adapter pick, so a runner without game files skips as
     `required-asset`, the order `play_gpu_test` uses;

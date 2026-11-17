@@ -161,7 +161,7 @@ sim::Reject reject_for(const std::string& reason) {
 
 TEST_CASE("placement rule: every vector of the oracle file") {
     const Vectors v = read_vectors();
-    REQUIRE(v.cases.size() == 77);
+    REQUIRE(v.cases.size() == 89);
     sim::TypeRegistry::Builder b;
     for (const sim::BuildingType& t : v.types) {
         b.add(t);
@@ -218,7 +218,7 @@ TEST_CASE("placement rule: every vector of the oracle file") {
         }
     }
     // The file's mix, so a parser that silently drops cases cannot pass.
-    CHECK(accepts + rejects + unsupported == 77);
+    CHECK(accepts + rejects + unsupported == 89);
     CHECK(accepts >= 15);
     CHECK(rejects >= 15);
     CHECK(unsupported >= 4);
@@ -478,12 +478,20 @@ TEST_CASE("placement rule: the ordinary class predicate is flag word minus bit 0
         std::uint32_t flags;
         sim::Reject want;
     } rows[] = {
-        {0x0084, sim::Reject::None},         {0x0004, sim::Reject::None},
-        {0x0000, sim::Reject::Unsupported},  {0x0080, sim::Reject::Unsupported},
-        {0x000c, sim::Reject::Unsupported},  {0x0044, sim::Reject::Unsupported},
-        {0x8084, sim::Reject::Unsupported},  {0x0184, sim::Reject::Unsupported},
-        {0x0094, sim::Reject::Unsupported},  {0x1084, sim::Reject::Unsupported},
-        {0x0085, sim::Reject::Unsupported},  {0x0086, sim::Reject::Unsupported},
+        {0x0084, sim::Reject::None},
+        {0x0004, sim::Reject::None},
+        {0x0000, sim::Reject::Unsupported},
+        {0x0080, sim::Reject::Unsupported},
+        {0x000c, sim::Reject::Unsupported},
+        {0x0044, sim::Reject::Unsupported},
+        {0x8084, sim::Reject::Unsupported},
+        {0x0184, sim::Reject::Unsupported},
+        {0x0094, sim::Reject::Unsupported},
+        {0x1084, sim::Reject::Unsupported},
+        // 0x0085 has F & 3 == 1: since FERTILITY-1 1a the single-quad tile-object class (mean of
+        // the four corners 0x30 = 48, accepted; AnnoGame 0x10008fa1), no longer Unsupported.
+        {0x0085, sim::Reject::None},
+        {0x0086, sim::Reject::Unsupported},
         {0x10084, sim::Reject::Unsupported},
     };
     for (const auto& row : rows) {

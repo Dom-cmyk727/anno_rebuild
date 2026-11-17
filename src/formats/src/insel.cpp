@@ -122,6 +122,62 @@ std::optional<Bytes> Island::record(std::string_view name) const {
     return std::nullopt;
 }
 
+Result<CropList, std::string> CropList::parse(Bytes payload) {
+    CropList out;
+    std::size_t start = 0;
+    for (std::size_t k = 0; k < payload.size(); ++k) {
+        if (payload[k] != 0) {
+            continue;
+        }
+        if (k == start) {
+            return std::string("empty name");
+        }
+        out.names.emplace_back(payload.begin() + static_cast<std::ptrdiff_t>(start),
+                               payload.begin() + static_cast<std::ptrdiff_t>(k));
+        start = k + 1;
+    }
+    if (start != payload.size()) {
+        return std::string("name not terminated");
+    }
+    return out;
+}
+
+Result<ByteBuffer, std::string> CropList::write() const {
+    ByteBuffer out;
+    for (const auto& n : names) {
+        if (n.empty()) {
+            return std::string("empty name");
+        }
+        if (n.find('\0') != std::string::npos) {
+            return std::string("NUL in name");
+        }
+        out.insert(out.end(), n.begin(), n.end());
+        out.push_back(0);
+    }
+    return out;
+}
+
+Result<std::optional<CropList>, std::string> Island::crops() const {
+    std::optional<Bytes> payload;
+    for (const auto& r : records) {
+        if (r.name() != "ANBAU") {
+            continue;
+        }
+        if (payload) {
+            return std::string("twice");
+        }
+        payload = r.payload;
+    }
+    if (!payload) {
+        return std::optional<CropList>{};
+    }
+    auto list = CropList::parse(*payload);
+    if (!list) {
+        return list.error();
+    }
+    return std::optional<CropList>{std::move(list).value()};
+}
+
 namespace {
 
 /// Assembles cells from blocks; every tile must be covered exactly once.

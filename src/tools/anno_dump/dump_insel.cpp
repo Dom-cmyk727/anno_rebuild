@@ -27,6 +27,23 @@ std::string hex16(std::uint16_t v) {
     return b;
 }
 
+/// A crop name as printed: bytes 0x21-0x7e other than ',' and '\' as they
+/// are, every other byte as \xHH (lower-case hex).
+std::string crop_name(std::string_view n) {
+    std::string out;
+    for (const char ch : n) {
+        const auto c = static_cast<unsigned char>(ch);
+        if (c >= 0x21 && c <= 0x7e && c != ',' && c != '\\') {
+            out += static_cast<char>(c);
+        } else {
+            char b[8];
+            std::snprintf(b, sizeof b, "\\x%02x", static_cast<unsigned>(c));
+            out += b;
+        }
+    }
+    return out;
+}
+
 } // namespace
 
 bool dump_insel(Bytes buf, bool full, std::string& out) {
@@ -129,6 +146,18 @@ bool dump_insel(Bytes buf, bool full, std::string& out) {
             }
             out += "  BLOCKS " + std::string(name) + " count=" + std::to_string(bs.value().size()) +
                    " items=" + std::to_string(items) + " hash=" + hex64(fnv64(bytes)) + "\n";
+        }
+        auto crops = i.crops();
+        if (!crops) {
+            out += "  ANBAU BAD " + crops.error() + "\n";
+            ok = false;
+        } else if (crops.value()) {
+            std::string names;
+            for (const auto& n : crops.value()->names) {
+                names += (names.empty() ? "" : ",") + crop_name(n);
+            }
+            out += "  ANBAU count=" + std::to_string(crops.value()->names.size()) +
+                   " names=" + names + "\n";
         }
     }
     return ok;

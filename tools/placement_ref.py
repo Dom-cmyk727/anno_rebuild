@@ -759,7 +759,7 @@ def main(argv):
         args = argv[2:]
         gd = args[0] if args and not args[0].startswith('--') else os.environ.get('ANNO1503_GAME_DIR')
         if not gd:
-            print('skipping: placement tilecorpus needs ANNO1503_GAME_DIR')
+            print('skipping: ANNO1503_GAME_DIR not set (placement tilecorpus needs the game files)')
             return 77
         if not os.path.isfile(os.path.join(gd, 'Anlagen.dat')):
             print('placement tilecorpus: %s holds no Anlagen.dat' % gd, file=sys.stderr)

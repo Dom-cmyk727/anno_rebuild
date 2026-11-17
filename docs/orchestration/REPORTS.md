@@ -12706,3 +12706,102 @@ READY FOR REVIEW.
   intentionally not read here. Independent review belongs to the orchestrator.
 
 READY FOR REVIEW.
+
+## RENDER-DIRECT-1a — resident sprite atlases measured, layout fixed — READY FOR REVIEW (task/RENDER-DIRECT-1a, new worktree from `origin/main` `ac02d4a2`)
+
+**Command.** `bench_frame <game_dir> <file> --atlas-report out.tsv [--atlas-gpu-limits]` (a mode of
+`bench_frame`, not a second tool/implementation: reuses `load_any_scene`, `prepare_objects`,
+`animation`/`frame_index`, `AtlasResidency` directly). `<file>` "-" walks the whole corpus
+(`<game_dir>/Scenes` recursive + `data/maps/lan5.txt` + the 3 `ship-start-v2` candidates); any
+other `<file>` measures just that one scene. Full doc: `docs/render/atlas.md`.
+
+**Run.** 519 scenes (515 `.sze`/`.scp`, `lan5.txt`, 3 candidates), native MSVC, 0 refused, 7m12s
+wall. Worst case across every page/padding/mip combo: `01_1024_easy_256.sze` group 0, 268,435,456
+bytes (exactly 256 MiB — one of two combos hitting that number, named explicitly rather than used
+as "the" worst-case figure, since it is a round page count, not a tight measured need). Under the
+**recommended layout** (2048 px page, 2 px padding, no mips) the group-0 worst is a different
+scene, `02_1024_easy_128.sze`: 218,103,808 bytes (208 MiB), **48 MiB headroom inside the 256 MiB
+iGPU budget** (304 MiB headroom on the 4090's 512 MiB). Median (same layout, 1,557 scene×group
+rows): 16,777,216 bytes (16 MiB, one page). `lan5.txt` group 0: 117,440,512 bytes (7 pages).
+
+**Figures (whole FigurenHeader.dat, once):** group 0, 241,808 frames / 1,923.4 MiB — matches
+`sprite_fidelity_test.cpp`'s own oracle count exactly, a direct cross-check. Too large to keep
+resident (ADR 0007's own premise); `scene.units` (`load_scene` only, not `load_placed_scene` —
+`lan5.txt`/candidates report 0 for this reason, not because they have none) gives the few hundred
+KB to a few MB a scene actually needs, via `render::FrameKey::unit`, the frame table's own
+identity.
+
+**Player colours.** Static (Anlagen.dat): `SpriteCache::get`/`assets::building::to_rgba` have no
+colour parameter at all, and `player_coloured`/`recolour` are called only from
+`assets/src/unit.cpp` — 0 static frames are ever recoloured today, structurally, not by
+inspection of intent. Decoded anyway (not assumed): of 27,537 non-shadow Anlagen frames, **11,180
+(40.6 %) have at least one pixel** the decoder's own green-dominance test would match — 3,760,786
+of 102,530,209 pixels (3.67 %) — a real finding about the files, separate from the engine's
+current behaviour. Figures: 35,423 of 241,808 group-0 frames (69 of 368 entries, the 17
+player-coloured BEWOHNTYPE names). Two storage strategies measured (bytes each, not chosen): one
+coloured copy per colour a scene uses, vs. one uncoloured copy + a per-instance colour mask —
+both trivial against the headroom found; a performance/complexity trade-off, not a memory one.
+
+**GPU limits** (`--atlas-gpu-limits`, orchestrator's go asked for and given before opening a
+device): RTX 4090 (Vulkan) maxTextureDimension2D 32,768 / maxTextureArrayLayers 2,048 /
+maxBufferSize 1 TiB; Radeon iGPU (Vulkan) 16,384 / 8,192 / 2 GiB. Neither limit is binding for any
+candidate measured. (Correction caught in review: the "4090" adapter-match string is a number,
+and `pick_adapter` treats a numeric string as an index, never a name substring — it fell back to
+the default adapter, *loudly* (`adapter_from_env`, `wgpu.cpp:164-166`, printed to stderr, and the
+limits output names the adapter actually opened) — fixed to match by "RTX"/"Radeon".)
+
+**Layout chosen** (full reasons: `docs/render/atlas.md` §7): `AtlasResidency` (shelf, already
+specified, now proven by a one-shot `ensure()` call); page 2048 px; padding 2 px (fits with more
+headroom than 4 px; whether 2 px suffices 1c's real dilation kernel is for 1b/1c to confirm, not
+measured here); **no mip chain** for the static+water atlas — every mip-including candidate meets
+or exceeds the 256 MiB iGPU budget for some worst scene (table in `atlas.md` §3), while the chosen
+no-mip layout fits both budgets with headroom; the owner may still add mips on the 4090 alone
+(fits with headroom even with them) as a device-specific choice, not decided here. Figures kept in
+their own class (Static/Hot split, `gpu-chunks.md` 4.2), not mixed into the static+water budget.
+
+**Tests.** New `residency_test.cpp` case (no game files): hand-computed page counts for a
+padding-inflated synthetic set (4 unpadded 30x30 frames pack into 1 layer of 64; the same 4 with 2
+px padding need 4, since 34+34 no longer fits 64) plus an oversized-after-padding `Overflow`
+check. `anno_render_tests`: 212/213 (the one failure, `scene_reclaim_test.cpp:56`, reproduces
+identically — `CHECK(12 == 11)` — on unmodified `origin/main` `ac02d4a2` in a throwaway worktree,
+same command (`wsl -d Ubuntu -- anno_render_tests`, default order, right after `river_shade_test`'s
+last case): a pre-existing, order-dependent flake, not caused by this change).
+
+**Gates.** `clang-format` 23.1.3 clean on both changed files.
+`wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`: GCC 13 and Clang 18, viewer+GPU on, 413
+files, clean except the known pre-existing `src/sim/tests/extensions_test.cpp` failure
+(`ANNO_EXTENSION_ORACLE_FILE`, untouched by this task, reported in prior sessions' REPORTS); viewer
+without GPU, 80 files, clean on both compilers. MSVC Release build clean (warnings as errors).
+`git diff --stat origin/main -- src/` shows only `render/tests/residency_test.cpp` and
+`tools/bench_frame/main.cpp` — no render-path, digest or picture file touched.
+
+**NOT_RUN.** The whole-suite/game-file runs for other lanes (not reached by this change); macOS
+(no host here).
+
+**Decisions and reasoning.**
+- Reused `AtlasResidency`'s own `ensure()` as a one-shot full-corpus packer (huge budget, one
+  call) rather than simulating per-frame residency with eviction: the task asks for the real page
+  count a scene needs resident at once, not an LRU trace, and `ensure()`'s own tallest-first sort
+  already makes the result order-independent (existing `residency_test.cpp` case).
+- Enumerated every animation frame by calling `animation()`/`frame_index()` directly (their exact,
+  cited formula) instead of sampling many `time_ms` values through `place_prepared`: exact, not an
+  approximation that depends on choosing a "good enough" time range.
+- Mirrored `build_island_lists`'s enhanced-water exclusion (`kSurfAnlage`/`kRiverAnlagen`/
+  `kRiverFallAnlagen`) with the same public constants, rather than trusting a `WaterStyle`
+  parameter through `prepare_objects` (which does not take one): the exclusion lives in `Scene`,
+  not in `prepare_objects` itself.
+- `<file>` argument given real meaning (single-scene vs. "-" for the corpus) after review found
+  "ignored" unacceptable for a documented option — fixed, not just reworded.
+- Decoded the whole Anlagen.dat catalog for the player-colour pixel test via
+  `assets::building::to_rgba` (not `figure::decode`) after the first attempt failed every frame:
+  Anlagen entries carry `palette_ids` against the file-wide colour table, not the per-entry
+  `palettes` FigurenHeader.dat uses — `SpriteCache::get`'s own call site (`iso.cpp:322`) is the
+  evidence for which function is the real decode path.
+- Page size/padding/mip choices are driven by the measured worst-case fit against both GPUs'
+  budgets, not guessed; where a choice remains open (2 px sufficiency for 1c's dilation, mips on
+  the 4090 only), it is named as open rather than decided.
+
+**QUESTIONs:** OQ-096 (the 512 MiB/256 MiB budgets themselves) stays open, unchanged by this task.
+Whether 2 px padding is enough for 1c's real dilation/upload code is for 1b/1c to confirm.
+
+READY FOR REVIEW.

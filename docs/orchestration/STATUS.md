@@ -170,6 +170,11 @@ says who is doing what, where the work is, and what it waits on.
   order?", the owner answered "Yes". They run in the UI lane, then UI-RANGE-1. Also, asked "Delete the public
   task branch with the data table after landing, and recreate it clean?", the owner answered "Yes, clean it
   up": `task/BUILDINGS-REF-1` is recreated as one clean commit.
+- **UI-BUILDCAT-1 moved ahead of UI-GHOST-1 B** 2026-11-17: during the UI-INFO-2d viewer test the owner
+  told the UI lane "the side panel in the construction menu is STILL missing, fix now". It is released on
+  `task/UI-BUILDCAT-1` (`443cbd2d`, base `4dfdd9b7`): all eight VIEWBAUTAB tabs with the selected frame, the
+  hit test (OQ-714), the oracle tests' column mask removed (it hid the gap), wiring tests; OQ-759..763.
+  UI-GHOST-1 stage A (docs, `c54adcf3`, built on the clean BUILDINGS-REF-1) is done; stage B follows.
 - **FERTILITY-1 1a ACCEPTED** 2026-11-17, head `3637c288` (CI 44106292573 green):
   [review](reviews/2026-11-17-fertility-1a-review.md). It adds the single-quad tile-object placement
   class (floor of the four-corner mean >= 32, overlap only with bit-`0x20` objects, the exempt classes);

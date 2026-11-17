@@ -15149,3 +15149,46 @@ READY FOR REVIEW.
 - Docs only. No build; `ui_layout.py self-test` ok.
 
 READY FOR REVIEW.
+
+**UI-STATUS-1 merge addendum (2026-11-17): stacked on the UI-TABS-1 B candidate.**
+- Merged `refs/candidates/ui-tabs-b` (`004a26f4`) into task/UI-STATUS-1 as merge commit `9c1ca082` (no rebase).
+  Follow-up `85128f58` initialises `HudCounters::rows` (see the WSL result below).
+- **Conflicts and their resolutions** (both behaviours kept):
+  - `src/app/CMakeLists.txt`: both test files, `status_bar_test.cpp` and `balance_rows_test.cpp`. All three
+    `viewer_wiring_ui_balance_rows*` cases and `viewer_wiring_ui_status_island` are registered;
+    `ui_counters_centred` stays removed.
+  - `play.hpp` `CityCounters`: both fields kept, `own` and `accounts`. `own` now defaults to true; foreign
+    known cities are published with false. The island rectangle fields stay removed: only the old centre rule
+    used them.
+  - `ui_mock.hpp` `HudCounters`: both members, `fertility` and `rows`.
+  - `play.cpp`: both publish blocks, the balance pages' `accounts_live`/`stat_shown_*` and the local player's
+    money with `has_local_player`.
+  - `viewer.cpp`:
+    - members: both, the status bar's `status_tile_`/`status_pick_`/`fertility_row_` and the balance pages'
+      `hud_rows_`;
+    - counters: the status bar's `shown` city for the counters. The "?" city page now shows the status bar's
+      city when it is the local player's, else the player's first city. TABS-1 B used R4's `centred`, which no
+      longer exists.
+    - `balance_rows.cpp` skips cities that are not the player's own in the overview's sums: `CityCounters` now
+      also lists foreign known cities.
+  - `docs/re/ui.md`: §5.5 "The balance pages" and then §5.6 "The status bar's island". §5.5 notes the new city
+    page choice.
+  - `docs/open-questions.md`: OQ-690 and 691-695, then 700-707.
+  - `REPORTS.md`: both sides' entries.
+- **Gates** (env as before, `--jobs 8`, on `9c1ca082`):
+  - a. TABS-1 B's selection and its 9 `--require-test`: `cache/gates/ui-status-1-merge-tabs.log` (sha256 `75c400dfce76...`):
+    `selected=85 executed=85 failed=0 empty=0 skipped=0`, PASS.
+  - b. STATUS-1 B-03 plus the B-04 lanes (`--exclude 'opt-in measure'`, 8 `--require-test`):
+    `cache/gates/ui-status-1-merge-status.log` (sha256 `13f2a85280dd...`): `selected=150 executed=150 failed=0 empty=0
+    skipped=0`, PASS.
+  - After `85128f58`: `ui_status_island`, `ui_balance_rows`, `ui_counters_before_founding`,
+    `live_screen_matches_oracle` and `ui_balance_rows_compare` ran again (`cache/gates/ui-status-1-merge-fix.log`):
+    5 of 5 executed and passed.
+- **WSL** `check_unix_warnings.sh` (no other run was going):
+  - First run, on `9c1ca082`: FAILED under GCC 13 and Clang 18 with `-Wmissing-field-initializers` at
+    `viewer.cpp`, `HudCounters` missing `rows` (`cache/ui-status-1/wsl-warnings-01.log`).
+  - After `85128f58`: GCC with GPU clean, GCC without GPU clean, Clang with GPU clean, Clang without GPU clean,
+    rc 0.
+- clang-format 23.1.3 is clean on the touched C++ files.
+
+READY FOR REVIEW.

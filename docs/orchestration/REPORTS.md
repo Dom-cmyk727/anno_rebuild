@@ -14621,3 +14621,46 @@ READY FOR REVIEW.
 | Stepped keeps the clamp | `viewer_wiring_ui_magnifier_range_stepped` | n/a | gate 01 | pending |
 
 READY FOR REVIEW.
+
+## UI-MINIMAP-2 fix round R2 — READY FOR REVIEW (Windows, 2026-11-17)
+
+- From the owner's `ui_7.mp4` (0:48-1:58): his "nothing changed" was the UI-STATUS-1 build
+  (without this change); new request: the magnifier's + must also reach the wheel's closest
+  zoom-in. Commits `cae67317` (feat), `4083113c` (test), `227d02ea` (docs), this entry, on
+  `cc6991d2`.
+- Change: `zoom_ceiling(levels)` (`zoom.hpp`, the upper clamp of `zoom_target_after`, factored out
+  like `zoom_floor`). `magnifier_stages(built, min_tile, max_tile = 0)`: closest first, the
+  ceiling, then doublings of the widest built level while narrower (widest first), the built
+  levels, the far side as before. Same rules (no duplicate within 1e-6, none when the ceiling is not
+  above level 0, built at each press). At the original levels 84 x sqrt 2 = 118.794 < 168, so the
+  ceiling alone. Stepped zoom unchanged. Facts `zoom.max_tile`, `zoom.at_max`.
+- Tests: `minimap_test.cpp` new case "minimap magnifier stages: doublings past level 0, then the
+  wheel's closest zoom-in" (ceiling alone at 118.8, several doublings at 400, a short hop at 170,
+  a ceiling on a doubling, none at 84 / 60 / 0 / -1 / default / no levels, both sides at once, plus
+  to the ceiling and minus back to the far end, a start between 84 and the ceiling, the clamp
+  without a ceiling); `app_test.cpp` two `zoom_ceiling` checks. `ui_magnifier_range.script`: after
+  the far end a wheel notch outwards changes nothing; + until nothing changes, then
+  `zoom.at_max == 1`, `zoom.target == 118794`, one more + and a wheel notch inwards change
+  nothing; - back 84 -> 42 -> 20 -> 10. `ui_magnifier_range_stepped.script`: `zoom.max_tile >
+  84000` and `zoom.at_max == 0` at level 0 (the clamp holds).
+- Failure proof (viewer's `zoom_ceiling` argument dropped locally, i.e. `cc6991d2`'s stages with the
+  new facts; `anno1503` rebuilt, not committed): `viewer_wiring_ui_magnifier_range` FAIL
+  `line 108 (expect): zoom.at_max is '0', expected == 1`, every far-side check before it passing
+  (`cache/gates/ui-minimap-2-failure-proof-r2.log`). Restored, full rebuild, gate below.
+- Gate `run_selected.py` msvc Release, same env, selection and required tests as -01, head
+  `227d02ea`, `cache/gates/ui-minimap-2-02.log` (sha256 `972fd8a9...d9b1`):
+  `COUNTS: selected=62 executed=62 failed=0 empty=0 skipped=0 ... incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS` (one more than -01: the new unit case). Build without warnings; clang-format
+  23.1.3 clean on the changed files.
+- NOT_RUN: WSL GCC/Clang warning check, Linux/Mac CI (pushed, not polled), the owner's retest on
+  this branch's build.
+
+| Requirement | Positive proof | Negative control | Evidence | Reviewer disposition |
+|---|---|---|---|---|
+| + reaches the wheel's closest zoom-in | `zoom.at_max == 1`, `zoom.target == 118794` (wiring); unit walk to 118.8 | ceiling dropped: line 108 FAIL | gate 02; failure proof R2 | pending |
+| The wheel goes no further at either end | wiring `wheel 1` / `wheel -1` leave `zoom.target` unchanged | n/a | gate 02 | pending |
+| Doublings, short last hop, no duplicate | unit 400 / 170 / 168 | n/a | gate 02 | pending |
+| No near extras when the ceiling is not above level 0 | unit 84 / 60 / 0 / -1 / default | n/a | gate 02 | pending |
+| Stepped keeps the clamp | `ui_magnifier_range_stepped` (`zoom.at_max == 0` at 84) | n/a | gate 02 | pending |
+
+READY FOR REVIEW.

@@ -14849,3 +14849,50 @@ landing candidate's own build): both pass, run directly with `python3 -I tools/l
   silently inheriting someone else's justification.
 
 READY FOR REVIEW.
+
+## UI-INFO-2b — the build preview's entrance arrows and one scale for all four turns — 2026-11-17 — READY FOR REVIEW
+
+Branch `task/UI-INFO-2b` (base `4dfdd9b7`, packet `92105fe1`); code `97a554b1`, docs `d9e44fb6`.
+
+**What changed.** The info panel picture is the building **and its green entrance arrows**, composed in one canvas sized over all four turns and drawn at one scale for every turn; CPU and GPU share `draw_info_content`. New `anno::app::info_preview` (`entrance_arrows`, `project`, `place_arrow`, `arrow_frame`, `compose`, `scaled_size`), `TexCache::preview_canvas` cached per (type, rotation); the scaled path keeps OQ-612's nearest sampler but at the original's size. Reference `tools/ui_layout.py` (`anlagen_entrance_arrows`, `figure_frames`, `preview_parts`, `preview_canvas`, `preview_scaled_size`). Data: `hud.txt` `element info_preview_arrows figure 1573` (new `figure` key, C++ parser, README). Docs: `docs/re/ui.md` 2.5 (new table), OQ-612 update, OQ-624 resolved (view term open), OQ-711..714. Packet text: OQ range 711..714 (UI lane).
+
+**Evidence per rule** (GOG; addresses in `docs/re/ui.md` 2.5):
+- Arrow data: loader 0x10009e3e..0x10009edf reads `OBJECTPOS`/`CONPO2` (6-byte name, u16 size, 3 bytes per arrow: x3, y3, side) into type +0x22c/+0x6b; slot 0xa8 = 0x1000bb60 makes the parts. The editor recompute 0x1000d2a0 (flood fill over WALKMASK from ENTRANCE, called only from the property setters 0x1000eace/0x1000ef5d) reproduces 181 of 185 stored records.
+- Arrow sprite: `[type+0xc]->0x6c(0x625)->0x20(0x600, 0)` = FigurenHeader 1573 `Strassenanschluss01`, 8 frames; frame = ((d << 2) >> 1) & 7 (AnnoDisplay 0x100055b0 / 0x100052c7; direction count OQ-711).
+- Place: corner + third(x3) + 0.167 + half-tile side offset, turned with the footprint, direction (r + side) & 3 (tables 0x100217c4, 0x10021a84, 0x10021828; cases 0x1000bbc8..0x1000bdc0).
+- Camera/rect: View 0x10088af0 (59.1633, Ry 135 deg, Rx 42 pi/256); rect = trunc(point) - anchor (AnnoDisplay 0x1000ac80, 0x10030e10).
+- Canvas: max width/height over four turns, turn centred (halving toward zero), building then arrows (View 0x1001d797..0x1001da82).
+- Scale/box: s = max(1, W/135, H/135) as f32, size trunc(W/s) x trunc(H/s), position trunc((135 - size)/2) via gadget properties 0x19a/0x19b (0x1001db7f..0x1001dbfc, 0x1001e3b5..0x1001e478).
+
+**Gate** (MSVC Release, `ANNO1503_GAME_DIR`, `ANNO_TEST_THREADS=16`, `ANNO_UI_ORACLE_SHOTS`, `ANNO_UI_HE_CAPTURES`, `ANNO_UI_ROTATION_SHOTS`): `run_selected.py --jobs 8 --select 'live_screen_matches_oracle|ui_dynamic_draw_check|info_panel|info panel|info preview|selected_house_pixel_check|ui_panels_match_gog|ui_window_matches_he|ui_mock_matches_oracle|ui placement|viewer_wiring_ui_|viewer_wiring_construction|construction menu|ui layout|hud layout'` with the eight oracle tests `--require-test`: `selected=39 executed=39 failed=0 empty=0 skipped=0 incomplete=0 sanitizer_lines=0`, `VERDICT: PASS` (`cache/gates/ui-info-2b-01.log`). Build: only `anno_app_tests anno1503 anno_ui_mock` (clean, no warnings; a full-tree build was stopped for time, other libraries untouched). clang-format 23.1.3 `--dry-run --Werror` on the changed C++: clean. `ui_layout.py validate` and `self-test`: ok.
+
+**GOG counts.** Whole box 0 px on `f12_info_stall_1310` and `f12_info_stall_1314` (both now in `PREVIEW_PROVEN`; were 5 253 / 5 094). Every scaled shot improved (preview px, main -> branch): 801 6 472 -> 6 317, 1301 6 213 -> 5 402, 1302 9 304 -> 8 477, 501 5 902 -> 5 325, 807 8 472 -> 8 209, 805 5 007 -> 4 506, 809 6 774 -> 6 436, 1023 11 237 -> 10 263, 1001 6 524 -> 5 057, 810 9 216 -> 7 768. Rotation shots: 501 still nearest at the expected turn in all 13 (e.g. 5 325 at 0 vs 6 800..7 153); 2520 exact as before.
+
+**Failure proof.** `figure 1573` removed from `hud.txt` (no arrows): `info_panel_gog_compare` exit 1, 1310 5 247 px, 1314 5 094 px (`cache/gates/failure-proof-no-arrows.log`), restored. Variants against the same shots: without the arrows' shadow 174 / 402 px; points half a pixel off in x or y: 351 / 382 px (1314). Unit `info preview: one canvas ...` asserts height 31 where a per-turn fit gives 17; `... truncates toward zero` asserts -41 where floor gives -42.
+
+**Cross-check c7/c6.** Market 1301: tools 3, wood 7, bricks 0, stone 0, gold 250, upkeep 10 = ours. Small farm 809 (c6 is the placed building's panel): upkeep 20, outputs `WARE` ALKOHOL, NAHRUNG = Alkohol and food. No difference. Arrows: market six, farm four, at the sides and directions the crops show (video-scaled: places, not pixels); the market's flag (second sprite set) is missing (OQ-712).
+
+| Requirement | Positive proof | Counterexample | Evidence | Disposition |
+|---|---|---|---|---|
+| Arrows drawn at every turn | stalls 0 px at turn 0; unit placement at 4 turns | no arrows 5 247 / 5 094 px | info_panel_gog_compare, `info preview` tests | pending |
+| One canvas and scale over 4 turns | unit canvas 55 x 31; stalls centred exactly | per-turn fit 17 high | `info preview` tests | pending |
+| Window = reference | info_panel_pixel_check (801, 1301, 1302, 2520), rotation_check | its wrong-type control | gate | pending |
+| Scaled types not worse | 10 of 10 fewer px | - | gog compare log | pending |
+| Hit width (item 3) | not done | - | OQ-714 | QUESTION |
+
+**Owner test.** `anno1503 --play data\maps\lan5.txt --construction-menu on --game-dir E:\anno1503\game\app --layout data\ui`; B: Markthaupthaus (public), Kleine Farm, Pionierhaus; click each rotate arrow 4x; beside `c7`/`c6`: green arrows on the same sides, pointing out, turning with the building; the picture keeps one size while turning. Expected gaps: no market flag (OQ-712), scaled pixels (OQ-612), no arrows on the map ghost (OQ-713).
+
+**Capture recipes (not run).** (a) OQ-624 turns 1-3: Citizen start, B, public, stall 1310, right rotate arrow 1, 2, 3 times, full shot after each; the same for 1314. (b) OQ-714: public tab, nothing armed, left click at (815, grid row 0's centre y), shot: cell armed or category switched?
+
+**NOT_RUN.** `check_unix_warnings.sh` (another run was active in WSL, `pgrep` pid 103438); WSL sanitizer lane and the full suites (orchestrator's); GPU window run of the new picture (the shared draw path is the CPU-checked one); look-at-it-yourself in the live window (reference renders checked instead: `cache/re/ref_4turns.png`).
+
+**Decisions and reasoning.**
+- Arrows from stored CONPO2, not the flood fill: the game loads CONPO2; 0x1000d2a0 runs only from the editor setters. 140 types the fill would arrow have no CONPO2 and get none.
+- Side > 3 skipped (261, 1571 carry 215); CONPOS (1542) not read: the original's reader leaves the side byte unset.
+- Pixels past the frame width kept (blitters never consult it, docs/formats/anlagen.md).
+- Set 0 only (OQ-712): extra sets only matter on scaled types, which cannot be checked exactly yet.
+- Figure id as layout data; direction count = frame count (OQ-711).
+- f32 scale emulation: 300 x 150 gives 134, not 135 (0x1001dbb0/0x1001dbd9), asserted in the unit test.
+- Item 3 (hit width) not done for time: OQ-714 + recipe. Map ghost arrows: not read, so not drawn (OQ-713).
+
+**QUESTIONs.** 1. OQ-713: read the ghost's draw path and draw its arrows next? 2. OQ-714: hit width by code read or capture? 3. OQ-712: compose the extra sprite sets (market flag) in a follow-up?

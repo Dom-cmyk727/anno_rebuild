@@ -45,3 +45,15 @@ substitutions (`acquire_skipped\t`); it still fails as expected only because its
 every file a case edits must differ from its `.orig`, or the case fails; check the other patterns that end in a
 tab; run the script in WSL, once with the old `junk_present` pattern, which must fail on the guard, and once
 fixed, which must pass.
+
+## The fix (added 2026-11-17)
+
+`ba32d939`, `tools/bench/window_table_test.sh` only. `junk_present` and `count` are anchored to the line end
+(`presented$`, `acquire_skipped$`). After each case's edits a guard compares every `.orig` under the case's
+folder with the file it was made from and fails the case if they are equal, so a pattern that matches nothing can
+no longer pass for the wrong reason. The guard works per file: a `sed` with two substitutions of which only one
+applies still changes the file and is not caught. That limit is accepted; both substitutions of `count` now
+apply. **CI green on `ba32d939`** (run 43989860151).
+
+**Verdict: ACCEPTED.** The bounce branch (ZOOM-BOUNCE-1 to 3 and TRACE-COLS-1, head `ba32d939`) is ready for a
+landing candidate on the owner's OK.

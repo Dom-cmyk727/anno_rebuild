@@ -14930,3 +14930,64 @@ functions and is the owner's test); macOS; the full suite (only the changed lane
 7. Over open sea outside the island the ghost stays hidden (ADAPTATION, OQ-760).
 
 READY FOR REVIEW.
+
+## UI-GHOST-1 addendum — fix round R1: ghost and click on the whole map — READY FOR REVIEW
+
+**Cause** (the UI lane's trace of the owner's live session, `cache/owner_ghost_trace.txt`): the owner saw no ghost
+at all. Over the map the hover was always empty. `DevTool::pick` gives a tile only on the developer city's island
+rectangle, and the owner's view was not over that island. Every stage-B script ran `look 1148 522` first, so none of
+them saw it. Stage B's OQ-760 adaptation therefore hid the ghost almost everywhere.
+
+**Fix** (`9bcc4efb`, app only, no sim change):
+- `pick_point(frame, px, py)`: FrameProjection::pick's rule, factored out. It returns any island's ground above the
+  waterline (each island's own placement rounding), else the sea-level tile (`render::pick_ray` at `kSeaLevel`,
+  as the status bar uses).
+- `DevTool::ghost_hover()`: the city island's exact pick (`hover()`, rounding fix kept) where it gives a tile,
+  else `pick_point`'s tile.
+- The ghost asks `check_build_record` for that record. Off the city's island the sim answers OutOfIsland, so the
+  ghost is refused and shows the yellow footprint, as the original draws everywhere (AnnoFrame `0x10041050`
+  has no island test).
+- Clicks (presses and releases) use the same tile, so a click off the city's island is sent and the sim refuses
+  it with its own reject. The ghost's "refused" and the click's verdict agree (orchestrator's addition 1).
+  `hover()` stays the city island's pick for the inspection and the preview sprites.
+- The outline is drawn no lower than sea level.
+- OQ-760 is resolved and the packet's follow-up is marked done.
+- Two existing unit tests expected the old local refusal and now expect the sent record: `anno_app_input_tests`
+  "dev tool: off the city's island a click is sent for the sim to refuse, outside the window ..." and
+  "dev tool data: another player's city on another island ...". The tile and the city of the record are checked.
+
+**Start view (report only; not changed, per addition 2):** for `--play data/maps/lan5.txt` the viewer centres the
+camera on the scene's bounds (`viewer.cpp` around line 445: `cam = bounds centre`). For lan5 that is the map's
+middle, the contested middle island 100 at (648, 648) (T_128X128_0038). It is not the developer city, which is on
+island 1 at (1048, 440) with its start at (1284, 540). `viewer_wiring_ui_ghost_world` confirms it: from the
+default view, the pixel left of centre is land of an island other than the city's, and the sim answers OutOfIsland.
+
+| Requirement | Positive proof | Negative control / failure proof | Evidence |
+|---|---|---|---|
+| The ghost works away from the city, from the default view | `viewer_wiring_ui_ghost_world` (no `look`): refused with outline pixels on the middle island, the click there `Refused OutOfIsland`; `lookw 1380 680` (open sea) refused with pixels, the click `Refused OutOfIsland`; then on the city's island valid | mutant D (the old city-island-only pick): line 16 `wait fact tool.ghost == refused` times out with `tool.ghost` 'hidden' | `cache/gates/gate-r1b.log`, `fp-D.log` |
+| A click off the city's island reaches the sim | the two `expect outcome Refused OutOfIsland` above; the dev tool unit tests check the record sent | — | `gate-r1b.log` |
+
+**Gates** (head `9bcc4efb`, MSVC Release, the same env as stage B):
+- Build `anno_sim_tests anno_app_tests anno_app_input_tests anno1503 anno_ui_mock`: no warnings.
+- clang-format 23.1.3 on the changed files: clean.
+- Canary over the ghost and dev tool cases: `selected=28 executed=28 failed=0`, PASS (`canary-r1c.log`).
+- Gate: the stage-B selection plus `^anno_app_input_tests\.dev tool`, nine required tests (the six oracle tests and
+  the three ghost tests): `selected=184 executed=182 failed=0 empty=0 skipped=2 (opt-in=2) incomplete=0
+  sanitizer_lines=0`, PASS (`cache/gates/gate-r1b.log`).
+  - A first attempt, `gate-r1.log`, ran without the game dir in its environment (my shell chain dropped the
+    export): `live_screen_matches_oracle` was skipped for a required asset, so the workflow refused it. It is kept,
+    not counted.
+- Failure proof D built and run, then restored. Its restore reverted my uncommitted R1 edits as well; they were
+  re-applied from their edit scripts, committed, rebuilt, and the gate above ran on that commit.
+- WSL `check_unix_warnings.sh`, one run: GCC 13 and Clang 18, with and without GPU (418 / 85 files), clean, both
+  negative controls caught (`cache/gates/unix-warnings-r1.log`).
+
+**NOT_RUN:** the GPU path in a real window (the owner's test), macOS.
+
+**Owner's test (default rules), updated:** the default `--play` view starts on the middle island, not the city. Arm
+the pioneer house there: a yellow footprint diamond (refused, another island), also over open sea. A click there is
+refused (OutOfIsland). Then move the view to the developer city (island 1, world tile about (1150, 520); the minimap
+shows it): there the house with its yellow radius outline. Over the inlet near (1148, 536): the diamond. With
+`ANNO_DEV_GOODS_TONS=3`, after one house the ghost blinks about 0.7 s on and 0.7 s off.
+
+READY FOR REVIEW.

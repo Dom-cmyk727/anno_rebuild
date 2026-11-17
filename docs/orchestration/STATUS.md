@@ -5,9 +5,14 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-17, by the Claude Code orchestrator:
-- **`main` is `ac02d4a2`** (2026-11-16, evening): the minimap (UI-MINIMAP-1), FISHER-RE-4 and ANNOSCENE-ORE-1
-  landed together on the owner's OK, the second landing under the evidence split below. The next full game-file
-  run on the Windows PC is due 2026-11-17.
+- **`main` is `09315620`** (2026-11-17, morning): the three stacked candidates landed as one push through
+  `land.py` (`land/batch-zoom-tabs`, gate run 44019437266, green), on the owner's OK:
+  - `784b5a27`: ZOOM-SMOOTH-2 with 2f, and the UI-PANELS-PREP documents;
+  - `945c3216`: GATE-MAC-1, UNIX-WARN-1, ZOOM-SMOOTH-3, and the bounce branch with TRACE-COLS-1;
+  - `09315620`: UI-TABS-1 stage A.
+  The candidate refs are deleted. Before that, `main` was `ac02d4a2` (2026-11-16, evening: UI-MINIMAP-1,
+  FISHER-RE-4, ANNOSCENE-ORE-1). The full game-file run on the Windows PC due 2026-11-17 runs on `09315620`
+  after the Windows executor's measurement.
 - **Landing candidate `784b5a27`** (tree `db83cb92`; main `ac02d4a2`, then ZOOM-SMOOTH-2 with 2f, then
   UI-PANELS-PREP as documents): **the owner's OK** 2026-11-16 ("Yes, land both"); CI green on both reviewed heads
   (`d33432aa` run 43946504718, `f8460129`). Fetchable as `refs/candidates/drag-panels` (no CI run started).

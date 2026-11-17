@@ -1,6 +1,6 @@
 # The forester chain (`AnnoWelt.dll`, `AnnoGame.dll`): building 801, figure 102, the harvest job
 
-**Status:** MAP-ECON-1 E1-FINAL as corrected by **E2.0** (2026-11-03, binding review `docs/orchestration/reviews/2026-11-03-roadclose2-forestry.md`). E2.0 re-read the placement mask, the claim setter and the cut against `AnnoWelt.dll` (sha256 below) and corrects §2.7, §2.9, §4.3, §4.4, §6 and U-4: **placement and clearing preserve claim bit 29**; the E1/E1-FINAL statement that placement clears bits 29-31, and the cross-worker sequence derived from it, are withdrawn. Static analysis with `tools/disasm.py`, `tools/xref.py`, `tools/figuren.py`, `tools/insel.py` (private venv: Python 3.14.6, pefile 2024.8.26, capstone 5.0.7, unicorn 2.1.4); one emulation harness over the original bytes on synthetic memory. No original code is copied; behaviour is paraphrased, pseudocode is ours. Addresses are virtual addresses (image base `0x10000000` in both modules).
+**Status:** MAP-ECON-1 E1-FINAL as corrected by **E2.0** (2026-11-03, binding review `docs/orchestration/reviews/2026-11-03-roadclose2-forestry.md`). E2.0 re-read the placement mask, the claim setter and the cut against `AnnoWelt.dll` (sha256 below) and corrects §2.7, §2.9, §4.3, §4.4, §6 and U-4: **placement and clearing preserve claim bit 29**; the E1/E1-FINAL statement that placement clears bits 29-31, and the cross-worker sequence derived from it, are withdrawn. **§8 (RE-HE-PRODUCTION-1, 2026-11-17) compares the History Edition's code and data with this reading: the worker loop is identical, and only the load-time `PROD3` conversion differs (two `need1` values).** Static analysis with `tools/disasm.py`, `tools/xref.py`, `tools/figuren.py`, `tools/insel.py` (private venv: Python 3.14.6, pefile 2024.8.26, capstone 5.0.7, unicorn 2.1.4); one emulation harness over the original bytes on synthetic memory. No original code is copied; behaviour is paraphrased, pseudocode is ours. Addresses are virtual addresses (image base `0x10000000` in both modules).
 
 **Modules and data (sha256, full list in `SOURCE-IDENTITY.txt`):**
 `AnnoWelt.dll` `f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`, `AnnoGame.dll` `ac721220afd27ebca5fd2ece6a8ff452289b9d7458c4e091c68adea2012db7bc`, `Anlagen.dat` `b2317a5c24b8c9fe796cf40f3fedaefcfa30ad3f185df9e69b2dca6a03d8dd75`, `FigurenHeader.dat` `29fa1f0528fb337d9a61e8b73169281fd05bb27efa6df65638580a4c36c468a8`; 465 `Scenes/Islands/*/*.scp` (sorted-hash digest `67032d8a…834a`). `AnnoFrame.dll` was **not** needed: the path never leaves `AnnoWelt`/`AnnoGame`.
@@ -234,3 +234,120 @@ Runs the real bytes of `0x10087340`, `0x10087400`, `0x10087880` and `0x10092320`
 | U-8 | The farm's status/blocked-flag side effects (`0x10072ed0`, `0x10072fb0`) for a starving forester | UI only | covered by the existing farm status code |
 | NOT_RUN-1 | Original runtime: a forester in the running game delivers 1 t of BAUM per trip, waits 13 s, and the cut tile record goes `105 → 104`, phase 0, bit 29 set during the trip and clear after | confirmation of §2.8/§2.9 | `tools/orig/gamestate.py tile_record` before/after a worker's cut (the harness exists, `docs/re/transport.md` §3.4.17 "What one sample reads"); needs the Windows/Wine runner |
 | NOT_RUN-2 | Original runtime: the worker count (2) and the first-wood time | timing canary | same harness, sample the farm's `+0x1c`/`+0x18` and workers |
+
+## 8. History Edition comparison (RE-HE-PRODUCTION-1, 2026-11-17)
+
+**Why.** The owner asked in `he_01.mp4` at 7:30 to check in the original and the History Edition (HE) files how the production and the workers who bring the wood in and go back out are coded, because the same code serves every other farm, such as the small farm. §0-§6 above are the GOG reading. This section compares the HE code with it, function by function. GOG stays the evidence base for code reading; HE is the reference for live behaviour (owner rule 2026-11-16), so the HE module that actually runs is checked as well.
+
+**Modules (sha256).** GOG: as at the top of this note. HE (Steam app 2820110, `E:\SteamLibrary\steamapps\common\Anno 1503 - History Edition`, read only):
+- `AnnoWeltAddOn.dll` (x86, 2019, MSVC 14.16, image base `0x10000000`, with RTTI) `87cf9e3a1495dca01b21f0155fbb6f29dfaf5805685ab67a4c590d0e860d1e54`, called **HE86** below;
+- `AnnoWelt.dll` (x64, 2020, the module `Anno1503.exe` loads, base `0x180000000`, with RTTI) `95951b5712848cd005f009115fafddb10e2c79ae5cf79501753a9938503ae4dc`, called **HE64**;
+- `AnnoGameAddOn.dll` (x86) `e6cf3a96954fe056e52eeaa07333a70f12535e30b4b9eadb9cca4d3005586be5`;
+- `AnnoGame.dll` (x64) `06af5111316276c73efe9dde355b06c479fa36d617478722a9700c36225b15bf`;
+- `FigurenHeader.dat` `7a188648d446bf2794663d6c70cb8a75908aef8b39ef046666f080d974808437`.
+
+The x64 program loads only the x64 modules and the buildings file `Anlagen.addon` (`docs/research/he-vs-gog-comparison.md` §2). HE86 is a 32-bit build of the same source with the same compiler. It is the closer twin of the GOG module and carries the class names.
+
+**Labels.** As in §0, plus **S** = structural comparison: the functions' constants, field offsets and call slots compared as multisets and as ordered sequences, every difference then read in the listing. **H** = whole-file hash. "D" for an HE function means read instruction by instruction against the GOG listing.
+
+**Method.** The functions were located through HE86's RTTI: each class's function table matches a GOG table slot by slot, see the class table below. HE64 functions were found by content (constants, call pattern) because the x64 tables do not keep the x86 slot order: some slots move by one (overloaded virtual functions are ordered differently). Neither x86 nor x64 slot offsets carry over by arithmetic. The scripts were session scratch, not committed: an RTTI lister, side-by-side function tables, a token comparer, and an exact-rounding emulator for §8.4. They used system Python 3.14 with capstone 5.0.7 and pefile 2024.8.26. No HE or GOG bytes or listings are in the repo.
+
+### 8.0 Answer in short
+
+**The worker loop is the same program in both editions.** Every function in §2-§4, every production step the forester and the small farm use, and the market cart's pickup are the same source, recompiled. They read the same fields with the same constants, call the same slots in the same order and branch the same way. The forester's worker picks the first unclaimed reachable `BAUM` tile in the 11 × 11 square and sets claim bit 29. It waits 13.0, cuts the tile to `id - 1`, carries 256 home, adds it to the raw stock without a clip, and its job ends; the farm sends a new figure at a later 500-tick step. **No function is "relocated only"** (byte-identical except for addresses): the HE compiler generates different code for everything. Each one is therefore "identical" (same logic, recompiled) or "changed".
+
+**Differences found:**
+1. **Changed: the load-time conversion of `PROD3` floats** (`AnnoGame`, §8.4). HE computes in SSE single precision, GOG on the x87. The integers differ for two buildings: `need1` of 1010 (KANONENBAU) is 7 in HE against 6 in GOG at 53 or 64 bits, and `need1` of 3979 (PIONIER) is 4 against 3. Neither is on the forester or small-farm path. This settles OQ-032 for HE.
+2. **Changed, effect unknown: float precision of the figure tick.** The figure tick (GOG `0x10034760`, HE86 `0x10007d20`) does its time and distance arithmetic in SSE single precision in HE and on the x87 in GOG. A wait or walk could end one figure visit earlier or later; whether it ever does is OQ-710. The rebuild's integer model (6 500 ticks for 13.0, §2.8) is unaffected.
+3. **No in-game effect:**
+   - The compiler inlines differently: the growth visit is inlined into the island update in HE86, the entrance test into the send, and the status helper into the farm tick in HE64.
+   - HE64 calls known virtual functions directly after a table check, including the world PRNG step.
+   - HE adds `/GS` stack cookies and zero-fills the 4 KiB candidate buffer of step A (HE64).
+   - HE64 tests for a null type registry in the cut, the growth visit and the candidate list, where GOG would crash.
+   - The figure object is 4 bytes longer at the front in HE86 (job `+0x24`, home `+0x7c` against `+0x20`, `+0x78`).
+   - Multiplying a float by 1.0 is folded away: the send's tile scale and the callback's `/ 1.0`.
+
+### 8.1 Class names for the GOG function tables (S; HE86 RTTI)
+| HE class | GOG table | HE86 table | HE64 table | role here |
+|---|---|---|---|---|
+| `tProdPlantage` | `0x100c8ae0` | `0x1014dde0` | `0x1800f8428` | farm family (forester 801) |
+| `tProdPlantUniversal` | `0x100c8d60` | `0x1014e058` | `0x1800f8688` | small farm 809 |
+| `tProdPelzJaeger` | `0x100c2bf0` | `0x10151480` | - | fur trapper |
+| `tRouteMaeher` | `0x100c4468` | `0x10146f14` | `0x1800ecf08` | the job `0x29`/`0x2a` object (§2.4 "main vtable") |
+| `tJobWalkRohstProd` | `0x100c44c0` | `0x10146e0c` | `0x1800eca78` | step A (find, claim, walk) |
+| `tJobErnte` | `0x100c4858` | `0x10146a2c` | `0x1800ecc40` | step B (wait and cut) |
+| `tJobWalkHomeProd` | `0x100c4640` | `0x10146b8c` | `0x1800ecc98` | step C (walk home, unload) |
+| `tRouteWeide` / `tJobWalkRohstWeide` | `0x100c4340` / `0x100c4398` | `0x10146fcc` / `0x10146e64` | `0x1800ed128` / `0x1800ed6b8` | job `0x2d`/`0x2e` (grazing animals, small-farm line 1) |
+| `tRouteMarktler` / `tJobWalkWareMarktler` / `tJobTakeWare` | `0x100c4568` / `0x100c45c0` / `0x100c4668` | `0x10146c9c` / `0x101469a8` / `0x10146b08` | `0x1800eccf0` / `0x1800ed550` / `0x1800ed230` | market cart, job `0x34` |
+| `tRouteTraeger` / `tJobWalkWare` | `0x100c45e8` / `0x100c4690` | `0x10146c40` / `0x1014697c` | `0x1800ed600` / `0x1800eceb0` | workshop carrier, job `0x33` |
+| `tBewohnerProduktion` | `0x100c4950` | `0x101470ac` | `0x1800ed820` | the worker figure class (§2.13) |
+| `tInselServer` | `0x100cac2c` | `0x1014b00c` | `0x1800f37a0` | the island (claim, candidates, cut) |
+| `tFigur`, `tAnlage` (`AnnoGame`) | `0x10021d10`, `0x1002185c` | `0x100aab28`, `0x100a9434` | - | figure type, building type |
+
+The job factory (GOG `0x1003b0e0`, HE86 `0x1000feb0`, both index `job - 0xd` into a byte table and a jump table) builds the same three steps per job in both. The HE86 cases name them (D, table walk): `0x0d`/`0x2c` `tRouteSteinmetz`, `0x20` `tRouteFeuer`, `0x21` `tRouteSeuche`, **`0x29`/`0x2a` `tRouteMaeher`**, `0x2b` `tRouteMaeherSpez`, **`0x2d`/`0x2e` `tRouteWeide`**, `0x33` `tRouteTraeger`, **`0x34` `tRouteMarktler`**, `0x35` `tRouteEinkauf`, `0x41` `tRouteTaenzer`. This confirms the §2.4 corrections of `he-vs-gog-comparison.md` §4: the job factory makes `tRoute*` objects, and their steps are `tJob*` objects. **Step B of the grazing animals is the same `tJobErnte`** as the forester's cut.
+
+### 8.2 Function by function
+"identical" = same logic recompiled (§8.0). Addresses are of each function's entry.
+
+| What (§ here) | GOG `AnnoWelt` | HE86 `AnnoWeltAddOn` | HE64 `AnnoWelt` | Verdict | Evidence |
+|---|---|---|---|---|---|
+| Farm tick, production and dispatch (§2.1) | `0x1006ea90` | `0x1006c3e0` | `0x18007f580` | identical | D, all three. Gate 500; `· 255 >> 8`; flags `0x30`; `max_figures`; cap then ratio (status 2 = 45 000, status 1 = 60 000); stage helper (HE86 `0x1006c770`, HE64 `0x18007e910`, same formula, flag bit 2); `max ≤ 1 and made ≠ 0` skips; count of the five slots (HE86 `0x1006c1c0`); `384 / rate0 ≥ raw / need0` (signed); type `+0xbc(0)` (result unused); **one world draw** (HE64 inlines `[w+0x1e8] = ([w+0x1e8] + 1) mod [w+0x1ea]`, the same step as GOG `0x100a1740` on `+0xfc`/`+0xfe`); send; cargo goods = input 0 |
+| Status helper (§2.1, `production.md` §4.1) | `0x10072ed0` | `0x10070be0` | `0x1800847d0` (+ inlined copy for 45 000) | identical | D. Interval compared signed against the 16-bit elapsed time in all three; HE64's inlined 45 000 copy compares 16-bit unsigned, which is equal for a constant below 65 536 |
+| Raw receiver `+0xc0` (§2.10) | `0x1006ee70` | `0x1006c3d0` | `0x18007f930` | identical | D: u16 add, no clip, goods not read |
+| Farm remove `+0xa8` (cart side) | `0x1006ee80` | `0x1006c960` | `0x18007f940` | identical | D (HE64), S (HE86): `min(a, out - reserved)`, then the stage graphic |
+| Worker slot attach / release (§2.13) | `0x10074540` / `0x1006f070` | `0x1006c830` / `0x1006ca10` | - | identical | S |
+| Send + entrance test (§2.3) | `0x10072d20` + `0x10072b50` | `0x1006fa10` (test inlined) | `0x180084500` | identical | D (HE86), S (HE64). Flags `0x30`; type `+0x98(rotation & 3)` must answer; spawn at `(u16 [+6] + e.x, byte [+0xf] · 0.04, u16 [+8] + e.y)`. GOG multiplies x and y by 1.0 on the x87 (`0x100c92a8`); HE adds in SSE. Both round one exact sum once, so the floats are equal |
+| Job run / arrival / next step after a failed start (§2.4) | `0x1005b6c0` / `0x1005c260` / `0x1005e280` | `0x1007ad50` / `0x1007b9c0` / `0x1007baa0` | `0x180090e90` / `0x180092380` / `0x180092330` | identical | S; constants 7, `0xb` and the capacity restart in both |
+| Step A start (§2.5) | `0x10058ae0` | `0x10078920` | `0x18008e240` | identical | D. Same square (`x + (w-1)/2 - r` as u16, `2r + 1 + (w-1) mod 2`), island `+0x10c` mode 0, tile goals, callback, walk layer via figure `+0xcc(0, 4, ·)`, claim `(x, y, 0, 1)` only after a walk exists |
+| Step A callback (§2.5 item 5) | `0x10058a40` | `0x10078850` | `0x18008e170` | identical | D. GOG divides by 1.0 (`0x100c6e10`) and truncates with `__ftol`; HE64 truncates with `cvttss2si`; same tile |
+| Step A/B abort (§2.8) | `0x100545c0` | `0x10078b20` and `0x10075440` (two equal copies) | `0x180089da0` | identical | S; HE64 inlines the world's tile-to-island lookup (below) |
+| Step B start (§2.8) | `0x100553e0` | `0x100753d0` | `0x180089c10` | identical | S: type `+0x64(1)`, action 7, rate 0.01 |
+| Step B arrival: clear claim, cut, +256 (§2.8) | `0x10054530` | `0x10075320` | `0x180089c80` | identical | D. Same order: the island under the tile, clear bit 29, cut, and only on success cargo `+= 0x100` |
+| Step C start / arrival (§2.10) | `0x10057ae0` / `0x10057bd0` | `0x10077b40` / `0x10077ae0` | `0x18008d410` / `0x18008d530` | identical | S |
+| Candidates, island `+0x10c` mode 0 (§2.6) | `0x10092320` | `0x1004bb80` | `0x180056ce0` | identical (mode 0) | D. Unsigned clip, wrapped `x0` gives nothing, rows top-down and columns left-right, `WARE[0] == goods`, `test [rec+4], 0x20000000`. HE64 also skips a tile when the registry is null. Modes 1 and 2 were not compared |
+| Claim read `+0xc8` / write `+0xc0`, mode 0 (§2.7) | `0x10087400` / `0x10087880` | `0x1003d230` / `0x10044010` | `0x180048e30` / `0x180049180` | identical (mode 0) | D. Bit 29 of the second dword. HE86 writes `old ^ ((v << 29 ^ old) & 0x20000000)` and HE64 clears then ORs; both store bit 0 of the argument and nothing else. The other modes (GOG 392 and 271 instructions against HE86 204 and 238) were not compared |
+| Cut `+0x110` (§2.9) | `0x10087340` | `0x100394b0` | `0x180048d50` | identical | D. `id - 1` must be `ROHSTWACHS` (`0xe2`); id = its type's id; `byte3 &= 0x80`; notify `0xcf`. HE64 would call through a null registry rather than return 0 (never happens in a game) |
+| Growth visit (§2.9, `production.md` §4.3) | `0x1008b5f0` | inlined in the island update `0x10032870` | `0x18004e860` | identical | D. Parity `t / (P/2) & 1`, 6-bit counter, `counter mod 2^k`, `counter ≥ S << k` → `id + 1`, `phase &= 0x80`, notify `0xce`; HE64 reloads `t` from its spill after reusing the register for `k` (checked) |
+| Island update (chunk scheduler) | `0x1008b760` (slot `+0xe4`) | `0x10032870` | `0x18004ea30` | identical | S: `· chunks / 2000 + 1` capped (HE86 `imul 0x10624dd3, sar 7`), then the 15 000 pass through slot `+0x194` |
+| Small farm tick (§2.2, `production.md` §4.5) | `0x1006f660` | `0x1006cd90` | `0x180080280` | identical | D (HE86), S (HE64: 384, `0x2a`, `0x2e`, `& 7`, two `+0x118` sends). Kind table `107 110 107 109 107 109 107 109` and limits `1 2 0 1 1 0 0` (kinds 106-112) equal (P, `0x100c8d48`/`0x100c8d59` against `0x1014e03c`/`0x1014e04d`) |
+| Small farm line step | `0x1006f440` | `0x1006d030` | `0x1800800e0` | identical | D: capacity first, ratio, **status 1 with 75 000**, `used == 0` gives 0, clear unless the other line is on and full. ISS-150 (the 75 000 message never comes due) holds in all three: HE64 passes 75 000 to the non-inlined helper, which compares in 32 bits |
+| Grazing step A (`tJobWalkRohstWeide` start) | `0x10059210` | `0x10079060` | - | identical | S (same difference profile as step A; its tile filter is not read in either edition) |
+| Market cart step A / filter / callback / abort (`transport.md` §1.1) | `0x1005ad10` / `0x1005aca0` / `0x1005a900` / `0x1005a760` | `0x1007a620` / `0x1007a5b0` / `0x1007a250` / `0x1007a200` | `0x1800903d0` / - / - / `0x18008a640` | identical | D for the score: goods ≤ 25 (unsigned) → `((avail - 3cap/4) << 7) / (cap - 3cap/4)`, else `(avail << 7) / cap`; strict `>` on the best; stop at `≥ 128`. List mask 8, search mode 4 |
+| Cart route arrival / next (`transport.md` §1) | `0x1005d3c0` / `0x1005d380` | `0x1007ccc0` / `0x1007cd60` | `0x180093390` / `0x180093340` | identical | S (type 9; types 6, 8, 10 jump to the tail) |
+| Cart step B load start / arrival (`transport.md` §1.2) | `0x100551b0` / `0x100551f0` | `0x10075a10` / `0x10075940` | `0x18008a490` / `0x18008a500` | identical | S (action `0x13`, kind `0xa`, un-reserve then remove up to the capacity) |
+| Figure-type getters: route `+0x54`, wait `+0x64(i)`, capacity `+0x84`, layer `+0xac` (`AnnoGame`) | `0x1000fae0` `0x1000fd10` `0x1000fb50` `0x1000faf0` | `0x10012ff0` `0x10013010` `0x100122d0` `0x10013060` | - | identical | D: `[+0xc]`, `[+0x2c + 4i]`, `[+0xf2]`, `[+0xff]` |
+| Building-type getters (`+0x40 +0x5c +0x78 +0xac +0xb0 +0xb4 +0xb8 +0xbc +0xc0 +0xdc +0xe0 +0xe4`) | `0x1002185c` table | `0x100a9434` table | - | identical | D: same offsets (`+4`, `+0x10`, `+0x65`, `+0x206`, `+0x200`, `+0x1ea`, `+0x1e0`, `+0x1e2`, `+0x208`, `+0x1fa`, `+0x210`, `+0x202`) |
+| Route-type names → job id (§2.2) | table `0x10024fb8` | table `0x100d0e34` | - | identical | D+P: all 80 entries equal; `MAEHER` = 42 = `0x2a`, `WEIDETIER` = 46. In HE64 the names 41-46 have the same neighbours, but the table is not laid out as one array, and its start was not found |
+| `PROD3` → `rate`/`need` at load (§1.1) | `AnnoGame 0x10009627`-`0x10009717` | `AnnoGameAddOn 0x10004111`-`0x10004209` | `AnnoGame 0x180002dab`-`0x180002e9e` | **changed** | D + exact emulation, §8.4 |
+
+A side result for U-9 (S, HE64 only): HE64 inlines the world's tile-to-island lookup (GOG world slot `+0x8c(x, y)`, called in step B's arrival and the abort). It reads a byte map indexed by `(y >> 3) · (width >> 3) + (x >> 3)` at world `+0x240` and takes the island pointer from an array at world `+0x6640` (`0x180089cc5`-`0x180089cf1`). The GOG body was not re-read; this is the lead for U-9.
+
+### 8.3 Data: `Anlagen` and `FigurenHeader` (H, P)
+- **The rules HE runs are GOG's.** HE `Anlagen.addon` is byte-identical to GOG `Anlagen.dat` (H, sha256 `b2317a5c…` for both). HE's own `Anlagen.dat` (sha256 `bcbaf29c…`, 909 entries) and `Anlagen.classic` (`0f356a64…`, 894 entries) are the variants that `he-vs-gog-comparison.md` §3.1 describes.
+- **Forester 801**, field by field over GOG `Anlagen.dat`, HE `Anlagen.dat` and HE `Anlagen.classic` (P): `HEAD` (56 bytes), `PROD3` (68), `PRODTYPE PLANTAGE`, `INFRAMIN INFRA_EVER`, `WARE HOLZ|UNUSED`, `ROHSTOFF BAUM|UNUSED`, `ENTRANCE`, `WALKMASK`/`SHOTMASK`/`OWNMASK`, `FIREPOS`, `OBJECTPOS` and `BAUSAMPLE` are identical in all three. Only these differ: `COLORS` (colour id `0x48`, `0x40`, `0x3f`), the graphics inside `HAEUSER`, and `VERSION2` in `.classic` (`01 00 28 …` against `00 00 29 …`).
+- **Small farm 809**, the same three files (P): the gameplay records are identical (`PRODTYPE UNIVERSAL`, `WARE ALKOHOL|NAHRUNG`, `ROHSTOFF KARTOFFEL|GRAS`, `HEAD`, `PROD3`, `ENTRANCE` and the masks). `COLORS` (`0x4e`, `0x46`, `0x45`) and the `HAEUSER` graphics differ; `VERSION2` is equal.
+- **What the workers harvest** (P, all three files): the 46 `BAUM` objects, the 12 `GRAS` objects (2, 21, 23, 25, 27, 69, 71, 73, 79, 81, 83, 355) and the one `KARTOFFEL` object (709), together with their `id - 1` young stages, have identical gameplay records in HE `Anlagen.dat`. In `Anlagen.classic` only **709's `HEAD` u16 at 8** (the gold cost: 5 → 0) differs. Which program path reads `.classic` is still not traced.
+- **Figures** (P, `tools/figuren.py dump` on both `FigurenHeader.dat`, plus the `LOGIC`/`HEAD` floats): 101, 102, 106, 107, 109, 110, 203 and 220 have identical records. Forester worker 102: `MAEHER`, speed 0.01, wait 13.0, layer 2, capacity 1 t. **Small-farm worker 106** (`Kleinbauer01`): `MAEHER`, speed 0.01, **wait 7.0, layer 2, capacity 3 t**. Animals 107 (chicken, `Hahn+Huhn01`), 109 (pig, `Sau01`), 110 (chicken): `WEIDETIER`, layer 4, capacity 3 t, wait 10.0 / 13.0 / 10.0, speed 0.01 / 0.009 / 0.006.
+
+### 8.4 The one rules difference: `rate`/`need` at load (D + exact emulation)
+- **GOG** (x87; listing in §1.1): `q0 = 256 / T0` and `q1 = 256 / T1` at the x87's precision. `rate_i = ftol(q_i + 0.5)`. `need0 = ftol(q0 · I0)` with `q0` still on the x87 stack. `need1 = ftol(float(q1) · I1)`: `q1` was stored as a 32-bit float first (`fst [esp+0x1c]`, `0x1000964f`), so the two lines are not converted alike.
+- **HE86 and HE64** (SSE): every step in single precision: `divss`, `addss`, `mulss`, truncated by `cvttss2si`.
+- **Emulation** over all 921 entries (exact rationals, rounded to 24, 53 or 64 mantissa bits): HE and GOG differ only in `need1` of **1010** (KANONENBAU: `T` = 50, `I1` = 1.3671875; HE 7, GOG 6) and of **3979** (PIONIER: `T` = 25, `I1` = 0.390625; HE 4, GOG 3). With 24-bit x87 precision, GOG would give HE's values; these are the two entries OQ-032 names. Every `rate0`, `rate1` and `need0` and every other `need1` is equal. 801 (`rate0` 14, `need0` 32) and 809 (13/128 and 4/50) are equal in all models.
+- **Consequence:** a rebuild that loads the HE folder through ADR 0005's layer and wants HE's numbers needs a per-edition value only for these two inputs. The rebuild uses the 53-bit values. OQ-032 now records the HE side.
+
+### 8.5 The small farm's worker and its fields (owner question; D from §2 with §8.2-§8.3, P)
+- **Line 0 (alcohol from potatoes).** It sends a worker when the line made nothing this step, no line-0 worker is out (`counter0 < 1`: at most one at a time), and `384 / 13 ≥ raw0 / 128`. The worker is figure 106 with **job `0x2a`, the forester's route** (`tRouteMaeher`). Its search square is 7 × 7 (radius `HEAD[0x11]` = 3, 3 × 3 footprint). Its target is the first unclaimed reachable tile whose object's `WARE[0]` is `KARTOFFEL`: a ripe potato field, 709. It claims and walks there, waits **7.0** (3 500 ticks), cuts 709 → **708** (`ROHSTWACHS`, the young field, phase cleared) and gains 1 t. **Its capacity is 3 t, so the route restarts at step A after each cut** (§2.4 item 3, type `0xb`): one trip harvests up to three fields, then the worker walks home and adds up to 768 to the raw stock. A field regrows 708 → 709 through the growth sweep after `T0` = 300 s (708: `S` = 5, `k` = 2). **No separate sowing step exists in the code read:** cutting the field back to its young stage is the "sowing" the owner sees. The forester is the same loop with capacity 1 t, wait 13.0 and `BAUM`.
+- **Line 1 (food from grass).** It sends a grazing animal with **job `0x2e`** (`tRouteWeide`). The kind is drawn from the table above: chicken 107 with 4/8, pig 109 with 3/8, chicken 110 with 1/8. At most 2, 1 and 1 of them may be out, and at most `max_figures(0)` = 3 in all. Its step B is the same cut (`tJobErnte`), applied to `GRAS` objects, with capacity 3 t. Its step A (`tJobWalkRohstWeide`) is a different class whose tile filter has not been read (in either edition).
+- **Going back out.** After unloading, the job has no step left. The end dispatch releases the worker slot at once (§2.13 item 4), and the farm sends a new figure at a later 500-tick step whose tests pass. The figure that comes back is removed; it is not the one that goes out next. This is the same in HE (§8.2: send, attach, release and end are identical; job storage at figure `+0x24` instead of `+0x20` in HE86).
+
+### 8.6 Corrections to other notes
+- `docs/research/he-vs-gog-comparison.md` §5 "Growth sweep (S): not compared to a conclusion" compared island **slot 100**. That is the 300 s event (`0x10093980`, `docs/re/islands.md`), not the growth sweep. The growth visit `0x1008b5f0` is called from the island update `0x1008b760` (slot `+0xe4`); HE86 inlines it there (`0x10032870`), and HE64 keeps it separate (`0x18004e860`). §8.2 compares it: identical.
+
+### 8.7 Not compared (bounded)
+- The other modes of the claim read and write and of the candidate list.
+- The route builder and the figure tick beyond their float style (OQ-710).
+- `tJobWalkRohstWeide`'s tile filter.
+- The fur trapper's own tick.
+- The HE64 job factory and the attach and release functions.
+- HE64's `AnnoGame` loader beyond the `PROD3` conversion.
+- Every runtime observation: NOT_RUN-1 and NOT_RUN-2 above are still open, and HE is the edition to run them on (owner rule 2026-11-16).

@@ -173,6 +173,7 @@ classes. GOG function tables match them in size and, slot by slot, in the profil
   383 instructions.
 - **Growth sweep (S): not compared to a conclusion.** Slot 100 is 46 instructions in GOG and 118 in HE86, with one
   direct call fewer; inlining of the callee would explain it and was not checked.
+- **Corrected 2026-11-17 (RE-HE-PRODUCTION-1):** slot 100 is the island's 300 s event (`0x10093980`), not the growth sweep. The growth visit `0x1008b5f0` is called from the island update `0x1008b760` (slot `+0xe4`). HE86 inlines it there (`0x10032870`), and HE64 keeps it separate (`0x18004e860`). Compared there, it is identical: `docs/re/forestry.md` §8.2.
 
 So the wildlife rules can be read from the GOG module as the reference, with the History Edition's names as a
 guide, and a port serves owners of both editions. Nothing here reads the still unread bodies: the fauna sweep's

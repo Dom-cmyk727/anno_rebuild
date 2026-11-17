@@ -34,6 +34,9 @@ says who is doing what, where the work is, and what it waits on.
   run on `09315620` covers all three candidates**; this PC runs its part after `945c3216`'s.
   **The owner's landing OK for all three, 2026-11-17:** "Also land everything once the test is done". So they land
   in order once this PC's parts and the Mac's run pass with nothing new failing.
+- **The owner, 2026-11-17, on RENDER-DIRECT-1a and LAYER-CHECK-1:** "You will land them once you approve
+  them". They land without a further ask once accepted (CI green on the reviewed head), through the usual
+  candidate gates: a candidate stacked on `09315620`, this PC's changed lanes and the Mac's full run.
 - **The owner decided OQ-096 and OQ-096b** 2026-11-17. Asked "Raise it to 384 MiB, one mipmap level on both
   cards (my recommendation)", against keeping 256 MiB with no mips on the iGPU or deciding on a build, the
   owner answered "your recommendation". So `atlas_budget_mb` defaults to 512 MiB discrete and 384 MiB

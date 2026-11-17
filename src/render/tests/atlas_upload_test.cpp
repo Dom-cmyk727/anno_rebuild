@@ -565,11 +565,18 @@ TEST_CASE("atlas upload: synthetic pages are byte-exact and sample-exact on any 
         wgpuAdapterInfoFreeMembers(backend_info);
         if (backend != WGPUBackendType_Vulkan && backend != WGPUBackendType_Metal &&
             backend != WGPUBackendType_D3D12) {
-            MESSAGE("skipping: " << ctx.value().name
-                                 << "'s backend is not one this codebase's GPU render path is "
-                                    "validated on (Vulkan/Metal/D3D12 only) - an OpenGL/"
-                                    "OpenGLES/D3D11 fallback happens when no Vulkan ICD is "
-                                    "installed, a CI-runner artifact, not a target platform");
+            // The first quoted literal below names "adapter" itself (not left as a bare prefix)
+            // so the static skip-phrasing audit (ctest_verdict_test.py's own regex, which reads
+            // only the first quoted literal of a stream-concatenated MESSAGE) classifies this as
+            // a `gpu` skip by that literal prefix alone, the same as every other named-adapter
+            // skip in this file - matching the runtime classification `ctest_verdict.py` would
+            // give the full message anyway (it already names the adapter and its backend).
+            MESSAGE("skipping: adapter " << ctx.value().name
+                                         << "'s backend is not one this codebase's GPU render "
+                                            "path is validated on (Vulkan/Metal/D3D12 only) - an "
+                                            "OpenGL/OpenGLES/D3D11 fallback happens when no "
+                                            "Vulkan ICD is installed, a CI-runner artifact, not "
+                                            "a target platform");
             return;
         }
     }

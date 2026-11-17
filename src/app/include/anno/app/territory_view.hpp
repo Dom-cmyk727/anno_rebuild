@@ -45,13 +45,21 @@ struct TerritoryIsland {
     /// status bar's land test, island slot +0x98 = AnnoWelt 0x10084c20 > 0.0; the vertex height
     /// byte times 0.04), else 0. Null when the island has no height column (sim::VertexGrid not
     /// Ok): every tile of its rectangle then counts as land. Shared and reused between
-    /// publications while the terrain is the same (compared by pointer: the terrain is
-    /// immutable). The original's second land test (island slot +0x64, an object raised above the
-    /// heights, 0x1008b950) is not modelled.
+    /// publications while the terrain is the same (the terrain is immutable), so the comparison
+    /// below is a pointer test in the common case and a content test otherwise. The original's
+    /// second land test (island slot +0x64, an object raised above the heights, 0x1008b950) is not
+    /// modelled.
     std::shared_ptr<const std::vector<std::uint8_t>> land;
     /// sim::Terrain::digest, 0 without terrain: whether `land` can be reused.
     std::uint64_t terrain_digest = 0;
-    friend bool operator==(const TerritoryIsland&, const TerritoryIsland&) = default;
+    /// Content equality (`land` by its tiles, not by its pointer).
+    friend bool operator==(const TerritoryIsland& a, const TerritoryIsland& b) {
+        const bool land_same =
+            a.land == b.land || (a.land != nullptr && b.land != nullptr && *a.land == *b.land);
+        return land_same && a.index == b.index && a.x0 == b.x0 && a.y0 == b.y0 && a.w == b.w &&
+               a.h == b.h && a.owner == b.owner && a.cities == b.cities && a.climate == b.climate &&
+               a.discovered_by == b.discovered_by && a.terrain_digest == b.terrain_digest;
+    }
 };
 
 /// Every island's owners. `version` counts the publications whose content differed from the one

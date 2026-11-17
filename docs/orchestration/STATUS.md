@@ -135,6 +135,15 @@ says who is doing what, where the work is, and what it waits on.
   to the UI lane after ISLAND-CROPS-1 1b, drafted for the orchestrator's review. **The owner, OQ-723,
   2026-11-17:** asked "Show only your own buildings' status icons (original), or add an option to see all?",
   the owner answered "Own only": the original's owner gate, no rules option.
+- **Landing candidate `c01d5806`** (tree `6f30c28f`), stacked on `c9bdc3e3`, at `refs/candidates/status-crops`:
+  - UI-STATUS-1 B+C with the UI lane's merge of ui-tabs-b, `5e5a51de` (CI 44076929673 green after a rerun
+    of the flaky clang-asan job). Conflicts: the app test list (all five test files kept) and the open
+    questions (700-707 before 710);
+  - ISLAND-CROPS-1 1a `4bebe08e`, ACCEPTED (CI 44070678390): the ANBAU crop list decoded, with a writer;
+    1,133 records round-trip byte for byte; OQ-708 inserted before 710;
+  - UI-PRODBAR-1 A `6b6758b9` and UI-HARVEST-ICON-1 A `ccaab768`, ACCEPTED (docs only), with ISS-151.
+  The register now runs 690-695, 700-708, 710, 715-724 in order. The PC part runs after RENDER-DIRECT-1c's
+  quiet slot. One Mac run on `c01d5806` covers ui-tabs-b, `c9bdc3e3` and this candidate.
 - **[MAC-HEAVY-1](tasks/mac-heavy-1.md) written** 2026-11-17 for the Mac executor, on the owner's request
   ("I also need a new mac job. This can be more comprehensive once this time, it may contain CPU and or RAM
   heavy test jobs"). Released when the owner pastes the prompt, after GATE-RUN ui-tabs-b. Verification of

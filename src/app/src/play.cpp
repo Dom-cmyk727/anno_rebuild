@@ -969,6 +969,7 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
                 c.island_h = island->tiles.height();
                 c.goods = city->stock.stock;
                 c.population = world_.city_population(c.city);
+                c.accounts = city->accounts; // UI-TABS-1 B: a read-only copy
                 cities->push_back(std::move(c));
             }
         }
@@ -976,6 +977,10 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
             next->cities = std::move(cities);
         }
     }
+    // UI-TABS-1 stage B: the balance pages' account rows (docs/re/ui.md 5.5), read-only copies.
+    next->accounts_live = world_.rules().city_booking;
+    next->stat_shown_num = world_.config().upkeep_slices;
+    next->stat_shown_den = world_.config().stat_decay_den;
     if (developer_city_) {
         if (const sim::Player* player = world_.players().find(local_player_)) {
             next->money = player->money;

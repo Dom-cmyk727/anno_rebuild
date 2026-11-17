@@ -2,6 +2,7 @@
 # the window-independent parts (scene loading, PNG output) so tests can use
 # them; the window needs SDL3 (ANNO_BUILD_VIEWER).
 add_library(anno_app_core
+  src/balance_rows.cpp
   src/building_delta.cpp
   src/command_outcome.cpp
   src/commands_file.cpp

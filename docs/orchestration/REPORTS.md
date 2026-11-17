@@ -14849,3 +14849,84 @@ landing candidate's own build): both pass, run directly with `python3 -I tools/l
   silently inheriting someone else's justification.
 
 READY FOR REVIEW.
+
+## UI-GHOST-1 — the placement ghost as the original shows it (stages A and B) — READY FOR REVIEW
+
+Branch `task/UI-GHOST-1`, base origin/main `4dfdd9b7`. Packet `docs/orchestration/tasks/ui-ghost-1.md`. Commits:
+`c3724220` (merge of the docs-only `task/BUILDINGS-REF-1`), `c54adcf3` stage A (docs), `91486cd4` the sim query (sim
+code, its own commit as asked), `3031338c` the UI work, then this entry.
+
+**Stage A (docs, `docs/BUILDINGSOBJECTS.md` part B §5.1).**
+- The blink writer (OQ-730 answered, D + P): the draw list sits at view frame `+0x14`, so its writer is AnnoFrame
+  `0x100038f2` `xor byte [ebx+0x1420],1`. The accumulator at `+0x1422` adds the frame's milliseconds and flips above
+  699. HE `ui_9` at 80 fps: 0.700 s shown and 0.700 s hidden, 17 cycles.
+- The refused footprint `0x10041050`: a 1-px `0xffff00` outline along the tile corners at ground height + 0.08, also
+  over open sea.
+- The radius outline `0x100443c0`: a midpoint-circle staircase around the footprint's centre tile, for every
+  Default-cursor type, and it does not blink.
+- Over the panel HE hides the ghost and its outline (OQ-700 answered for HE; GOG unread, OQ-757). OQ-756 and OQ-758
+  are new.
+
+**Stage B (code).**
+
+| Requirement | Positive proof | Negative control / failure proof | Evidence |
+|---|---|---|---|
+| The verdict is the sim's own rule, read-only | `World::check_build_record` runs Build's `check_record` on one record; `anno_sim_tests."check_build_record gives Build's verdict and changes nothing"`: the verdict equals Build's for None, Occupied, OutOfIsland, TileNotOwned, TerrainRefused, UnknownType, BadRotation, the type-0 skip, UnknownIsland, UnknownCity and CannotAfford (gold, goods); hash and save unchanged | mutant C (the query maps CannotAfford to None): the case fails | `cache/gates/gate-01.log`, `fp-C.log` |
+| State priority hidden > refused > unaffordable > valid | `anno_app_tests."ghost state: ..."` | mutant B (CannotAfford → valid, chrome test off): the unit case, `viewer_wiring_ui_ghost` (line 30 `wait fact tool.ghost == hidden`: it stayed 'refused') and the pixel check fail | `fp-B.log` |
+| Blink: acc > 699, subtract 699, flip | `"ghost blink: ..."` at 0 ms, 1 ms steps (699 holds, 700 flips, then every 699 ms), 350 + 350 = 700, surplus 2000 → 1301 → 602 | mutant A (`<` instead of `<=`): the case fails | `fp-A.log` |
+| Radius table and outlines | the table by hand for r = 0, 1, 4, 24; footprint and radius outlines; a closed outline | — | `gate-01.log` |
+| Outline colour exact `0xffff00`, 1 px, under the chrome | `"outline pixels: ..."`; `viewer_wiring_ui_ghost_pixel_check` in the real window: valid 1408 exact pixels (box 563 x 371), refused 160 (box 81 x 41, 2:1), hidden 0, panel column 0 in all three | the hidden shot is the negative control; mutant A (`0xfffe00`): the pixel check and the unit case fail | `gate-01.log`, `fp-A.log` |
+| States through the real window | `viewer_wiring_ui_ghost` (lan5, `ANNO_DEV_GOODS_TONS=3`): valid at (1140,516), refused over the inlet (1148,536), hidden on the panel (950,600), one house built, then unaffordable with the phase going 1 then 0, refused again with an empty stock | mutant B | `gate-01.log`, `fp-B.log` |
+
+**Gates** (MSVC Release, `ANNO1503_GAME_DIR`, `ANNO_TEST_THREADS=16`, `ANNO_UI_ORACLE_SHOTS`, `ANNO_UI_HE_CAPTURES`,
+`ANNO_UI_ROTATION_SHOTS`, head `3031338c`):
+- Configure `cmake --preset msvc` (new build dir). Build `anno_sim_tests anno_app_tests anno1503 anno_ui_mock`: no
+  warnings, no errors.
+- clang-format 23.1.3 `--dry-run --Werror` on every changed `.cpp`/`.hpp`: clean.
+- Canary `run_selected.py --jobs 8 --select 'ghost|radius half-widths|footprint outline|radius outline|outline pixels|check_build_record'`:
+  `selected=9 executed=9 failed=0 skipped=0`, PASS (`cache/gates/canary-01.log`).
+- Gate `run_selected.py --jobs 8 --select 'live_screen_matches_oracle|ui_dynamic_draw_check|info_panel|selected_house_pixel_check|ui_panels_match_gog|ui_window_matches_he|ui_mock_matches_oracle|^viewer_wiring_ui_|^viewer_wiring_construction|^anno_app_tests\..*(hud|ui|construction|selection|ghost|outline|radius)|^anno_sim_tests\.(build |check_build_record|demolish |free build)'`
+  with eight `--require-test` (the six oracle tests plus `viewer_wiring_ui_ghost`, `viewer_wiring_ui_ghost_pixel_check`):
+  `selected=165 executed=163 failed=0 empty=0 skipped=2 (opt-in=2) incomplete=0 sanitizer_lines=0`, PASS
+  (`cache/gates/gate-01.log`). The two skips are the opt-in `probe:` cases the `ui` pattern also matched.
+- Failure proofs (each mutant built and run, then restored): A, B and C as above (`cache/gates/fp-{A,B,C}.log`).
+  After restoring: rebuilt, the canary again `selected=9 executed=9 failed=0`, PASS (`canary-02.log`).
+- WSL `check_unix_warnings.sh`: GCC 13 and Clang 18, viewer with and without GPU (418 / 85 files): all clean, both negative controls caught (`cache/gates/unix-warnings-01.log`), one run, after the previous run on the PC had ended.
+
+**ADAPTATIONS** (orchestrator, 2026-11-17):
+- The 0.08 lift is applied in HEIGHT units (the original's unit is unread; under a pixel).
+- The ghost is hidden over open sea outside the city's island rectangle, because the dev tool picks no tile there
+  (OQ-760). The follow-up "pick over the whole map" is in the packet and gap 7.
+- Hidden over chrome: "HE-observed, GOG unread (OQ-757)".
+
+**NOT_RUN:** the GPU path through a real window (only the CPU path is in CTest; the GPU layer code shares the drawing
+functions and is the owner's test); macOS; the full suite (only the changed lanes, per the landing evidence split).
+
+**Decisions and reasoning:**
+- The verdict comes from a new read-only sim query, not from the window's `PlacementKnowledge::check`, as the packet
+  asks. `check_record` takes a `CheckEnv` of const references so the query needs no `const_cast`; Build passes the
+  same members, so the two cannot drift.
+- The window asks once per frame and the runner answers each turn (and while paused). While the answer is pending,
+  the last state stays, so a moving pointer does not flash the ghost off; from hidden it stays hidden until the first
+  answer.
+- The blink runs on the window's steady clock (it keeps running while paused, like the original's frame clock), one
+  flip per frame as the original, and the window's event wait is cut to the time left until the next flip.
+- The CPU path draws the outline into the frame before the chrome; the GPU path draws it into the frame-sized UI
+  layer only where that is transparent, so the chrome stays on top in both.
+- `tool.ghost.pixels` lets the wiring script see that an outline was drawn without a screenshot; the colour itself is
+  checked by the pixel check.
+
+**Owner's viewer test (default rules, the developer city):**
+1. Start the lan5 developer city with one house's worth of wood:
+   `$env:ANNO_DEV_GOODS_TONS=3; build\msvc\src\app\Release\anno1503.exe --play data\maps\lan5.txt --game-dir E:\anno1503\game\app --construction-menu on --layout data\ui`
+   (no `--rules living`).
+2. Press B, open the public category and arm the pioneer house.
+3. Move the ghost over land in your city: the house and a yellow staircase radius outline.
+4. Move it over the inlet near (1148, 536) or other water inside the island: only a yellow footprint diamond, no
+   house.
+5. Move the pointer onto the right panel: the ghost and the outline vanish; back on the map they return.
+6. Place one house (it uses the 3 t of wood). Move the ghost over free land again: the house blinks, about 0.7 s
+   shown and 0.7 s hidden, while the radius outline stays steady.
+7. Over open sea outside the island the ghost stays hidden (ADAPTATION, OQ-760).
+
+READY FOR REVIEW.

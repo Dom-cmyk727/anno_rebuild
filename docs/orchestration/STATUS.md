@@ -106,6 +106,19 @@ says who is doing what, where the work is, and what it waits on.
   [review](reviews/2026-11-17-ui-status-1-review.md). It is not in the stack yet: it conflicts with UI-TABS-1 B
   in seven files. The UI lane merges `refs/candidates/ui-tabs-b` into its branch, resolves, runs both lanes'
   gates and pushes; the next candidate takes it.
+- **The owner, 2026-11-17, on the editions' `PROD3` difference (RE-HE-PRODUCTION-1):** asked whether the
+  rebuild uses GOG's values (`need1` 6 for 1010 KANONENBAU, 3 for 3979 PIONIER), the History Edition's (7
+  and 4), or an edition option, the owner answered "GOGs values". So the rebuild keeps today's GOG behaviour,
+  with no option. OQ-032's HE line records the History Edition's values as evidence only.
+- **The owner's go for the UI lane's `he_01` packets, 2026-11-17:** asked about all of them in order (entrance
+  arrows, range display, farm productivity bar, harvest icon, plank text), only the arrows and range display,
+  or hold, the owner answered "all of them". The order:
+  1. UI-INFO-2b;
+  2. UI-RANGE-1 A then B;
+  3. the RE stages of UI-PRODBAR-1 and UI-HARVEST-ICON-1;
+  4. their B stages;
+  5. the PLANKEGROSS banner text.
+  Analysis: `E:\1503_test_videos\he_01_work\he_01-report.md`, outside git.
 - **[MAC-HEAVY-1](tasks/mac-heavy-1.md) written** 2026-11-17 for the Mac executor, on the owner's request
   ("I also need a new mac job. This can be more comprehensive once this time, it may contain CPU and or RAM
   heavy test jobs"). Released when the owner pastes the prompt, after GATE-RUN ui-tabs-b. Verification of

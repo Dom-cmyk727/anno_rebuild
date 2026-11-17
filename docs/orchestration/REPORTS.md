@@ -14991,3 +14991,27 @@ shows it): there the house with its yellow radius outline. Over the inlet near (
 `ANNO_DEV_GOODS_TONS=3`, after one house the ghost blinks about 0.7 s on and 0.7 s off.
 
 READY FOR REVIEW.
+
+## UI-GHOST-1 R2 (start the play camera at the developer city) — HALTED, work in progress
+
+Halted on the owner's order (2026-11-17). Head is the WIP commit below; **it does not build**. R1 (`32958430`) is the
+last gated state.
+
+**Done in the WIP commit:**
+- `DevToolSetup::home`: the city's Kontor (`warehouse_prodtypes`), else its first building, else the island's centre.
+- The viewer's start camera on that tile when a play session has a developer city (the owner's decision of
+  2026-11-17, "Start at my city"); otherwise the scene's middle as before.
+- New `viewer_wiring_ui_start_view` (the camera tile on island 1, near the Kontor at (1284, 540)).
+- `ui_ghost_world` now looks at the middle island (712, 712) first.
+
+**State:** the R2 build failed. `play.cpp` reads `world.config().cargo`, but `CargoRules` is a member of `Rules`;
+the fix is `world.rules().cargo` (`cache/gates/build-r2.log`). The `^viewer_wiring_` run that followed
+(`cache/gates/wiring-r2-01.log`) therefore ran the R1 binary: 33 selected, 32 passed, 1 failed (the new
+`ui_start_view`, as expected without R2). It is not evidence for R2.
+
+**Remains:**
+1. Fix that line and build.
+2. Run `^viewer_wiring_`; fix any script that relied on the old start view.
+3. Gate: the ghost, dev tool and oracle cases, all required, plus the sim determinism, replay and save cases (213
+   tests by name; `pins.py check --area sim` if quick). State that no pin or golden moved.
+4. clang-format, one WSL run, a REPORTS addendum, push and mirror.

@@ -15130,3 +15130,5 @@ at `c73325f5`.
   (`facings[k]` = frame k of each group), so no new decode path was needed.
 
 READY FOR REVIEW.
+
+**UI-PRODBAR-1 B addendum (the 98 against 93):** the 5 tests the `--select` regex lists but the B-02 main run (93) does not hold are exactly the 5 `--require-test` oracle tests (`live_screen_matches_oracle`, `ui_dynamic_draw_check`, `info_panel_gog_compare`, `selected_house_pixel_check`, `ui_panels_match_gog`). The gate runs each in its own one-test call before the main selection, and all 5 passed there (`COUNTS: selected=1 executed=1 failed=0`, log lines 38-171). So 93 + 5 = 98, nothing was dropped, and there was no rerun.

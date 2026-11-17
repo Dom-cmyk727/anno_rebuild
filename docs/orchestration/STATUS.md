@@ -91,6 +91,21 @@ says who is doing what, where the work is, and what it waits on.
     water as the camera stopped.
   - So the zoom does not meet the owner's rule yet. RENDER-DIRECT removes stand-ins and dissolves.
   - Window move and resize kept drawing at 64-72 fps during the held drag.
+- **Landing candidate `c9bdc3e3`** (tree `2d76c26d`), stacked on `004a26f4` (ui-tabs-b), at
+  `refs/candidates/atlas-pages-minimap`:
+  - RENDER-DIRECT-1b `95a5ace6`, with one conflict in `src/app/CMakeLists.txt`: both new test files kept;
+  - UI-MINIMAP-2 `c5b10c85`, ACCEPTED, [review](reviews/2026-11-17-ui-minimap-2-review.md);
+  - RE-HE-PRODUCTION-1 `1e2939ac`, ACCEPTED (docs only, CI 44069937897 green). It is the History Edition's
+    production, worker and cart code against GOG, the owner's request in `he_01.mp4` 7:30. Every function
+    is identical logic; the one rules difference is HE's single-precision `PROD3` load. That makes `need1`
+    of 1010 (KANONENBAU) 7 against 6, and of 3979 (PIONIER) 4 against 3. New OQ-710. The open-questions
+    end conflict was resolved with both sides kept.
+  The PC part (changed lanes, all GPU tests, the WSL check) is running. The Mac's run covers it with
+  ui-tabs-b.
+  **UI-STATUS-1 B+C** `0ee20000` is ACCEPTED (CI 44062827710),
+  [review](reviews/2026-11-17-ui-status-1-review.md). It is not in the stack yet: it conflicts with UI-TABS-1 B
+  in seven files. The UI lane merges `refs/candidates/ui-tabs-b` into its branch, resolves, runs both lanes'
+  gates and pushes; the next candidate takes it.
 - **[MAC-HEAVY-1](tasks/mac-heavy-1.md) written** 2026-11-17 for the Mac executor, on the owner's request
   ("I also need a new mac job. This can be more comprehensive once this time, it may contain CPU and or RAM
   heavy test jobs"). Released when the owner pastes the prompt, after GATE-RUN ui-tabs-b. Verification of

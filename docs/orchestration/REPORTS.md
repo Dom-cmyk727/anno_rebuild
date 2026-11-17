@@ -15258,7 +15258,7 @@ READY FOR REVIEW.
 
 READY FOR REVIEW.
 
-## RENDER-DIRECT-1d addendum — renumbered OQ-691 to OQ-727, and the orchestrator's follow-up question answered — READY FOR REVIEW (same branch, commit TBD)
+## RENDER-DIRECT-1d addendum — renumbered OQ-691 to OQ-727, and the orchestrator's follow-up question answered — READY FOR REVIEW (same branch, commit `70c25b66`)
 
 **Renumbering.** OQ-691-695 was already taken by UI-TABS-1 B (in candidate `c01d5806`). Checked `docs/orchestration/STATUS.md`'s "OQ number reservations" first this time, per the orchestrator's instruction - the next free number is 727. Renumbered everywhere: `docs/open-questions.md`'s heading and both cross-references (`docs/render/atlas.md` §13, this report).
 

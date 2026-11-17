@@ -1,9 +1,15 @@
 // RENDER-DIRECT-1c: the resident atlas pages (RENDER-DIRECT-1b) uploaded into a GPU texture
 // array, proven exact by readback (step 2) and by sampling (step 3), plus the two pure functions
 // (resident_atlas_groups, atlas_upload_refusal) unit-tested without any GPU (the packet's own
-// acceptance item). The GPU cases are pinned to one named adapter at a time (play_gpu_test.cpp's
+// acceptance item). Most GPU cases are pinned to one named adapter at a time (play_gpu_test.cpp's
 // own pattern: a Radeon run is a Radeon result, never the RTX one, and the RTX 4090 gate is this
-// file's own "RTX 4090" cases run from the msvc build).
+// file's own "RTX 4090" cases run from the msvc build); two cases that need no specific hardware
+// (the synthetic-only correctness proof, and the one-byte-short refusal) are adapter-agnostic on
+// purpose so CI's linux-gcc job exercises this unit's real GPU path on lavapipe instead of only
+// an allowed skip (OQ-089; game_dir() is also checked BEFORE picking a named adapter everywhere
+// it matters, so a CI runner with no game files skips as the allowed `required-asset`, not the
+// disallowed-on-linux-gcc `gpu`, the same order `play_gpu_test.cpp`'s own `play_gpu_matches_cpu`
+// uses - orchestrator, 2026-11-17).
 #include <array>
 #include <chrono>
 #include <cstdint>
@@ -277,27 +283,38 @@ void on_named_adapter(const char* adapter_name,
     CHECK(ctx.value().errors->load() == 0);
 }
 
-void synthetic_and_lan5(const char* adapter_name, bool all_groups) {
+/// CI gate fix (orchestrator, 2026-11-17): `anno::test::game_dir()` is checked FIRST, before
+/// `on_named_adapter` ever calls `list_adapters`/`pick_adapter` - the same order
+/// `play_gpu_test.cpp`'s own `play_gpu_matches_cpu` uses. On a runner with no game files and no
+/// adapter named "RTX 4090"/"Radeon" (CI's lavapipe), this lets the function skip as
+/// `required-asset` (allowed everywhere via `--asset-policy unavailable`) before it would
+/// otherwise reach the "no adapter named ..." skip (classified `gpu` by `ctest_verdict.py`,
+/// disallowed specifically on the `linux-gcc` CI job, OQ-089/GATE-1c item 2 - the job that must
+/// run its real GPU parity path on lavapipe, not quietly skip it). Checking the dir first, not
+/// after picking the adapter, is the fix: the two orderings print the same two MESSAGEs either
+/// way, but only one of them lets the EARLIER, allowed skip win. The synthetic-only case is
+/// separate (see `TEST_CASE` below) and adapter-agnostic on purpose, so CI's lavapipe still
+/// exercises this unit's real upload/readback/sampling path for real, not only via an allowed
+/// skip - OQ-089's own point.
+void lan5_on_named_adapter(const char* adapter_name, bool all_groups) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const std::filesystem::path lan5 =
+        std::filesystem::path(ANNO_REPO_DIR) / "data" / "maps" / "lan5.txt";
+    std::error_code ec;
+    if (!std::filesystem::exists(lan5, ec)) {
+        FAIL("lan5.txt is not at the expected repo path: " << lan5.string());
+    }
+    auto play = anno::app::load_play(*dir, lan5, anno::app::FixedPlayOptions{});
+    REQUIRE_MESSAGE(bool(play), "load_play: " << (play ? "" : play.error()));
+    auto loaded = anno::app::load_placed_scene(*dir, play.value().name, play.value().placed);
+    REQUIRE_MESSAGE(bool(loaded), "load_placed_scene: " << (loaded ? "" : loaded.error()));
+    const render::Scene& scene = *loaded.value().scene;
+
     on_named_adapter(adapter_name, [&](const gpu::Context& ctx) {
-        check_pages_on_gpu(ctx, synthetic_pages(), "synthetic", true);
-
-        const auto dir = anno::test::game_dir();
-        if (!dir) {
-            MESSAGE("skipping lan5.txt: ANNO1503_GAME_DIR not set");
-            return;
-        }
-        const std::filesystem::path lan5 =
-            std::filesystem::path(ANNO_REPO_DIR) / "data" / "maps" / "lan5.txt";
-        std::error_code ec;
-        if (!std::filesystem::exists(lan5, ec)) {
-            FAIL("lan5.txt is not at the expected repo path: " << lan5.string());
-        }
-        auto play = anno::app::load_play(*dir, lan5, anno::app::FixedPlayOptions{});
-        REQUIRE_MESSAGE(bool(play), "load_play: " << (play ? "" : play.error()));
-        auto loaded = anno::app::load_placed_scene(*dir, play.value().name, play.value().placed);
-        REQUIRE_MESSAGE(bool(loaded), "load_placed_scene: " << (loaded ? "" : loaded.error()));
-        const render::Scene& scene = *loaded.value().scene;
-
         const auto groups = gpu::resident_atlas_groups(ctx.adapter_type, 0,
                                                        static_cast<std::uint32_t>(render::kGroups));
         for (const std::uint32_t group :
@@ -339,19 +356,22 @@ void synthetic_and_lan5(const char* adapter_name, bool all_groups) {
 /// real hardware, not a new, tighter claim. Needed vs. allowed is reported via `MESSAGE` so the
 /// reviewer/owner can see the real margin, not just a pass/fail.
 void worst_pair_scene(const char* adapter_name) {
+    // CI gate fix (orchestrator, 2026-11-17): game_dir() checked before on_named_adapter, same
+    // reason as lan5_on_named_adapter's own doc comment above.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto file = *dir / "Scenes" / "0011SingleEndlosAddon" / "endless02.sze";
+    std::error_code ec;
+    if (!std::filesystem::exists(file, ec)) {
+        FAIL("missing named scene: " << file.string());
+    }
+    std::deque<std::vector<std::uint8_t>> keep;
+    const render::Scene scene = load_scene_direct(*dir, file, keep);
+
     on_named_adapter(adapter_name, [&](const gpu::Context& ctx) {
-        const auto dir = anno::test::game_dir();
-        if (!dir) {
-            MESSAGE("skipping: ANNO1503_GAME_DIR not set");
-            return;
-        }
-        const auto file = *dir / "Scenes" / "0011SingleEndlosAddon" / "endless02.sze";
-        std::error_code ec;
-        if (!std::filesystem::exists(file, ec)) {
-            FAIL("missing named scene: " << file.string());
-        }
-        std::deque<std::vector<std::uint8_t>> keep;
-        const render::Scene scene = load_scene_direct(*dir, file, keep);
         const auto groups = gpu::resident_atlas_groups(ctx.adapter_type, 0,
                                                        static_cast<std::uint32_t>(render::kGroups));
         render::SpriteCache cache;
@@ -419,17 +439,28 @@ void worst_pair_scene(const char* adapter_name) {
 /// RENDER-DIRECT-1c review F2: one case through the real device path
 /// (`upload_atlas_pages`, not only the pure `atlas_upload_refusal` tested without a GPU above) -
 /// a budget one byte short of what the synthetic page set needs must refuse, named, not silently
-/// truncated or accepted.
-void refused_one_byte_short(const char* adapter_name) {
-    on_named_adapter(adapter_name, [&](const gpu::Context& ctx) {
-        const auto pages = synthetic_pages();
-        const auto needed = gpu::atlas_pages_bytes(pages);
-        REQUIRE(needed > 0);
-        auto uploaded = gpu::upload_atlas_pages(ctx, pages, needed - 1);
-        REQUIRE_MESSAGE(!uploaded, "one byte short of " << needed << " should have been refused");
-        CHECK(uploaded.error().find("budget") != std::string::npos);
-        MESSAGE("refused as expected: " << uploaded.error());
-    });
+/// truncated or accepted. CI gate fix (orchestrator, 2026-11-17): adapter-agnostic, like the
+/// synthetic-only `TEST_CASE` below - nothing about this check is specific to "RTX 4090"/
+/// "Radeon", so pinning it to those names only made it skip-as-`gpu` on CI's lavapipe
+/// (disallowed on `linux-gcc`, OQ-089) for no reason tied to what it actually tests.
+void refused_one_byte_short() {
+    auto ctx = gpu::headless_context();
+    if (!ctx) {
+        if (std::getenv("ANNO_REQUIRE_GPU") != nullptr) {
+            FAIL("no GPU device at all (ANNO_REQUIRE_GPU is set): " << ctx.error());
+        }
+        MESSAGE("skipping: no GPU device: " << ctx.error());
+        return;
+    }
+    MESSAGE("adapter " << ctx.value().name);
+    const auto pages = synthetic_pages();
+    const auto needed = gpu::atlas_pages_bytes(pages);
+    REQUIRE(needed > 0);
+    auto uploaded = gpu::upload_atlas_pages(ctx.value(), pages, needed - 1);
+    REQUIRE_MESSAGE(!uploaded, "one byte short of " << needed << " should have been refused");
+    CHECK(uploaded.error().find("budget") != std::string::npos);
+    MESSAGE("refused as expected: " << uploaded.error());
+    CHECK(ctx.value().errors->load() == 0);
 }
 
 /// RENDER-DIRECT-1c step 4: VRAM and upload/readback wall time for one page set, in Release, on a
@@ -459,12 +490,14 @@ void measure_pages(const gpu::Context& ctx, const render::AtlasPages& pages, con
 }
 
 void measure_adapter(const char* adapter_name) {
+    // CI gate fix (orchestrator, 2026-11-17): game_dir() checked before on_named_adapter, same
+    // reason as lan5_on_named_adapter's own doc comment above.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
     on_named_adapter(adapter_name, [&](const gpu::Context& ctx) {
-        const auto dir = anno::test::game_dir();
-        if (!dir) {
-            MESSAGE("skipping: ANNO1503_GAME_DIR not set");
-            return;
-        }
         const std::filesystem::path lan5 =
             std::filesystem::path(ANNO_REPO_DIR) / "data" / "maps" / "lan5.txt";
         std::error_code ec;
@@ -502,14 +535,30 @@ void measure_adapter(const char* adapter_name) {
 
 } // namespace
 
-TEST_CASE("atlas upload: synthetic pages and lan5.txt are byte-exact and sample-exact on the "
-          "RTX 4090 (all three groups)") {
-    synthetic_and_lan5("RTX 4090", true);
+TEST_CASE("atlas upload: synthetic pages are byte-exact and sample-exact on any available "
+          "adapter (OQ-089: CI's own GPU parity path runs this one for real on lavapipe, "
+          "linux-gcc)") {
+    auto ctx = gpu::headless_context();
+    if (!ctx) {
+        if (std::getenv("ANNO_REQUIRE_GPU") != nullptr) {
+            FAIL("no GPU device at all (ANNO_REQUIRE_GPU is set): " << ctx.error());
+        }
+        MESSAGE("skipping: no GPU device: " << ctx.error());
+        return;
+    }
+    MESSAGE("adapter " << ctx.value().name);
+    check_pages_on_gpu(ctx.value(), synthetic_pages(), "synthetic", true);
+    CHECK(ctx.value().errors->load() == 0);
 }
 
-TEST_CASE("atlas upload: synthetic pages and lan5.txt are byte-exact and sample-exact on the "
-          "Radeon iGPU (the adjacent pair)") {
-    synthetic_and_lan5("Radeon", false);
+TEST_CASE("atlas upload: lan5.txt is byte-exact and sample-exact on the RTX 4090 (all three "
+          "groups)") {
+    lan5_on_named_adapter("RTX 4090", true);
+}
+
+TEST_CASE("atlas upload: lan5.txt is byte-exact and sample-exact on the Radeon iGPU (the "
+          "adjacent pair)") {
+    lan5_on_named_adapter("Radeon", false);
 }
 
 TEST_CASE("atlas upload: endless02.sze's worst resident set (all three groups, 360 MiB) is "
@@ -533,11 +582,6 @@ TEST_CASE("atlas upload: VRAM and upload/readback time for lan5.txt and 02_1024_
 }
 
 TEST_CASE("atlas upload: a budget one byte short is refused through upload_atlas_pages itself, "
-          "not only the pure atlas_upload_refusal, on the RTX 4090") {
-    refused_one_byte_short("RTX 4090");
-}
-
-TEST_CASE("atlas upload: a budget one byte short is refused through upload_atlas_pages itself, "
-          "not only the pure atlas_upload_refusal, on the Radeon iGPU") {
-    refused_one_byte_short("Radeon");
+          "not only the pure atlas_upload_refusal, on any available adapter") {
+    refused_one_byte_short();
 }

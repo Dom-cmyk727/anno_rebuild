@@ -15282,3 +15282,34 @@ READY FOR REVIEW.
 - Checked `docs/orchestration/STATUS.md`'s reservation list before taking a number this time, as asked, rather than guessing the next unclaimed-looking one.
 
 READY FOR REVIEW.
+
+## RENDER-DIRECT-1c CI fix — the named-adapter skip order, matched to play_gpu_test.cpp's own — READY FOR REVIEW (merged from `task/RENDER-DIRECT-1c` `50de7c24`/`465741b8`)
+
+**The failure.** CI run `44095685040` failed on `cpp (linux-gcc)` ("test" step) then `gate`: eight `atlas_upload_test.cpp` cases reported `SKIPPED(gpu)` on lavapipe (no adapter named "RTX 4090"/"Radeon"), and `linux-gcc` does not pass `--allow-skip gpu` (`ci.yml`: every OTHER job does; `linux-gcc` is the one job meant to run the real GPU parity path on lavapipe for real, OQ-089/GATE-1c item 2) - so an unallowed `gpu` skip there fails the gate.
+
+**Root cause, found by comparing against `play_gpu_test.cpp`'s own two named-adapter cases (which pass on the SAME job, SAME lavapipe, confirmed by reading a known-green run's own log, `44051159572`'s `cpp (linux-gcc)` job):** `play_gpu_matches_cpu` checks `anno::test::game_dir()` FIRST, before ever calling `list_adapters()`/`pick_adapter()`. CI's `linux-gcc` runner has no game files at all, so that check skips as `required-asset` (allowed everywhere via `--asset-policy unavailable`) before the function ever reaches the adapter-naming logic. Every one of this file's own adapter-pinned helpers (`synthetic_and_lan5`, `worst_pair_scene`, `measure_adapter`) did the OPPOSITE order: `on_named_adapter` (which calls `pick_adapter` immediately) ran FIRST, so on a game-file-less, differently-named-adapter runner they always hit the "no adapter named ..." skip (classified `gpu` by `ctest_verdict.py`'s own `GPU|adapter|RTX|Radeon|Metal|Vulkan` pattern) before ever reaching the `required-asset` check that would have been allowed. `refused_one_byte_short` had no `game_dir()` dependency at all and was pinned to each named adapter for no reason tied to what it tests - it always hit the `gpu` skip on CI, with no `required-asset` escape available at all.
+
+**The fix, two parts, matching how the already-passing cases avoid this:**
+1. **Reordered** `game_dir()`/scene-loading to run BEFORE `on_named_adapter` in `lan5_on_named_adapter` (renamed from `synthetic_and_lan5`, its synthetic-only part moved out - see below), `worst_pair_scene`, and `measure_adapter` - the same order `play_gpu_test.cpp`'s `play_gpu_matches_cpu` already uses. No behavior change on this PC (game files are present, so the check passes through either order); on a game-file-less runner the function now skips as `required-asset` before it would otherwise reach the adapter-naming logic.
+2. **Made two cases adapter-agnostic**, since neither needs a specific named adapter to mean anything: the synthetic-pages correctness proof (split out of `synthetic_and_lan5` into its own `TEST_CASE`, using `gpu::headless_context()` with no pin) and `refused_one_byte_short` (merged from two adapter-pinned cases into one adapter-agnostic one). Both now run on whatever adapter is actually available - lavapipe on CI's `linux-gcc`, for real, which is OQ-089's own point ("the GPU parity tests run on a real adapter in this job... a missing adapter must fail the job, not skip").
+
+**No correctness change.** Every renamed/reordered function's own body is unchanged; only the ORDER of two independent early-return checks (and, for the two merged cases, which adapter opens) moved. Re-verified: full suite 131/131 (unchanged count: two cases renamed in place, one new adapter-agnostic case added, two adapter-pinned refusal cases merged into one - net zero), 80,508,175/80,508,175 assertions, on the RTX 4090; 4/4 Radeon-named cases, 38,091,107/38,091,107 assertions (one fewer named case than before, since the refusal case is no longer Radeon-named - by design).
+
+**Verified the fix's actual mechanism, not just reasoned about it:** ran the game-file-dependent cases with `ANNO1503_GAME_DIR` unset (on this PC, where the named adapters ARE present) - all six skipped with `"skipping: ANNO1503_GAME_DIR not set"` (the `required-asset` message), never reaching the adapter-pick code at all, confirming the reorder's own guarantee independent of whether an adapter happens to be present.
+
+**Step 1 (run the CI preflight and the linux-gcc GPU step locally in WSL on lavapipe), partially possible on this host:** `python -I tools/test/run_selected.py --preflight-only` run natively on Windows: PASS (WSL has no `cmake`/`ninja` at all on this host per `CLAUDE.md`'s own note - confirmed: `cmake -P ...` fails with "No such file or directory: 'cmake'" - so the preflight's own `cmake`-based `CheckTestNames.cmake` step cannot run inside WSL here, and a full `cmake --preset dev`/`ctest` build+run on lavapipe is not possible on this host either, same reason). WSL DOES have the lavapipe Vulkan ICD installed (`lvp_icd.x86_64.json`) but no build toolchain to use it with. Verified the skip-order fix by other means instead (above): reading a known-green CI run's own log for the exact classification `ctest_verdict.py` gives, and reproducing the "required-asset wins first" order locally on Windows with the game dir unset.
+
+**Gates.**
+- clang-format 23.1.3: clean.
+- WSL GCC 13 / Clang 18 `-Werror`, whole tree, all four configurations: clean.
+- CI preflight (native Windows, WSL's own cmake-based preflight step not runnable here): PASS.
+- `anno_render_gpu_tests`, native MSVC Release, `ANNO_GPU_ADAPTER=RTX`, full suite: 131/131, 80,508,175/80,508,175 assertions, 0 failed.
+- `anno_render_gpu_tests`, native MSVC Release, every Radeon-named case: 4/4, 38,091,107/38,091,107 assertions, 0 failed.
+- CI: pushed, run pending at the time of this report - see the follow-up message to the orchestrator for the result.
+
+**Decisions and reasoning.**
+- Fixed the ORDER of two pre-existing, correct checks rather than adding a new skip-suppression mechanism: the two checks (`game_dir()`, adapter pick) were already both there and both correct in isolation; only their sequence determined which allowed category a CI runner's skip falls into.
+- Merged `refused_one_byte_short`'s two adapter-pinned cases into one adapter-agnostic case rather than keeping both and also adding a third, agnostic one: nothing about a budget-refusal check needs the owner's specific hardware names, so pinning it was never load-bearing, unlike the readback/sampling correctness cases this file also runs per adapter to prove the upload path works on each specific GPU.
+- Did not touch `play_gpu_test.cpp` itself: it already has the right order; this packet copies its pattern, not its code.
+
+READY FOR REVIEW.

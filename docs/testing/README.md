@@ -218,6 +218,20 @@ Check defaults to four jobs; regeneration to one, serializing replay/corpus writ
 concurrent corpus writers. Admission control stays enabled. `check` clears inherited
 record mode; `regen` sets `ANNO_UPDATE_GOLDEN=1` and is refused under CI.
 
+## The layer check (LAYER-CHECK-1)
+
+`layer_check_contract`/`layer_check_self_test` (`tools/layer_check.py`) keep `anno_formats`,
+`anno_sim` and `anno_sim_load` free of code above them in the stack (CLAUDE.md: determinism,
+"Separate libraries by responsibility", the dependency direction of the former crates). The
+allowed `#include`s and link targets for each of the three libraries are the rule, stated once in
+`tools/layer_check.py`'s own module docstring — this page and CLAUDE.md cite it, not a copy of it.
+Two checks run from CTest: every `#include` under the three libraries' `include/`, `src/` and
+`tests/` directories, and each library's real CMake `LINK_LIBRARIES` (read at configure time via
+`file(GENERATE)` with `$<TARGET_PROPERTY:...,LINK_LIBRARIES>` into `layer_check_links.txt` in the
+build directory, never a hand-written copy of the link graph). `--self-test` checks the rule table
+and the scanner itself against synthetic trees and a synthetic link list, including the two cases
+that must fail (an injected SDL include in a sim source; `anno_render` linked under `anno_sim`).
+
 The existing `golden.hpp` writer updates changed self-baselines via a same-directory
 temporary file and atomic replacement, sorted by name. A per-file directory lock
 serializes writers with a bounded wait; an abandoned lock is reported, never removed

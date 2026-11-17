@@ -395,3 +395,22 @@ endif()
 if(ANNO_BUILD_TESTS)
   add_custom_target(pins_checks DEPENDS anno_sim_tests sim_replay)
 endif()
+
+if(ANNO_BUILD_TESTS AND Python3_FOUND)
+  # LAYER-CHECK-1: anno_formats/anno_sim/anno_sim_load's real link graph, read from CMake itself
+  # (TARGET_PROPERTY,LINK_LIBRARIES; file(GENERATE) evaluates it at the generate step, after every
+  # target_link_libraries call), not a hand-written copy. tools/layer_check.py checks it against
+  # the rule that file states; this is only the generated input.
+  file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/layer_check_links.txt" CONTENT
+"anno_formats:$<TARGET_PROPERTY:anno_formats,LINK_LIBRARIES>
+anno_sim:$<TARGET_PROPERTY:anno_sim,LINK_LIBRARIES>
+anno_sim_load:$<TARGET_PROPERTY:anno_sim_load,LINK_LIBRARIES>
+")
+  add_test(NAME layer_check_contract
+           COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/layer_check.py
+                   --root ${CMAKE_SOURCE_DIR}
+                   --link-list "${CMAKE_BINARY_DIR}/layer_check_links.txt")
+  add_test(NAME layer_check_self_test
+           COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/layer_check.py --self-test)
+  set_tests_properties(layer_check_contract layer_check_self_test PROPERTIES LABELS "workflow")
+endif()

@@ -12706,3 +12706,58 @@ READY FOR REVIEW.
   intentionally not read here. Independent review belongs to the orchestrator.
 
 READY FOR REVIEW.
+
+## LAYER-CHECK-1 — a CTest test keeping formats/sim/sim_load free of app/render/SDL/GPU code — READY FOR REVIEW (task/LAYER-CHECK-1, new worktree from `origin/main` `ac02d4a2`)
+
+**The rule**, stated once in `tools/layer_check.py`'s own module docstring (docs cite it, do not
+copy it): `anno_formats` may include/link nothing above it; `anno_sim` may include/link
+`anno_formats`; `anno_sim_load` may include/link `anno_sim` (and so `anno_formats` transitively).
+Each library's own tests additionally get doctest and `anno/test/...` (the real namespace -
+`anno_test_support`'s headers live under `anno/test/`, not `anno/test_support/`, found and fixed
+after the first self-test run flagged every test file using it); `anno_sim`'s own tests also get
+`anno/sim_load/...` (CMake already links `anno_sim_tests` to `anno_sim_load` for the scenario
+corpus case). SDL, webgpu/wgpu, and `anno/render`/`anno/app`/`anno/assets`/`anno/net`/`anno/ui` are
+refused everywhere in the three libraries, code and tests alike.
+
+**The link list is read from CMake itself**: `file(GENERATE)` at the end of the root
+`CMakeLists.txt` (after all three `add_subdirectory` calls, so the targets already exist) writes
+`anno_formats`/`anno_sim`/`anno_sim_load`'s real `$<TARGET_PROPERTY:...,LINK_LIBRARIES>` into
+`layer_check_links.txt` in the build directory; `tools/layer_check.py --link-list` reads that file,
+never a hand-written copy of the graph.
+
+**The three outcomes of step 5, all confirmed:**
+- the real tree passes both checks (`layer_check_contract`, verified via `ctest -R layer_check -V`
+  after a configure-only `cmake --preset dev` in WSL, no build needed - both link_libraries and the
+  include scan are static/configure-time facts);
+- an injected `#include <SDL3/SDL.h>` in a synthetic sim source fails, naming the file and line
+  (`--self-test`'s `tree_self_test`);
+- a synthetic link list with `anno_render` under `anno_sim` fails (`--self-test`'s link-table
+  check).
+
+**Registered** as `layer_check_contract` and `layer_check_self_test`, both `LABELS "workflow"`, so
+every job that runs the other workflow tests (`test_verdict_contract` etc.) runs these on Windows,
+Linux and macOS alike - no per-platform gating needed, the check is pure Python over text files.
+
+**No violation found in the real tree.** No fix was needed; nothing beyond `CMakeLists.txt`,
+`tools/layer_check.py` and the `docs/testing/README.md` section was touched.
+
+**Gates.** `layer_check_contract`/`layer_check_self_test`: 2/2 passed (`ctest -R layer_check -V`,
+WSL, 4.3s total). No sim/formats/sim_load source touched, so `anno_sim_tests`/`anno_formats_tests`
+were not run (not reached by this change). No C++ touched, so `clang-format` is a no-op, noted
+rather than silently skipped.
+
+**Decisions and reasoning:**
+- Whitelist, not a blocklist, for the link check (`check_links`): a library may link only what the
+  table names, not "anything except the five named upper layers" - catches an unexpected future
+  link target the task's own five examples don't name, not just SDL/render/app/assets/net/ui.
+- `anno_sim`'s tests keep their existing `anno_sim_load` reach (CMake already wires it for the
+  scenario corpus case) rather than treating it as a violation to fix: the task's own step 1 names
+  this exact exception ("for the sim tests anno/sim_load").
+- `file(GENERATE)` placed after `add_subdirectory(src/sim_load)` (not earlier, where the other
+  workflow tests are registered): the generator expression needs the three targets to already
+  exist in CMake's model, even though its *value* resolves later, at the generate step.
+
+**NOT_RUN:** the full suite/other lanes (not reached by this change); macOS (no host here; the
+test is pure Python, expected to be platform-independent, unverified on that host).
+
+READY FOR REVIEW.

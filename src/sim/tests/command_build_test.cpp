@@ -1128,3 +1128,59 @@ TEST_CASE("demolish leaves another city's building on the city's tile") {
     CHECK(w.islands()[0]->tiles.object(idx) != 0);
     CHECK(w.check_invariants() == "");
 }
+
+TEST_CASE("check_build_record gives Build's verdict and changes nothing") {
+    // UI-GHOST-1: the placement ghost's read-only query. For each record, the query's verdict
+    // before the command equals the status Build gives the same single record, and the query
+    // leaves the hash and the save as they were. Covered: accept, CannotAfford (gold and goods),
+    // Occupied, OutOfIsland, TileNotOwned, TerrainRefused, UnknownType, BadRotation, the type-0
+    // skip, UnknownIsland and UnknownCity.
+    syn::SyntheticTypes t = ct::build_types();
+    sim::World w = ct::make_world(t, ct::two_city_spec(t));
+    REQUIRE(w.check_invariants() == "");
+    struct Case {
+        sim::CityRef city;
+        sim::PlacementWire rec;
+        sim::Reject expected;
+    };
+    const sim::TypeId trapper = t.fur_trapper;
+    const std::vector<Case> cases{
+        {kCity0, at(t.weaver, 112, 115), sim::Reject::None},
+        {kCity0, at(t.weaver, 112, 115), sim::Reject::Occupied}, // the one just placed
+        {kCity0, at(t.weaver, 99, 110), sim::Reject::OutOfIsland},
+        {kCity0, at(t.weaver, 130, 100), sim::Reject::TileNotOwned},
+        {kCity0, at(trapper, 162, 120, 0), sim::Reject::TerrainRefused},
+        {kCity0, at(sim::TypeId{12345}, 120, 120), sim::Reject::UnknownType},
+        {kCity0, at(t.weaver, 120, 120, 4), sim::Reject::BadRotation},
+        {kCity0, kZero, sim::Reject::None}, // skipped by Build
+        {sim::CityRef{sim::IslandId{5}, sim::CityNo{0}}, at(t.weaver, 120, 120),
+         sim::Reject::UnknownIsland},
+        {sim::CityRef{sim::IslandId{0}, sim::CityNo{7}}, at(t.weaver, 120, 120),
+         sim::Reject::UnknownCity},
+    };
+    for (const Case& c : cases) {
+        CAPTURE(sim::reject_name(c.expected));
+        const std::uint64_t hash = w.state_hash();
+        const std::vector<std::uint8_t> bytes = w.save();
+        const sim::Reject verdict = w.check_build_record(c.city, c.rec);
+        CHECK(w.state_hash() == hash);
+        CHECK(w.save() == bytes);
+        CHECK(verdict == c.expected);
+        const sim::ApplyResult res = w.apply(build(0, c.city, {c.rec}));
+        const sim::Reject applied = res.records.empty() ? res.status : record_status(res, 0);
+        CHECK(applied == verdict);
+    }
+    // Affordability: gold one short, then goods short (the query sees the live stock).
+    sim::WorldTestAccess::players(w).slots[0]->money = 299; // the weaver costs 300
+    CHECK(w.check_build_record(kCity0, at(t.weaver, 114, 115)) == sim::Reject::CannotAfford);
+    check_refused(w, build(0, kCity0, {at(t.weaver, 114, 115)}), sim::Reject::CannotAfford);
+    sim::WorldTestAccess::players(w).slots[0]->money = 300;
+    CHECK(w.check_build_record(kCity0, at(t.weaver, 114, 115)) == sim::Reject::None);
+    ct::city_mut(w, kCity0).stock.stock[ct::goods(t, "HOLZ")] = 0;
+    CHECK(w.check_build_record(kCity0, at(t.weaver, 114, 115)) == sim::Reject::CannotAfford);
+    check_refused(w, build(0, kCity0, {at(t.weaver, 114, 115)}), sim::Reject::CannotAfford);
+    // A site refusal wins over the cost (the cost is step 6): the ghost shows refused, not
+    // unaffordable, over a bad site even with an empty stock.
+    CHECK(w.check_build_record(kCity0, at(t.weaver, 99, 110)) == sim::Reject::OutOfIsland);
+    CHECK(w.check_invariants() == "");
+}

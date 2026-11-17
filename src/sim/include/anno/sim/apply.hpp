@@ -29,6 +29,9 @@ struct Commands {
     /// SimOutput::events), which is not state. Total; O(size of the command).
     /// `in_advance` is null between two advances (World::apply).
     static ApplyResult apply(World& w, const Command& command, const InAdvance* in_advance);
+    /// World::check_build_record: one record through Build's record check without earlier
+    /// records. Read-only.
+    static Reject check_build(const World& w, CityRef city, const PlacementWire& record);
 };
 
 } // namespace anno::sim

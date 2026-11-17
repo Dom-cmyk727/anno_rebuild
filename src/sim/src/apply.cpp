@@ -309,10 +309,24 @@ bool same_record(const PlacementRecord& a, const PlacementRecord& b) {
            a.byte0f == b.byte0f;
 }
 
+/// What check_record reads: const views only, so World::check_build_record can run it on a
+/// const world (UI-GHOST-1) and apply runs it on the same members.
+struct CheckEnv {
+    const World& w;
+    const SimConfig& cfg;
+    const Rules& rules;
+    const Seams& seams;
+    const TypeRegistry& types;
+};
+
+CheckEnv check_env(const Env& env) {
+    return CheckEnv{env.w, env.cfg, env.rules, env.seams, env.types};
+}
+
 /// Steps 1-6 of §8.4 for one record, read-only. With `budget` (the atomic dry run) the
 /// earlier records of the command count as placed: their gold, goods and serials are
 /// spent and their tiles taken.
-Checked check_record(const Env& env, const Island& is, const City& city, const Player& owner,
+Checked check_record(const CheckEnv& env, const Island& is, const City& city, const Player& owner,
                      const PlacementWire& p, const Budget* budget) {
     Checked out;
     // 1. Type id 0 is skipped (D, §8.4).
@@ -624,7 +638,8 @@ ApplyResult build(Env& env, const Command& c, const BuildCmd& cmd) {
         budget.accounts = city.accounts;
         bool all_pass = true;
         for (std::size_t i = 0; i < cmd.placements.size(); ++i) {
-            const Checked chk = check_record(env, is, city, *owner, cmd.placements[i], &budget);
+            const Checked chk =
+                check_record(check_env(env), is, city, *owner, cmd.placements[i], &budget);
             if (chk.skip) {
                 continue;
             }
@@ -654,7 +669,8 @@ ApplyResult build(Env& env, const Command& c, const BuildCmd& cmd) {
     bool placed_any = false;
     Reject first_failure = Reject::None;
     for (std::size_t i = 0; i < cmd.placements.size(); ++i) {
-        const Checked chk = check_record(env, is, city, *owner, cmd.placements[i], nullptr);
+        const Checked chk =
+            check_record(check_env(env), is, city, *owner, cmd.placements[i], nullptr);
         if (chk.skip) {
             continue;
         }
@@ -974,6 +990,29 @@ ApplyResult Commands::apply(World& w, const Command& command, const InAdvance* i
 
 ApplyResult World::apply(const Command& command) {
     return Commands::apply(*this, command, nullptr);
+}
+
+Reject Commands::check_build(const World& w, CityRef ref, const PlacementWire& record) {
+    if (!ref.island.valid() || ref.island.v >= w.islands_.size() ||
+        !w.islands_[ref.island.v].has_value()) {
+        return Reject::UnknownIsland;
+    }
+    const Island& is = *w.islands_[ref.island.v];
+    const City* city = is.city(ref.city);
+    if (city == nullptr) {
+        return Reject::UnknownCity;
+    }
+    const Player* owner = w.players_.find(city->owner);
+    if (owner == nullptr) {
+        return Reject::UnknownIssuer;
+    }
+    const CheckEnv env{w, w.config_, w.rules_, w.seams_, *w.types_};
+    const Checked chk = check_record(env, is, *city, *owner, record, nullptr);
+    return chk.skip ? Reject::None : chk.status;
+}
+
+Reject World::check_build_record(CityRef city, const PlacementWire& record) const {
+    return Commands::check_build(*this, city, record);
 }
 
 } // namespace anno::sim

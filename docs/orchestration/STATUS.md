@@ -186,6 +186,11 @@ says who is doing what, where the work is, and what it waits on.
   - Conflicts resolved by hand: `docs/open-questions.md` (in-place updates of OQ-023, 708, 624 and the
     fertility note, new OQs in numeric order 708-754), `data/ui/README.md` (both hud.txt clauses) and
     `src/app/CMakeLists.txt` (the union of the test files). No CR, no markers.
+  - **The Windows PC's part PASSED** 2026-11-17 on `43157de2`:
+    - msvc build clean;
+    - the whole sim, app and formats binaries, the placement/stream/pin oracles and the GPU tests on the
+      RTX 4090: 2,298 selected, 2,270 executed, 0 failed, 25 opt-in and 3 known symlink skips;
+    - the WSL GCC 13 / Clang 18 check clean (430 + 92 files).
   - It changes the state stream (ISLAND-CROPS-1 1b), so it lands only after the Mac's full game-file run
     (GATE-RUN refs-crops-fertility-2), which also covers the three candidates below it. The PC part (build,
     changed lanes, the WSL check) runs when the PC is quiet; the owner's viewer is open now.

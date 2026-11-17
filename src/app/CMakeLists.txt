@@ -282,6 +282,35 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_ui_subtabs PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-TABS-1 stage B: the balance pages' figures as facts (docs/re/ui.md 5.5): with the
+      # accounts kept (--rules living), under the original rules, and before the first founding.
+      add_test(NAME viewer_wiring_ui_balance_rows
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_balance_rows
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --rules --app-arg living
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_balance_rows PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      add_test(NAME viewer_wiring_ui_balance_rows_original
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_balance_rows_original
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_balance_rows_original PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      add_test(NAME viewer_wiring_ui_balance_rows_no_city
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_balance_rows_no_city
+                --app-arg --ship-start
+                --app-arg ${PROJECT_SOURCE_DIR}/data/maps/candidates/ship-start-v2/lan5-ship-a.json
+                --app-arg --seat --app-arg 0
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_balance_rows_no_city PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # UI-WINDOW-1 fix round R2/R4: the status bar counters (centred city, else the first).
       add_test(NAME viewer_wiring_ui_counters_centred
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
@@ -400,6 +429,14 @@ if(ANNO_BUILD_TESTS)
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/ui_subtabs_compare.py
                 $<TARGET_FILE:anno_ui_mock> $<TARGET_FILE:anno1503>)
       set_tests_properties(ui_subtabs_compare PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-TABS-1 stage B: the balance rows, the GPU layer's composer against the GOG shots
+      # (ANNO_UI_ORACLE_SHOTS, never in git; skips without it) with four negative controls, and
+      # the window's CPU path against that composer.
+      add_test(NAME ui_balance_rows_compare
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/ui_balance_rows_compare.py
+                $<TARGET_FILE:anno_ui_mock> $<TARGET_FILE:anno1503>)
+      set_tests_properties(ui_balance_rows_compare PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # UI-INFO-2: the preview at rotations 0..3 after clicks on the rotate arrows, through the
       # real window, pixel-exact against compose_info_panel(rotation) (info_panel_rotation_check.py),

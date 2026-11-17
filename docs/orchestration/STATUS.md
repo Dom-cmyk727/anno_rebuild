@@ -170,6 +170,11 @@ says who is doing what, where the work is, and what it waits on.
   order?", the owner answered "Yes". They run in the UI lane, then UI-RANGE-1. Also, asked "Delete the public
   task branch with the data table after landing, and recreate it clean?", the owner answered "Yes, clean it
   up": `task/BUILDINGS-REF-1` is recreated as one clean commit.
+- **UI-INFO-2d ACCEPTED** 2026-11-17, head `e4ae2b16` (CI 44139437510 green after a macOS-runner rerun;
+  owner test "Yes, they looked right"): the OBJECTPOS sub-record reader/writer moved into `formats` (round
+  trip and corpus tests), the CONPO2 entrance arrows and the further sprite sets on the info picture.
+  UI-BUILDCAT-1 `79ab3079` (owner test "good, works") waits for its macOS-job rerun of CI 44148359924.
+  Both go on candidate 9 as candidate 10.
 - **UI-GHOST-1 B `912f1d3a`: the owner's test FAILED** 2026-11-17 ("no house, no lines, no sidebar"); not
   stacked. The UI lane's analysis (`E:\1503_test_videos\ui_10_rca.md`):
   - **No sidebar:** the test build held GHOST-1 alone, without the accepted-but-unlanded BUILDCAT-1.

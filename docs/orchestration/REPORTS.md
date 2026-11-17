@@ -12844,7 +12844,7 @@ on the same start-units measurement.
 **F4 (the 40.6% static-pixel finding is green matching green, not player colour) — rephrased.**
 `atlas.md` §6 now says plainly that the decoder's green-dominance test cannot be applied to static
 frames to find player colour (it matches ordinary grass/trees/painted parts just as readily), not
-that "a meaningful share of pixels would be recoloured". Added OQ-641 (whether any placed static
+that "a meaningful share of pixels would be recoloured". Added OQ-690 (whether any placed static
 object is ever drawn in the owner's colour through a different mechanism than this test can see,
 referencing OQ-022's own `Flagge01_01.PCX`/`EffectsMulti` finding) since OQ-022 itself does not
 cover that practical question.

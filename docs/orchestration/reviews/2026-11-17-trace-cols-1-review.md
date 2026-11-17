@@ -33,3 +33,15 @@
 **ACCEPTED once CI is green on `bf5cc055`** (running at review time; its Linux and macOS jobs run
 `window_table_contract`). Then the bounce branch (ZOOM-BOUNCE-1 to 3 and TRACE-COLS-1) is ready for a landing
 candidate on the owner's OK. The assignment lands it before the UI lane binds keys in `viewer.cpp`.
+
+## CI result (added 2026-11-17)
+
+**CI is red on `bf5cc055`** (run 43983612968): `window_table_contract` fails on linux-gcc, linux-clang-asan,
+linux-gcc-release and macos-clang; windows-msvc passed. The case `junk_present` exits 0 instead of 1. With
+`outcome` now the last column, its `sed` pattern needs a tab after `presented` that is no longer there, so the
+corruption is never applied and the file stays valid. The `count` case has the same blind spot in one of its two
+substitutions (`acquire_skipped\t`); it still fails as expected only because its other edits apply.
+**Not accepted yet.** Asked of the executor, same branch: anchor both patterns to the line end; add a guard so
+every file a case edits must differ from its `.orig`, or the case fails; check the other patterns that end in a
+tab; run the script in WSL, once with the old `junk_present` pattern, which must fail on the guard, and once
+fixed, which must pass.

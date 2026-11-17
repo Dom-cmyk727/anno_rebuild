@@ -21,8 +21,9 @@ says who is doing what, where the work is, and what it waits on.
   orchestrator checked its plan, changed the order to the LAN target's critical path, and assigned first lists
   to the three lanes, with ten decisions for the owner. New packets: [UNIX-WARN-1](tasks/unix-warn-1.md),
   [TRACE-COLS-1](tasks/trace-cols-1.md) (Windows, **RELEASED** 2026-11-17 after ZOOM-SMOOTH-3d's review;
-  **reviewed** the same day, `bf5cc055`, [review](reviews/2026-11-17-trace-cols-1-review.md): ACCEPTED once CI
-  is green, then the bounce branch is ready for a landing candidate on the owner's OK);
+  **reviewed** the same day, `bf5cc055`, [review](reviews/2026-11-17-trace-cols-1-review.md): **CI red** on
+  the four non-Windows jobs, the shell test's `junk_present` case no longer corrupts its file after the column
+  move; fix and a guard asked on the same branch; not accepted yet);
   [RENDER-DIRECT-1a](tasks/render-direct-1a.md) (Windows, **RELEASED** 2026-11-17: the resident atlases'
   needs measured with the engine's own code over every scene and the LAN map, and their layout fixed in
   `docs/render/atlas.md`; measurement and document only).

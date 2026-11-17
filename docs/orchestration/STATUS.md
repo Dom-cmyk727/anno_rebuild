@@ -5,7 +5,11 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-17, by the Claude Code orchestrator:
-- **`main` is `09315620`** (2026-11-17, morning): the three stacked candidates landed as one push through
+- **`main` is `4dfdd9b7`** (2026-11-17, 09:40): RENDER-DIRECT-1a and LAYER-CHECK-1 landed through `land.py`
+  (`land/atlas-layers`, gate run 44038235036, green) under the owner's standing rule. Verified as
+  `origin/main`; `refs/candidates/atlas-layers` is deleted; GitLab and the share are mirrored. Next in line:
+  `refs/candidates/ui-tabs-b` (`004a26f4`, UI-TABS-1 stage B), stacked on it.
+- **Earlier, `main` was `09315620`** (2026-11-17, morning): the three stacked candidates landed as one push through
   `land.py` (`land/batch-zoom-tabs`, gate run 44019437266, green), on the owner's OK:
   - `784b5a27`: ZOOM-SMOOTH-2 with 2f, and the UI-PANELS-PREP documents;
   - `945c3216`: GATE-MAC-1, UNIX-WARN-1, ZOOM-SMOOTH-3, and the bounce branch with TRACE-COLS-1;
@@ -70,7 +74,8 @@ says who is doing what, where the work is, and what it waits on.
     pinned to this PC's adapters;
   - the warning script exits 0;
   - Apple M5 Max, macOS 27.0.1; log sha256 `bf704b97...6ed6`.
-  **Landing** through `land.py` as `land/atlas-layers` (gate run 44038235036), under the standing rule.
+  **LANDED on main `4dfdd9b7`** 2026-11-17 through `land.py` (`land/atlas-layers`, gate run 44038235036),
+  under the standing rule.
 - **Standing rule, the owner 2026-11-17:** asked whether every packet the orchestrator accepts lands without
   asking from now on, the owner answered "Yes standing rule". So an accepted packet (CI green on the reviewed
   head) lands through the usual gates (a landing candidate, this PC's changed lanes and GPU tests, the Mac's

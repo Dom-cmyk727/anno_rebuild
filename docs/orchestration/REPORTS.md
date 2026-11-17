@@ -14849,3 +14849,50 @@ landing candidate's own build): both pass, run directly with `python3 -I tools/l
   silently inheriting someone else's justification.
 
 READY FOR REVIEW.
+
+## UNITS-REF-1 — UNITS.md, the reference of every moving figure — READY FOR REVIEW
+
+Branch `task/UNITS-REF-1` from origin/main `4dfdd9b7`, docs and one read-only tool. Owner request 2026-11-17 via the orchestrator.
+
+**Result.** `docs/UNITS.md` follows the structure of BUILDINGSOBJECTS: quick answers, a gap table against the rebuild, Part A inventory counts, Part B the figure-type record, Part C code → class, Part D by group (D1-D11), Part E GOG against HE, Part F open questions. New D reads:
+- **The figure-type loader** `AnnoGame 0x1000fe00`: every `HEAD`/`LOGIC` byte → type field → getter, plus the `BEWOHNTYPE`, `FORSCHTYPE`, `WARE`, `BAUWARE` and `OBJECTPOS` records.
+- **The figure factory** `AnnoWelt 0x1009a110`: every BEWOHNTYPE code (1-based) → constructor, vtable and size, with HE86's RTTI class names (e.g. 113 `tBewohnerSchiffPlayer`, 98-109 and 111 `tBewohnerSoldat`, 81 `tBewohnerVogel`).
+- **Birds on ships:** at a decision, with chance 1 in 10, bird type 513 scans ±10 tiles for a class-113 ship, perches and follows it. It lets go when the ship's state `+0x8c(0)` has bit 1 or 2 set. The logic uses CRT `rand`, so it is cosmetic.
+
+**GOG/HE:** all 368 entries have byte-identical gameplay records (P; `PATH`/`VERSION2` differ in 370-376 and 453 only). The loader, the code table, the factory and the bird logic are identical by structure in HE86 (S).
+
+**Not settled:** the combat and price field meanings are L, from value patterns (OQ-751). The army's command path is not traced (OQ-753).
+
+**Changed files:**
+- `docs/UNITS.md` (new);
+- `tools/units_inventory.py` (new; `python -I`, read-only, `ANNO1503_GAME_DIR`, `--he-dir`, writes `cache/units/inventory.md`);
+- `docs/open-questions.md` (OQ-751..754; OQ-023 narrowed);
+- pointers in `docs/formats/figuren.md` and `docs/re/annowelt.md`.
+
+**Gates:**
+- `git diff --check` is clean.
+- The generator ran with GOG and HE: 368 types, 50 BEWOHNTYPEs, 8 entries differing outside graphics, under one second.
+- No build or test lane applies to docs plus a cache-writing tool. CI is read after the push.
+
+**NOT_RUN:**
+- The HE x64 module's unit code.
+- The soldier and ship ticks, and combat.
+- Runtime observation of the bird perch (HE).
+- The `LOGIC` consumers (OQ-751).
+
+**Decisions and reasoning:**
+- **Codes are 1-based.** The name table I read first gave 0-based indices. The factory's `dec eax` and the existing docs (annowelt, wildlife, fisher: MAEHER 1, ZIVILIST 33, SHIP 113) show the class code is index + 1. I relabelled the whole map and checked it: every HE86 class name lands where its name says (49 deer → `tBewohnerWildTierNew`, 50 → `...Wolf`, 113 → `...SchiffPlayer`). The earlier off-by-one never reached the doc.
+- **Meanings marked L, not D.** Combat and price meanings come from value patterns over 368 types, not from a consumer. They stay L with OQ-751 rather than being stated as fact. Where the repo already reads a field (`[0x25]` founding range, `[0x13]`/`[0x26]` ship crew, HP reader `0x100498e0`), I cite that read.
+- **No per-figure table in git.** As for BUILDINGS-REF-1, the generator writes the 368 rows to `cache/`, and the doc keeps the field map, counts and findings. Identifier names (BEWOHNTYPE, `WARE` values like `PIRATSCHIFF`) are code identifiers, not `Texte.dat` text, so they appear. `PATH` strings stay out.
+- **The generator's path.** `tools/units_inventory.py` imports the repo's `tools/figuren.py` relative to its own file, not through an absolute `E:\` path, so it runs from any checkout.
+- **Bird trigger depth.** I read the search and the release to the instruction. The meaning of the ship's state bits and the bird's action length are left to OQ-752 rather than guessed from the name "idle".
+- **OQ count.** Main ends at OQ-690, 691-695 are on `task/UI-TABS-1`, 700-709 are UI-STATUS-1's, and 725 and 750 are held. I asked the orchestrator to reserve 751-754 and used those.
+- **Scope kept to one doc.** Ship navigation, cargo, founding, fisher, whaler, hunter and wildlife are settled elsewhere and are pointed to, not repeated, per the packet.
+
+**QUESTIONs:** none.
+
+**Follow-ups noticed:**
+- `docs/glossary.md` still calls BEWOHNTYPE "unconfirmed (OQ-023)".
+- `src/sim/src/types.cpp` `kBewohn` maps 21 of 57 names (gap 1). The fix is data from Part C.
+
+READY FOR REVIEW.

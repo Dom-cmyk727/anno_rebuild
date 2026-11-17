@@ -177,8 +177,10 @@ says who is doing what, where the work is, and what it waits on.
   as a second guard; the GPU correctness cases still run on lavapipe. Documented in `docs/render/atlas.md`
   §13. Local: 135/135 on the RTX 4090, WSL clean.
 - **Candidate 9 `refs/candidates/render-direct-1cd` = `45384a64`** (tree `5f933507`): RENDER-DIRECT-1d
-  (which contains 1c) on top of candidate 8. Its PC part (render and GPU lanes on the 4090 and the Radeon,
-  WSL) runs at the next quiet slot. One Mac run on `45384a64` covers candidates 5-9.
+  (which contains 1c) on top of candidate 8. **Its PC part PASSED** 2026-11-17: atlas upload, adapter
+  memory diagnostics and every GPU test on the 4090 and the Radeon, 170 selected, 168 executed, 0 failed
+  (one platform skip, the budget-ports case; one opt-in skip, the 1d ceiling measurement); the WSL check
+  clean. One Mac run on `45384a64` (GATE-RUN render-direct-1cd) covers candidates 5-9.
 - **[FLAKE-RESIZE-1](tasks/flake-resize-1.md) released** to the Windows executor.
 - **RENDER-DIRECT-1c ACCEPTED** 2026-11-17, head `46991ff8` (CI 44129323379 green). The CI fix rounds:
   - the game-file check now runs before the named-adapter pick, so a runner without game files skips as

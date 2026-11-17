@@ -1,0 +1,162 @@
+{
+  "observed": "after local verification, before report commit",
+  "scope": "Actual retained build artifacts. All Release whole-binary hashes match the values recorded during every Stage 2 order; no rebuild occurred after workloads except the recorded no-op CLI target checks.",
+  "files": [
+    {
+      "path": "build/release/src/test_support/anno_test_support_tests",
+      "sha256": "fc25c7e1f6c70b3b7ca6843ea57f85373cf0722c383f01c458711469839c39a0",
+      "bytes": 1390584,
+      "mtime_ns": 1794911071746295448
+    },
+    {
+      "path": "build/release/src/formats/anno_formats_tests",
+      "sha256": "f9305b54d40cca5cdf094ea7c8e91e959d8435da3468d7bab435f884af7b0512",
+      "bytes": 1566752,
+      "mtime_ns": 1794911071952880533
+    },
+    {
+      "path": "build/release/src/assets/anno_assets_tests",
+      "sha256": "62d25c2a62d3119f1b97a2afd5c75adc3c5894db3f36974f15e5c756a31b4033",
+      "bytes": 583168,
+      "mtime_ns": 1794911072161742053
+    },
+    {
+      "path": "build/release/src/render/anno_render_tests",
+      "sha256": "c512ae85c31a4e7d9b35c162f5771a512e416ca5adb821bac7556156ec5ace4a",
+      "bytes": 3026224,
+      "mtime_ns": 1794911072230722776
+    },
+    {
+      "path": "build/release/src/render/anno_render_gpu_tests",
+      "sha256": "88b11d78f7570b8d261572aee060ae40dac0f0527d814c30051faeb590013532",
+      "bytes": 16881736,
+      "mtime_ns": 1794911072311004757
+    },
+    {
+      "path": "build/release/src/app/anno_app_tests",
+      "sha256": "c49afb2fa712b374ea6ee9c7a6e440309ffdad46537594159b15a509b7fba4ac",
+      "bytes": 8368432,
+      "mtime_ns": 1794911072473938615
+    },
+    {
+      "path": "build/release/src/app/anno_app_alloc_tests",
+      "sha256": "b55f3f2ed6bac102846d7b5a03ff1e9064fc318b60562c0338562163a5f06421",
+      "bytes": 4155096,
+      "mtime_ns": 1794911072494662574
+    },
+    {
+      "path": "build/release/src/app/anno_app_input_tests",
+      "sha256": "5a8beb7a6d40e6c4411be08528c9c26e09856792287a4e90c3a57fada64840a1",
+      "bytes": 7681496,
+      "mtime_ns": 1794911072656314629
+    },
+    {
+      "path": "build/release/src/sim/anno_sim_tests",
+      "sha256": "35784741da88a594ca707d264a730ddae8cdde71433daf9462d0205538c03cfe",
+      "bytes": 25799216,
+      "mtime_ns": 1794911073074124920
+    },
+    {
+      "path": "build/release/src/tools/sim_replay/anno-sim-replay",
+      "sha256": "71ad37aa961b0c19f058adae72495cb9a9be4481124c81c9297970a24e76cc83",
+      "bytes": 2574800,
+      "mtime_ns": 1794911074687921492
+    },
+    {
+      "path": "build/release/src/tools/bench_frame/bench_frame",
+      "sha256": "1b48e123c9e8dc519d38ec2c45c038095a189f6e949f8797a4b2aaa2f63ee37b",
+      "bytes": 15123784,
+      "mtime_ns": 1794911074491076902
+    },
+    {
+      "path": "build/release/src/app/anno1503",
+      "sha256": "72a5c6929c3d1586e8526b3526f21ead09db1e3f0e4a0ae56495f297d4acd877",
+      "bytes": 18739880,
+      "mtime_ns": 1794911072428054328
+    },
+    {
+      "path": "build/release/src/tools/anno_dump/anno-dump",
+      "sha256": "eea1bc0e363874dec4c24f2ff4a1c27728f8284b40999f788f685a7bcd8a597d",
+      "bytes": 541928,
+      "mtime_ns": 1794911072687025794
+    },
+    {
+      "path": "build/asan/src/test_support/anno_test_support_tests",
+      "sha256": "9b147ff6af4486cc89a0c1899d217979d4e604c66e9cabc5b7a8e60f1e6e41a7",
+      "bytes": 5134360,
+      "mtime_ns": 1794908032007183521
+    },
+    {
+      "path": "build/asan/src/formats/anno_formats_tests",
+      "sha256": "5dfd6386a978541b250018428bc38e0a63e77a6de2dd9cffb70ed2ba10abb9ff",
+      "bytes": 8619840,
+      "mtime_ns": 1794908032429505364
+    },
+    {
+      "path": "build/asan/src/assets/anno_assets_tests",
+      "sha256": "b002782688abc862f252b698093ead839ea1f0c5a02223c63c7dc31ed02a571d",
+      "bytes": 3808256,
+      "mtime_ns": 1794908032584694311
+    },
+    {
+      "path": "build/asan/src/render/anno_render_tests",
+      "sha256": "8f09b4299ab401213dea5e65c0fe921df75593cba8b8194a7d01b607d361cb0b",
+      "bytes": 15476336,
+      "mtime_ns": 1794908032830190952
+    },
+    {
+      "path": "build/asan/src/render/anno_render_gpu_tests",
+      "sha256": "bcda2ee5f70d82817bab0ef23f37d8983ca20a5951e55422c70955f76653171b",
+      "bytes": 44013688,
+      "mtime_ns": 1794908033060423754
+    },
+    {
+      "path": "build/asan/src/app/anno_app_tests",
+      "sha256": "5d1fd626184fe6450939dc23e9d07a42bb021a5bb7c4ef0fdbbe4f45a0f028c5",
+      "bytes": 45139424,
+      "mtime_ns": 1794908033530383579
+    },
+    {
+      "path": "build/asan/src/app/anno_app_alloc_tests",
+      "sha256": "847442b8fddeb729c9432525ff3667e9d3278fb8dc107b5e6b74a1017f10dc75",
+      "bytes": 25015256,
+      "mtime_ns": 1794908033630733205
+    },
+    {
+      "path": "build/asan/src/app/anno_app_input_tests",
+      "sha256": "e6e56bbc74a8cf38a196d19c7918f749b4954fb38708c1f9005f5a30eddc1273",
+      "bytes": 33577096,
+      "mtime_ns": 1794908033721650152
+    },
+    {
+      "path": "build/asan/src/sim/anno_sim_tests",
+      "sha256": "46d95281d30f3554401694c451845136150f9ec2762f79f45828b01c88b91acb",
+      "bytes": 96975840,
+      "mtime_ns": 1794908035112571834
+    },
+    {
+      "path": "build/asan/src/tools/sim_replay/anno-sim-replay",
+      "sha256": "d7c7c4bbd056f720a18869299cdb564b5d84526c25d5d2bee9ee7d0616c6ec9a",
+      "bytes": 12965952,
+      "mtime_ns": 1794908038549394669
+    },
+    {
+      "path": "build/asan/src/tools/bench_frame/bench_frame",
+      "sha256": "c5e299163a4a1720130348f13238b8e54b890ce6362537293b498044f64977ed",
+      "bytes": 35896696,
+      "mtime_ns": 1794908037730394127
+    },
+    {
+      "path": "build/asan/src/app/anno1503",
+      "sha256": "13da6c39970841ff6ff73d48d7dc0d69449b0edf456ff85b1edda0707ef3585e",
+      "bytes": 46651688,
+      "mtime_ns": 1794908033385798777
+    },
+    {
+      "path": "build/asan/src/tools/anno_dump/anno-dump",
+      "sha256": "a5bf58ba539892c48749e5dbd5b451c9d40700ce6e6cbf372e839632e886e6c0",
+      "bytes": 3621704,
+      "mtime_ns": 1794908034067773169
+    }
+  ]
+}

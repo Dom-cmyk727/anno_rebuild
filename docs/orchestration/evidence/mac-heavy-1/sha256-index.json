@@ -1,0 +1,187 @@
+{
+  "raw_artifacts_unchanged": [
+    {
+      "path": "cache/mac-heavy-1/preservation-inventory.json",
+      "bytes": 366132,
+      "sha256": "404e96d435dc1ab17c16cb7a7450fdb72a715e7739b0235d917f0a388527666a"
+    },
+    {
+      "path": "cache/mac-heavy-1/atlas_report.tsv",
+      "bytes": 4360754,
+      "sha256": "d752e056722f9654b1d3f3d11d397af2b9537c01822e0ad57c25df7d9bec3a5c"
+    },
+    {
+      "path": "cache/mac-heavy-1/stage1-full-01.raw.log",
+      "bytes": 9518922,
+      "sha256": "7416af17c5b16413c96d38562dd83e859b19a092937ecc3c96d999f333dc9d3e"
+    },
+    {
+      "path": "cache/mac-heavy-1/stage1-full-01.environment.log",
+      "bytes": 9519264,
+      "sha256": "53f5ed05d04a4085b9a9e78c10f5c7c7b1e2868bac3bf0cb3b236d22b2ea4958"
+    },
+    {
+      "path": "cache/mac-heavy-1/stage1-minimap-isolated-01.environment.log",
+      "bytes": 9254,
+      "sha256": "f7152bba0a2387c915e0c0bb66808e2ee3f65ec9c21b20c09cdd1b8151cf2e06"
+    },
+    {
+      "path": "cache/mac-heavy-1/stage2-whole-01.log",
+      "bytes": 117529,
+      "sha256": "335f105fee6e28678580819727733f8d508bf35e95957682a87f623f8665b9cd"
+    },
+    {
+      "path": "cache/mac-heavy-1/stage3-full-01.log",
+      "bytes": 9337544,
+      "sha256": "d60826b575845b13e9795a6d3884c2d9d6bb2f546ba15b6276aac87a5161ae04"
+    },
+    {
+      "path": "cache/mac-heavy-1/stage3-full-02.log",
+      "bytes": 9334190,
+      "sha256": "87d2af69819371f97c4c1a504eab00779afc3995585bfbf33cd4051c598d453c"
+    },
+    {
+      "path": "cache/mac-heavy-1/stage3-full-03.log",
+      "bytes": 9334526,
+      "sha256": "1d9654cb608670107f83dde3c8973512e810d071193542fbf1fdac804ef79dd1"
+    },
+    {
+      "path": "cache/mac-heavy-1/stage4-release-transport.raw.log",
+      "bytes": 6738,
+      "sha256": "2c17771ee0473b1d8defb2a61bfd48f49cd4751a623ab7cf19fa3bb9456318a6"
+    },
+    {
+      "path": "cache/mac-heavy-1/stage4-asan-transport.raw.log",
+      "bytes": 6775,
+      "sha256": "e544b357e2038a25f0df82179c02a5cba79a08f0c3e465489897ffffcb785f61"
+    },
+    {
+      "path": "cache/mac-heavy-1/stage5-release.raw.log",
+      "bytes": 191429,
+      "sha256": "d01225116c39431b28c9fe0cab2b0f3b31a8d4ee978dd0cc8cbbce81b0c59bed"
+    },
+    {
+      "path": "cache/mac-heavy-1/stage5-asan.raw.log",
+      "bytes": 204392,
+      "sha256": "3e59bb8794f9e2ae42f511cf4564baff56cddedddabd02c6aeae561fb69979ce"
+    },
+    {
+      "path": "cache/mac-heavy-1/population-release-plain.txt",
+      "bytes": 12469,
+      "sha256": "dd55b241544d1063fbe300729c7c5baa4f4e3e38e19fde82b2cd91fc9a01e19a"
+    },
+    {
+      "path": "cache/mac-heavy-1/population-release-houses.txt",
+      "bytes": 12458,
+      "sha256": "7f2023c505398bd7191f3786633255cb277338de150cc52b7592218e2170e7ce"
+    },
+    {
+      "path": "cache/mac-heavy-1/original-publication/findings.json",
+      "bytes": 72357,
+      "sha256": "5f1ca23fadc896ad1c48841d387f52b9679fba4c664be0f99e2e8274f3d70284"
+    },
+    {
+      "path": "cache/mac-heavy-1/original-publication/stage2-matrix.json",
+      "bytes": 1009941,
+      "sha256": "1c7fb92a8307bbed5e0494e32a4c8858d73aa9daca7bb0cda78b74786ec0dca5"
+    },
+    {
+      "path": "cache/mac-heavy-1/original-publication/stage1-outcomes.json",
+      "bytes": 610249,
+      "sha256": "23276b4d85529487f439d7a6408d50d966f764f9e733a4f5cc4b0e1c0ff7287e"
+    },
+    {
+      "path": "cache/mac-heavy-1/original-publication/stage3-full-01-outcomes.json",
+      "bytes": 607318,
+      "sha256": "2b345b79774e8fe621725e0dad2c200d1dd4145d7f7f81f5bb6cbb4cb7fe2f05"
+    },
+    {
+      "path": "cache/mac-heavy-1/original-publication/stage3-full-02-outcomes.json",
+      "bytes": 607318,
+      "sha256": "593097119b56fdd0478f3c4f72ba2f0da00c973d562bde53ddabf46a27bbc6b3"
+    },
+    {
+      "path": "cache/mac-heavy-1/original-publication/stage3-full-03-outcomes.json",
+      "bytes": 607318,
+      "sha256": "9aea852d57d12e71a3f9d7651367048ce43e19712ea7e7b65c750afc58d7d35c"
+    },
+    {
+      "path": "cache/mac-heavy-1/original-publication/stage5-summary.json",
+      "bytes": 341735,
+      "sha256": "8162d6711b8d53e045cba565dcc342b4cfaa015ae378bdc2bc2583f0faffc0ee"
+    },
+    {
+      "path": "cache/mac-heavy-1/original-publication/stage6-atlas-summary.json",
+      "bytes": 2614,
+      "sha256": "9bffeb7dbb63bb19175d299034c90e151f9795f862c41c9d86e12e46e58a8c70"
+    }
+  ],
+  "publication_files_transformed": [
+    {
+      "path": "docs/orchestration/evidence/mac-heavy-1/README.md",
+      "bytes": 4789,
+      "sha256": "f20436036bf4ef1826a79fac5be6c5ac75457fa95fb50b5ce064564ac8b25b96"
+    },
+    {
+      "path": "docs/orchestration/evidence/mac-heavy-1/acceptance.md",
+      "bytes": 2300,
+      "sha256": "749cbd1635049351f0d1df7395c513859eb66c508ffb163173f3bd777c5ea458"
+    },
+    {
+      "path": "docs/orchestration/evidence/mac-heavy-1/corpus-summary.json",
+      "bytes": 2166,
+      "sha256": "0ea450389d47e99ee2e02032f0ac67ac1eefda2c6333594425674e6f0e0dc9b9"
+    },
+    {
+      "path": "docs/orchestration/evidence/mac-heavy-1/executable-identities.json",
+      "bytes": 5980,
+      "sha256": "3444f58b50a77a969f414ee7af5909bec792ea855a504100a0a0526c474036ac"
+    },
+    {
+      "path": "docs/orchestration/evidence/mac-heavy-1/findings.md",
+      "bytes": 7383,
+      "sha256": "bbe014e0edf518f4e78235da1b81ad20147d70f5c41c540d448f0303446b7cfd"
+    },
+    {
+      "path": "docs/orchestration/evidence/mac-heavy-1/gate-receipts.md",
+      "bytes": 9798,
+      "sha256": "e4c4813962b330132cf180f52f2b5444d4903d0d60d38311af67e16b119a01cb"
+    },
+    {
+      "path": "docs/orchestration/evidence/mac-heavy-1/host-summary.json",
+      "bytes": 861,
+      "sha256": "dcd87f1ef5d8c48fe12f9f30fde23f33e792ac3fec2adf9eb6bcd43049932d24"
+    },
+    {
+      "path": "docs/orchestration/evidence/mac-heavy-1/methods.md",
+      "bytes": 6949,
+      "sha256": "878934b5c97ac017e0e0dc75dd1b684388a3eaf46aa2018b5e12c32bd3f8f533"
+    },
+    {
+      "path": "docs/orchestration/evidence/mac-heavy-1/opt-ins.md",
+      "bytes": 5049,
+      "sha256": "42ccaefc48b437cd3f91ea222183d360590afe36484f33e14e33528fb46c82de"
+    },
+    {
+      "path": "docs/orchestration/evidence/mac-heavy-1/order-matrix.md",
+      "bytes": 2812,
+      "sha256": "c6d0e799d3bc3e0dc4f39700000995d4582bd24a4436733a2ac45c3488897a59"
+    },
+    {
+      "path": "docs/orchestration/evidence/mac-heavy-1/stage2-reconciliation.json",
+      "bytes": 1561,
+      "sha256": "70b9485b79e57416fddc7ea89f008928f95c67cae2e96831e99cd5081181501e"
+    },
+    {
+      "path": "docs/orchestration/evidence/mac-heavy-1/stage6-atlas-summary.json",
+      "bytes": 2614,
+      "sha256": "9bffeb7dbb63bb19175d299034c90e151f9795f862c41c9d86e12e46e58a8c70"
+    },
+    {
+      "path": "docs/orchestration/evidence/mac-heavy-1/stages-summary.json",
+      "bytes": 1517,
+      "sha256": "21510e266300d8bc5ce9a7860498b497491a8f36d17b48201335b8fdada9d17e"
+    }
+  ],
+  "note": "Index excludes itself; its hash belongs to the frozen handover. Full private inventory has all 1719 copied files."
+}

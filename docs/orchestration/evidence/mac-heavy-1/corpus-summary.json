@@ -1,0 +1,81 @@
+{
+  "tested_head": "4dfdd9b7ce51b9ad04970da0b247294345f05ac7",
+  "scenes": 50,
+  "modes": [
+    "plain",
+    "house_updates"
+  ],
+  "checkpoints_seconds": [
+    0,
+    60,
+    300,
+    600
+  ],
+  "groups": {
+    "release": {
+      "plain": {
+        "selected": 50,
+        "native_terminal": 50,
+        "raw_exit_counts": {
+          "0": 11,
+          "1": 39
+        },
+        "exclusive_class_counts": {
+          "exit_0": 11,
+          "load_refused": 39
+        },
+        "checkpoint_incomplete_exit0": []
+      },
+      "houses": {
+        "selected": 50,
+        "native_terminal": 50,
+        "raw_exit_counts": {
+          "0": 11,
+          "1": 39
+        },
+        "exclusive_class_counts": {
+          "exit_0": 11,
+          "load_refused": 39
+        },
+        "checkpoint_incomplete_exit0": []
+      }
+    },
+    "asan": {
+      "plain": {
+        "selected": 50,
+        "native_terminal": 50,
+        "raw_exit_counts": {
+          "0": 11,
+          "1": 39
+        },
+        "exclusive_class_counts": {
+          "exit_0": 11,
+          "load_refused": 39
+        },
+        "checkpoint_incomplete_exit0": []
+      },
+      "houses": {
+        "selected": 50,
+        "native_terminal": 50,
+        "raw_exit_counts": {
+          "0": 11,
+          "1": 39
+        },
+        "exclusive_class_counts": {
+          "exit_0": 11,
+          "load_refused": 39
+        },
+        "checkpoint_incomplete_exit0": []
+      }
+    }
+  },
+  "byte_comparison": {
+    "scope": "Exact native stdout, stderr and exit, per matching scene/mode; no path, timing, whitespace or coordinator normalization",
+    "compared_scene_modes": 100,
+    "differences": []
+  },
+  "sanitizer_reports": [],
+  "scope_note": "A load refusal is not an invariant run. Exit 0 establishes the existing population CLI checkpoints only, not a full state-hash comparison or an explicit world-fault assertion. Native ThreadExecutor creates up to hardware-concurrency threads during world creation; ANNO_TEST_THREADS does not control that CLI implementation.",
+  "per_case_records": "cache/mac-heavy-1/original-publication/stage5-summary.json",
+  "windows_comparison": "NOT_RUN"
+}

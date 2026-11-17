@@ -1,0 +1,82 @@
+{
+  "exit": 0,
+  "tsv": "cache/mac-heavy-1/atlas_report.tsv",
+  "tsv_sha256": "d752e056722f9654b1d3f3d11d397af2b9537c01822e0ad57c25df7d9bec3a5c",
+  "physical_lines": 24925,
+  "data_rows": 24916,
+  "sections": {
+    "scene": {
+      "header": [
+        "scene",
+        "group",
+        "static_frames",
+        "static_bytes",
+        "static_instances",
+        "water_frames",
+        "water_bytes",
+        "water_shadow_frames",
+        "water_shadow_bytes",
+        "enhanced_extra_frames",
+        "enhanced_extra_bytes",
+        "figures_used_frames",
+        "figures_used_bytes",
+        "page_size",
+        "padding_px",
+        "mips",
+        "pack_pages",
+        "pack_bytes",
+        "rect_bytes",
+        "fill_ratio",
+        "error"
+      ],
+      "data_rows": 24912,
+      "byte_columns": [
+        "static_bytes",
+        "water_bytes",
+        "water_shadow_bytes",
+        "enhanced_extra_bytes",
+        "figures_used_bytes",
+        "pack_bytes",
+        "rect_bytes"
+      ],
+      "byte_columns_sha256": "4151249e19a340ea2874f1c6c45234b3e557a369e9162a6b9173f1d87f69299e"
+    },
+    "group": {
+      "header": [
+        "group",
+        "frames",
+        "bytes",
+        "player_colourable_frames",
+        "player_colourable_bytes"
+      ],
+      "data_rows": 3,
+      "byte_columns": [
+        "bytes",
+        "player_colourable_bytes"
+      ],
+      "byte_columns_sha256": "4d412409a80b97b6bd04c5674fa5a32ad7e571b64838678e01e548d640c62602"
+    },
+    "frames_checked": {
+      "header": [
+        "frames_checked",
+        "frames_with_eligible_pixels",
+        "pixels_checked",
+        "pixels_eligible",
+        "decode_failed"
+      ],
+      "data_rows": 1,
+      "byte_columns": [],
+      "byte_columns_sha256": null
+    }
+  },
+  "byte_columns_sha256": "f9f1cc5d0ec61c1ff58890de66c5912c3a43beb9f8f5175b58ab69c386893af6",
+  "encoding": "UTF-8; selected decimal cell strings in original row order, tabs between cells and LF after each row; no headers, comments, section labels, paths, fill ratios or non-byte fields. Loaded scene rows first, then figure-catalog rows; refused scene rows excluded and individually reported as errors, never synthesized as zero.",
+  "errors": [],
+  "comments": [
+    "# scenes",
+    "# figures (whole FigurenHeader.dat catalog, scene-independent)",
+    "# static_player_colour (whole Anlagen.dat catalog, decoded, scene-independent: pixels/frames the decoder's own test would recolour, not assumed from the engine",
+    "# never calling recolour() on this path)"
+  ],
+  "windows_comparison": "NOT_RUN; orchestrator owns cross-platform comparison"
+}

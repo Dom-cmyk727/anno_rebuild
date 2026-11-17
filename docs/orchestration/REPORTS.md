@@ -14849,3 +14849,51 @@ landing candidate's own build): both pass, run directly with `python3 -I tools/l
   silently inheriting someone else's justification.
 
 READY FOR REVIEW.
+
+## 2026-11-17 — MAC-HEAVY-1b — READY FOR REVIEW
+
+- Packaging only, from fetched main `4dfdd9b7ce51b9ad04970da0b247294345f05ac7`, tree `e218b8f5dae9e7e133e8f803618ba6e14d355286`; branch `task/MAC-HEAVY-1b`.
+- Historical measurements retain that exact tested head/tree; original report `ce35bb7b979eca2f1720e9ad1e04088a762449d8` and `task/MAC-HEAVY-1` remain intact. No merge/cherry-pick of the old report.
+- Started after the ui-info-2d-buildcat gate and warning jobs ended and its FAIL report was handed over. No overlapping native workload.
+- Retained 1,719 original cache/publication files, 262,136,937 bytes; SHA256 verified before and after copying, with no differing overwrite.
+- Local inventory: `cache/mac-heavy-1/preservation-inventory.json`. Full failures, ordered prefixes, native corpus records and per-case outcomes stay private there.
+- Committed evidence: 14 compact files, 60,752 bytes, below the 1 MiB limit. Bulk atlas TSV, per-case outcomes/matrices, input manifest and orchestration registries were never added to this branch.
+- Path mapping is documented once in [README](evidence/mac-heavy-1/README.md): repository-relative paths and explicit external environment roots. Raw bytes/hashes are unchanged; transformed summaries have separate hashes.
+- Preserved findings: MH-001 minimap tile_w 42 versus 84 in ASan context; isolation passed, no sanitizer diagnostic. Original failure remains failed.
+- MH-002 known render reclaimer counter; MH-003 publication shutdown; MH-004 ownership shutdown; MH-005 stale-version recovery. Ordered observations do not prove timing/shared-state root causes; exact-command repeat NOT_RUN.
+- MH-006 transport refuses SET_DIPLOMACY at offset 475 in Release and ASan; neither requested 150,000-tick body ran.
+- Scale shortfall retained: requested K=8/16/32 built farms/tanneries 8/3, 12/0, 12/0. No 32/32 scale claim.
+- Corpus summary: 50 scenes, two modes, two builds; per mode/build 11 admitted clean four-checkpoint runs and 39 load refusals; no invariant failures/crashes in admitted runs.
+- All 100 matching scene/mode native output tuples agree byte-for-byte across Release/ASan, including refusals; not a full-state-hash comparison.
+- Atlas: 519 loaded, 0 refused; 24,912 scene rows, 3 figure rows and 1 eligibility row; byte-column SHA256 `f9f1cc5d0ec61c1ff58890de66c5912c3a43beb9f8f5175b58ab69c386893af6`.
+- Host retained as historical: M5 Max, 18 logical CPUs, 48 GiB, macOS 27.0.1, Apple Clang 21, Metal. No new host-heavy measurement is claimed.
+- Local packaging checks: full copied-file hash reconciliation; raw/transformed index validation; links; no absolute host paths; no bulk/prohibited files; diff whitespace and scope.
+- Historical main gate lines below are unchanged; all individual/required-contract receipts and raw hashes are in [gate-receipts.md](evidence/mac-heavy-1/gate-receipts.md).
+
+```text
+COUNTS: selected=2762 executed=2718 failed=1 empty=0 skipped=43 (required-asset=0 platform=9 opt-in=29 gpu=2 other=3) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+COUNTS: selected=36 executed=32 failed=4 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+COUNTS: selected=2761 executed=2718 failed=0 empty=0 skipped=43 (required-asset=0 platform=9 opt-in=29 gpu=2 other=3) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=2761 executed=2718 failed=0 empty=0 skipped=43 (required-asset=0 platform=9 opt-in=29 gpu=2 other=3) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=2761 executed=2718 failed=0 empty=0 skipped=43 (required-asset=0 platform=9 opt-in=29 gpu=2 other=3) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=100 executed=22 failed=78 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+COUNTS: selected=100 executed=22 failed=78 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+```
+
+Decisions and reasoning:
+- Prepare the clean successor directly from main, preserving the already-public old branch for an owner history decision; no excluded blob enters a new commit.
+- Retain only numerical summaries and failure reproduction evidence; put 262 MB of byte-identical detail in ignored cache. The 60 KB publication is sufficient to identify every finding and locate its raw evidence.
+- Keep raw SHA256s distinct from sanitized-file SHA256s; replacing a host path cannot be presented as byte-identical raw output.
+- Reuse every old native result at its exact original source pin. This documentation-only packet authorizes no expensive rerun or repair, so local checks concern packaging only.
+
+NOT_RUN: new builds/tests/corpus/atlas runs; LeakSanitizer (unsupported); Windows/HE and cross-platform comparisons; excluded diagnostics/older coordinators. Original two blocked transport bodies remain NOT_RUN.
+- No engine, tool, test, fixture, default, pin or golden change. No main push, rebase, force push or old-branch deletion.
+- [Acceptance](evidence/mac-heavy-1/acceptance.md), [findings](evidence/mac-heavy-1/findings.md), [methods](evidence/mac-heavy-1/methods.md), [SHA256 index](evidence/mac-heavy-1/sha256-index.json). Hosted docs-only CI for the pushed packaging head is supplied in the handover.
+- QUESTIONs: none for this bounded packaging. Existing findings remain for orchestrator triage; gameplay/default decisions remain with the owner.

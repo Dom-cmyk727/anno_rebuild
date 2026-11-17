@@ -1,0 +1,28 @@
+{
+  "cpu": "Apple M5 Max",
+  "logical_cpus": 18,
+  "ram_bytes": 51539607552,
+  "os": "macOS 27.0.1 (26A434)",
+  "compiler": "Apple Clang 21.0.0 (clang-2100.1.1.101)",
+  "cmake": "3.31.10",
+  "ninja": "1.13.2.git.kitware.jobserver-pipe-1",
+  "gpu": "Apple M5 Max (Metal)",
+  "load_average": [
+    1.609375,
+    3.3818359375,
+    4.09326171875
+  ],
+  "free_disk": "about 1.5 TiB at original measurement",
+  "coordinator_at_start": "not running: no listener or daemon process observed",
+  "coordinator_compat": 4,
+  "baseline_environment": {
+    "ANNO1503_GAME_DIR": "$ANNO1503_GAME_DIR",
+    "ANNO_TEST_THREADS": "4"
+  },
+  "asan_extra": {
+    "ANNO_TEST_MB_PER_THREAD": "2048",
+    "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+    "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+  },
+  "scope": "Historical measurement host, not a fresh heavy run."
+}

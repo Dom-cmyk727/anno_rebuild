@@ -82,6 +82,21 @@ says who is doing what, where the work is, and what it waits on.
   `task/UI-TABS-1` from `main` `ac02d4a2`, packet `tasks/ui-tabs-1.md` on that branch (`6d20d16e`). Stage A: the
   tab and sub-tab switching (player, city view, options) with clicks and the keys D, S and C; stage B (the
   overview's live figures) after A's review. App-side only. Landing stays with the orchestrator.
+  **Stage A** (`a79499cf`) is in the landing candidate `09315620`. **Stage B** (`dd18401f`, on A, no rebase),
+  as the UI lane reports 2026-11-17:
+  - what it does: the figure rows of the player overview and of the "?" city page, from the snapshot;
+  - accepted by the UI lane, the owner's viewer test running, CI running;
+  - the account rows draw only while `Rules::city_booking` is on, and stay empty with the default rules;
+  - new OQ-691 to 695;
+  - when A is on `main`, the lane merges `origin/main` into the branch and reports B's head and CI for the
+    orchestrator's review; it then lands under the standing rule once the owner's test has passed.
+  **Two questions for the sim lane**, raised by stage B; the rows stay empty until they are answered:
+  1. `Player::upkeep_a/b` and `stat_a/b` are held and decayed by the sim but fed by nothing. The overview's
+     rows 3 to 6 need them; the History Edition shows military 17 for the start ship.
+  2. A city knowledge or research figure (city `+0x320` slot `+0x20`, 8.8 fixed point, OQ-157) for the city
+     page's row 7.
+  Queued for the Mac lane after TOWN-START-1, as a packet to be written (what feeds them in the original,
+  with addresses, then the feed).
   **Stage A reviewed** 2026-11-16 (`a79499cf`, [review](reviews/2026-11-16-ui-tabs-1-stage-a-review.md)):
   ACCEPTED once CI is green; two of its addresses were disassembled again by the orchestrator; the owner's
   viewer test is next.

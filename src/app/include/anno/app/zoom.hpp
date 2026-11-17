@@ -49,15 +49,22 @@ zoom_floor(const render::ZoomLevels& levels = render::ZoomLevels::original(),
     return std::max(levels.tile_w(levels.size() - 1) / kZoomEndFactor, min_tile);
 }
 
+/// The widest tile width the continuous zoom reaches (the wheel's closest
+/// zoom-in): the first group's tile width * kZoomEndFactor. The magnifier's
+/// first stage (UI-MINIMAP-2 fix round R2).
+[[nodiscard]] inline double
+zoom_ceiling(const render::ZoomLevels& levels = render::ZoomLevels::original()) {
+    return levels.tile_w(0) * kZoomEndFactor;
+}
+
 /// The wanted tile width after a wheel notch (or key) of `factor`, kept inside
 /// the range: from zoom_floor (at least the last group's tile width /
-/// kZoomEndFactor) to the first group's * kZoomEndFactor.
+/// kZoomEndFactor) to zoom_ceiling (the first group's * kZoomEndFactor).
 [[nodiscard]] inline double
 zoom_target_after(double target, double factor,
                   const render::ZoomLevels& levels = render::ZoomLevels::original(),
                   double min_tile = 0.0) {
-    return std::clamp(target * factor, zoom_floor(levels, min_tile),
-                      levels.tile_w(0) * kZoomEndFactor);
+    return std::clamp(target * factor, zoom_floor(levels, min_tile), zoom_ceiling(levels));
 }
 
 /// The state of a continuous zoom: the tile width in screen pixels shown (`now`)

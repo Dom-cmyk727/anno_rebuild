@@ -580,7 +580,7 @@ double minimap_zoom_step(const MinimapConfig& cfg, double zoom, bool closer) {
 namespace {
 
 /// A stage within this relative distance of a tile width is that width: the stage the view is
-/// at, or (magnifier_stages) a halving that is the wheel's end itself.
+/// at, or (magnifier_stages) a halving or doubling that is the wheel's end itself.
 constexpr double kMagnifierSame = 1e-6;
 
 } // namespace
@@ -599,24 +599,42 @@ std::optional<double> magnifier_target(const std::vector<double>& level_tile_w, 
     return best;
 }
 
-std::vector<double> magnifier_stages(const std::vector<double>& built_tile_w, double min_tile) {
-    std::vector<double> stages = built_tile_w;
-    std::optional<double> narrowest;
+std::vector<double> magnifier_stages(const std::vector<double>& built_tile_w, double min_tile,
+                                     double max_tile) {
+    std::optional<double> narrowest, widest;
     for (const double t : built_tile_w) {
-        if (t > 0.0 && std::isfinite(t) && (!narrowest || t < *narrowest))
+        if (!(t > 0.0) || !std::isfinite(t))
+            continue;
+        if (!narrowest || t < *narrowest)
             narrowest = t;
+        if (!widest || t > *widest)
+            widest = t;
     }
-    // No extra stages without a built level, or when the wheel ends at or above the narrowest
-    // one (a small scene, a large window): the built levels alone.
-    if (!narrowest || !(min_tile > 0.0) || !std::isfinite(min_tile) ||
-        !(min_tile < *narrowest * (1.0 - kMagnifierSame)))
-        return stages;
-    // min_tile > 0 and the factor > 1: the width falls below min_tile after finitely many steps.
     static_assert(kMagnifierStageFactor > 1.0);
-    for (double w = *narrowest / kMagnifierStageFactor; w > min_tile * (1.0 + kMagnifierSame);
-         w /= kMagnifierStageFactor)
-        stages.push_back(w);
-    stages.push_back(min_tile);
+    std::vector<double> stages;
+    // The near side: no extra stages without a built level, or when the wheel's closest zoom-in
+    // is not above the widest one. max_tile is finite and the factor > 1: the width passes
+    // max_tile after finitely many steps.
+    if (widest && max_tile > 0.0 && std::isfinite(max_tile) &&
+        max_tile > *widest * (1.0 + kMagnifierSame)) {
+        stages.push_back(max_tile);
+        std::vector<double> doublings;
+        for (double w = *widest * kMagnifierStageFactor; w < max_tile * (1.0 - kMagnifierSame);
+             w *= kMagnifierStageFactor)
+            doublings.push_back(w);
+        stages.insert(stages.end(), doublings.rbegin(), doublings.rend());
+    }
+    stages.insert(stages.end(), built_tile_w.begin(), built_tile_w.end());
+    // The far side: none without a built level, or when the wheel ends at or above the narrowest
+    // one (a small scene, a large window). min_tile > 0 and the factor > 1: the width falls below
+    // min_tile after finitely many steps.
+    if (narrowest && min_tile > 0.0 && std::isfinite(min_tile) &&
+        min_tile < *narrowest * (1.0 - kMagnifierSame)) {
+        for (double w = *narrowest / kMagnifierStageFactor; w > min_tile * (1.0 + kMagnifierSame);
+             w /= kMagnifierStageFactor)
+            stages.push_back(w);
+        stages.push_back(min_tile);
+    }
     return stages;
 }
 

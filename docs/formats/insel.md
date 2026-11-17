@@ -43,7 +43,22 @@ Order in templates: `INFO, HEIGHT…, GFXID…, GELAENDE…, FRUCHTBAR, [FLUESSE
 | `GELAENDE`, `PROD2` | block header + `n` × 6-byte items, same 32 × 32 block grid as `HEIGHT`; items place objects, see "Placed objects". `GELAENDE` = scenery (grass, bushes, trees, rocks, cliffs, ice floes), `PROD2` = built objects (roads, houses, walls, production) | P |
 | `FLUESSE` | block header with 8 × 8 blocks at multiples of 8, only non-empty blocks stored, + 6-byte placed-object items | P; what the river objects are ? OQ-024 |
 | `FRUCHTBAR` | `width × height` bytes, row-major, no blocks; values 0–10 | P (size asserted) |
-| `BERGWERK2`, `OCCUR`, `ANBAU`, `DISCOVER` (4), `KONTORID` (2), `DUERRE`, `LOCKED` (1, decoded: the island's lock byte, see below), `NAME`, `HIRSCH`, `EVENTINSEL`, `STAEDTE` | ? OQ-024 | P (sizes) |
+| `ANBAU` | crop names, each followed by one NUL; decoded, see below | P (all 1,133 islands) + D (loader) |
+| `BERGWERK2`, `OCCUR`, `DISCOVER` (4), `KONTORID` (2), `DUERRE`, `LOCKED` (1, decoded: the island's lock byte, see below), `NAME`, `HIRSCH`, `EVENTINSEL`, `STAEDTE` | ? OQ-024 | P (sizes) |
+
+### ANBAU (decoded, ISLAND-CROPS-1 stage 1a)
+The island's crop list: zero or more names, each a byte string followed by one `0x00`. Nothing else: no count, no length prefix, no padding, no trailing bytes.
+
+| Offset | Size | Type | Name | Meaning | Evidence |
+|---|---|---|---|---|---|
+| 0 | `len(name₀) + 1` | bytes + `0x00` | `name₀` | first crop name | P |
+| … | … | bytes + `0x00` | `nameₖ` | next crop name, until the payload ends | P |
+
+Corpus (P, 2026-11-17, `insel_corpus` "ANBAU corpus" and a byte scan with `tools/insel.py`): every one of the 1,133 islands (465 `Scenes/Islands` templates, 21 `INSEL4` among them, and 668 scenario islands in 50 `.sze`) has exactly one `ANBAU` record; every payload ends with `0x00`; no empty payload, no empty name (two `0x00` in a row), no duplicate name within a record, no bytes after the last `0x00`. Payload sizes 30–135 bytes, 3–13 names per record (847 records list all 13), 13,686 names in all. The names are the 13 crops `GETREIDE`, `TABAKBAUM`, `GEWUERZBAUM`, `FLACHSBAUM`, `ZUCKERROHR`, `BAUMWOLLE`, `WEINTRAUBEN`, `KAKAOBAUM`, `HOPFENBAUM`, `SEIDENRAUPE`, `FARBBAUM`, `KRÄUTER`, `KARTOFFEL`; every record lists a subset in this order. All bytes are upper-case ASCII except `0xC4` (`Ä`, Windows-1252) in `KRÄUTER`. Templates: all 465 have `ANBAU`; 29 lack `KARTOFFEL`; 6 lack `KRÄUTER` (`D_128x128_0015_1B_Azteken`, `N_128x128_0023_1B`, `N_256x256_0002_2B`, `N_256x256_0006_2B`, `Pr_080x080_0003_2B`, `T_080x080_0001_0B_Po`). These match the byte scan of UI-STATUS-1 C.
+
+What the original does with the list (task/UI-STATUS-1 `0ee20000`, `docs/re/ui.md` 5.6 stage C and `docs/re/annowelt.md`; D): the AnnoWelt loader (`0x10089871`-`0x1008995f`) sets island property 11 (`+0xac`) to `0xF009` (0 when the climate byte `+0xc0` is 0) and ORs bit `ware − 0x38` for each name found among the names of wares `0x38..0x44`, at most 13 names; the saver is `0x1008a583`-`0x1008a5b1`. A new game's link placement overwrites the property (`annoscene.md` §5 step 10). How the loader treats a payload without a final `0x00`, an empty name or a second `ANBAU` record is not read (OQ-708).
+
+The rebuild (`anno::formats::insel::CropList`) keeps the names as raw byte strings in record order, without the `0x00`, and does no ware lookup (that is the sim's job). It refuses what the corpus never shows: bytes after the last `0x00` ("name not terminated"), an empty name ("empty name"), a second record ("twice"). An empty payload is an empty list. The writer emits each name followed by one `0x00` and refuses an empty name or one that holds `0x00`; parse → write reproduces all 1,133 payloads byte for byte.
 
 ### ANBAU (semantics read, UI-STATUS-1 C; not decoded by the rebuild)
 A list of NUL-terminated crop names (e.g. `GETREIDE`, `TABAKBAUM`, `GEWUERZBAUM`, `FLACHSBAUM`, `ZUCKERROHR`, `BAUMWOLLE`, `WEINTRAUBEN`, `KAKAOBAUM`, `HOPFENBAUM`, `SEIDENRAUPE`, `FARBBAUM`, `KRÄUTER`, `KARTOFFEL`). The AnnoWelt loader (`0x10089871`-`0x1008995f`) sets island property 11 (`+0xac`) to `0xF009` (0 when the climate byte `+0xc0` is 0) and ORs bit `ware − 0x38` for each name it finds among wares `0x38..0x44` (at most 13 names; the name table, AnnoGame `0x100251f8`, is likely). D. In the 465 `Scenes/Islands` templates every crop is listed except: 29 files lack `KARTOFFEL`, 6 lack `KRÄUTER` (`D_128x128_0015_1B_Azteken`, `N_128x128_0023_1B`, `N_256x256_0002_2B`, `N_256x256_0006_2B`, `Pr_080x080_0003_2B`, `T_080x080_0001_0B_Po`). P. A new game's link placement overwrites the property (`annoscene.md` §5 step 10).
@@ -109,11 +124,13 @@ ISLAND i=<k> version=<4|5> x= y= width= height= number= head=<hex> records=<NAME
     H<y> <hex row>   /   G<y> <4 hex digits per tile>          (--full)
   GRID BAD <reason>                               (instead of the two GRID lines)
   BLOCKS <GELAENDE|PROD2|FLUESSE> count=<n> items=<n> hash=<fnv64>   (if present; hash over headers + data)
+  ANBAU count=<n> names=<name,name,…>            (if present; bytes 0x21–0x7e other than ',' and '\' as they are, others as \xHH)
+  ANBAU BAD <reason>                              (instead, for a malformed ANBAU)
 ```
 `NOPARSE` if the file has no island root (exit code 1). `<reason>` is the bare check name, without offsets.
 
 ## Implementation
-- `anno_formats::insel` (`islands`, `Island::{from_insel5, from_insel4, blocks, heights, gfx_ids, fertility, record}`, `Block`, `encode_blocks`, `GroundCell`).
+- `anno_formats::insel` (`islands`, `Island::{from_insel5, from_insel4, blocks, heights, gfx_ids, crops, fertility, record}`, `Block`, `CropList::{parse, write}`, `encode_blocks`, `GroundCell`).
 - Top-down ground image: `anno_assets::island::ground_top_down`; `anno-extract insel <file> <Felder.tex> <outdir> [<px per tile>]` → `island<i>.png` + `index.txt` (`island<i>.png x= y= width= height= number=`).
 - Python reference: `tools/insel.py` (independent; uses `tools/chunks.py` for the container).
 
@@ -122,6 +139,7 @@ ISLAND i=<k> version=<4|5> x= y= width= height= number= head=<hex> records=<NAME
 - `.scp` trailer — OQ-001.
 
 ## Tests
+- C++ (`src/formats/tests`): `insel_corpus_test.cpp` "ANBAU corpus" (needs `ANNO1503_GAME_DIR`: every island's `ANBAU` decodes and re-encodes byte-identically; 465 + 668 records, 13,686 names, 13 distinct, 29 templates without `KARTOFFEL`, the 6 without `KRÄUTER`); `insel_test.cpp` (round trips and errors on our own bytes, `fixtures/synthetic/insel_synthetic/crops*.scp`).
 - Corpus: `crates/formats/tests/insel_corpus.rs` (needs `ANNO1503_GAME_DIR`): 465 templates (21 `INSEL4`, 444 `INSEL5`) and 668 scenario islands; grids assemble, re-encode byte-identically, `FRUCHTBAR` is `width × height`, sparse blocks are 6-byte items on their grid, template heads are 0, island numbers unique per scenario, the two misnamed templates, 7,952,640 template tiles.
 - Placed objects: `objects_corpus.rs` (item counts, ids, duplicates, footprint overlaps); unit `insel::tests::placed_objects`.
 - Ground: `insel_corpus.rs::ground_textures` (texture ids, water count, the texture-205 patch).

@@ -189,6 +189,7 @@ Sources abbreviated: GFA = `docs/research/game-files-analysis.md`, CL = `docs/re
 
 ## OQ-024: What island `GFXID` values refer to, and the other island records
 - **Status:** open
+- **Update 2026-11-17 (ISLAND-CROPS-1 1a):** `ANBAU` decoded: NUL-terminated crop names (`docs/formats/insel.md`, "ANBAU"); its loader edge cases are OQ-708.
 - **Update 2026-10-16 (item `state`):** resolved — `height << 8 | phase` (`docs/formats/insel.md`, "Placed objects"). Duplicate items and the remaining 115 overlapping `PROD2` tiles stay open.
 - **Update 2026-10-16 (b) partly resolved:** `GELAENDE`/`PROD2`/`FLUESSE` items are placed `Anlagen.dat` objects: `u16 id | rotation << 14`, `u16 state`, `u8 x, u8 y` (block-relative top-left); footprint from `ANLAGEN` `HEAD` bytes 0–1 (`docs/formats/insel.md`, "Placed objects"). Open: `state` (mostly `0x3000`), why 97,041 `GELAENDE` and 485 `PROD2` items are exact duplicates, and the remaining 115 overlapping `PROD2` tiles.
 - **Update 2026-10-16 (a) resolved:** `GFXID = texture << 8 | u << 5 | v << 2 | r` — a 32 × 32 cell of a 256 × 256 `Textures/Felder.tex` texture with `r` quarter turns; texture 0 = open water. Evidence: corpus statistics and top-down rendering (`docs/formats/insel.md`, "Ground"). Still open from (a): how open water is drawn (no texture 0 exists in any `.tex`), and texture 205 (36 tiles, absent from `Felder.tex`). The `Anlagen.dat` hypothesis below was a dead end for ground; it still holds for buildings (M1.4).
@@ -3647,6 +3648,12 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Question:** on a WUESTE island the fertility row shows spices and wine (AnnoFrame climate table `0x10009904`, WUESTE `0xf04d` includes bit 6), but wine's own climate mask (HEAD[0x13] of 716/717 and plantation 822 = 0x2c: NORD, PRAERIE, STEPPE) excludes WUESTE, so the crop test gives v = 0 and every wine field is dry. Is that what the original shows and does, and can a wine plantation be built there at all?
 - **What we know:** D: both tables (`docs/re/ui.md` 5.6 stage C); every other shown crop/climate pair agrees. The placement check against HEAD[0x13] was not read. Other crop objects 749 (KRÄUTER 0x7e), 753 (TABAKBAUM 0x7c), 757 (GEWUERZBAUM 0x7f) carry other masks and no plantation plants them (purpose not read).
 - **How to resolve:** HE recipe step 5 (`docs/re/ui.md` 5.6 stage C); read the plantation placement test for HEAD[0x13].
+
+## OQ-708: How the original loads a malformed ANBAU record (ISLAND-CROPS-1 1a, 2026-11-17; OPEN)
+- **Question:** what does the AnnoWelt `ANBAU` loader (`0x10089871`-`0x1008995f`) do with a payload whose last byte is not `0x00`, with an empty name (two `0x00` in a row, or a leading `0x00`), with more than 13 names, and with a second `ANBAU` record on the same island?
+- **What we know:** the corpus shows none of these: all 1,133 islands have exactly one record, every payload ends with `0x00`, no empty name, at most 13 names (P, `insel_corpus` "ANBAU corpus"). The loader looks names up among wares `0x38..0x44` and stops after 13 (D, task/UI-STATUS-1 `0ee20000`, `docs/re/ui.md` 5.6 stage C); how it splits the payload was not read instruction by instruction.
+- **Rebuild default (`anno::formats::insel::CropList`, `Island::crops`):** refuse the first three with "name not terminated", "empty name", "twice"; an empty payload is an empty list; no limit on the name count in `formats` (the 13-name cap of the loader, if it matters, is the sim's, from config).
+- **How to resolve:** read the loader's split loop at `0x10089871`-`0x1008995f` (GOG AnnoWelt.dll) and, if it accepts these cases, load them like the original instead of refusing.
 
 ## OQ-710: Whether the History Edition's single-precision figure tick ends waits and walks at other ticks than GOG's x87 one (RE-HE-PRODUCTION-1, 2026-11-17; OPEN)
 - **Area:** simulation / editions.

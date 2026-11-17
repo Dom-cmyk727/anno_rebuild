@@ -12,12 +12,15 @@
 // - GFXID = texture << 8 | u << 5 | v << 2 | r (GroundCell).
 // - GELAENDE, PROD2, FLUESSE blocks hold 6-byte items placing Anlagen.dat
 //   objects (PlacedObject).
+// - ANBAU: the island's crop names, each a byte string followed by one NUL
+//   (CropList).
 #pragma once
 
 #include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -90,6 +93,24 @@ struct PlacedObject {
     auto operator<=>(const PlacedObject&) const = default;
 };
 
+/// ANBAU: the crops an island lists (docs/formats/insel.md, "ANBAU"), in
+/// record order. Each name is the raw byte string without its NUL
+/// (Windows-1252 in the corpus: KRÄUTER is the bytes "KR\xC4UTER"); which
+/// ware a name means is the sim's lookup, not this layer's.
+struct CropList {
+    std::vector<std::string> names;
+
+    /// Splits a payload of NUL-terminated names. An empty payload is an empty
+    /// list. Errors: "name not terminated" (bytes after the last NUL),
+    /// "empty name" (two NULs in a row, or a leading NUL); the corpus shows
+    /// neither (OQ-708).
+    static Result<CropList, std::string> parse(Bytes payload);
+    /// Each name followed by one NUL: the inverse of `parse`. Errors: "empty
+    /// name", "NUL in name".
+    [[nodiscard]] Result<ByteBuffer, std::string> write() const;
+    bool operator==(const CropList&) const = default;
+};
+
 struct Island {
     Version version = Version::Insel5;
     /// The 12-byte INSEL5 head or the 8-byte INSEL4 payload.
@@ -110,6 +131,9 @@ struct Island {
     [[nodiscard]] Result<std::vector<std::uint8_t>, std::string> heights() const;
     /// The GFXID grid, one u16 per tile, row-major.
     [[nodiscard]] Result<std::vector<std::uint16_t>, std::string> gfx_ids() const;
+    /// The ANBAU record decoded; nullopt without one. Error "twice" when
+    /// the island has two (never in the corpus, OQ-708), else CropList::parse's.
+    [[nodiscard]] Result<std::optional<CropList>, std::string> crops() const;
     /// FRUCHTBAR if present with width × height bytes.
     [[nodiscard]] std::optional<Bytes> fertility() const;
     /// All items of the block records called `name`, duplicates included.

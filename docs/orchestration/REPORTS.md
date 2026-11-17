@@ -15465,3 +15465,88 @@ Branch `task/RE-HE-PRODUCTION-1`, research only (docs). Owner request `he_01.mp4
 **QUESTIONs:** none.
 
 READY FOR REVIEW.
+
+## ISLAND-CROPS-1 stage 1a — ANBAU decoded in formats — READY FOR REVIEW
+
+Branch `task/ISLAND-CROPS-1` (base `df716283`). Commits: `3d16d3d7` feat(formats) (parser, writer,
+`Island::crops`, anno-dump and `tools/insel.py`), `4d05b8ba` test(formats) (unit + corpus tests, five
+synthetic fixtures), `3477dffd` docs (insel.md "ANBAU", OQ-708, OQ-024 update), then this report.
+
+**What changed:**
+- `anno::formats::insel::CropList { std::vector<std::string> names; parse(Bytes); write(); }` and
+  `Island::crops()` -> `Result<std::optional<CropList>, std::string>`. Names are raw byte strings
+  without their NUL, in record order; no ware lookup in `formats`. An empty payload is an empty list.
+  Refused (never in the corpus, OQ-708): bytes after the last NUL ("name not terminated"), an empty
+  name ("empty name"), a second ANBAU record ("twice"). The writer refuses an empty name or one holding
+  a NUL. No name-count limit in `formats`.
+- `anno-dump insel` / `tools/insel.py dump`: new line `  ANBAU count=<n> names=<a,b,...>` (bytes
+  0x21-0x7e other than `,` and `\` as they are, others as `\xHH`) or `  ANBAU BAD <reason>`
+  (exit 1); the existing `RECORD ANBAU size= hash=` line is unchanged.
+- Fixtures (our own bytes, built from `old.scp`'s INSEL4 island): `fixtures/synthetic/insel_synthetic/`
+  `crops.scp` (`GETREIDE`, `KR\xC4UTER`, `A,B\C`), `crops_empty.scp`, `crops_unterminated.scp`,
+  `crops_empty_name.scp`, `crops_twice.scp`. They are also in agree.py's fixture case.
+- `docs/formats/insel.md`: ANBAU has its own row and a decoded section (layout, corpus facts, original
+  loader semantics cited from task/UI-STATUS-1 `0ee20000` docs/re/ui.md 5.6 C and docs/re/annowelt.md,
+  the rebuild's refusals), dump format, implementation and test lists. `docs/open-questions.md`:
+  OQ-708 (malformed-ANBAU loader behaviour), OQ-024 update.
+
+**Corpus (P, `anno_formats_tests.ANBAU corpus`, and a separate byte scan with `tools/insel.py`):**
+1,133 ANBAU records = 465 templates (`Scenes/Islands`, 21 INSEL4 among them) + 668 scenario islands
+(50 `.sze`); exactly one per island; all 1,133 re-encode byte-identically. 13,686 names, 13 distinct,
+3-13 per record (847 list all 13), payload sizes 30-135 bytes. Every payload ends with NUL; no empty
+payload, no empty name, no duplicate name, no trailing bytes or padding; every list is a subset in the
+canonical order GETREIDE ... KARTOFFEL. Scan facts confirmed: all 465 templates have ANBAU, 29 lack
+KARTOFFEL, 6 lack KRÄUTER (D_128x128_0015_1B_Azteken, N_128x128_0023_1B, N_256x256_0002_2B,
+N_256x256_0006_2B, Pr_080x080_0003_2B, T_080x080_0001_0B_Po).
+
+**Gate (this PC, msvc Release; run on the working tree at `df716283` + the diff later committed
+unchanged as `3d16d3d7`..`3477dffd`, diff sha256 `48c50e01...` in the log's provenance):**
+- `cmake --preset msvc` + `cmake --build --preset msvc`: exit 0, no warnings/errors.
+- clang-format 23.1.3 (`E:\anno1503-worktrees\.scratch-cfpkg`) `--dry-run --Werror` on the 5 changed
+  C++ files: clean.
+- `tools/test/run_selected.py --select '^anno_formats_tests\.|^anno_dump_agrees_with_python$' --jobs 8`,
+  `ANNO1503_GAME_DIR=E:\anno1503\game\app`, `ANNO_TEST_THREADS=16`, required `anno_formats_tests.ANBAU
+  corpus` and `anno_dump_agrees_with_python`: `selected=86 executed=86 failed=0 empty=0 skipped=0`,
+  VERDICT PASS. Log `cache/gates/island-crops-1a-01.log` (+ `.inventory.json`).
+- `python -I tools/agree.py --commands insel --game-dir ...`: 4 of 4 cases agree (fixtures dump and
+  `--full`, 10 files each; corpus 515 files; `--full` Single_01.sze). Log
+  `cache/gates/island-crops-1a-agree-insel.txt`.
+- `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh` (no other run going, checked with pgrep): exit 0;
+  GCC 13.3 and Clang 18.1.3, 417 files with viewer+GPU and 83 without GPU, all clean; both negative
+  controls failed as expected. Log `cache/gates/island-crops-1a-unixwarn.log`.
+
+**Failure proof:** `CropList::write` changed locally to drop the final NUL, `anno_formats_tests` rebuilt,
+`ANBAU corpus` run: Failed, `1133 failed` assertions (one per record, insel_corpus_test.cpp line 251, the
+byte-identity check). Restored with `git checkout`, rebuilt, the 4 ANBAU cases pass again; never
+committed. Logs `cache/gates/island-crops-1a-failure-proof.log`, `cache/gates/island-crops-1a-restored.log`.
+
+| Acceptance (packet stage 1a) | Result |
+|---|---|
+| Spec: ANBAU decoded record, layout, corpus edge cases, moved out of the OQ-024 row | done (insel.md) |
+| Parser in `src/formats`, raw byte strings, `Result`, clear errors | done (`CropList::parse`, `Island::crops`) |
+| Real writer, parse -> write byte-identical | done (`CropList::write`) |
+| Synthetic round-trip tests (own bytes) | 3 unit cases + 5 fixtures, pass |
+| Corpus test over every ANBAU record, counts, 29/6 template check | `ANBAU corpus`, pass: 1,133 / 29 / 6 |
+| anno-dump insel + tools/insel.py print names; agree.py on insel | 4/4 agree; CTest agree pass |
+| formats lanes + insel corpus | 86/86 executed, pass |
+| check_unix_warnings in WSL | clean |
+| CI green | NOT_RUN here (pushed; not polled) |
+
+**NOT_RUN:** CI (pushed, not polled); macOS/Linux execution of the tests (the WSL step is compile-only);
+the Mac game-file run (not required for a formats-only stage).
+
+**Decisions and reasoning:**
+- Malformed cases are refused, not repaired: the corpus never shows them and the original loader's split
+  loop was not read (OQ-708). An empty payload is accepted as an empty list, the natural inverse of the
+  writer for no names.
+- Two ANBAU records are refused ("twice") rather than taking the first or last: which one the original
+  keeps is not read.
+- No 13-name cap in `formats` (the loader's cap belongs to the sim's config, if at all; CLAUDE.md
+  "No hardcoded limits").
+- The dump escapes `,` and `\` so a name list stays splittable; the only non-ASCII corpus byte is 0xC4.
+- The constructor value of island property 11 (`+0xac`) for an island without ANBAU was not seen in
+  this stage; the island property setter/reset notes (OQ list, "reset zeroes +0xb0..+0xbf") do not
+  cover `+0xac`. It stays for 1b to read or make an OQ (orchestrator answer 4); every corpus island has
+  ANBAU, so it matters only for islands built some other way.
+
+READY FOR REVIEW.

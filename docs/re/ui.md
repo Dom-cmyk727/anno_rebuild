@@ -719,6 +719,10 @@ first city in (island, city) order. Hidden only before the first founding. (R2's
 away from the city's island, so a player who did not scroll there never saw them.) The gold
 counter is unchanged.
 
+**Replaced by 5.6 (UI-STATUS-1 B, 2026-11-17; the owner's OQ-703 answer "Like original"):** the
+view-centre point and the "Always show my city" fallback are gone; the bar follows the tile under
+the cursor.
+
 Test note (fix round R5): `live_screen_matches_oracle` (`tools/test/live_screen_compare.py`)
 compares `hud_idle` in the state of `hud_idle_running`, before the first founding: a second
 launch on the ship start (`lan5-ship-a.json`, seat 0, `live_screen_hud_idle.script`), exact, no
@@ -852,7 +856,7 @@ pixels, **L** likely (inferred, not read to the end), **U** unknown (an OQ). Thi
 | ROSHTOFFE content | Shown when the island is discovered (next row). Climate c = island property 7 (`+0xc0`). Mask M[c] comes from jump table `0x10009904`: 0 POLAR `0x18000`, 1 TUNDRA `0xf009`, 2 NORD `0xf949`, 3 PRAERIE `0xf06b`, 4 DSCHUNGEL `0xf6b9`, 5 STEPPE and 6 WUESTE `0xf04d`, any other 0. These are the values of `SimConfig::raw_climate_mask` (AnnoScene `0x10009010`). For i = 0..11 ascending, while fewer than 4 slots are filled, segment i is taken when bit i of M[c] is set, bit i is not in `0xf009`, and i ≠ 7. The slot gets segment i (`STATUSBAR_ROSHTOFFE` id 40 + i; the byte passed is i + `0x38`, which `0x10063ee9` takes back off). | `0x10009870`-`0x100098f6` | D |
 | Segments per climate | POLAR none; TUNDRA none; NORD 6, 8, 11; PRAERIE 1, 5, 6; DSCHUNGEL 4, 5, 9, 10; STEPPE and WUESTE 2, 6. With none, count 0 hides the row after 2 s. Slots past the count are hidden. A slot whose segment and bar are unchanged is not redrawn (`0x10063eba`-`0x10063ecc`). | as above | D |
 | The GOG shot | GOG `hud_idle_running` shows exactly 6, 8, 11 in slots 0-2: a NORD island. | 2.3 | D + P |
-| `STATUSBAR_BALKEN` | The bar is 100 when bit i is set in island property 11 (`+0xac`), else 50 (`0x100098cb`-`0x100098da`). Property 11 is set at map placement to `0xF009 \| raw marks` (`annoscene.md` §5 step 10). Drawn by `0x10065890`: the bar canvas offset is H − ⌊H · v / 100⌋ + 1, with H = the icon texture's height. So 100 is about the full 29 rows and 50 about half. B's pixel check fixes the exact rows. Reading "half bar = possible in the climate but not fertile here" is L (OQ-702). | `0x10065890` | D / L |
+| `STATUSBAR_BALKEN` | The bar is 100 when bit i is set in island property 11 (`+0xac`), else 50 (`0x100098cb`-`0x100098da`). Property 11 is set at map placement to `0xF009` OR the raw marks (`annoscene.md` §5 step 10). Drawn by `0x10065890`: the bar canvas offset is H − ⌊H · v / 100⌋ + 1, with H = the icon texture's height. So 100 is about the full 29 rows and 50 about half. B's pixel check fixes the exact rows. Reading "half bar = possible in the climate but not fertile here" is L (OQ-702). | `0x10065890` | D / L |
 | Exploration flag | Island property `0xe` (island slot `+0xc4(0xe)` = `0x10087c30`, word `+0xa6`) & (1 << local player number) (`0x10009797`-`0x100097c2`). When the bit is clear, the row hides at once. Only the fertility row tests it; the counters never do. In the rebuild this word is `Island::players_present` (MAP-2: written at founding registration and from the `DISCOVER` record), **not** `Player::discovery` (player property 7). The original also writes `+0xa6` in the reveal (island slot `+0x130` = `0x10080c10`, `ship-founding.md`). Which events call that reveal besides founding, for example a ship passing by, is open (OQ-701). | | D / U |
 
 **The History Edition timeline against the code** (`HE_UI_1-analysis.md` §(c), crops in
@@ -890,6 +894,24 @@ pixels, **L** likely (inferred, not read to the end), **U** unknown (an OQ). Thi
 
 The rebuild's stage B needs a source the sim does not hold yet: island property 11 (the bars, OQ-702).
 The discovery word (`players_present`) exists, but is written only at founding and on load (OQ-701).
+
+**The rebuild (UI-STATUS-1 B, 2026-11-17; the owner chose the original on all three points,
+OQ-703).** `src/app` `status_bar.hpp` holds the rule as a pure function (`pick_status`,
+`fertility_segments`, `FertilityRow`; tests `status_bar_test.cpp`); the viewer
+(`Viewer::update_status_bar`) feeds it every frame.
+
+| Part | Rebuild | Note |
+|---|---|---|
+| The point | The tile `pick_point` (the opening's projection) gives under the pointer, from the last drawn frame, every frame | Kept while the pointer is on chrome or outside the window (OQ-700) |
+| Island | The first island whose tile rectangle holds the tile (`TerritoryIsland`) | The original's 8 x 8 chunk map names the same island for every 8-aligned template |
+| City | The tile owner of `TerritoryIsland::owner`; own: `CityCounters::own`; known: `TerritoryCity::known_by` (`City::player_mask`) | A fixed map's developer start owns its whole island rectangle, sea included |
+| Discovery | `TerritoryIsland::discovered_by` = `Island::players_present` joined with the island's city owners | The original's registration always sets the owner's bit; a fixed map's developer start does not fill the word (`docs/sim/city-creation.md` E9) |
+| Land | `TerritoryIsland::land`: the vertex (x, y) height byte > 0 (`sim::VertexGrid`) | The second test (island slot `+0x64`) is not modelled; an island without a height column is land everywhere |
+| Segments | `SimConfig::links.raw_climate_mask` by `Island::climate`, without `0xf009` and 7, at most the hud.txt slots | hud.txt `rosh_0..3` (x 547 + 40k), `tex_id` 40 + the segment |
+| Hide delay | 2000 ms of the window's clock (`std::chrono::steady_clock`) | Never sim time |
+| Bars | Not drawn: a named placeholder (hud.txt comment, masks.txt `balken_0..3`) | OQ-702 |
+| Gold | Unchanged: drawn once the player has a city (`PlaySnapshot::money` is filled only then) | The original draws gold always; not changed here |
+| Facts | `hud.counters` (`gold`, `residents`, `materials+residents`), `hud.counters.city`, `hud.status.tile`, `hud.status.island` (slot, `sea`, `none`), `hud.status.city`, `hud.fertility` (`6,8,11` or `hidden`) | `viewer_wiring_ui_status_island` |
 
 ## 6. `data/ui/` layout format
 

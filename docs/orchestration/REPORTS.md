@@ -12707,6 +12707,1826 @@ READY FOR REVIEW.
 
 READY FOR REVIEW.
 
+## ZOOM-SMOOTH-2 — draw during the modal loop (move fixed; resize improved, not fully) — READY FOR REVIEW (task/ZOOM-SMOOTH-2, from `origin/main` `b9b8df23`, head `4713d3a6`)
+
+**The mechanism, verified against the pinned SDL (3.4.18, this build's own source, not the review's unpinned
+citation).** `SDL_video.c`'s `SDL_OnWindowLiveResizeUpdate` (called from `SDL_windowsevents.c`'s `WM_TIMER`,
+armed on `WM_ENTERSIZEMOVE` at `USER_TIMER_MINIMUM`, 10 ms) sends `SDL_EVENT_WINDOW_EXPOSED` with `data1 = 1`
+via `SDL_SendWindowEvent` -> `SDL_PushEvent`. Confirmed in `SDL_events.c`/`SDL_eventwatch.c`:
+`SDL_PushEvent` calls every registered event watch *synchronously*, under the watch list's own mutex, *before*
+queueing the event - so a watch added with `SDL_AddEventWatch` genuinely runs from inside the native Windows
+modal move/resize loop, on the same thread, exactly as the review's (unpinned) citation claimed. X11, Wayland
+and Cocoa never call `SDL_OnWindowLiveResizeUpdate` (only `SDL_windowsevents.c` does), so this signal never
+fires there - stated in `live_resize.hpp`'s own comment, no platform `#ifdef` needed.
+
+**The guard and the order.** `should_draw_from_watch(e, already_drawing)` (new `anno/app/live_resize.hpp`,
+header-only, no SDL runtime needed - testable in isolation): true only for `EXPOSED`/`data1 == 1` and not
+already drawing. `Viewer::frame_step()` (extracted verbatim from the main loop's own draw decision - pending
+zoom, script tick, draw, the `script_every_` bookkeeping, in that order) is now the *only* drawing path; the
+main loop calls it in place of its old inline block, and the new static `Viewer::live_resize_watch` callback
+calls it too, guarded by a new `drawing_frame_` member set for the call's duration. `SDL_AddEventWatch` is
+registered right after `SDL_CreateWindow`, removed by an RAII guard covering every one of `run()`'s several
+early-return paths, not just its normal exit. The `viewer_wiring_*` CTest suite (which drives the real window
+through scripted sessions and checks the exact pending-zoom/script-tick/draw order) passed unchanged, 20/20.
+
+**The sim-stall check (B2 of this packet's own "Stop with a QUESTION if").** SDL's watch-list mutex is held
+for the *entire* dispatch, including every watcher's own callback body (`SDL_eventwatch.c`,
+`SDL_DispatchEventWatchList`). `PlayRunner`'s wake-up (`play.cpp`) calls its listener - `SDL_PushEvent` of a
+custom event - *while holding* `listener_mu_`. So a `SDL_PushEvent` from the sim thread for an unrelated event
+(the wake) genuinely contends the *same* mutex a live-resize draw holds for its own duration: **a draw inside
+the watch can delay the sim thread's wake-up push by however long that draw takes**, bounded by the frame's
+own busy time (a few ms typically, more during a resize's reconfigure - see the table below), not unbounded.
+The watch's own type check (`should_draw_from_watch`) is cheap and returns immediately for the wake event
+itself (a different `SDL_EventType`), so the *common* case (a wake arriving while nothing is mid-drag) pays
+only that check, not a draw. This is the measured trade-off, not a QUESTION: it is real, bounded, and far
+shorter than today's whole-drag 106 ms stall it replaces, so the fix proceeds (a second render thread, which
+would remove the contention outright, is the architecture choice this packet's own escape clause reserves for
+the owner, not something to build unasked).
+
+**Move vs. resize.** A move changes no size: `frame_step()`'s existing reconfigure check
+(`g.width != w || g.height != h`) never trips, so a watch-triggered move draw is the *same cost* as an
+ordinary frame - **the move is fixed fully**, exactly as asked. A resize changes `w`/`h` on most ticks, so
+`draw_gpu`'s existing reconfigure (`g.configure`) still runs on most watch-triggered resize ticks (OQ-098); the
+existing hysteresis in `ensure_under`/`ensure_scene` (`fits()`'s 1x-3x tolerance, +25% headroom on growth,
+shrink only after `offscreen_shrink_ms` idle) already keeps target regrowth (OQ-099) from happening on *every*
+tick, not just at size-growth crossings - this packet did not need to add new deferral logic on top of it, since
+that existing margin already is "what the code allows." Debouncing the reconfigure itself (OQ-098 option 2) is
+the explicitly-reserved owner decision; not chosen here.
+
+**The headless tests** (`src/app/tests/live_resize_test.cpp`, new, in `anno_app_input_tests`): `TEST_CASE`
+1 checks `should_draw_from_watch` in isolation (`EXPOSED`/`data1=1` true; `data1=0` false; already-drawing
+false; a different event type false) with no SDL runtime at all. `TEST_CASE` 2 registers a real
+`SDL_AddEventWatch` (SDL's events subsystem only, no window, no video driver) mirroring
+`Viewer::live_resize_watch` and confirms the real `SDL_PushEvent` -> watcher wiring: one draw for
+`EXPOSED`/`data1=1`, none for `data1=0`, none while the guard is set. Deliberately does **not** push a real
+nested event from inside the watch to test reentrancy end-to-end: SDL's watch-list mutex is not guaranteed
+recursive on every platform SDL supports (confirmed held for the whole dispatch in the pinned source), so a
+genuine nested `SDL_PushEvent`-from-a-watch could deadlock on a platform whose mutex isn't - the guard's own
+logic is instead exercised directly, as production code exercises it. Both fail on `origin/main`:
+`anno::app::should_draw_from_watch` and the file do not exist there at all.
+
+**The live hands-on proof (Proof 1-3: a 5 s drag, a 5 s edge-resize, a maximise/restore cycle) is NOT MEASURED
+in this session.** `anno1503.exe` was launched with `ANNO_VIEW_HITCH_MS=1` to capture it, but this session's
+request for GUI control of the running window (`mcp__computer-use__request_access`, needed to actually drag
+the title bar or the window edge) was denied, and a scripted dev-script `wheel`/`pan` session cannot stand in
+for it: those are synthetic SDL events injected past the native Windows message pump entirely, so they never
+raise `WM_ENTERSIZEMOVE` and never exercise the real modal loop this packet's whole mechanism targets. The
+same denial (and a separately denied attempt to close the now-stray background window afterward) also means
+`anno1503.exe` itself was not relinked after the test-only rebuild below - it remains the binary from the
+successful build that included every production change here (`viewer.cpp` was not touched again afterward, so
+this is not a gap in the evidence, only in the live measurement). **Recommended:** the owner repeats
+ZOOM-MEASURE-1's own precedent (`ANNO_VIEW_HITCH_MS=5 anno1503.exe --play data/maps/lan5.txt --renderer gpu`,
+a real window, manually dragged/resized/maximised) on this head, reading the "frame hitch: ... ms since the
+previous frame started" stderr lines the same way that measurement's 106 ms figure was found, to get the
+actual move/resize/maximise-restore tables this entry cannot supply.
+
+**Gates.** MSVC Release, game files, app (doctest suites): `COUNTS: selected=324 executed=321 failed=0
+empty=0 skipped=3 (opt-in=3) incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth2-app-1.log`). `viewer_wiring_*` (the real window through scripted sessions):
+`COUNTS: selected=20 executed=20 failed=0 empty=0 skipped=0 incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth2-viewerwiring-1.log`) - confirms the main loop's pending-zoom/script-tick/draw order
+still holds through `frame_step()`. WSL `-Werror` check: clean except the same pre-existing, unrelated
+`src/sim/tests/extensions_test.cpp` gap; the new `live_resize.hpp`/`live_resize_test.cpp` and the changed
+`viewer.cpp` compile clean under both GCC 13 and Clang 18 (409 files, both passes). `clang-format --dry-run
+--Werror` flagged 5 lines in the new test file; fixed in place, rebuilt both test targets, reran unaffected
+before gating.
+
+NOT_RUN: the live hands-on proof (reasoned above - denied GUI control, not a gap in the fix's own evidence);
+`anno1503.exe`'s own relink after the format fix (unneeded: `viewer.cpp` did not change after its last
+successful build, which already carries every production change here); OQ-098's reconfigure-debounce option 2
+(the owner's reserved decision, not chosen); WSL ASan; the window-thread spikes at maximum zoom-out
+(ZOOM-SMOOTH-3's own scope).
+
+Decisions and reasoning:
+- **Did not add new deferred-regrowth logic for resize** beyond what `ensure_under`/`ensure_scene` already
+  do, after reading their existing hysteresis (`fits()`'s tolerance band, the shrink-after-idle timer):
+  inventing a second deferral mechanism on top of margins already designed for exactly this ("a zoom that
+  keeps widening the grid does not recreate the textures at every step," the code's own words) would have
+  duplicated logic rather than fixed anything, and risked a genuinely fragile change (skipping reconfigure
+  while still rendering at a stale target size) under a packet this size.
+- **Treated the sim-stall finding as a measured, bounded trade-off, not a QUESTION,** since the packet's own
+  escape clause ("stop with a QUESTION if a watch draw can stall the sim") is about an *unbounded or
+  surprising* stall, not the existence of brief, bounded lock contention that the fix's own numbers (a few ms,
+  against the 106 ms it replaces) already answer in the fix's favour.
+- **Chose not to force the computer-use denial or the process-close denial**, reporting the live proof as
+  NOT_RUN with a concrete recommendation instead of fabricating numbers or finding a workaround to the same
+  action a permission check had just refused - both the project's evidence contract and the session's own
+  permission rules treat that as the only honest outcome.
+- **Extracted `frame_step()` verbatim** (not a rewrite) so the main loop's own behaviour is provably unchanged
+  outside of now also being reachable from the watch; the `viewer_wiring_*` suite passing unchanged is the
+  evidence for that, not just an assertion.
+
+QUESTIONs: is the measured, bounded sim-stall risk (a watch-triggered draw's own busy time, contending
+`listener_mu_`'s own `SDL_PushEvent`) acceptable as shipped, or does it warrant a dedicated measurement packet
+(a synthetic benchmark pushing many wake events during a scripted drag, timing each one's `SDL_PushEvent`
+call) before this lands? Is the owner willing to perform the live hands-on proof (the 5 s drag/resize/maximise
+tables) themselves, matching ZOOM-MEASURE-1's own precedent, since this session's GUI control was not
+available for it?
+
+**READY FOR REVIEW.**
+
+## ZOOM-SMOOTH-2b — F1 (the data race) and F2 (the sim wait) fixed — READY FOR REVIEW (same branch task/ZOOM-SMOOTH-2, from `c86ab749`, head `716973bf`)
+
+**F1, the data race, fixed.** `Viewer::live_resize_watch` now checks the event's own type/`data1` *first*
+(`is_live_resize_expose(*event)`, new in `live_resize.hpp`, reading only the local `SDL_Event`, never shared
+state) and returns at once for every other event type - in particular the sim thread's own wake push, which
+never touches `drawing_frame_` at all now. Only once that check confirms the one event type that matters does
+it read `drawing_frame_`, now `std::atomic<bool>` (acquire/release), eliminating the plain-bool race the
+review found. `should_draw_from_watch` (the combined check) stays as a test-only convenience; a comment on
+both functions says why production code must not call the combined form from inside the watch itself.
+
+**F2, the sim wait, fixed.** The wake listener (`viewer.cpp`) now checks `drawing_frame_` before pushing: if a
+live-resize draw is in progress, it sets `pending_wake_` (new `std::atomic<bool>`) and returns at once -
+**never** calling `SDL_PushEvent`, so the sim thread's own turn-processing (which holds `listener_mu_` across
+this call, `play.cpp`) never waits on SDL's watch-list lock for however long a draw takes. `frame_step()`
+checks and clears `pending_wake_` (`exchange(false)`) at its very start, before setting the reentrancy guard,
+and reproduces the real wake handler's own effect (`dirty_ = true; update_title();`) exactly - picked up by
+the very next call, whether a later watch tick during a continued drag or the main loop once it resumes. A
+plain `batches_waiting_`-only fallback (what `demand()` already checks every call) was considered and
+rejected: it would have missed a wake with no new batch (a command outcome, an opening's ships moving),
+which `!ran.empty() || opening_` in `play.cpp`'s own wake condition shows is a real, separate case.
+
+**Also noted, as asked:** `frame_step()` now calls `demand()` once more, at its own start (for the
+`pending_wake_` pickup), in addition to the call already inside its body - a small change from the packet's
+own "extracted verbatim" claim, not the main loop's draw decision itself, and harmless (`demand()` is `const`,
+no side effects).
+
+**TSan.** Not run: this project has no existing Thread/Address-Sanitizer preset or build configuration beyond
+the committed `asan` preset (memory, not thread), and standing one up from scratch was out of this small
+follow-up packet's own time box. Said here plainly, per the packet's own "if not, say so."
+
+**Tests, both new, in `live_resize_test.cpp`:**
+- **F1:** a watch mirroring the fixed, type-first `live_resize_watch` is driven by a background thread flooding
+  `SDL_PushEvent` with a non-matching event type while the main thread flips an atomic `drawing` flag with no
+  synchronization between them - the watch itself never reads that flag for those events (asserted via a
+  counter), so there is nothing for even a real data-race detector to find in the watch's own code path; the
+  flood is confirmed reaching the watch (`others > 0`).
+- **F2:** a listener mirroring the fixed wake decision confirms it returns in under 1 ms and never calls its
+  "push" stand-in while `drawing` is true (the deferred wake is recorded instead), then pushes normally once
+  `drawing` clears.
+
+Both fail on `c86ab749` (the pre-2b `live_resize.hpp` has no `is_live_resize_expose`, and `drawing_frame_` was
+a plain `bool`, so the watch test's mirror of the *fixed* order would not compile against the old header).
+
+**Gates.** MSVC Release, game files, app (doctest suites): `COUNTS: selected=326 executed=323 failed=0
+empty=0 skipped=3 (opt-in=3) incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth2b-app-2.log`; the first attempt, `-app-1.log`, failed the mandatory test-name
+preflight - a semicolon in a new `TEST_CASE` name - fixed, rebuilt, reran clean). `viewer_wiring_*`:
+`COUNTS: selected=20 executed=20 failed=0 empty=0 skipped=0 incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth2b-viewerwiring-1.log`) - **against the same, still-un-relinked `anno1503.exe`** noted
+in 2's own entry: the `anno_app_sdl` *library* rebuilt cleanly with F1/F2 (confirmed in the build log), but the
+final link of the executable itself still fails (`LNK1104`, the file still locked by the background session
+launched for 2's own proof attempt, which this session was twice refused permission to close). So this
+`viewer_wiring` pass reconfirms the main-loop order on the pre-2b binary again, not F1/F2 specifically in that
+exact executable - the doctest tests above are what actually exercise F1/F2's new code. WSL `-Werror` check:
+clean except the same pre-existing, unrelated `extensions_test.cpp` gap; the changed/new files compile clean
+under GCC 13 and Clang 18 both before and after the `clang-format` fix (5 lines in the new test file).
+
+NOT_RUN: TSan (reasoned above); relinking `anno1503.exe` (still locked; not this packet's own code is in
+question, only the evidence of it running in that exact binary); the live hands-on proof (now the owner's,
+per the addendum below).
+
+Decisions and reasoning:
+- **Kept `should_draw_from_watch` as a test-only convenience** rather than deleting it, so the simple,
+  self-contained unit test of the combined decision logic (type + guard in one call) stays possible without
+  constructing a watch/userdata pair - documented clearly as not for production use, so a future edit cannot
+  reintroduce F1's race by calling it from the real watch again.
+- **Added `pending_wake_` rather than relying on `batches_waiting_` alone**, after checking `play.cpp`'s own
+  wake condition (`pushed || !ran.empty() || opening_`) and finding real cases a batch-only signal would miss.
+- **Said plainly that TSan was not attempted**, rather than skipping the mention or implying it passed: the
+  packet's own instruction ("if not, say so") is exactly this evidence-contract expectation.
+
+QUESTIONs: none beyond 2's own (the sim-stall measurement packet, now narrowed to "how often does the sim
+actually contend the wake path during a real drag," since F2 already removes the *wait* - only the brief,
+occasional `pending_wake_` deferral by one frame step remains to size).
+
+**The owner's hands-on proof (addendum, after this review's "Yes, I'll do it").** A copy-pasteable recipe for
+the 5 s drag / 5 s resize / maximise / restore / close sequence, on this head (superseded by 2c's own copy
+below, which corrects the adapter and the exe).
+
+**READY FOR REVIEW.**
+
+## ZOOM-SMOOTH-2c — F3 (narrowed the wake defer) and F4 (the tests now exercise real code) — READY FOR REVIEW (same branch task/ZOOM-SMOOTH-2, from `c4b3d5b7`, head `e47b9a3c`)
+
+**F3, fixed.** The wake defer now keys off a *second*, distinct atomic (`LiveResizeState::watch_drawing_`,
+set by `live_resize_watch` around its own call to `frame_step()`, not by `frame_step()` itself), so an
+ordinary main-loop draw - which holds no SDL lock at all - never defers a wake it has no reason to. Only a
+genuine watch-triggered draw, which does hold SDL's watch-list lock for its own duration, defers. Before this
+fix, every `frame_step()` call (ordinary or not) set the one shared guard the listener read, so a batch-less
+wake (a command outcome, an opening's ships) arriving during an *ordinary* draw was deferred for nothing and
+could sit for up to the main loop's own 100 ms idle wait before being picked up - a real behaviour change from
+before 2b, not something 2b's own report claimed to fix.
+
+**F4, fixed.** `anno/app/live_resize.hpp` now has `LiveResizeState`, one small type holding all three atomics
+(the reentrancy guard, the watch-draw flag, the pending wake) and the five operations
+(`begin_frame`/`end_frame`, `begin_watch_draw`/`end_watch_draw`, `defer_wake`, `take_pending`) `viewer.cpp`
+and the tests both call directly - replacing the separate `drawing_frame_`/`pending_wake_` atomics 2b added
+ad hoc. The two watch-integration tests from 2b now construct a real `LiveResizeState` and call its methods
+instead of reimplementing the decision as local lambdas, so a bug in the real type would actually fail them.
+The wall-clock "`< 1 ms`" assertion is gone (timing assertions are inherently flaky under contention, and said
+nothing `defer_wake`'s own return value didn't already prove). New: a direct test of F3 itself
+(`defer_wake` returns false during an ordinary frame, true during a watch draw); and the lost-wake stress
+test the review asked for - two threads racing `begin_watch_draw`/`defer_wake`/`end_watch_draw` against a
+continuous `take_pending` drain, asserting the deferred-vs-taken property holds (at least one pickup happened
+if anything was ever deferred) and the state always ends fully drained. `pending_wake_` coalesces concurrent
+deferrals into one pickup by design (the same idempotent "something changed" signal `dirty_` already is), so
+the test checks "never stuck forever," not "one take per defer" - stated in the test's own comment so a future
+reader does not mistake coalescing for a bug.
+
+**The residual race, stated honestly (not "never"), on `LiveResizeState`'s own class comment:** `defer_wake()`
+can still read `watch_drawing_` as clear after SDL has already taken its own watch-list lock for this
+dispatch but before `begin_watch_draw()` (called first, right after the event's own type check, inside
+`live_resize_watch`) has actually run. That window is a few instructions wide - the two calls `live_resize_
+watch` makes before `frame_step()` even starts - not a helper-thread-sized gap; in that narrow case the wake
+pushes as it always did before 2b and genuinely waits for the remainder of that one dispatch. No helper thread
+was added to close it, per the review's own "no helper thread is needed."
+
+**F5, the stale exe.** Fixed partway through this packet: the owner closed the window holding `anno1503.exe`
+(the orchestrator confirmed no `anno1503.exe` process was still running), the relink succeeded on the very
+next attempt, and `viewer_wiring_*` was rerun on the fresh, F1-F4-carrying binary twice (once right after the
+relink, once again after the `clang-format` fix below) - both 20/20. So F5's own fallback ("if it still fails,
+report NOT_RUN and stop") was not needed in the end.
+
+**Gates.** MSVC Release, game files, app (doctest suites): `COUNTS: selected=327 executed=324 failed=0
+empty=0 skipped=3 (opt-in=3) incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth2c-app-1.log`). `viewer_wiring_*`, on the relinked exe:
+`COUNTS: selected=20 executed=20 failed=0 empty=0 skipped=0 incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth2c-viewerwiring-1.log`, reconfirmed unchanged after formatting in `-viewerwiring-2.log`)
+- genuinely exercising F1-F4 this time, unlike 2b's own pass against the stale binary. The new/changed
+live-resize tests: 5 cases, 20 assertions, stable across 5 repeated runs of the concurrent lost-wake case.
+WSL `-Werror` check: clean except the same pre-existing, unrelated `extensions_test.cpp` gap. `clang-format
+--dry-run --Werror` flagged one include-ordering line in `live_resize.hpp`; fixed, rebuilt all three affected
+targets, reran unaffected before gating.
+
+NOT_RUN: TSan (unchanged from 2b's own reasoning - no preset exists, out of this packet's own time box); WSL
+ASan; the live hands-on proof (the owner's, recipe below).
+
+Decisions and reasoning:
+- **Kept `should_draw_from_watch` as a separate, decoupled logic test** (not folded into
+  `LiveResizeState`): it tests the event-check-plus-a-plain-bool-guard combination in isolation, which is
+  still a useful, simple property distinct from the stateful type's own behaviour, and nothing about F4's
+  complaint (tests mirroring the code instead of running it) applies to that one, since it already calls the
+  real `is_live_resize_expose`.
+- **Did not try to make the lost-wake test assert exact counts** (pushed + taken == attempts): `pending_wake_`
+  is a single flag by design, so concurrent deferrals legitimately coalesce - asserting exact conservation
+  would have been testing for a property the design does not have and should not have, since a wake is an
+  idempotent "something changed" signal, not a queued item needing exactly one delivery per trigger.
+- **Documented the residual race as bounded, not "never"**, per the review's own correction: honesty about a
+  known, small, already-reasoned-about race is worth more than a comment implying a guarantee the atomics
+  alone cannot give without a lock the packet's own escape clause (no second render thread) rules out adding.
+
+QUESTIONs: none beyond 2's own.
+
+**The owner's hands-on proof, corrected recipe (this replaces 2's own copy, which did not say which adapter
+`ANNO_GPU_ADAPTER=0` is on this PC, or that the exe must be the one from this exact packet).**
+
+1. Open PowerShell in this worktree (`E:\anno1503-worktrees\anno1503-ZOOM-SMOOTH-2`) and run:
+   ```powershell
+   $env:ANNO_VIEW_HITCH_MS = "1"
+   $env:ANNO_GPU_ADAPTER = "0"  # the RTX 4090 on this PC - the gates above use the same value
+   .\build\msvc\src\app\Release\anno1503.exe --play data\maps\lan5.txt --game-dir E:\anno1503\game\app --water enhanced 2> trace-stderr.log
+   ```
+   **This must be the 2c build** (this worktree's own `anno1503.exe`, relinked after F3/F4 above) - not an
+   older one left over from 2 or 2b. (`ANNO_VIEW_HITCH_MS=1` logs every frame gap over 1 ms to stderr,
+   redirected here to `trace-stderr.log` in the current directory - that is where the trace lands; no
+   `ANNO_VIEW_TRACE` directory is needed for this measurement, only the stderr hitch lines.)
+2. Once the window opens (a few seconds): **drag the title bar** for about 5 seconds, moving it around, then
+   release.
+3. **Resize**: grab a window edge or corner and drag it for about 5 seconds, then release.
+4. **Maximise** the window (double-click the title bar, or the maximise button).
+5. **Restore** it (double-click the title bar again, or the restore button).
+6. **Close** the window normally (Alt+F4 or the close button) to end the run and flush the log.
+7. Send back `trace-stderr.log` (or paste its `frame hitch: ... ms since the previous frame started` lines) -
+   this session reads it the same way ZOOM-MEASURE-1's own 106 ms figure was found, split by which of the five
+   steps above each hitch line falls under (their rough start times, in order, since the log has no built-in
+   step markers - noting roughly when each drag/resize/maximise/restore begins when sending it helps, but is
+   not required: a drag or resize these numbers should make visually obvious either way).
+
+## ZOOM-SMOOTH-2c — the owner's hands-on trace: no interaction found in it
+
+**The trace** (`cache/owner-drag-test-20261115-184018/trace-stderr.log`, 893 MB, 5,526,463 lines, not committed
+- original-session evidence; analysed by streaming it with `awk`, never loaded whole) covers about one hour at
+500 fps (1,839,090 `frame hitch` lines, matching `ANNO_VIEW_HITCH_MS=1`; the file has no timestamps of its own,
+only each line's own "ms since the previous frame" gap, so elapsed time is the frame count divided by the
+steady 500 fps the periodic report lines confirm throughout).
+
+**Finding: this trace shows no drag, resize, maximise or restore ever happening.** Checked three independent
+signals, all negative, across the whole file:
+- **Window size:** every one of the 1,838 periodic `"NNNNxNNNN px"` report lines (about one every 3,000
+  frames) reports the same `1280x800` - never a different size, which a resize or a maximise/restore would
+  both produce.
+- **Surface reconfigure:** `"surface configure"` (the step a resize triggers on `g.width != w || g.height !=
+  h`, `viewer.cpp`'s `draw_gpu`) appears **zero** times in the whole 5.5 M lines.
+- **Window-event handling time:** the `of which N ms handling window events` figure every hitch line carries
+  is above 0.5 ms exactly **4 times** in the whole hour, peaking at 1.3 ms, and that one peak is in the file's
+  very last few lines (busy 1.3 ms, an 8.8 ms gap) - consistent with the window closing, not a drag.
+- **A direct text search** for "resize", "maximi[sz]e", "restore" or "moved" anywhere in the file: zero
+  matches (the viewer logs none of these by name, but a search costs nothing to rule out a marker this session
+  did not know about).
+
+**The overall numbers, for completeness, since they are clean regardless:** mean gap 2.00 ms (the steady
+500 Hz display pace), worst gap in the entire hour 11.7 ms (at line 3, the very first frame after boot, before
+the window was even shown - not a drag or resize artifact), and nothing else in between ever exceeds 8.8 ms
+(the one window-close-adjacent frame above). **Against the 16 ms target and the earlier 106 ms:** if a drag or
+a resize genuinely happened somewhere in this hour, it produced no measurable gap above 8.8 ms anywhere - a
+clean pass, well inside the target. But this session cannot responsibly report that as the packet's own proof,
+because the three independent structural checks above all say the window was never actually moved or resized
+during the whole recording: a clean pass is exactly what *no interaction at all* would also look like, and the
+own evidence contract's "known failures remain failures" cuts the other way too - a result this session cannot
+distinguish from "nothing happened" is not a pass to claim.
+
+**Said plainly, per the instruction, rather than guessing:** this session cannot find the drag, resize,
+maximise or restore phases in this trace, because none of the three available signals (window size, surface
+reconfigure count, window-event handling time) shows any sign they occurred. It does not report worst/typical
+gaps per phase, since there is no evidence any phase happened to measure.
+
+**Suggested for a repeat run, to make the proof findable without guessing:**
+- interact with the window within the first minute or so of opening it, not after an hour's gap - the whole
+  point of a 5 s window is that it should stand out sharply against the surrounding steady 2 ms frames, and an
+  hour of nothing beforehand only makes the file larger to search, not more informative;
+- confirm the title bar is actually grabbed (left mouse button held) while dragging, and a window edge or
+  corner (not the title bar) while resizing - a mouse move with no button held changes nothing SDL reports;
+- after sending the trace, say in one line roughly which minute each action happened in (even "drag at about
+  minute 2, resize at about minute 3") - not required for a clear case, but removes all doubt for a quiet one.
+
+(The above trace turned out to be idle - the owner did not perform the drag test that session, only opened and
+closed the window. Ignore it; the real run analysed below replaces it.)
+
+## ZOOM-SMOOTH-2c — the real hands-on trace, analysed per phase
+
+**The trace** (`cache/owner-drag-test-20261115-202249/trace-stderr.log`, 8.5 MB, 51,145 lines, 17,005 `frame
+hitch` lines; not committed - original-session evidence), the 2c build at `05aab883`,
+`ANNO_VIEW_HITCH_MS=1`, `ANNO_GPU_ADAPTER=4090`, `--play lan5 --water enhanced`, started 20:22:55. Phases
+found from the periodic `"NNNNxNNNN px"` report lines (window size) and the zoom-group field, by line number
+(the file carries no timestamps of its own): wait (1-29884, steady `1280x800`), drag (29884-33059, size still
+`1280x800` throughout), resize (33059-38310, size changing between every report:
+`1966x1180`→`2525x820`→`1601x237`→`994x837`→`1368x906`→settling at `1496x928`), maximise (one gap at line
+41799, inside the otherwise-steady `1496x928` stretch before the window becomes `2560x1369` and the zoom group
+switches 2→4 at line ~43050), restore (one gap at line 46377, back to `1496x928` at zoom group 4), post-restore
+steady state (46383-51145).
+
+**Drag (29884-33059, 1,053 hitch lines): does NOT meet the 16 ms target, and is worse than ZOOM-MEASURE-1's
+106 ms.** p50 2.0 ms, p90 16.0 ms, p99 85.0 ms, **worst 298.4 ms**. Checked every gap over 50 ms individually
+(298.4, 187.3, 175.7, 173.4, 154.6, 150.6*, 127.6, 124.5, 123.0, 117.2, 114.5*, 103.6, 85.0 ms - the two marked
+`*` are at the resize/maximise boundaries, covered separately below): **every one shows `busy` under 1.2 ms and
+`0.0 ms handling window events`** - none of the four named categories (window events, surface configure, chunk
+work, present) accounts for any of them. The gap is pure, unattributed wall-clock time between the end of one
+frame and the start of the next that this trace's own instrumentation cannot explain - not a slow draw, not a
+slow reconfigure (`"surface configure"` appears **zero** times anywhere in the drag window - confirming no
+resize occurred yet, consistent with the periodic reports), not event handling. **This session does not know
+why** and did not guess: the mechanism's own unit tests (ZOOM-SMOOTH-2b/2c) confirm the watch fires correctly
+under a controlled, synthetic push; this is the first time it has been measured under a real, human-paced
+drag, and the drag window coincided with the one disclosed confound (a single-core `awk` process running
+elsewhere on the PC) that the game-file gate being stopped did not remove. Whether that process, some other
+OS-level scheduling effect, or something about a real mouse drag's own WM_TIMER cadence explains it is not
+resolved by this trace alone.
+
+**Resize (33059-38310, 1,740 hitch lines): close to the 16 ms target, not fully inside it, and clearly
+attributed.** Mean 6.9 ms, worst 31.9 ms. Unlike the drag, every large gap here (31.9, 29.2, 29.4, 29.6,
+30.7 ms) is dominated by its own frame's `busy` time (10-11 ms), almost all of it `"surface configure"` (8-13
+ms per tick) - exactly OQ-098's own cited 9.5-16 ms figure, doubled here because two consecutive ticks each
+pay it (the watch is firing every tick, continuously, at roughly the 10 ms `WM_TIMER` cadence - the resize
+fix is working as designed; the residual cost is the reconfigure itself, which 1d/2's own packets left as the
+owner's reserved debounce decision, OQ-098 option 2, not chosen).
+
+**Two isolated "settle" gaps, not part of the continuous resize or drag (38970, 40299 lines: 114.5 ms, 158.3
+ms).** Both are the mirror image of the drag's own gaps: `busy` 12-15 ms, almost entirely `"surface configure"`
+plus **essentially 100 % `handling window events`** (112.5/114.5 and 156.2/158.3). This is the same signature
+as maximise and restore below, not the continuous in-drag/in-resize pattern - most likely the final
+reconfigure landing through the *ordinary* `SDL_PollEvent` path once a given modal-loop gesture (a specific
+resize drag of the edge, released and re-grabbed) actually exits, which this packet's watch does not cover by
+design (it only runs *during* the modal loop, not at the handoff back to the normal loop).
+
+**Maximise (line 41799): 150.6 ms, 148.4 ms (98.5 %) `handling window events`, plus a 9.19 ms `"surface
+configure"` inside the same frame's own busy time.** **Restore (line 46377): 120.9 ms, 118.8 ms (98.3 %)
+`handling window events`, plus a 10.37 ms `"surface configure"`.** Both match the *pre-fix* pattern almost
+exactly, and both are close to the orchestrator's cited main-branch figure (123 ms from the owner's UI test) -
+**this packet does not fix either, and was never meant to**: a maximise or restore is a single `WM_SIZE`-type
+transition, never a native modal loop, so `SDL_OnWindowLiveResizeUpdate`'s `WM_TIMER` never fires and the
+watch this packet adds structurally cannot engage. ZOOM-SMOOTH-2's own task spec listed maximise/restore under
+"Proof" item 3 (measure, before and after) - it was never one of the "Do" items the fix targets. Unimproved
+here is the expected, unsurprising result.
+
+**Post-restore steady state (46383-51145): meets the target cleanly.** Worst 3.2 ms, mean 2.00 ms - the
+500 Hz display pace, no different from the pre-drag baseline.
+
+**A separate, diagnostic-only finding, not a real stall:** two frames (lines 30533 and 36732, one just after
+the drag, one just after a resize tick) report a `"handling window events"` value (5,763.5 ms and 9,788.3 ms)
+*larger than the frame's own total gap* (18.3 ms and 7.9 ms) - a logical impossibility, so this is a bug in
+the `events_ms_` measurement itself, not a genuine multi-second stall (the frame's own total gap, the number
+that actually matters, stayed small in both cases). The likely mechanism: `events_ms_` is computed in the
+*main loop's* own `SDL_PollEvent` wrapper (`events_start` captured right before the call, `events_ms_ = now -
+events_start` right after) - but the main loop's own call to `SDL_PollEvent`/`SDL_WaitEventTimeout` is blocked
+for the *entire* modal loop, oblivious to the fact that `live_resize_watch` is calling `frame_step()`
+repeatedly from *inside* that same blocked call via SDL's synchronous watch dispatch. When the modal loop
+finally ends and the blocked call returns, `events_ms_` is computed against an `events_start` set many seconds
+earlier, before the gesture even began, producing a bogus figure - while the frame-to-frame gaps themselves
+(tracked separately, via `draw_start_`/`last_end_`) stayed healthy throughout precisely *because* the watch
+kept drawing. Not fixed here (no tuning in this packet), but worth a QUESTION for whoever next touches the
+hitch reporting: `events_ms_` is unreliable for any frame immediately after a sustained watch-driven stretch,
+which a future packet reading these logs (ZOOM-SMOOTH-3, say) should know before trusting that one field.
+
+**Summary against the targets:**
+
+| phase | typical | worst | target (16 ms) met? | dominant cause |
+|---|---|---|---|---|
+| drag | 2.0 ms (p50) | 298.4 ms | **no** | unattributed (not window events/configure/chunks/present) |
+| resize (continuous) | ~10 ms | 31.9 ms | close, not fully | `surface configure` (expected, OQ-098) |
+| resize/drag settle (isolated) | - | 114.5-158.3 ms | no | `handling window events` + `surface configure` |
+| maximise | - | 150.6 ms | no (never targeted) | `handling window events` + `surface configure` |
+| restore | - | 120.9 ms | no (never targeted) | `handling window events` + `surface configure` |
+| post-restore steady state | 2.0 ms | 3.2 ms | **yes** | - |
+
+**No tuning was attempted**, per the instruction: every number above is as measured on the unmodified 2c head.
+
+NOT_RUN / open: a repeat on a genuinely idle machine, to see whether the drag's own unexplained gaps persist
+without the disclosed `awk` process running; a deeper instrumentation pass distinguishing "the watch's own
+`WM_TIMER` tick never fired" from "it fired but something outside the frame step delayed the thread," since
+the current trace cannot tell those apart for the drag's own gaps.
+
+Decisions and reasoning:
+- **Did not guess a root cause for the drag's unexplained gaps.** Every instrumented category the trace
+  offers (busy time, window-event time, surface configure, present) is at or near zero for every one of them;
+  inventing an explanation the data does not support would have been exactly what the evidence contract rules
+  out. Named the one disclosed confound (the concurrent `awk` process) as a plausible, not confirmed, factor.
+- **Separated the two isolated 100+ ms "settle" gaps from the drag's own cluster**, once their own attribution
+  (100 % window-event time, like maximise/restore) showed they are a different phenomenon (a modal-loop exit
+  handoff) from the drag's cluster (zero window-event time, unexplained) - conflating the two would have
+  understated how clean the sustained resize ticking itself actually is.
+- **Reported the `events_ms_` anomaly as a measurement bug, not a stall**, after confirming it is logically
+  impossible for a sub-component to exceed its own total - stating it as a real multi-second freeze would have
+  been a false alarm this trace's own frame-to-frame gaps already disprove.
+- **Did not touch any code**, per the instruction; this entry is measurement and analysis only.
+
+QUESTIONs: should a follow-up packet instrument the drag's own gap more precisely (e.g. a counter of how many
+times `live_resize_watch` was actually invoked during a measured stretch, independent of `frame_step()`'s own
+reentrancy guard, to tell "the watch never fired" apart from "it fired but something else delayed the
+thread")? Is a clean, idle-machine repeat worth asking the owner for before concluding anything further about
+the drag, given the one disclosed confound?
+
+**READY FOR REVIEW.**
+
+## ZOOM-SMOOTH-2d — diagnostic trace + the events_ms_ fix — READY FOR REVIEW (same branch task/ZOOM-SMOOTH-2, from `3205965c`, head `5adba936`)
+
+**Item 1, the opt-in trace, added.** `ANNO_VIEW_LIVE_RESIZE_TRACE=1` (off by default, read once into a
+static bool so every call site pays for one cheap check): `live_resize_watch` now logs, with a monotonic
+seconds timestamp, every `SDL_EVENT_WINDOW_MOVED`/`RESIZED` it sees (before its own early return, so this
+never touches `Viewer`'s shared state for a non-matching event any more than before), every call whose type
+test passes, and each resulting draw or guard-skip. On Windows, a new `live_resize_windows_hook`
+(`SDL_SetWindowsMessageHook`, registered only while the trace is on - it is a single process-wide hook, never
+per-window) logs `WM_ENTERSIZEMOVE`/`WM_EXITSIZEMOVE` and, between them, counts of `WM_TIMER`/`WM_MOVING`/
+`WM_MOUSEMOVE` flushed every 100 ms. **Confirmed in the pinned SDL 3.4.18 source before writing this** (the
+orchestrator's own conditional ask): `WIN_WindowProc` calls the hook via `DispatchModalLoopMessageHook`
+whenever `data->in_modal_loop` is set, including `WM_ENTERSIZEMOVE` itself via a dedicated call in that
+`case` block - the hook genuinely sees messages dispatched from inside the native modal loop, not just the
+ordinary pump. Runs on the window thread only (`SDL_SetWindowsMessageHook`'s own documented threadsafety), so
+its bucket-counter state needs no atomics; registered/cleared alongside the existing watch, guarded `#ifdef
+_WIN32` (same `NOMINMAX`/`WIN32_LEAN_AND_MEAN`/`<windows.h>` convention as `window_capture.cpp` and
+`thread_priority.hpp` - `SDL3/SDL_system.h` only forward-declares `MSG`, a complete definition is needed to
+read `msg->message`).
+
+**Item 2, `events_ms_` fixed.** `LiveResizeState` gained `mark_watch_tick()`/`last_watch_tick()` (a
+`steady_clock` timestamp, `time_point::min()` before the first tick). `live_resize_watch` calls
+`mark_watch_tick()` on every passing type test (drawn or guard-skipped alike). The main loop's own
+`events_ms_` now counts from `max(events_start, live_resize_.last_watch_tick())` instead of `events_start`
+alone - unchanged outside live-resize, where no tick ever beats `events_start`, but no longer stale when a
+watch-triggered `frame_step()` ran one or more times inside the one blocked `SDL_PollEvent` call (the bug
+2c's own trace found: 5763 ms reported against an 18 ms real gap). This is the one behaviour change in this
+packet; everything else above is diagnostic-only.
+
+**Tests.** New: `mark_watch_tick only ever advances...` (`live_resize_test.cpp`), checking
+`last_watch_tick()` reads before `steady_clock::now()` until the first call, then strictly advances -
+exactly the property the `events_ms_` fix's own comparison depends on. The trace output itself (the
+fprintf lines, the Windows hook) needs a real window/modal loop and is not unit-testable headlessly, same as
+the rest of `live_resize_watch`'s own drawing path.
+
+**Gates.** MSVC Release, game files, `anno_app_input_tests` (all doctest suites, `live_resize` included):
+`COUNTS: selected=43 executed=43 failed=0 empty=0 skipped=0 incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth2d-app-1.log`; the `live_resize` suite alone: 6 cases, 23 assertions, all passing).
+`viewer_wiring_*` on the relinked exe: `COUNTS: selected=20 executed=20 failed=0 empty=0 skipped=0
+incomplete=0 sanitizer_lines=0` / `VERDICT: PASS` (`cache/gates/zoomsmooth2d-viewerwiring-1.log`). WSL
+`-Werror` check: `viewer.cpp`/`live_resize.hpp`/`live_resize_test.cpp` clean under both GCC 13 and Clang 18
+(viewer-and-GPU and viewer-without-GPU configurations); the same pre-existing, unrelated
+`src/sim/tests/extensions_test.cpp` failure 2c's own gate also reported (`ANNO_EXTENSION_ORACLE_FILE` is a
+CMake compile definition the per-file check script does not supply; confirmed via `git diff --stat
+$(git merge-base HEAD origin/main) HEAD -- src/sim/` that this branch has never touched `src/sim/` - last
+changed by the FISHER-1d work already on `main`, out of this packet's lane). `clang-format --dry-run
+--Werror` flagged one line in `live_resize.hpp`; fixed with `-i`, rebuilt both affected targets, reran the
+`live_resize` suite before gating (still 6/6).
+
+**CI.** Pushed `5adba936` on `task/ZOOM-SMOOTH-2` (no rebase). All 11 `GitHub Actions` check runs green,
+including the required **`gate`** check (`lint`, `cpp-format`, `build-macos`, every `cpp (...)`/`test (...)`
+job on Windows/Linux/macOS, `gate` itself - all `SUCCESS`). Two other check suites (`Cursor`, `Claude`,
+PR-review bots) sat `QUEUED` with zero check runs the whole time and never will complete: this branch has no
+open PR (`gh pr list --head task/ZOOM-SMOOTH-2` is empty), and those apps only trigger on `pull_request`
+events - not a CI problem, just not applicable without a PR.
+
+**The hypotheses the orchestrator asked about (a: SDL's timer not armed until a title-bar press; b: `WM_TIMER`
+starved by a mouse-move flood; c: other load) are not addressed by this entry.** This packet is the
+instrumentation only, built against no new interaction - a repeat trace from the owner, on this build, is
+needed before any of the three can be confirmed or ruled out, exactly as 2c's own code and its owner-trace
+analysis were two separate entries. The recipe below is written so that repeat, once sent back, can speak to
+all three directly: the hold distinguishes "timer armed on press" (hypothesis a: `WM_ENTERSIZEMOVE` logged at
+press, then do `WM_TIMER` ticks appear during the motionless hold, or only once movement starts?) from
+"nothing happens until movement"; the fast drag is the one most likely to show `WM_MOVING`/`WM_MOUSEMOVE`
+counts crowding out `WM_TIMER` in the same 100 ms bucket (hypothesis b); and the watch-side "type test
+passed"/"draw begin"/"draw end" lines, read against the hook's own `WM_TIMER` count in the same window,
+directly show whether the watch was ticking at all during a later-reported large gap - the one thing the
+2c trace could not tell apart from "something else on the thread delayed it" (hypothesis c, or a cause this
+session has not named).
+
+**The owner's hands-on recipe for this build.**
+
+1. Open PowerShell in this worktree (`E:\anno1503-worktrees\anno1503-ZOOM-SMOOTH-2`) and run:
+   ```powershell
+   $env:ANNO_VIEW_HITCH_MS = "1"
+   $env:ANNO_VIEW_LIVE_RESIZE_TRACE = "1"
+   $env:ANNO_GPU_ADAPTER = "0"  # the RTX 4090 on this PC
+   .\build\msvc\src\app\Release\anno1503.exe --play data\maps\lan5.txt --game-dir E:\anno1503\game\app --water enhanced 2> live-resize-trace-2d.log
+   ```
+   **This must be this worktree's own `anno1503.exe`, relinked at `5adba936`** - not an older one left over
+   from 2/2b/2c. The trace (both the hitch lines and the new `[live-resize-trace]` lines) goes to
+   `live-resize-trace-2d.log` in the current directory.
+2. Once the window opens: grab the title bar and **hold it down for about 2 seconds without moving the
+   mouse**, then release without having dragged.
+3. Grab the title bar again and **drag slowly for about 5 seconds**, then release.
+4. Grab the title bar again and **drag it quickly, flicking it back and forth, for about 5 seconds**, then
+   release.
+5. **Close** the window normally (Alt+F4 or the close button) to end the run and flush the log.
+6. Send back `live-resize-trace-2d.log` - no need to mark timestamps by hand; the three steps above are far
+   enough apart in the log's own `WM_ENTERSIZEMOVE`/`WM_EXITSIZEMOVE` pairs to tell apart.
+
+NOT_RUN: the owner's repeat trace itself and its per-hypothesis analysis (next entry, once sent back); TSan
+and WSL ASan (unchanged reasoning from 2b/2c - no preset, out of this packet's own time box).
+
+Decisions and reasoning:
+- **Verified the Windows message hook's own reach into the modal loop against the pinned SDL source before
+  designing the trace around it**, rather than assuming the task spec's own citation: `DispatchModalLoopMessageHook`
+  is called from inside `WIN_WindowProc` itself, guarded on `data->in_modal_loop`, which is exactly the
+  mechanism needed and was not already confirmed anywhere in this branch's own prior packets.
+- **Logged every watch-side event (MOVED/RESIZED sightings, type-test pass, draw/skip) before any shared-state
+  read, continuing 2b F1's own property** (never touch `Viewer`'s shared state for a non-matching event) -
+  the trace adds no new read of shared state on the non-matching path, only of the event struct itself and a
+  read-only static flag.
+- **Fixed `events_ms_` by tracking the watch's own last tick inside `LiveResizeState`, not with a second,
+  separately-synchronized field in `Viewer`** - keeps the one piece of watch-related bookkeeping the fix
+  needs alongside the reentrancy/wake-defer state it is already reading, rather than adding a parallel
+  atomic the reader would have to reason about independently.
+- **Did not attempt the fix for the drag's own stall in this packet**, per the explicit instruction - every
+  change here is either diagnostic-only or, for `events_ms_`, a correction to the *measurement* the earlier
+  analysis depended on, not to the drag behaviour itself.
+- **Did not claim a hypothesis result from this packet's own gates or CI**, since none of them exercise a
+  real modal loop under human-paced mouse input - only the owner's repeat trace can speak to (a)/(b)/(c).
+
+QUESTIONs: none beyond 2c's own (still open: a clean, idle-machine repeat, and the finer-grained watch-call
+counter that question suggested - the new trace's own watch-side lines may now answer the latter without a
+separate counter).
+
+**READY FOR REVIEW.**
+
+## ZOOM-SMOOTH-2d — the owner's repeat trace, analysed per hypothesis
+
+**The trace** (`cache/owner-drag-test-20261116-090753/trace-stderr.log`, 11.8 MB, 81,630 lines: 21,832 `frame
+hitch` lines and 15,967 `[live-resize-trace]` lines), build `56be3ce8`, `ANNO_VIEW_LIVE_RESIZE_TRACE=1`,
+`ANNO_VIEW_HITCH_MS=1`, `ANNO_GPU_ADAPTER=4090`, `--play lan5 --water enhanced`, started 09:07:59. No gate or
+other heavy job running. Owner's steps: wait 5 s; hold the title bar ~2 s without moving; drag slowly ~5 s;
+drag fast ~5 s; close - no resize, no maximise.
+
+**The orchestrator's own first-look numbers are confirmed, independently re-derived from the raw trace**
+(exact modal-session boundaries from the hook's own `WM_ENTERSIZEMOVE`/`WM_EXITSIZEMOVE` timestamps, not
+estimated): hold 26.7189-31.5688 (4.85 s), slow 37.5122-45.9053 (8.39 s), fast 51.9890-61.1758 (9.19 s), then
+`WM_NCLBUTTONDOWN hittest=20` (`HTCLOSE`) at 64.6085. Per-100 ms hook buckets: hold mean `timer=2.67 moving=
+83.83` (4/48 buckets with `timer=0`), slow mean `timer=6.43 moving=39.02` (0/82 buckets with `timer=0`), fast
+mean `timer=2.48 moving=69.41` (19/91 buckets with `timer=0`) - matching the orchestrator's figures to within
+rounding. Watch-tick rate/gaps (884 ticks total, 0 guard-skips anywhere in the file - the reentrancy guard
+never once engaged in this run): hold 26.4/s, gap median 23.0 ms, p99 188.3 ms, max 221.5 ms; slow 63.0/s,
+median 15.7 ms, p99 28.9 ms, max 61.9 ms; fast 24.7/s, median 17.3 ms, p99 289.1 ms, max 526.1 ms.
+
+**The frame-hitch numbers, counted per phase from all 21,832 lines (not just the worst few), for comparison
+with 2c's own table:**
+
+| phase | n hitch lines | mean | median | p90 | p99 | worst | over 50 ms |
+|---|---|---|---|---|---|---|---|
+| hold | 1,610 | 4.86 ms | 2.0 ms | 2.5 ms | 76.7 ms | 221.6 ms | 1.7 % |
+| slow | 2,046 | 5.59 ms | 2.1 ms | 16.1 ms | 21.1 ms | 61.9 ms | 0.0 % |
+| fast | 1,076 | 10.13 ms | 2.1 ms | 18.4 ms | 136.3 ms | 526.1 ms | 4.2 % |
+| outside the three sessions (wait/post) | 17,100 | 2.01 ms | 2.0 ms | 2.2 ms | 2.7 ms | 14.6 ms | 0.0 % |
+
+The steady state outside the modal sessions is the clean 500 Hz baseline (worst 14.6 ms, the very first frame
+after boot) - exactly as every prior packet's own steady-state numbers have read. `slow` sits close to the
+16 ms target (p90 16.1 ms) but is not fully inside it; `hold` and `fast` are not.
+
+**Every one of the 30 largest frame-hitch gaps in the whole file (521.1 ms down to 104.5 ms) is the gap to
+the immediately preceding watch tick, to within interpolation error (typically < 0.1 ms, worst 1.6 ms)** -
+checked by finding each hitch's own line position among the trace's absolute timestamps, locating the watch
+tick that line belongs to, and comparing the hitch value against `(this tick's timestamp) - (the previous
+tick's timestamp)`. All 30 fall inside `hold` or `fast`; none inside `slow`. Since the native modal loop
+blocks the ordinary `SDL_PollEvent` loop for the whole of a modal session (confirmed in 2/2b/2c), nothing
+else could have drawn these frames - every one of them was drawn by `live_resize_watch`, and the gap it
+reports is genuinely the time since the watch itself was last invoked, not a slow `draw()` (which 2c's own
+trace already showed stays under 1.2 ms) and not the reentrancy guard (which never fired in this run).
+**This pins the stall to "the watch was not ticking," not to anything inside `frame_step()`/`draw()`.**
+
+### Hypothesis (a): wrong, and cleanly ruled out
+
+`WM_NCLBUTTONDOWN` (hittest 2, `HTCAPTION`) is followed by `WM_ENTERSIZEMOVE` within 0.9-1.1 ms every one of
+the three times (26.7180→26.7189, 37.5113→37.5122, 51.9879→51.9890). SDL's own live-resize timer is armed
+essentially the instant the press is recognised, not after some further delay - there is no "waiting for the
+press to register" window large enough to explain any of the measured gaps (the smallest of the 30 largest
+gaps, 104.5 ms, is still two orders of magnitude bigger than this 1 ms). **Not the cause.**
+
+A side observation, not explained further here: `WM_NCLBUTTONUP`, `WM_LBUTTONUP` and `WM_SYSCOMMAND` were
+never logged once in this whole trace, despite being requested unconditionally. `WM_SYSCOMMAND`/`SC_MOVE` is
+documented as the system-menu/keyboard route into a move (Alt+Space, M, or the title bar's own right-click
+menu) - an ordinary title-bar left-drag goes through `DefWindowProc`'s own direct handling of
+`WM_NCLBUTTONDOWN(HTCAPTION)` without a `WM_SYSCOMMAND` round trip, so its absence here is expected. The
+absence of the two button-up messages is not explained by anything this session found: `WM_CAPTURECHANGED`
+(logged, three times, right before each `WM_EXITSIZEMOVE`) marks capture being released, so the button-up
+that ends the loop evidently is not dispatched back through `WIN_WindowProc` the way the hook observes other
+messages - plausibly consumed inside the modal loop's own internal polling before a hook-visible dispatch,
+but this session did not verify that against the SDL/Windows source and is not asserting it as fact.
+
+### Hypothesis (b): confirmed, with a documented mechanism and a worked example
+
+**Microsoft's own documentation for `WM_TIMER`**
+([learn.microsoft.com/windows/win32/winmsg/wm-timer](https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-timer)):
+"The `GetMessage` and `PeekMessage` functions post this message only when no other higher-priority messages
+are in the thread's message queue" - `WM_TIMER` is a low-priority message, synthesized by the message pump
+only once nothing else is waiting. A sustained stream of `WM_MOVING`/mouse-move messages (which a drag
+produces continuously) is exactly the kind of "something else is in the queue" that defers it.
+
+**The data matches this precisely.** `slow` (mean `moving=39.0`/100 ms) never once has a zero-`WM_TIMER`
+bucket; `hold` (mean `moving=83.8`) has 4/48; `fast` (mean `moving=69.4`, the owner's fast flicking) has
+19/91, including runs of several *consecutive* zero/near-zero buckets. The worst gap in the file (526.1 ms,
+tick-to-tick from 54.3124→54.8385) sits exactly across one such run: buckets at 54.4943, 54.5946, 54.6947 and
+54.7948 all report `timer=0`, while `moving` stays at 65-88 every one of them - over 400 ms where the modal
+loop kept running (confirmed: `WM_MOVING`/`WINDOW_MOVED` never stopped) but the low-priority timer tick that
+drives the watch never got a turn. **`WINDOW_MOVED` itself never stopped either**: inspecting every trace
+line across that exact 526 ms window shows `watch: WINDOW_MOVED x=... y=...` arriving every 1-2 ms,
+continuously, from the tick that opened the gap to the tick that closed it (hundreds of them, moving
+smoothly: x=618→47, y=33→750ish, over the window) - the position-changed signal the watch already receives
+was never missing; only the timer-driven redraw signal was. The phase-by-phase correlation (clean in `slow`,
+worse in `hold`, worst in `fast`, scaling with `moving` volume, not with anything else) and the precise,
+repeatable per-bucket mechanism this documented Win32 behaviour predicts together make this the primary,
+well-supported cause. **Confirmed.**
+
+### Hypothesis (c): not supported as an additional cause here
+
+The orchestrator's own note states no gate or other heavy job was running during this capture. The
+starvation pattern's own shape - clean in the phase with the least mouse-move traffic, worst in the phase
+with the most, with a documented Win32 mechanism that predicts exactly this - leaves no residual pattern an
+"other load" explanation would need to account for. This session cannot rule out *some* unrelated scheduling
+noise contributing a few milliseconds here or there (ordinary OS jitter, never zero), but nothing in this
+trace points at it as a material cause the way it does for (b). **Not supported, on this trace.**
+
+### The fix proposed (not built, per the instruction)
+
+**What should trigger a draw when `WM_TIMER` is starved:** `SDL_EVENT_WINDOW_MOVED`, which the watch already
+receives (and, since 2d's own trace item, already logs) and which this trace shows arriving every 1-2 ms
+throughout the exact windows where `WM_TIMER` goes quiet - the one signal demonstrated present when the
+intended one is not. Add a second, independent entry point into the *existing* draw path alongside
+`is_live_resize_expose`'s EXPOSED(1) check: on a `WINDOW_MOVED` event, ask a new, pure, rate-limiting
+predicate whether enough time has passed since the watch's own last tick (`LiveResizeState::last_watch_tick()`,
+already added this packet) to justify treating this `WINDOW_MOVED` as a tick too. A sketch, not code to land
+as-is:
+
+```cpp
+// anno::app::LiveResizeState - a proposed addition, not implemented here
+[[nodiscard]] bool should_draw_from_move(Clock::time_point now, Clock::duration min_interval) const {
+    return now - last_watch_tick() >= min_interval;  // false under any healthy WM_TIMER cadence
+}
+```
+
+`live_resize_watch` would call this only for `SDL_EVENT_WINDOW_MOVED` (never for an unrelated event type -
+keeping 2b F1's own property that a non-matching event touches no shared state), and on `true`, run the
+*same* `begin_watch_draw()` / `frame_step()` / `end_watch_draw()` / `mark_watch_tick()` sequence the EXPOSED(1)
+path already uses - a new *trigger* into the existing path, not a new drawing path.
+
+**How the rate limit avoids drawing at the mouse's rate:** the gate is "time since the last *tick*," not
+"time since the last `WINDOW_MOVED`." The first `WINDOW_MOVED` past the threshold immediately calls
+`mark_watch_tick()`, resetting the clock the gate itself reads - every `WINDOW_MOVED` arriving in the next
+`min_interval` (measured here: dozens of them, since the real rate is roughly one every 1-2 ms) fails the
+same check and returns without drawing. A sensible `min_interval` - proposed around 30 ms, comfortably above
+every healthy-phase gap this trace measured (`slow`'s own p90 was 18.5 ms) so it never engages while
+`WM_TIMER` is keeping up, but well under the gaps that actually hurt (104-526 ms) - would need the owner's
+or orchestrator's own sign-off as a tuned constant (an `ANNO_VIEW_*`-style env override, matching this file's
+own existing pattern, would keep it adjustable without a new config system, consistent with the no-hardcoded-
+limits rule for anything that is a real behaviour choice).
+
+**Cost to the sim's wake path and the F2/F3 guarantees:** none beyond what EXPOSED(1) already costs, because
+it is the *same* path. `defer_wake()` keys off `watch_drawing_`, set and cleared by `begin_watch_draw()`/
+`end_watch_draw()` regardless of which event triggered them - F2 ("the sim never waits during a drag") and
+F3 (only a genuine watch draw defers a wake, never an ordinary one) do not need new reasoning, since no new
+flag or branch is added to the wake-decision logic itself. The one new recurring cost is CPU: one extra
+atomic load and comparison (`should_draw_from_move`) on every `WINDOW_MOVED`, which during a drag arrives at
+roughly the same rate the existing `is_live_resize_expose` check already runs at for every event of every
+type - the same cost class already paid today, not a new one.
+
+**How it can be tested without a person dragging:** `should_draw_from_move` takes `now` and `min_interval`
+as plain parameters, reading no clock internally - a direct, deterministic unit test (no window, no
+sleeping) can construct a `LiveResizeState`, call `mark_watch_tick()` once, then assert the predicate is
+`false` just under the threshold and `true` just over it, exactly like the existing `should_draw_from_watch`/
+`mark_watch_tick` tests already do with synthetic inputs. A second test can reuse this packet's own flooding
+pattern (`live_resize_test.cpp`'s F1 test already floods non-matching events from a second thread) to push a
+burst of real `SDL_EVENT_WINDOW_MOVED` events through a real `SDL_AddEventWatch`/`SDL_PushEvent` wiring and
+assert at most one draw results per `min_interval` window, regardless of how many `WINDOW_MOVED` events the
+burst contains - directly exercising the rate limit's own claim, not just the predicate in isolation. Only
+the real Windows modal loop and message-queue scheduling this trace needed a person for would stay outside
+unit-test reach, same as the rest of `live_resize_watch`'s own integration.
+
+**What to make of the owner seeing no stutter despite gaps up to 526 ms.** Stated as this session's own
+reasoned judgement, not something the trace can settle on its own: moving a window (as opposed to resizing
+one) does not require the application to redraw anything to look smooth - the desktop compositor continues
+to show the application's last-rendered surface, translated to the window's new screen position, entirely
+independent of whether the application itself produces new frames, which is standard, OS-level behaviour for
+any window being dragged by any application. A gap in this project's own draw cadence during a pure move is
+therefore not necessarily visible as "the window froze" the way an equivalent gap during a *resize* would be
+(where the newly-exposed or newly-clipped client area genuinely has nothing to show without a fresh draw -
+exactly the case ZOOM-SMOOTH-1/2's own resize work already targets). What *would* freeze for up to 526 ms is
+this game's own animated content (water, ships) inside the window - in principle perceptible, but plausibly
+not salient during a brief, attention-on-the-cursor five-second flick, especially if the animation's own
+motion is subtle at the zoom level and drag speed used here. This session cannot verify the owner's own
+perception from a log, so this is offered as the most evidence-consistent explanation, not a closed
+conclusion - see the QUESTION below.
+
+**Gates, this entry.** Analysis and documentation only, per the instruction - no code changed in this entry
+(the trace instrumentation and the `events_ms_` fix were already gated and CI-green on `56be3ce8` in the
+entry above; nothing in this append touches `src/`).
+
+NOT_RUN: the fix proposed above (not built, per the instruction); a repeat trace with the fix in place, to
+confirm `WINDOW_MOVED` actually closes these gaps without over-drawing; a resize-side equivalent check (this
+trace captured no resize at all, so hypothesis (b)'s applicability to `WM_SIZING`-driven starvation during a
+fast resize, if any, is untested).
+
+Decisions and reasoning:
+- **Re-derived every one of the orchestrator's preliminary figures independently from the raw trace** before
+  building on them, rather than taking the first look as given - all matched to within rounding, so the
+  analysis below builds on confirmed numbers, not assumed ones.
+- **Established the 30 largest gaps are exactly the gap to the previous watch tick, not a slow draw or a
+  guarded-out draw**, before attributing them to anything - this is what makes the rest of the analysis a
+  question about *why the watch didn't tick*, not a question about `frame_step()`/`draw()`'s own cost (which
+  2c's own trace already cleared).
+- **Cited Microsoft's own documented `WM_TIMER` priority behaviour rather than asserting a mechanism from the
+  data alone** - the data shows the correlation; the citation is why that correlation has an explanation
+  rather than being a coincidence.
+- **Verified `WINDOW_MOVED` is actually present throughout the worst gap before proposing it as the fix's own
+  trigger**, line by line across the full 526 ms window, rather than assuming the watch's own tracing meant
+  it must be there.
+- **Did not build the proposed fix**, per the explicit instruction - the sketch above is illustrative, not a
+  diff to land as-is, and still needs the owner's/orchestrator's own sign-off on the threshold value.
+- **Treated the "no stutter" observation as a real finding to reconcile, not noise to set aside** - an
+  unexplained mismatch between a measured stall and a reported smooth experience is exactly the kind of
+  thing the evidence contract asks not to paper over, so this entry states the most likely explanation
+  plainly while being honest that it is this session's own reasoning, not a verified fact about what the
+  owner actually perceived.
+
+QUESTIONs: given moving a window does not itself need a redraw to look smooth, and the owner's own
+"no stutter" impression despite real 100-526 ms gaps - is a drag's own content-freeze still worth the fix
+above, or should it wait until it is shown to matter against something more clearly load-bearing (ships/
+water animation visibly stuttering, not just a log showing a gap)? If the fix is wanted: is 30 ms the right
+threshold, or does the owner/orchestrator want it tied to something else (e.g. the display's own refresh
+interval)? Should the same mechanism extend to resize (via `WINDOW_RESIZED`, already logged) once/if a
+similar `WM_SIZING`-side starvation is ever measured, or does 2c's own resize numbers (attributed cleanly to
+`surface configure`, not starvation) mean that is not needed?
+
+**READY FOR REVIEW.**
+
+## ZOOM-SMOOTH-2e — the WINDOW_MOVED fallback, built — READY FOR REVIEW (same branch task/ZOOM-SMOOTH-2, from `d80beed7`, head `c164eb52`)
+
+**Built exactly as reviewed, threshold 16 ms (one frame at 60 Hz, the packet's own target), not 30 ms, not
+tied to the display's refresh rate.** `live_resize_watch` now checks `SDL_EVENT_WINDOW_MOVED` alongside the
+existing EXPOSED(1) check; on a `WINDOW_MOVED`, a new pure predicate
+(`LiveResizeState::should_draw_from_move(now, min_interval)`, no clock read inside - the caller passes
+`Clock::now()` in) decides whether enough time has passed since the watch's own last tick. On `true`, the
+*same* `begin_watch_draw()` / `frame_step()` / `end_watch_draw()` / `mark_watch_tick()` sequence the EXPOSED(1)
+path already runs executes - no second drawing path, so F2 ("the sim never waits during a drag") and F3
+(only a genuine watch draw defers a wake) need no new reasoning: they key off `watch_drawing_`, set and
+cleared by the same two calls regardless of which trigger reached them. `kMoveFallbackInterval` is a named
+constant (`std::chrono::milliseconds(16)`) with its own reasoning in a comment, per the review.
+
+**A real bug, caught by the new test before it ever reached a build.** The first version of
+`should_draw_from_move` computed `now - last_watch_tick() >= min_interval` unconditionally. Before any tick
+has ever happened, `last_watch_tick()` reads as `steady_clock::time_point::min()` - subtracting that from a
+real `now` (nowhere near that far from the clock's own epoch) overflows the duration's own representation,
+and the comparison came out `false` when it should be "obviously true, nothing to rate-limit against yet."
+The new logic test (`should_draw_from_move: false until min_interval has passed...`) failed immediately on
+the very first assertion, before touching anything else - fixed by checking for the never-ticked sentinel
+explicitly rather than trusting the subtraction to come out some particular way in that case. Caught here,
+not by CI or by the owner's own hands-on run.
+
+**Thread safety, as asked.** `WINDOW_MOVED`, like EXPOSED(1), is sent only from `WIN_WindowProc`'s own
+`WM_WINDOWPOSCHANGED` handling (`SDL_windowsevents.c`) - confirmed in the pinned SDL source. Windows delivers
+a window's messages only on the thread that owns that window's message queue (`SendMessage` marshals a
+cross-thread call back to it), so this holds regardless of what triggered the move - a user drag, a
+keyboard shortcut, a snap, or this engine's own `SDL_SetWindowSize`/`SDL_SyncWindow` calls (`viewer.cpp`'s
+`run()`/`handle()`, both already on the window thread; grepped the whole of `src/app` and found no call to
+any window-moving/resizing SDL function off that thread). No new cross-thread case is introduced beyond what
+EXPOSED(1) already is, and the event-type check still runs first, before any shared state is touched, for
+the same reason 2b F1 established.
+
+**A move outside a modal loop - a shortcut, a snap, a programmatic resize - is harmless.** The predicate is
+purely time-based, not gated on `in_modal_loop`: if enough time has passed since the last tick, a stray
+`WINDOW_MOVED` outside any drag can still pass it. What happens then is nothing worse than one extra,
+correctly-guarded `frame_step()` call - the same call the main loop would make on its own next pass, subject
+to the same `can_draw`/`dirty_`/`animating()` checks already inside `frame_step()`. It can draw nothing if
+those say so; it never bypasses them. Outside a drag the main loop itself is never blocked, so `WM_TIMER`
+(or the absence of a need to redraw at all) already keeps the watch's own last tick recent most of the time,
+meaning this path rarely even engages there - and when it does, it costs the same as any other tick.
+
+**The trace** now tags every watch-draw-related line with its trigger: `"... (trigger=timer)"` or
+`"... (trigger=move)"`, on the `type test passed`, `draw skipped (reentrancy)`, `draw begin` and `draw end`
+lines.
+
+**Tests.** Three new cases in `live_resize_test.cpp`: the predicate itself (synthetic timestamps, no
+sleeping - the never-ticked case, just under the threshold, at it, and past it); a timer tick resets the
+predicate's own clock exactly as a move-triggered draw would; and a real `SDL_AddEventWatch`/`SDL_PushEvent`
+flood test (500 `WINDOW_MOVED` events pushed in a tight loop, mirroring `live_resize_watch`'s own decision
+through the real SDL wiring rather than calling the predicate directly, per 2c F4's own reasoning) asserting
+exactly one draw results, then exactly one more after `min_interval` has genuinely elapsed - run 5 times back
+to back locally with no flakiness. 9 cases, 32 assertions total in the `live_resize` suite now.
+
+**Gates.** MSVC Release, game files, `anno_app_input_tests`:
+`COUNTS: selected=46 executed=46 failed=0 empty=0 skipped=0 incomplete=0 sanitizer_lines=0` / `VERDICT: PASS`
+(`cache/gates/zoomsmooth2e-app-1.log`; `live_resize` suite: 9/9, 32 assertions). `viewer_wiring_*` on the
+relinked exe: `COUNTS: selected=20 executed=20 failed=0 empty=0 skipped=0 incomplete=0 sanitizer_lines=0` /
+`VERDICT: PASS` (`cache/gates/zoomsmooth2e-viewerwiring-1.log`). **WSL `-Werror` check ran after the
+orchestrator's own game-file gate finished** (held off per the orchestrator's own request, to avoid
+contending for the shared WSL/memory-coordinator resource their gate was using): clean on `viewer.cpp` and
+`live_resize.hpp` under both GCC 13 and Clang 18 (viewer-and-GPU and viewer-without-GPU), except the same
+pre-existing, unrelated `src/sim/tests/extensions_test.cpp` gap every packet on this branch has hit (this
+branch has never touched `src/sim/`). `clang-format --dry-run --Werror` flagged lines in both the predicate
+and a test; fixed with `-i`, rebuilt, reran the `live_resize` suite before gating (still green).
+
+**CI.** Pushed `c164eb52` on `task/ZOOM-SMOOTH-2` (no rebase).
+
+**The owner's recipe for this build.**
+
+1. Open PowerShell in this worktree (`E:\anno1503-worktrees\anno1503-ZOOM-SMOOTH-2`) and run:
+   ```powershell
+   $env:ANNO_VIEW_HITCH_MS = "1"
+   $env:ANNO_VIEW_LIVE_RESIZE_TRACE = "1"
+   $env:ANNO_GPU_ADAPTER = "0"  # the RTX 4090 on this PC
+   .\build\msvc\src\app\Release\anno1503.exe --play data\maps\lan5.txt --game-dir E:\anno1503\game\app --water enhanced 2> live-resize-trace-2e.log
+   ```
+   **This must be this worktree's own `anno1503.exe`, relinked at `c164eb52`** - not an older one left over
+   from 2d or earlier.
+2. Once the window opens: grab the title bar and **drag it quickly, flicking it back and forth, for about
+   5 seconds**, then release.
+3. **Close** the window normally (Alt+F4 or the close button) to end the run and flush the log.
+4. Send back `live-resize-trace-2e.log`. With the fix in, the fast drag's own `frame hitch` lines should show
+   nothing far above 16 ms - 2d's own fast-drag numbers (worst 526.1 ms, p99 136.3 ms) are the baseline this
+   is meant to replace. `grep -oE "trigger=(timer|move)" live-resize-trace-2e.log | sort | uniq -c` shows
+   how much of the drawing the fallback itself accounted for.
+
+NOT_RUN: the repeat trace itself, and confirming it against the 16 ms target (next, once sent back); TSan
+and WSL ASan (unchanged reasoning from every prior packet on this branch).
+
+Decisions and reasoning:
+- **Reused the exact existing draw sequence for the new trigger rather than writing a second one**, per the
+  review's own instruction - this is the whole reason F2/F3 did not need re-proving for the new trigger.
+- **Checked the event type before touching any shared state**, continuing 2b F1's own property, rather than
+  reading `should_draw_from_move` (which does touch `LiveResizeState`) for every event regardless of type.
+- **Fixed the never-ticked overflow the moment the new test found it**, rather than loosening the test or
+  assuming "it'll never actually be exactly `time_point::min()` in practice" - the sentinel is reached on
+  every single run, on the very first `WINDOW_MOVED` or EXPOSED(1) before any prior tick, so this was never
+  an edge case that could be left alone.
+- **Verified the thread-safety claim against the SDL source and this engine's own code, not just against
+  EXPOSED(1)'s own prior precedent** - `WINDOW_MOVED` could in principle have a different set of send sites
+  than EXPOSED(1) (it is a far more general event than SDL's own live-resize-specific signal), so this was
+  checked rather than assumed to inherit the same property automatically.
+- **Documented the non-modal-loop case rather than adding a guard against it**: the review asked what
+  happens, not for it to be prevented, and `frame_step()`'s own existing guards already make it harmless, so
+  adding a new `in_modal_loop`-style gate here would have been an unneeded second mechanism doing a job the
+  first one already does.
+- **Held off the WSL check until the orchestrator's own gate cleared**, per their explicit request, and said
+  so here rather than silently running it as if nothing had been asked.
+
+QUESTIONs: none new. The open ones are the repeat trace itself (does 16 ms actually hold the fast drag's own
+worst gaps down, and does the fallback's own share of draws look sane against the timer's), and 2d's two
+still-open items (resize-side starvation, not extended here per the review's own "not extended" decision; the
+`should_draw_from_move`-style pure-predicate pattern this packet used could also inform a future resize-side
+check if one is ever needed, but nothing here builds toward that speculatively).
+
+**READY FOR REVIEW.**
+
+## ZOOM-SMOOTH-2f: guard the move trigger's thread — READY FOR REVIEW (same branch task/ZOOM-SMOOTH-2, from `46fd1f2b`, new commits)
+
+**The guard and its order.** `Viewer::window_thread_id_` (`std::thread::id`) is set once, in `run()` right at
+`SDL_AddEventWatch`'s own call site - not the constructor, which can run on another thread before `run()`
+ever starts the window. `live_resize_watch` now checks `should_draw_from_thread(std::this_thread::get_id(),
+self->window_thread_id_)` (new, `live_resize.hpp`, a pure function so a test can check it without a window or a
+second thread actually racing one) for **both** triggers, right after `is_timer_tick`/`is_move`'s own
+event-type test and **before** `self->live_resize_`'s first read (`mark_watch_tick()`) - the same placement the
+2b F1 fix already used for the event-type check itself, extended one property further: not just "this is an
+event type that can matter," but "this call is on the thread that owns `live_resize_`." A call from another
+thread is counted (`watch_off_thread_calls_`, `std::atomic<std::uint64_t>`, relaxed) and returns without
+touching anything else. `ClearWatch`'s own destructor (`run()`, where the watch is removed) prints the count
+once, only when it is not 0, so an ordinary run stays silent.
+
+**Why a guard rather than just the comment.** The comment at the `WINDOW_MOVED` case already argues the
+property from the pinned SDL source (Win32 delivers a window's messages only on its owning thread) - correct,
+but an argument, and the task's own point: SDL calls an event watch on whichever thread calls `SDL_PushEvent`,
+on every platform this engine targets, not only the Windows one the argument is about. The guard makes the
+property hold by construction instead.
+
+**Test.** `should_draw_from_thread` (new, `live_resize_test.cpp`, `live_resize` suite): the window thread's own
+id draws; a genuinely different thread's real id (a `std::thread` started only to read its own id, joined
+immediately - no draw, no window, no race) does not. Pure function, synthetic ids, no sleeping.
+
+**Rebuilt; the branch's own scripted check repeated.** `anno_app_input_tests` relinked; the `live_resize` suite
+(the only automated, no-human check on this branch - 2d/2e's own "resize/move" proofs are the owner's hands-on
+drag) now **10 cases, 35 assertions**, against 2e's own 9/32: the one new case adds 3; every pre-existing
+case, the 500-`WINDOW_MOVED` `SDL_PushEvent` flood test included, still passes with the **same counts 2e
+reported** (1 draw, then 1 more after `min_interval`) - the guard changes nothing for same-thread calls, the
+only kind this suite can drive without a second thread genuinely pushing SDL events. A real window-edge drag
+still needs the owner's own hands-on run; none was asked of me here.
+
+**Gates.** `anno_app_tests` + `anno_app_input_tests` + `viewer_wiring_*`: 352/352. `clang-format`: clean after
+two `-i` fixes (the new test case was missing its own `doctest::test_suite("live_resize")` tag on the first
+pass - caught by the suite-count mismatch, not by format). WSL `-Werror`: clean on `viewer.cpp`,
+`live_resize.hpp` and `live_resize_test.cpp` under GCC 13 and Clang 18 (viewer-and-GPU and viewer-without-GPU);
+the one remaining failure is the same pre-existing `src/sim/tests/extensions_test.cpp` gap every packet on
+this branch has hit (this branch never touches `src/sim`) - now explained precisely, per the orchestrator's own
+note: the check script passes no `ANNO_EXTENSION_ORACLE_FILE` define (`src/sim/CMakeLists.txt:53` does),
+UNIX-WARN-1's own fix. No gate was visibly running on this PC before either WSL run.
+
+NOT_RUN: a real window-edge drag or move (owner's own hands-on test, not asked for this packet); the full
+suite and the game-file run (the orchestrator's, at landing).
+
+Decisions and reasoning:
+- **Placed the guard right after the event-type test, before `self`'s first field read** - matching 2b F1's
+  own reasoning exactly (a push of any type this watch does not care about, from any thread, now never reads
+  `window_thread_id_` either, let alone `live_resize_`), rather than guarding inside each trigger's own branch
+  separately, which would have left the two reads of `self` between the type test and the first branch
+  (`trigger = "timer"`/`else`) unguarded for a type that already passed.
+- **Extracted a pure function instead of comparing ids inline** - the task's own "no real window in a test"
+  instruction needs something a test can call without `Viewer`; `should_draw_from_thread` is exactly the
+  `should_draw_from_watch`/`should_draw_from_move` pattern this file already uses twice, not a new one.
+- **Used a real second thread's real id in the test, not a hand-picked synthetic one** - a default-constructed
+  `std::thread::id` can compare equal to a real thread's id on some implementations (documented in the test's
+  own comment), so the "another thread" case is a genuine, different id, not an assumption about what an
+  arbitrary value is guaranteed not to equal.
+
+QUESTIONs: none from this packet's own scope. `watch_off_thread_calls_`'s own count has not been observed as
+nonzero on this platform - stays open only in the sense that no platform this build runs on has disagreed with
+the SDL-source argument yet.
+
+READY FOR REVIEW.
+
+
+## GATE-MAC-1 — READY FOR REVIEW (Mac, 2026-11-16)
+
+- Base `ac02d4a2`, branch `task/GATE-MAC-1`; no rebase/main push/reviewer subagent.
+- Read the released board packet; Apple M5 Max / Metal, macOS 27.0.1, 48 GiB,
+  Apple Clang 21.0.0; Release, original files available, admission control enabled.
+- [Measurements, rules and primary sources](../render/gpu-timestamp-evidence.md).
+- Each baseline test ran alone 30 times, CTest jobs 1, no competing build/test:
+
+  | Test (gpu_test.cpp) | Baseline pass/fail | Trace pass/fail | Final pass/fail |
+  |---|---:|---:|---:|
+  | River cost per tier | 0/30 | 0/30 | 30/0 |
+  | Every frame pass and identical picture | 0/30 | 0/30 | 30/0 |
+  | Sea pass timing | 30/0 | 29/1 | 30/0 |
+
+- Logs: `cache/gate-mac-1/baseline/`, `trace/`, `fixed-03/`; final binary/source
+  provenance in fixed-03/provenance.json. Trace changes timing; its rate is a separate measurement.
+- Raw period 1 ns throughout. Reversed end/begin: river Sea 2801/3061;
+  frame Objects 1/120, Resample 118/120; sea-test Sea 2/120, Objects 112/120.
+- Other real passes were valid; equal/over-10-second/map failures: 0/0/0.
+  Frame and Sea+Objects composites are counted separately in the note, not as extra passes.
+- Independent WebGPU triangle probe (no GpuFrame): 27/30 reversed, 3 valid,
+  0 validation errors. Raw first pair: begin 429653162488541, end 0.
+- Decision (a): preserve the engine's invalid-reading rejection and wall fallback.
+  No resolve/copy/order defect of GpuFrame is needed to reproduce this backend result.
+- Tests permit missing individual readings only for API-reported Metal devices whose
+  device name starts with Apple; Vulkan/D3D12 and Intel/AMD Metal remain strict.
+- A supported device must still yield a mapped timing-record object. Present values
+  must be finite and > 0; available frame/pass span checks remain, and timing-off
+  and one-shot reading checks remain. Timed pixels must equal untimed bytes.
+- River costs must stay positive, normalized correctly and report their source;
+  trace observed 93 wall-fallback rows, minimum 0.378833 ms. Quality checks remain.
+- Zero-wall-fallback mutant: applied once, rejected by c.ms > 0.0; source restored
+  byte-for-byte and rebuilt. No invalid span is accepted as 0 or negative time.
+- ANNO_GPU_TIMESTAMP_TRACE=1 prints pass/raw ticks/period/reason, map failure detail
+  and wall fallback. Default-off silence verified in both suite gate logs.
+- Wgpu-native v29.0.1.1 uses wgpu 29.0.1; pinned Metal code and upstream issue 9414
+  are linked in the note. The zero-counter issue is context, not proof of our exact root cause.
+- Canonical GPU gate, `cache/gate-mac-1/gpu-final-01.log`:
+  `COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`
+  `COUNTS: selected=118 executed=116 failed=0 empty=0 skipped=2 (required-asset=0 platform=0 opt-in=0 gpu=2 other=0) incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`
+- Canonical CPU render gate, `cache/gate-mac-1/render-final-01.log`:
+  `COUNTS: selected=212 executed=212 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`
+- No memory refusal, timeout or empty test; the two named play-adapter skips are explicit.
+- Format: clang-format 23.1.3 dry-run/Werror and git diff --check pass.
+- Warning script: audited 986 actual Apple-Clang compiles (413 files twice, plus
+  80 app files twice without GPU). Only errors: extensions_test.cpp lacks the
+  script's ANNO_EXTENSION_ORACLE_FILE definition. Both targeted retries with its
+  actual CMake definition pass; final strengthened GPU test also passes the same flags.
+- Warning history preserved: warnings-01's BSD xargs launcher failure is NOT evidence
+  of clean compiles; warnings-02 retains the two macro errors. The tracked script is unchanged.
+- Build-fix-01's doctest syntax error and subsequent old-binary fixed/ runs are retained
+  and EXCLUDED from post-fix evidence; fixed-03 follows a successful build with provenance.
+- NOT_RUN: Windows GPU adapters, native GCC 13/Clang 18 locally (not installed);
+  independent review remains the orchestrator's. No sim/default/pin/version changes.
+- Decisions and reasoning:
+  - Use raw data and an independent API probe before changing expectations.
+  - Allow missing only on the measured Apple/Metal family; retain strict other adapters.
+  - Keep positivity, mapped-record, pixel equality and validation-error checks active.
+  - Adapt only private warning launchers; retain failed evidence and retry failed compiles only.
+- QUESTIONs: none for the Metal disposition; the standalone warning script's missing
+  CMake definition remains an explicit tooling limitation for separate workflow maintenance.
+
+READY FOR REVIEW.
+
+## UNIX-WARN-1: the Linux warning check ends green again — READY FOR REVIEW (task/UNIX-WARN-1, new
+worktree, from `origin/main` `ac02d4a2`)
+
+**Chose: read the CMake file at run time, not a second hand-written copy.** `extensions_test.cpp`
+needs one CMake-computed define (`src/sim/CMakeLists.txt`'s `ANNO_EXTENSION_ORACLE_FILE`, a path a
+custom command writes at build time via `tools/integration_stream_ref.py --extension-output`) -
+`grep -rln 'target_compile_definitions.*_tests PRIVATE [A-Z_]*="' src/*/CMakeLists.txt` finds this
+as the *only* such file in the whole tree, so a general per-file define table would be solving a
+problem that does not exist yet. `extract_oracle_defs` (new) `sed`s the define name and the
+generator script's own path straight out of `src/sim/CMakeLists.txt`; `generate_oracle_override`
+runs that script into the check's own scratch dir and writes a one-line override
+(`$out/overrides.tsv`) that `check()`'s xargs loop appends only for that one file's compile. A
+rename or removal in CMake now fails loudly (exit 2, naming the file) instead of silently going
+stale the way the define's absence did for eight reports running.
+
+**The negative control (item 2).** `negative_control()` compiles a scratch file with a deliberately
+shadowed variable under the exact same flags and expects it to fail; if it does not, that is a
+setup error (exit 2), not a found warning (exit 1) - every "clean" result would be untrustworthy
+for the wrong reason otherwise. Demonstrated both ways on this branch (`/mnt/e/.../_deps` from the
+ZOOM-SMOOTH-3 worktree's own configured build):
+- Working script, GCC: `== negative control (g++-13): failed as expected (shadowed variable
+  caught)`, then `== GCC, viewer and GPU on: clean` through all four sections.
+- `-Wshadow` stripped from `flags` (simulating the control's own handling removed): `== negative
+  control (g++-13): FAILED TO FAIL - it compiled clean; ...`, script exit 2 - confirmed directly
+  (`wsl.exe`'s own exit code to this session's shell; a redirect-then-`echo $?` in the *same*
+  `bash -c` string unexpectedly read back 0 on this host even though the script itself exited 2,
+  a Git-Bash/WSL interop quirk unrelated to the script - worked around by reading the exit code
+  from a separate top-level invocation rather than a chained one).
+
+**Both real runs' last lines (deps from the ZOOM-SMOOTH-3 worktree, `MSYS_NO_PATHCONV=1`):**
+```
+== negative control (g++-13): failed as expected (shadowed variable caught)
+== GCC, viewer and GPU on: clean
+== GCC, viewer without GPU: clean
+== negative control (.../clang18/.../clang++): failed as expected (shadowed variable caught)
+== Clang, viewer and GPU on: clean
+== Clang, viewer without GPU: clean
+```
+413/80 files (with/without GPU) under GCC and Clang, all four sections clean, exit 0.
+
+**Item 3.** `docs/testing/README.md`'s own section (new, "The Linux/macOS warning check") names
+the script and this fix, pointing back to CLAUDE.md's existing paragraph rather than duplicating
+it. (The task named `docs/testing/README.md` directly; that file did not previously mention this
+script at all - CLAUDE.md is the one place it already was - so this adds the pointer there too
+rather than only in CLAUDE.md, matching what was asked.)
+
+**No source file under `src/` changed** (`git status`: `tools/check_unix_warnings.sh`,
+`docs/testing/README.md` only).
+
+**Gates:** the script itself, both compilers, both configurations, twice (the real run, and the
+negative-control-removed demonstration) - see above. No gate was visibly running on this PC before
+either WSL run (checked the process list each time).
+
+Decisions and reasoning:
+- **Extracted the define name/script path, not just the value** - the *value* is a CMake
+  variable (`${CMAKE_CURRENT_BINARY_DIR}/synthetic-extension.txt`) this script cannot resolve
+  without running CMake; what it actually needs is the *name* and the *generator*, both of which
+  are plain text in the same file, so extracting those two and generating its own copy of the
+  file is the smaller, more robust piece to depend on.
+- **`exit 2` directly from `negative_control` on failure**, not `status=2` plus `return` - a
+  found-warning result later in the same run (`status=1`) would otherwise silently overwrite a
+  setup error that should stop everything.
+
+QUESTIONs: none from this packet's own scope.
+
+READY FOR REVIEW.
+
+## ZOOM-SMOOTH-3 — the severe spikes are gone; one residual, uncorrelated with content — READY FOR REVIEW (task/ZOOM-SMOOTH-3, new worktree, from `origin/main` `0f46b1b2`, head below)
+
+**Measured first, at base (ZOOM-SMOOTH-1 confirmed an ancestor of `0f46b1b2`).** The live session
+(`drive2.py`/`analyze2.py`, no capture) and the `zoom_sweep_contract` control sweep, run twice for
+stability. At maximum zoom-out (`*-fullout`/`*-fullout-end` across all five locations): worst busy
+**1.3-5.1 ms**, not the original **9.1-18 ms**. `chunks` (0.1-0.3 ms) and `record` (≤0.1 ms, often
+absent) are closed by this measurement - ZOOM-SMOOTH-1 fixed them; no further splitting needed,
+since there is nothing above 2 ms left in either to split.
+
+**`finish` (`wgpuCommandEncoderFinish`) is the one still open**, 4.4-10.8 ms in the worst frames,
+80-90 % of their busy time, in two independent runs. Added the requested counts to the hitch line
+(visible chunks, stand-in parts, open-sea chunks, dropped, planes freed, sprites decoded; draws-
+per-pass and bind-group counts are not tracked anywhere yet and were not added - no step pointed
+at them). **Every `finish`-dominated spike found has all six counts at 0** - the cost does not
+scale with chunks, stand-ins, drops or sprites; it happens with nothing of the application's own
+visible. `finish` is one `wgpuCommandEncoderFinish` call - there is nothing inside it at the app
+level to split or budget.
+
+**The driver-jitter rule (ZOOM-MEASURE-1 note 2), settled on evidence.** `zoom_sweep_contract
+--control` (zero camera motion, zero readiness churn) still shows **2 of 1,996 frames over 2 ms**,
+max 3.11 ms - the same figure the note itself measured, unchanged by ZOOM-SMOOTH-1 or this packet.
+**Decided rule:** a frame over budget whose steps are *only* `finish`/`queue submit` cost, with the
+six counts above all 0, is driver/GPU-internal jitter, not application-caused busy time - excluded
+from the 2 ms criterion. Any other attribution (`chunks`/`sync`/`draws`/`record` above ~0.5 ms, or a
+nonzero count) counts fully. `zoom_sweep_contract`'s own `--control --readiness-only` CTest
+registration is left as is: turning the busy-time check on would need the contract itself to apply
+this per-frame attribution, not a raised threshold (the review's own objection) - left for whoever
+next touches that script, since this packet's own time is better spent on the measurement itself.
+
+**No fix made.** Drops, intake/planning and sprite decoding (Do items 2, 3, 5) were not touched:
+none showed above 2 ms at maximum zoom-out in this measurement, so there was nothing to fix there.
+`finish`'s own cost is inside wgpu-native, with no app-level lever this packet's own scope reaches;
+fewer, larger per-frame GPU resources (RENDER-DIRECT's own ground) is the only lever that plausibly
+helps - **QUESTION, not a guess.**
+
+**Gates (changed lane only: app).** `anno_app_tests`: 308/308 (`cache/gates/zoomsmooth3-app-2.log`).
+`viewer_wiring_*`: 26/26 (`cache/gates/zoomsmooth3-viewerwiring-1.log`). WSL `-Werror`: clean on
+`viewer.cpp`, same pre-existing `extensions_test.cpp` gap every packet this cycle has hit (this
+branch never touches `src/sim`). `clang-format` clean after one `-i` fix.
+
+NOT_RUN: a fix (nothing to fix); the render suite (no render code touched); the full game-file run
+(the orchestrator's, at landing).
+
+Decisions and reasoning:
+- **Measured before writing any split-timer code**, per the task's own order - `chunks`/`record`
+  turned out closed, so splitting either further would have cost time for no finding.
+- **Added counts, not a guess at which one explains `finish`** - the counts then *disproved* every
+  content-based explanation at once (all six were 0 on every spike), which is a stronger result
+  than guessing one and checking only it.
+- **Settled the jitter rule from a repeat of the exact ZOOM-MEASURE-1 control measurement**, not a
+  new threshold chosen to make a number pass - the 2/1,996 figure matching the review's own 2/1,980
+  is why this rule is a decision, not an assumption.
+- **Left `zoom_sweep_contract`'s own registration unchanged** rather than wiring a partial
+  attribution check into it under time pressure - a half-built classifier gating CI is worse than
+  an honest, documented, still-advisory busy-time number.
+
+QUESTIONs: does `finish`'s own content-independent cost (confirmed, not assumed) change RENDER-
+DIRECT's own priority, or is 2.3-10.8 ms occasionally at rest an acceptable residual until it lands
+regardless? Is the decided jitter rule (steps `finish`/`queue submit` only, all six counts 0) worth
+wiring into `zoom_sweep_contract.py` as a follow-up, now that it is written down precisely enough to
+implement?
+
+READY FOR REVIEW.
+
+## ZOOM-SMOOTH-3b: classify the finish spikes — draws correlate with `finish` where measured; the
+original 4.4-10.8 ms spikes were not reproduced this time; two concrete, evidenced background-
+thread candidates named for next — READY FOR REVIEW (task/ZOOM-SMOOTH-3, same worktree and branch,
+on top of `953ca181`/`3526d253`)
+
+**Items 1-2 (`GpuStats`, `gpu.hpp`/`gpu.cpp`): the counts review F1/F2 asked for.** `chunks_visible`
+(`visible_chunks(view).size()`, already computed at the `sync_chunks` call and now just kept) is the
+real per-frame drawn count; the hitch line now prints "chunks built N, missing N, drawn N" instead
+of the old, mislabelled "visible chunks" (`chunks_built + chunks_missing`, which review F1 correctly
+called 0-at-rest and not what the name said). `draw_calls`/`bind_group_sets` are counted at every
+`wgpuRenderPassEncoderDraw`/`SetBindGroup` call inside `GpuFrame::render` (the per-chunk `draw_chunks`
+lambda - the dominant, content-scaling source across the terrain/ground/sea/objects/sea-over passes
+- plus the sprite, resample and UI-overlay passes); the one `SetBindGroup(p, 0, pass1/pass2, ...)` per
+render pass (3 a frame, fixed) is left out as noise, documented in the field's own comment.
+
+**Item 3 (CPU vs wall time of `finish`): the chosen API turned out too coarse to answer this.**
+`thread_priority.hpp` gained `thread_cpu_time_ms()` (`GetThreadTimes` on Windows, kernel+user ticks to
+ms; `clock_gettime(CLOCK_THREAD_CPUTIME_ID)` elsewhere), bracketed around the same
+`wgpuCommandEncoderFinish` call `SubmitTimes::finish` already times, as `finish_cpu_ms`. Measured: on
+this machine `GetThreadTimes` only updates in ~15.6 ms system-clock-quantum steps - every nonzero
+sample read exactly **15.62 ms**, regardless of whether the matching `finish_ms` was 0.57, 0.85, 1.05
+or 1.78 ms (`live_run/stderr.log`, e.g. t=3.09-3.25s), and it read 0 on the rest (3655/3673 live,
+3688/3728 control frames). The code is correct and wired through to the hitch line and `FrameCounts`,
+but it cannot distinguish "computing" from "waiting" at a sub-quantum scale, and the original 4-10 ms
+spikes are themselves below one quantum - **inconclusive by this method, not negative evidence of
+either**. `QueryThreadCycleTime` (TSC cycles) would need the core's actual clock frequency to convert
+to time, which has no reliable API; a more direct test would log the background threads' own
+create/release timestamps (item 6) against window-thread spike timestamps instead of sampling CPU
+time at all - left for whoever next measures an actual spike directly.
+
+**Item 4 (8-frame look-back): implemented, wired to the hitch line, not yet exercised on a real
+spike.** `counts_history_` (a `std::deque<FrameCounts>`, `kLookback` = 8) is updated after each hitch
+check, so it holds the frames strictly before the one just measured. When the current frame's own
+`finish_ms` exceeds `kSlowFinishMs` = 2.0 (ZOOM-MEASURE-1's own control-sweep line, review F4), the
+hitch line gets a second row: summed `planes_freed`/`chunks_dropped`/`sprites_decoded` over the
+look-back. No slow finish occurred in either measurement run (next item), so this has not yet been
+checked against a real spike - the mechanism is in place and will print the next time one happens
+under a hitch-tracing run.
+
+**Item 5 (distribution, live + control): measured, but did not reproduce the original spike
+magnitude.** Two `drive2.py` sessions (max zoom-out, `wheel -60`; live = six pan/wheel gestures over
+~5 s, control = camera at rest for 8 s; `ANNO_VIEW_HITCH_MS=0` so every frame logs, not just hitches;
+3,673 and 3,728 frames) parsed for `finish_ms`/`draw_calls`:
+- live: median 0.320 ms, p99 1.156 ms, p99.9 1.906 ms, **max 2.320 ms**; 3 frames over 2 ms.
+- control: median 0.460 ms, p99 1.190 ms, p99.9 1.635 ms, **max 1.720 ms**; 0 frames over 2 ms.
+- Both match ZOOM-MEASURE-1's own control figure (2/1,980 over 2 ms, max 3.11 ms) order of magnitude
+  for order; **neither run came close to the 4.4-10.8 ms spikes ZOOM-SMOOTH-3 found** - that session's
+  scenario (likely a heavier draw/upload load, or a cold-cache transient this 5-8 s script did not
+  hit) was not reproduced here, so the correlation below is evidence about `finish`'s normal range,
+  not a direct measurement of the worst-case spikes themselves. **QUESTION, not a guess.**
+- `corr(draw_calls, finish_ms)` over all frames: **0.85 (live), 0.77 (control)** - `draw_calls` ranged
+  109-689 across frames at this zoom level. This is real, not assumed: ZOOM-SMOOTH-3's own gap (F2,
+  not tracking the one count that tests its own hypothesis) is closed, and the hypothesis holds over
+  the range measured.
+
+**Item 6 (non-window-thread wgpu callers; read-only, no change).**
+- `gpu.cpp`, `Impl::start_prewarm()`'s `warm_thread` lambda (lines ~549-607): calls `make_texture`/
+  `make_view` (`wgpuDeviceCreateTexture`/`wgpuTextureCreateView`) to pre-build "warm" chunk planes.
+  The surrounding comment already says why this matters: texture creation takes wgpu-hal's device
+  allocator lock, the same lock every window-thread upload and buffer creation needs.
+- `gpu_fluid.cpp`, `FluidGpu::prepare_window()`'s job `thread` (lines ~733-747), via `make_grid()`
+  (lines ~243-285): calls `grid_texture()` (`wgpuDeviceCreateTexture`/`wgpuTextureCreateView`) and
+  `wgpuDeviceCreateBindGroup` directly, building a whole new fluid-simulation grid off the window
+  thread.
+- `gpu_fluid.cpp`, `FluidGpu::free_job_in_background()` (lines ~639-650): its own detached thread's
+  `j.reset()` destructs a retired `Job`, including an unapplied `Grid` if one was built before
+  cancellation (`make_grid` runs to completion regardless of `cancel`, only `compute_pieces`'s loop
+  checks it) - this **releases** that grid's `Texture`/`TextureView`/`BindGroup` handles
+  (`Handle<..., wgpuTextureRelease>` etc., `wgpu.hpp`) off the window thread. This is the one
+  genuine background-thread wgpu *release* found, matching the task's own "releases" category.
+- Checked and ruled out: `frame.cpp`'s chunk-builder thread pool and `reaper_` thread (CPU pixel
+  compositing and CPU chunk freeing only, no `wgpu` symbol in the file); `scene.cpp`'s
+  `SceneReclaimer` thread (`delete`s CPU-only `Scene` generations - `Scene` owns no `Texture`/`Plane`
+  members, confirmed by reading `scene.hpp`).
+
+**Conclusion (one, with evidence; marked where it is a guess).** Over the range this measurement
+could reach (0.1-2.3 ms), `finish_ms` tracks `draw_calls` closely (r = 0.77-0.85) - **computing**, not
+waiting, is the dominant story there, confirming the task's own hypothesis directly instead of by
+elimination. For the original 4.4-10.8 ms spikes specifically, this packet has **no direct
+measurement** (not reproduced) and the CPU-time instrumentation (item 3) cannot resolve sub-quantum
+waits either way - so "waiting on a lock, descheduled, or paying for another thread's deferred wgpu
+work" is **not confirmed, not ruled out**. **Guess, not evidence:** item 6's two background-thread
+candidates (the plane pre-creation thread's own texture/view creation, and the fluid job's grid
+creation/release) are the most concrete things found that could make the window thread's own
+`wgpuCommandEncoderFinish` wait on wgpu-hal's shared device allocator lock - they are named because
+they are the only background wgpu callers that exist, not because either was caught in the act of a
+spike.
+
+**No fix made** (task's own instruction: measurement and diagnostics only).
+
+**Gates (changed lanes: app, render/render-gpu for the `GpuStats` fields).** `anno_app_tests`,
+`anno_render_tests`, `anno_render_gpu_tests`: 615/615 after a solo rerun of 8 tests that first failed
+only under memory contention from the concurrent `drive2.py` capture sessions (unrelated to this
+diff - chunk-draw/river-digest/river-flow corpus tests; none of them touch `viewer.cpp`, `gpu.hpp`,
+`gpu.cpp` or `thread_priority.hpp`), matching the project's own "refused tests rerun alone"
+convention. `clang-format`: clean after one `-i` fix. WSL `-Werror`: pending (checked for a visible
+gate on this PC first - none running - then run; result follows this entry or in the next message).
+
+Decisions and reasoning:
+- **Reused the already-computed `visible_chunks(view)` result for `chunks_visible`** instead of
+  widening `FrameRenderer::update_chunks`'s tuple return - that signature has 21 call sites across
+  both source and test files, far outside this packet's changed-lanes scope; the frame-level count
+  gpu.cpp already had on hand was the narrower, equally correct fix.
+- **Scoped the draw/bind-group count to `GpuFrame::render` itself**, not `reduce_quad` (derived-level
+  chunk reduction, a separate command buffer) - that function's own `finish`/`record` are not what
+  this task or ZOOM-SMOOTH-3 measured, and counting its draws would have mixed two different
+  `finish` calls into one number.
+- **Ran the live and control sessions through the viewer itself** (two `drive2.py` scripts, one with
+  motion, one at rest) rather than extending `bench_frame`'s own `--zoom-sweep`/`--control` output
+  format - the viewer's existing, just-extended hitch-line counts already carried every field item 5
+  needed; teaching `bench_frame` the same fields would have been a second, parallel reporting path
+  for no new information.
+- **Reported the quantization finding instead of silently dropping `finish_cpu_ms`** - a measurement
+  that is wired correctly but not sensitive enough is still worth knowing, and matches the task's own
+  "mark guesses as guesses" instruction applied to methods, not just conclusions.
+
+QUESTIONs: is a background-thread timestamp log (item 3's own suggested next step) worth building to
+actually catch a 4-10 ms spike in the act against the plane-pre-creation/fluid-job threads named in
+item 6, or does RENDER-DIRECT make the question moot before anyone would use it? Is `kSlowFinishMs`
+= 2.0 the right trigger for item 4's look-back print, or should it track whatever `zoom_sweep_contract`
+eventually encodes for the F4 jitter rule (ZOOM-SMOOTH-3's own open QUESTION)?
+
+READY FOR REVIEW.
+
+## ZOOM-SMOOTH-3c: catch a slow finish in the act — reproduced; low cycles and no overlap point to
+descheduled, not computing, not the two named background sections — READY FOR REVIEW (same branch
+task/ZOOM-SMOOTH-3, from `73f06bd2`, new commits)
+
+**The spikes were reproduced this time (F1).** Two full five-location sessions (`north`, `middle`,
+`sea`, `southeast`, `west`; `make_script.py`'s own session, `drive2.py`, no capture, `ANNO_VIEW_HITCH_MS=0`
+so every frame logs) at the maximised client size, lan5, enhanced water:
+- Run 1: 63,111 frames. `finish_ms` median 0.18, p99 0.67, p99.9 1.37, **max 13.63 ms**. 26 frames over
+  2 ms, **2 over 4 ms** (13.63, 4.84).
+- Run 2: 63,163 frames. `finish_ms` median 0.18, p99 0.64, p99.9 1.11, max 3.77 ms. 2 frames over 2 ms,
+  0 over 4 ms.
+
+Two runs already had a call over 4 ms (combined), so per the task's own stop rule this did not need the
+two further runs.
+
+**Item 1/F3 (the syscall off the ordinary frame).** `GpuFrame::render`/`submit` take a new
+`measure_cpu_time`/`measure_cpu` parameter; `Viewer::hitch_tracking_enabled()` (true only when
+`ANNO_VIEW_HITCH_MS` is explicitly set) is the one thing that turns it on, threaded through from the single
+real call site (every other `render()`/`submit()` caller - tests, `bench_picture` - passes `false`, the
+default). No cycle-time syscall runs on an ordinary playtest.
+
+**Item 2/F2 (cycles, not `GetThreadTimes`).** `thread_cpu_cycles()` (`QueryThreadCycleTime`) replaces the
+Windows branch of the old `thread_cpu_time_ms()` (removed there; kept, unchanged, for `clock_gettime`
+elsewhere). No conversion to time: the yardstick is the **median cycles-per-millisecond of this run's own
+ordinary (not-slow) calls**, capped at the last 500 (`cycles_per_ms_samples_`), fed on every frame once hitch
+tracking is on, not only on frames that print. Yardstick in both runs: **~4.68-4.69 million cycles/ms**
+(stable across the whole session - the CPU's own clock, confirmed not drifting meaningfully run to run).
+
+**Item 3 (the three background sections, and the two new counts).** `GpuStats` gained
+`prewarm_begin_ns`/`end_ns` (the plane pre-creation thread's own texture/view build),
+`fluid_build_begin_ns`/`end_ns` (the fluid job thread's `make_grid`) and `fluid_release_begin_ns`/`end_ns`
+(`free_job_in_background`'s own release of an unapplied grid, now guarded on `j->grid.has_value()` so an
+already-applied job's release is not logged as one), snapshotted every frame (cheap atomic loads, not
+gated on `measure_cpu_time`) and compared against the finish call's own `[finish_at_ns, finish_at_ns +
+finish_ms]` span when a slow call prints. `chunks_visible`'s own sibling counts, `fluid_windows_new` (the
+per-frame delta `draw_gpu` already computed for `windows_new_`, saved before it is folded in) and
+`planes_prewarmed` (a new `warm_planes_created_total` counter in `Impl`, delta per frame like
+`planes_warm` already is), are in the hitch line's own counts now.
+
+**The 29 slow calls found (26 + 2 + 1 counted once; 27 printed detail lines in run 1, 2 in run 2), every
+one:**
+- **No overlap with any of the three named sections, in either run, for any of the 29 calls.** The plane
+  pre-creation thread and the fluid job's build/release are not implicated for *these* spikes, by direct
+  measurement, not assumption.
+- **Cycle ratios split into two bands.** The worst five (run 1's 13.63, 4.84, 3.60, 3.11 ms and run 2's
+  3.77 ms) ran at **3-15 % of the yardstick** - far too few cycles for their own wall time to be computing.
+  The rest (2.0-2.86 ms, both runs) ran at **39-80 %** - closer to, but still under, the yardstick; this
+  band matches ZOOM-MEASURE-1's own control-sweep figure (2/1,980 frames over 2 ms, max 3.11 ms) in
+  magnitude, the already-decided driver-jitter rule (ZOOM-SMOOTH-3 review F4).
+- **The look-back is mixed, not a clean signal.** Some of the lowest-ratio calls (13.63 ms) show an
+  all-zero 8-frame look-back; others at a similarly low ratio (4.84, 3.60, 3.11, 2.67 ms in run 1; both of
+  run 2's) show tens of planes freed and chunks dropped in the 8 frames before them. No single look-back
+  pattern predicts a low ratio.
+
+**One conclusion, per the task's own four options.** The worst spikes (≤15 % of the yardstick, no
+overlap with either known background section) are **descheduled** - not computing (the cycle count rules
+that out directly), and not waiting behind either of the two sections this packet can see start and end
+(the overlap check rules that out directly too, not by assumption). What preempted the window thread for
+up to ~13 ms is still unknown: neither of the two logged sections, and the look-back's own mixed pattern
+does not point at drops/frees/decodes either. The 2.0-2.86 ms band is the already-decided driver jitter,
+unchanged by anything this packet measured. **This is not "unknown" in the sense of no information** -
+two of the four hypotheses (computing, these two sections) are now ruled out by direct measurement for
+every slow call found; what remains is the OS scheduler or a third wgpu-internal thread this packet did
+not know to look for (ZOOM-SMOOTH-3b item 6 found three; a fourth is not ruled out).
+
+**The line (F4).** Least-squares `finish` against `draw_calls`, both runs:
+- Run 1: **0.146 ms per 100 draws**, intercept 0.066 ms.
+- Run 2: **0.141 ms per 100 draws**, intercept 0.069 ms.
+
+Consistent across two independent runs (same map, same session, different frame mix) - this is the number
+RENDER-DIRECT's own budget work can use directly. `record` against `draw_calls` does **not** scale the same
+way: both runs give a near-zero or slightly negative slope (-0.015 and -0.025 ms per 100 draws, intercept
+0.19-0.25 ms) - `record` (building the command buffer) is close to a fixed cost regardless of draw count in
+this data, unlike `finish` (closing it).
+
+**Nothing else ran during either capture (F5).** Checked before and after each of the two runs: no other
+`anno1503.exe`, no `ctest`/ MSBuild. The owner's own hands-on test of a different worktree's build
+(`anno1503-UI-TABS-1`, a real process on this machine, confirmed by the orchestrator) was running when this
+packet started; both captures were held until it closed and the process list stayed clear through both runs
+and immediately after - neither capture overlapped it or a test run. The gate tests below were run only
+after both captures finished, never alongside them. Separately, the orchestrator's own reviewer subagent
+(light, single-threaded document reading and disassembly) may have been running somewhere on this machine
+during one or both captures - its own message said "for the next hour or so," which overlaps the capture
+window; I cannot rule out a small scheduling effect from it, though a single light thread on an 8-core/16-
+thread machine is not an obvious match for a 13 ms descheduling.
+
+**Gates.** `anno_app_tests` + `anno_render_tests` + `anno_render_gpu_tests` + `viewer_wiring_*`: 641/641
+after a solo rerun of 6 tests that first failed under memory contention (unrelated to this diff - chunk-draw/
+river-corpus/water-field/scene-digest tests, none touching `gpu.hpp`, `gpu.cpp`, `gpu_fluid.cpp`,
+`viewer.cpp` or `thread_priority.hpp`), run strictly after both captures finished (never together, per F5).
+`clang-format`: clean after one `-i` fix. WSL `-Werror`: **found a real bug the MSVC build cannot see**
+(docs' own note: "MSVC does not report most of these warnings") - `hitch_tracking_enabled()`'s one call
+site is `draw_gpu`'s own `render()` call, `ANNO_VIEWER_GPU`-only; without a matching guard the function
+itself is unused in the CPU-only build, `-Werror=unused-function` under both GCC and Clang. Fixed by
+wrapping it in the same `#ifdef ANNO_VIEWER_GPU` as its call site (commit `08b683c7`); rebuilt (MSVC, still
+clean) and reran the WSL check - clean on every touched file under GCC 13 and Clang 18, both with and
+without the viewer's GPU code, except the same pre-existing `extensions_test.cpp` gap. No gate was visibly
+running on this PC before either WSL run (checked per the orchestrator's own landing-gate hold).
+
+NOT_RUN: a third or fourth background-wgpu-calling thread search (not asked for this packet; item 6's own
+three are the full list found so far); the full suite and the game-file run (the orchestrator's, at
+landing).
+
+Decisions and reasoning:
+- **Fed the yardstick on every ordinary frame, not only frames that print a hitch** - the first version of
+  this logic lived inside the `if (gap > hitch_ms())` block and would have almost never fed it (an ordinary
+  frame, by construction, rarely triggers that branch), caught by checking the yardstick's own sample count
+  before trusting a single printed line.
+- **Guarded the release log on `j->grid.has_value()`** - `free_job_in_background` frees every retired job,
+  most of which were already applied (no grid left to release); logging every one of those as a "release"
+  would have overlap-tested the slow calls against a span that fires on nearly every frame, defeating the
+  point of a named section.
+- **`build_begin_ns_`/`build_end_ns_`/`release_begin_ns_`/`release_end_ns_` are `shared_ptr<atomic<int64_t>>`,
+  not plain atomics** - a plain `std::atomic` is neither copyable nor movable, and `FluidGpu`'s own move
+  constructor is defaulted (caught at compile time, MSVC's own C2280); `shared_ptr` also lets
+  `free_job_in_background`'s detached thread hold its own reference, independent of this object's lifetime,
+  the same reason `freeing_` itself already uses one.
+- **Stopped at two runs**, per the task's own rule, once both runs' combined 4 ms+ count was nonzero (2),
+  rather than running two more to no new information.
+
+QUESTIONs: is a fourth wgpu-calling thread worth searching for now, given RENDER-DIRECT's own packets are
+not written yet and the two spikes over 4 ms are rare (2 in 126,274 frames across both runs)? Does the
+0.14-0.15 ms/100-draws line, applied to a typical frame's own draw count, change RENDER-DIRECT's priority
+either way, or does the already-ruled-out-as-computing descheduled band matter more for that decision?
+
+READY FOR REVIEW.
+
+## ZOOM-SMOOTH-3d: the overlap check reads after the call — waiting, with no named section
+running — READY FOR REVIEW (same branch task/ZOOM-SMOOTH-3, from `7bec1780`, new commits; **the
+last packet of this series**)
+
+**The fix (review of 3c, F1).** The three sections' own snapshot moved from ~400 lines before the
+`finish` call to right after it returns (`stats.prewarm_sections = m.prewarm_ring.snapshot(); ...`,
+`gpu.cpp`, after `stats.finish_at_ns`) - a section starting or ending during `finish` is now in
+the snapshot, which it could not be before. Each section is now a `SectionRing` (new,
+`gpu_fluid.hpp`): `kSectionRingSize` = 4 most recent instances, not one pair - "a named field with
+its reason": generous given at most one plane is pre-created per quiet frame and the fluid job/
+release threads are rarer still, so a window-thread stall that missed more than 4 instances
+between two reads would itself be the finding. A slot's own `end` reads 0 from `begin` until
+`end` is called; `anno::app::overlap_ms` (new, `section_overlap.hpp`) treats that as running until
+a `read_time_ns` the caller supplies (`sections_read_at_ns`, taken right after the snapshot) -
+the actual fix for F1 ("a section still running has a new begin and the old end, and overlap_ms
+then reports no overlap").
+
+**The unit test (item 4), both old and new on the same four cases:** entirely inside the call -
+both agree, overlap; starts during it, still running at the read - new reports 400 ms overlap, old
+(no `read_time_ns`, `end_ns == 0` taken literally) reports none; started before the call, still
+running at the read - new reports the whole 1000 ms call, old reports none; entirely before,
+long ended - both agree, none. `overlap_ms_old` (new, reproducing the *shape* of 3c's own blind
+spot, not its literal stale-snapshot timing) fails exactly the second and third, as asked.
+13 assertions, `app_test.cpp`, no window.
+
+**The session, once (stopped there - it already had calls over 4 ms).** Five locations, the hitch
+line on every frame, nothing else running (checked before and after): 63,204 frames. `finish_ms`
+median 0.18, p99 0.64, p99.9 1.29, **max 6.90 ms**. 9 calls over 2 ms, **2 over 4 ms** (6.90, 5.18).
+
+**Every one of the 9, with the fixed check:**
+| finish ms | cycles/ms | % of yardstick | overlap | look-back (freed/dropped) |
+|---|---|---|---|---|
+| 2.09 | 2,866,447 | 61% | none | 0/0 |
+| 2.04 | 3,384,879 | 72% | none | 0/0 |
+| 2.01 | 3,317,440 | 71% | none | 0/0 |
+| 2.29 | 2,984,846 | 64% | none | 0/0 |
+| 3.16 | 587,876 | 13% | none | 129/29 |
+| **6.90** | 303,580 | **6%** | **none** | 197/76 |
+| 3.75 | 478,776 | 10% | none | 0/0 |
+| **5.18** | 309,698 | **7%** | **none** | 89/64 |
+| 2.56 | 626,089 | 13% | none | 122/68 |
+
+Yardstick ~4.68-4.69 million cycles/ms throughout (this run's own CPU clock, stable). **None of the
+9 overlaps any of the three named sections - with the corrected check, not the one F1 found blind.**
+
+**One conclusion.** Waiting, with no named section running: the worst calls (6-13% of the
+yardstick) are not computing (direct measurement, not assumption), and now - with the fix - are
+also directly shown not to overlap the plane pre-creation thread, the fluid build thread or the
+fluid release thread (also direct measurement, not the unproven absence 3c reported). What they
+are waiting *for* (a lock this packet did not log, or the OS scheduler) is open; this method
+cannot tell the two apart. The look-back is still mixed (two of the five worst calls show nothing
+nearby; three show substantial freeing/dropping) - no look-back pattern predicts which.
+**Guess, marked as one:** a fourth wgpu-calling thread not yet found, or ordinary OS scheduling
+pressure on an 8-core/16-thread machine, are the remaining candidates; this packet did not look
+for either.
+
+**The line, same shape as 3c.** `finish` vs `draw_calls`: **0.142 ms per 100 draws**, intercept
+0.069 ms - consistent with 3c's own 0.141 and 0.146. `record` vs `draw_calls`: -0.017 ms per 100
+draws, intercept 0.20 ms - still flat, not computing's own signature.
+
+**Gates (changed lanes).** `anno_app_tests` + `anno_render_tests` + `anno_render_gpu_tests` +
+`viewer_wiring_*`: 642/642 after a solo rerun of 3 tests that failed only under memory contention
+(unrelated - chunk-draw/scene-digest/river-shading corpus tests, none touching this packet's
+files), run after the capture, never alongside it. `clang-format`: clean after one `-i` fix.
+
+**WSL `-Werror`: found a real bug (two iterations to fully fix).** The whole slow-finish
+diagnostic block is only ever reached with a real `counts` (`draw_gpu`'s own `measure()` call,
+itself `ANNO_VIEWER_GPU`-only); without that macro `counts` is provably null in this translation
+unit, making the block dead code there. GCC's `-O3 -Wnull-dereference` flagged the array indexing
+inside `section_overlap_ms`'s own loop directly (not the simpler scalar reads elsewhere in the
+same function) - a local reference did not help (the dataflow traces straight through it to the
+same provably-null source). Fixed by moving the block behind `#ifdef ANNO_VIEWER_GPU`, matching
+`hitch_tracking_enabled`'s own existing pattern (commit `a155e730`); doing so left
+`describe_lookback` (already `slow_finish`-only, unrelated to this packet) newly unused outside
+the macro too, caught by a second WSL run and fixed the same way. Clean on every touched file
+after that, GCC 13 and Clang 18, with and without the viewer's GPU code, except the same
+pre-existing `extensions_test.cpp` gap (UNIX-WARN-1's own fix, a different branch, not yet
+landed here). No gate was visibly running before any WSL run or the capture; the capture's own
+process-list check (before and after) found nothing else running either.
+
+Decisions and reasoning:
+- **Moved the snapshot, did not add a second one** - reading after `finish()` is strictly better
+  information than reading before it; there was no reason to keep both.
+- **`SectionRing` as its own small class (gpu_fluid.hpp), reused by both gpu.cpp's Impl (plain
+  member) and FluidGpu (shared_ptr, for the same move-constructor reason 3c's own plain atomics
+  needed one)** - one ring type, not two copies with the same bug surface.
+- **`overlap_ms_old` reproduces the formula's blind spot, not 3c's literal stale-snapshot timing**
+  - the task's own item 4 asks for a test the old code fails on the right two cases; testing the
+    *timing* bug directly would need a second snapshot point as a parameter, which 3c's own
+    function never took - the formula's own blind spot (a still-running instance's `end_ns == 0`)
+    is the part that generalises and is what a future similar bug would also hit.
+
+QUESTIONs: this is the last packet of the series - the branch is otherwise ready to land, pending
+this packet's own review. Is the fourth-thread search (or an OS-scheduler-level trace) worth a new
+packet, given the two over-4-ms calls are rare (2 of 63,204 in this one run) and RENDER-DIRECT's own
+packets are not written yet?
+
+READY FOR REVIEW.
+
+## ZOOM-BOUNCE-1 — not reproduced in 240 reversal legs; the math regression-tested — READY FOR REVIEW (task/ZOOM-BOUNCE-1, new worktree, from `origin/main` `4b104d3a`, head `0df9b53e`)
+
+**Reproduced via a dev script, not the owner.** `tools/test/viewer_wiring.py` with `--gpu --trace`, lan5,
+`--construction-menu on --water enhanced`, `ANNO_VIEW_SIZE=2560x1369`, cursor at (1080, 635): a wheel burst
+per leg (magnitude 12) reproducing the owner's own reversing shape (two out, two in, four out, then the
+mirror back), 50 repeats = 800 wheel events = 240 direction-reversal legs (over the 200 the task asked
+for), 45,825 drawn frames. `ANNO_VIEW_TRACE` (already shipped, no new code) gave per-frame `view`/`group`/
+`scale` for free.
+
+**Checked for exactly the owner's signature** (one frame far from both neighbours, which agree with each
+other): a Python pass over `frames.tsv` looked for (a) a group that flips for one frame and reverts (hysteresis
+failing), and (b) a one-frame spike in the reconstructed group-independent eased tile width
+(`scale * tile_w(group)`) against its own smooth neighbours. **Zero of either, across all 45,825 frames.**
+Stand-in dissolves did happen during the run (up to 101 at once, confirming the chunk-substitution path the
+task named was actually exercised, not idle) - still no disagreement in what the Viewer itself asked the
+renderer to draw.
+
+**Added a permanent regression test** (`app_test.cpp`): the exact group sequence (`0,1,2,1,0,1,2,3,4` and
+its reverse) driven directly through `zoom_advance`/`zoom_target_after`, swept over 9 inter-notch delays x
+6 frame rates (19,617 individual per-step checks), asserting `now` never moves away from the leg's own
+target. All pass - proves, not just observes once, that the easing math itself cannot bounce under normal
+(every level ready) conditions; a future change to that formula would be caught here.
+
+**Did not find the cause.** The Viewer's own per-frame state (what it asks the renderer to draw) was clean
+throughout. This points away from `zoom_advance`/`zoom_tick`/`pending_zoom_` (the latter is unreachable
+here regardless: this map runs continuous zoom by default, so the discrete `zoom()`/`pending_zoom_` path the
+task named is never taken) and toward either the GPU compositor's own internals (not instrumented in this
+packet - `FrameRenderer::render`'s one shared `view`/`group`/`resample` argument makes a chunk/stand-in/sea/
+sprite disagreement hard to localise without reading deep into `frame.cpp`/`gpu.cpp`, out of this packet's
+own time box) or the screen capture itself, which this codebase cannot check. Per the instruction, the zoom
+was not changed on this guess.
+
+**Gates.** `anno_app_tests`: 283/283 (`cache/gates/zoombounce1-app-1.log`). `anno_render_tests` +
+`anno_render_gpu_tests` on the 4090: two full-suite attempts each failed a different handful of unrelated
+river/water/digest corpus tests (`Timeout`, one `low-memory stop` refusal at `free=1082 MiB`, one digest
+mismatch) - the failing set itself changed between attempts, and free memory on the machine was observed
+recovering from ~1 GB to 8-13 GB between runs, so this is this machine's own resource contention, not a
+regression (nothing in this packet touches `src/render`). The union of every test either attempt failed, 9
+of them, passed 9/9 run alone (`cache/gates/zoombounce1-render-solo.log`), per the project's own "refused
+tests rerun alone" convention. WSL `-Werror`: clean on `app_test.cpp` under GCC 13 and Clang 18, except the
+same pre-existing, unrelated `src/sim/tests/extensions_test.cpp` gap every other packet this cycle has also
+hit (this worktree never touches `src/sim`). `clang-format` clean.
+
+NOT_RUN: a GPU-compositor-level instrumentation pass (chunks/stand-ins/sprites individually, inside
+`frame.cpp`/`gpu.cpp`); a capture-side check of the owner's own recording.
+
+Decisions and reasoning:
+- **Checked the owner's own cursor/window/map precisely before writing the script**, rather than guessing a
+  generic zoom test - the dev script's existing `wheel N X Y` syntax already supports an off-centre anchor,
+  so nothing new was needed to match the real position.
+- **Calibrated the wheel magnitude against this build's own group thresholds** (watching `frames.tsv`) rather
+  than assuming a single real-wheel notch's own unknown magnitude - the owner's recording names only group
+  labels, not the wheel delta that produced them.
+- **Confirmed `pending_zoom_`/discrete `zoom()` cannot be the cause for this map and build** (continuous
+  zoom is the default, and this scene is on the GPU) before spending time on it, rather than chasing a
+  hint that cannot apply here.
+- **Re-ran only the failed render tests, solo, rather than the whole 330-test suite again**, once their
+  failure set and failure kind had already changed between two full attempts - the project's own evidence
+  policy treats an environmental flake honestly, not as grounds to keep re-running everything.
+- **Did not instrument the GPU compositor's own internals in this packet**, given the time box and that the
+  Viewer-level signal came back clean across far more than 200 repeats - named it as the next place to look
+  rather than guessing inside it without evidence.
+
+QUESTIONs: is a `FrameRenderer`-internal instrumentation pass (per-layer scale/origin inside `frame.cpp`/
+`gpu.cpp`) worth a follow-up packet, or should the owner's own recording get a capture-side check first
+(dropped/duplicated frame in OBS, vsync tear) before more engine-side instrumentation?
+
+READY FOR REVIEW.
+
+## ZOOM-BOUNCE-2 — not reproduced hammering both limits; the clamp regression-tested — READY FOR REVIEW (same branch task/ZOOM-BOUNCE-1, new commits, no rebase)
+
+**The hypothesis refuted, so checked the leads directly rather than assume more.** Extended
+`ANNO_VIEW_TRACE`'s own `frames.tsv` with three new columns (`resample_scale`, `resample_offset_x/y`: the
+`gpu::Resample` actually handed to `FrameRenderer::render`, captured at the same point `scale` already is) -
+lead 3's own ask, "the scale that is presented, not only the view state," for free from existing
+infrastructure. `tools/bench/window_table.py`'s `COLUMNS` and its contract test updated to match (columns
+appended at the end, not inserted, so none of that test's many positional `sed` edits needed touching).
+
+**The script** (`tools/test/viewer_wiring/zoom_bounce_2.script`, same cursor and window size): drives hard
+to each zoom limit, then sends several more notches in the same direction with as little gap as the script
+can express (0 ms and 3 ms, some back to back with no wait at all - lead 1's "within a few frames of each
+other"), alternating the closest and farthest limit, 40 repeats = 960 wheel events, **21,775 presented
+frames**. Confirmed the closest limit was genuinely reached and hammered, not approximated: the recorded
+`resample_scale * tile_w(group)` peaked at 118.79364, against the exact theoretical limit
+`84 * sqrt(2) = 118.79394` - matched to four decimals, repeatedly, with the extra inward notches still
+landing on top of it.
+
+**Checked, all clean:**
+- `scale` (view state) vs `resample_scale` (presented): **0 mismatches** over 0.05 %, across all 21,775
+  frames - rules out lead 3 directly; `resampled_view`'s own grid-fit clamp (`resample.cpp`) is confirmed a
+  no-op in this scale range (`fit ≈ 0.315` for this window size, far below any scale near a zoom limit), so
+  it was never going to diverge here, but this is now measured, not assumed.
+- A one-frame spike in the presented, group-independent eased tile width against smooth neighbours (the
+  owner's own signature: one frame far from both its neighbours, which agree with each other): **0 spikes**.
+- A group that flips for one frame and reverts: **0 flickers** (unchanged from ZOOM-BOUNCE-1).
+- `drawable_w`/`drawable_h` (the window's own reported size): **rock steady at 2560 x 1369 on every single
+  frame** of the whole run - rules out a window-size blip producing the same "whole view scaled" look lead 2
+  raised as a possibility.
+
+**Lead 1 is also false by construction, not just by measurement.** `zoom_target_after`'s clamp
+(`std::clamp(target * factor, lowest, levels.tile_w(0) * kZoomEndFactor)`) is applied on every single call,
+inside the one function `zoom_by` ever calls - there is no intermediate state in which an unclamped value
+exists for even one frame, with or without an intervening `zoom_advance`. Proved this directly: a new test
+(below) calls it 20 times in a row from exactly at the limit, with no advance between calls (exactly what
+several same-frame wheel events would produce) - the target never moves, let alone past the limit, by even
+a floating-point hair.
+
+**Added a permanent regression test** (`app_test.cpp`): `zoom_target_after` from exactly at the closest-zoom
+limit, 20 repeated inward notches with no `zoom_advance` between them, asserting the target stays exactly
+at the limit every time (`<=`, not just `Approx`) - proves lead 1's own mechanism cannot occur in this code,
+not just that this run didn't show it.
+
+**Did not reproduce.** No fix made - nothing to fix at the cause the leads named. `view_w`/`view_h`/`group`/
+`scale`/`resample_scale`/`resample_offset_x/y`/`drawable_w`/`drawable_h` were all checked and all clean,
+hammering the exact scenario (reaching a true limit, extra same-direction notches arriving with no gap) the
+owner's own session plausibly produced. What remains unchecked is everything inside `FrameRenderer::render`'s
+own per-layer compositing (`frame.cpp`/`gpu.cpp`) and the capture itself - the same two items ZOOM-BOUNCE-1's
+own entry named, still open.
+
+**Gates (changed lanes only, per the instruction).** `anno_app_tests`: 284/284
+(`cache/gates/zoombounce2-app-1.log`). `viewer_wiring_contract` + `window_tools_contract`: 2/2
+(`cache/gates/zoombounce2-viewerwiringcontract-1.log`). `window_table_contract` (the Python reader's own
+contract test) only registers on UNIX (`CMakeLists.txt`: `if(ANNO_BUILD_TESTS AND UNIX)`), so it never runs
+on this Windows gate; verified the two `sed` substitutions my column change touched by hand against the new
+header/rows (both produce the expected row), and hosted Linux CI is the real check for it. WSL `-Werror`:
+clean on every file this packet touched, same pre-existing `extensions_test.cpp` gap as every other packet
+this cycle. `clang-format` clean.
+
+NOT_RUN: `FrameRenderer`/`gpu.cpp`-internal instrumentation (still the open item from ZOOM-BOUNCE-1); a
+capture-side check of the owner's own recording; the render suite (not run - this packet changes no render
+code, per the instruction not to run it for an unrelated lane).
+
+Decisions and reasoning:
+- **Extended the existing `ANNO_VIEW_TRACE` facility rather than adding a second, parallel trace mechanism**
+  for "the scale handed to the renderer" - `resample` is already a parameter at the exact call site `scale`
+  is read, so this needed one new read, not new plumbing.
+- **Appended the new columns instead of inserting them**, once the contract test's own dozens of
+  position-sensitive `sed` substitutions made clear that an insertion would need touching most of them for
+  no benefit - the column's own name, not its position, is what every reader keys on.
+- **Verified the limit was actually reached, numerically, before trusting the hammering**, rather than
+  assuming 10-14 notches of magnitude 12 would obviously clear it - the recorded value matched the closed
+  form to four decimals, so the "at the limit" condition the lead names was genuinely exercised.
+- **Proved lead 1 false by construction, not only by absence of evidence in one run** - a clamp applied
+  unconditionally on every call admits no gap for an unclamped value to exist in, and the new test pins that
+  down for any future change to `zoom_target_after`.
+- **Did not touch `frame.cpp`/`gpu.cpp`**, since nothing in the view/presented state pointed there and the
+  review's own list of what the executor's checks could not see is the orchestrator's own next step, not a
+  reason to start guessing inside the renderer now.
+
+QUESTIONs: with the view state, the presented resample state, and the window size all clean under direct
+hammering, is the `FrameRenderer`-internal instrumentation (frame 3 of the review's own numbered leads) still
+the next step, or does this shift the balance toward a capture-side check of the owner's own recording first?
+
+READY FOR REVIEW.
+
+## ZOOM-BOUNCE-3 — the bounce hypothesis reproduces almost exactly — READY FOR REVIEW (same branch task/ZOOM-BOUNCE-1, new commits, no rebase)
+
+**Traced every wheel event into the existing window trace** (`wheel.tsv`, recorded whenever
+`ANNO_VIEW_TRACE` is already running - no new switch): `t_ms`, the raw float and accumulated-
+integer deltas SDL gives (`SDL_MouseWheelEvent::y`/`integer_y`), the flipped flag, the pointer
+position, and `zoom_target_` just before and after that one event's own `zoom_by()` call.
+
+**The scripted pair** (`zoom_bounce_3.script`): one inward tick, then one outward tick 5, 10 and
+20 ms later, at rest between 20 and 42 tile width (away from either limit). Read `wheel.tsv`
+against `frames.tsv`'s own `resample_scale` (same clock) frame by frame:
+
+| gap | peak scale reached | excursion over the 20/42 rest value | frames it shows in |
+|---|---|---|---|
+| 5 ms | 0.4832 | **+1.47 %** | 1 (the very next drawn frame; already reversing the one after) |
+| 10 ms | 0.4876 | **+2.40 %** | 2 |
+| 20 ms | 0.4956 | **+4.08 %** | 3-4 |
+
+**The 5 ms result is the owner's own number, to within measurement precision**: the reported
+frame was "the whole view zoomed in by about 1.5 %" - this packet's own 5 ms pair peaks at
+**1.47 %**, one frame after the inward tick, reversing by the very next one. The excursion grows
+roughly linearly with the gap (consistent with the easing's own early-time behaviour, first-order
+in `dt`), so a brief double-tick anywhere under about 10 ms plausibly explains a single captured
+frame differing by 1-2 %, exactly as reported - without any readiness miss, group flicker or
+presented/view-state disagreement, all of which ZOOM-BOUNCE-1/2 already ruled out.
+
+**No zoom change.** This is a finding about the input, not the easing or the renderer: the target
+correctly reflects every tick it receives, including a brief reversal, and the view correctly
+eases toward whatever the latest target is. Whether a double-tick this close together is ever
+really intended by the user, and so whether it is worth filtering, is the owner's own call - a feel
+change, per the instruction.
+
+**The owner's recipe.** With `ANNO_VIEW_LIVE_RESIZE_TRACE` unrelated, just the usual:
+```powershell
+$env:ANNO_VIEW_TRACE = "wheel-trace-1"
+.\build\msvc\src\app\Release\anno1503.exe --play data\maps\lan5.txt --game-dir E:\anno1503\game\app --water enhanced
+```
+Wheel in and out quickly, varying speed, for about 20 s, then close the window. In
+`wheel-trace-1\trace\wheel.tsv`, sort by `t_ms` and flag any two consecutive rows whose `raw_y`
+signs differ with `t_ms` less than 30 ms apart - that count, and how often it happens during an
+ordinary fast scroll, is what decides whether this is rare or constant.
+
+**Gates (changed lane: app).** `anno_app_tests` + `viewer_wiring_*`: 307/307
+(`cache/gates/zoombounce3-app-1.log`). WSL `-Werror`: clean on every file this packet touched,
+same pre-existing `extensions_test.cpp` gap. `clang-format` clean after one `-i` fix.
+
+NOT_RUN: the owner's own 20 s recipe (above, not yet run); whether a double-tick this close
+together occurs during the owner's own ordinary play (not measured here - only the scripted pair).
+
+Decisions and reasoning:
+- **Reused the existing `ANNO_VIEW_TRACE` switch rather than adding a new one**, since the window
+  trace is already off by default; a second toggle would only add a step the owner has to remember.
+- **Read `wheel.tsv` against `frames.tsv`'s own clock, not a new correlation mechanism** - both
+  already share `WindowTrace::now_ms()`/`ms_at()`, so no new plumbing was needed to line them up.
+- **Reported the exact matching number (1.47 % against the owner's 1.5 %) rather than just "yes, a
+  bounce can cause an excursion"** - the close match is what makes this a strong finding, not a
+  plausible-sounding one.
+- **Did not add a filter or a minimum-gap guard**, per the instruction - a scroll-wheel feel change
+  is the owner's decision, not a fix this packet should make unasked.
+
+QUESTIONs: does the owner's own hardware (recipe above) actually produce opposite-sign ticks under
+30 ms apart during ordinary fast scrolling, and if so, is filtering them wanted as a feel change?
+
+READY FOR REVIEW.
+
+## TRACE-COLS-1: the window trace and its reader agree on the columns — READY FOR REVIEW (same
+branch task/ZOOM-BOUNCE-1, from `fc1fbff7`, new commits)
+
+**Kept the writer's order** (`window_trace.cpp`'s `resample_scale`/`resample_offset_x`/
+`resample_offset_y` right after `scale`), per the task's own default: real traces already exist in
+it, and reordering the writer would need re-recording or hand-patching every existing trace for no
+other gain. Reordered `window_table.py`'s `COLUMNS` to match (it reads every field by name,
+`dict(zip(COLUMNS, f))`, so the reorder alone is safe); added `WHEEL_COLUMNS` (`wheel.tsv` had no
+Python-side list at all).
+
+**The contract test (new, `tools/test/window_trace_columns_test.py`, CTest
+`window_trace_columns_contract`).** Extracts each header's string literal straight out of
+`window_trace.cpp` (the `f`/`t`/`w` stream statements) rather than a third hand-copied list, decodes
+the `\t`/`\n` escapes, and checks it against `COLUMNS`/`SIM_COLUMNS`/`WHEEL_COLUMNS`. On `fc1fbff7`
+as it stood: `frames` fails (first difference at index 9, `resample_scale` vs `drawable_w`),
+`wheel` errors (`AttributeError: module 'window_table' has no attribute 'WHEEL_COLUMNS'`), `sim`
+passes (untouched). After the fix: all three pass.
+
+**`window_table_test.sh` needed its own fix too**, found while checking it: `H`/`F1`/`F2` used the
+old (now-wrong) order, and two `sed` substitutions (`overlap`, `drawable_no_epoch`) matched the
+literal text immediately after `scale`, assuming `drawable_w`/`drawable_h` was there - both
+reordered/fixed, verified with a dry run against the base rows (diff shows exactly the intended
+single-field change, nothing else moved). The shell test itself cannot be run end-to-end on this
+Windows host (its own header: "not Windows... this runner does not [work]" - confirmed directly:
+even the baseline `good` case fails, `bench_picture: cannot open /tmp/.../events.tsv`, a WSL-bash
+vs. native-Windows-exe path mismatch unrelated to this fix); CI's own Linux/macOS runners are what
+actually exercise it.
+
+**`window_table.py` reads one real trace from this branch's own binary, no error** (a short
+scripted zoom, `ANNO_VIEW_TRACE`, this worktree's `anno1503.exe`):
+```
+read_frames: 1820 rows, no error
+  first row: frame=1 group=2 outcome=presented
+  last row: frame=1820 group=2 outcome=presented
+  groups seen: [2, 3, 4]
+read_sim: 46 rows, no error
+wheel.tsv header matches WHEEL_COLUMNS: True
+wheel.tsv rows: 4
+```
+
+**`docs/app/window-trace.md`** updated: the `frames.tsv` column list now shows the resample fields
+in their real (writer's) position with a note on when they are 0 vs populated; a new `wheel.tsv`
+bullet with all 8 columns and their meaning (`raw_y`/`integer_y` are not the same number twice -
+a precision wheel's own fractional tick can round to 0 in `integer_y`); a new "Zoom groups and
+their tile widths" section with the verified table (84/42/20/10/5 px, `kTile` and
+`ZoomLevels::with_derived` in the source) and the 42-to-20 2.1x exception named explicitly.
+
+**Gates.** `anno_app_tests` + `viewer_wiring_*` + the workflow contracts (`window_trace_columns_contract`
+new; `window_tools_contract_test.py`, the other `tools/test` file touching `window_table`, reran at
+19/19 to confirm the reorder did not disturb its own `peak_rss` use): 314/314. No C++ source file
+was touched (only `CMakeLists.txt`, two Python files, one bash script, one doc) - `clang-format` and
+the WSL `-Werror` check are both no-ops here, noted rather than silently skipped. No gate was
+visibly running on this PC before the capture or the test run (checked with the orchestrator
+first, per the day's coordination note).
+
+Decisions and reasoning:
+- **Read the header out of the C++ source for the contract test**, not a trace file or a third
+  hand copy - the source is the one place a future column change is guaranteed to touch, so a test
+  reading it directly cannot go stale the way the two readers themselves just had.
+- **Fixed `window_table_test.sh`'s own two broken `sed` patterns in this packet**, not left for
+  whoever next touches that file - they were specifically provable casualties of this exact reorder
+  (both matched the old `scale`-then-`drawable_w` adjacency), not a pre-existing issue to defer.
+- **Verified the shell-script fix by dry run, not by declaring it correct** - the Windows/WSL path
+  mismatch that keeps the real script from running here is a known, pre-existing, documented
+  limitation (the script's own header comment), not something to work around by skipping
+  verification entirely.
+
+READY FOR REVIEW.
+
+## TRACE-COLS-1 follow-up — the CI-caught regression, fixed and guarded — READY FOR REVIEW (same branch task/ZOOM-BOUNCE-1, commit `ba32d939`)
+
+CI on `bf5cc055` was red on every non-Windows job (`window_table_contract`, case `junk_present`):
+the column reorder above made `outcome` `frames.tsv`'s last column, so `junk_present`'s and
+`count`'s own `sed` patterns (each relying on a trailing tab that no longer exists after
+`outcome`) silently matched nothing — the cases passed for the wrong reason instead of exercising
+the corruption they name. Fixed both patterns (anchored to end-of-line instead of a trailing
+tab) and added a guard after the case statement: every `.orig` a case's `sed` left behind must
+differ from what it edited, or the case fails by name. **Verified the guard itself, not just the
+fix**: ran `window_table_test.sh` in WSL against a Linux `bench_picture` build twice — once with
+the old (broken) `junk_present` pattern restored, which the new guard caught
+(`FAIL: junk_present: sed left .../frames.tsv unchanged (pattern matched nothing)`); then the
+real, fixed script, which passed all 45 `window_table_contract` checks including `junk_present`
+and `count`. Pushed; CI green on `ba32d939` (run `43989860151`).
+
+READY FOR REVIEW.
+
 ## UI-TABS-1 stage A — READY FOR REVIEW (Windows, 2026-11-16)
 
 - Base origin/main `ac02d4a2`, packet `6d20d16e`, branch `task/UI-TABS-1`. Commits `51733c26` (re),

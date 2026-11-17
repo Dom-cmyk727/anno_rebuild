@@ -190,6 +190,18 @@ non-zero if any lane fails, or if a lane that was requested (such as `--gpu-lane
 with no lavapipe ICD installed) could not run at all; a reviewer or CI step can
 rely on the exit code alone, without re-deriving the verdict from the log text.
 
+## The Linux/macOS warning check
+
+`tools/check_unix_warnings.sh` (CLAUDE.md's own "Linux/macOS warnings before a push") compiles
+every `.cpp` under `src/` with the CI's `-O3 -Werror` flags under GCC 13 and Clang 18, viewer and
+GPU code on, then the app once more without `ANNO_VIEWER_GPU`; MSVC does not report most of these
+warnings, so a clean MSVC build says nothing about them. UNIX-WARN-1 (2026-11-16) fixed the one
+file it had reported red since 2026-11-14 (`src/sim/tests/extensions_test.cpp`, missing the
+`ANNO_EXTENSION_ORACLE_FILE` define `src/sim/CMakeLists.txt` passes) and added a negative control:
+a scratch file with a deliberate `-Wshadow` violation that the script compiles itself and expects
+to fail, so a flags or toolchain regression that silently stopped catching warnings is caught
+instead of every check passing for the wrong reason.
+
 ## Pins and goldens
 
 PINS-1 (2026-11-13), ADR 0006 step1: no state, behaviour or expected hash change.

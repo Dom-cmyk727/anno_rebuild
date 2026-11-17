@@ -1,0 +1,258 @@
+# ZOOM-BOUNCE-1: reproduce the owner's reversing wheel sequence without them, at the same
+# cursor position (window px 1080, 635 of 2560x1369) and window size. Each leg is one larger
+# wheel event (a fast flick), with the owner's own shape (two out, two in, four out, then the
+# mirror back) repeated 5 times here. Run with (needs the original game files and a GPU):
+#   python -I tools/test/viewer_wiring.py <exe> zoom_bounce_1 <out dir> --gpu --trace
+#     --env ANNO_VIEW_SIZE=2560x1369 --app-arg --play --app-arg data/maps/lan5.txt
+#     --app-arg --construction-menu --app-arg on --app-arg --water --app-arg enhanced
+# then check <out dir>.trace/frames.tsv (view/group/scale per frame) for a one-frame
+# disagreement. The REPORTS evidence run used 50 repeats (240 reversal legs); regenerate a
+# longer version with the same shape by editing the repeat count in a copy of this file.
+look 1080 635
+wait ms 1500
+# repeat 0
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+# repeat 1
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+# repeat 2
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+# repeat 3
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+# repeat 4
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel -12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+wheel 12 1080 635
+wait ms 25
+wait ms 150
+quit

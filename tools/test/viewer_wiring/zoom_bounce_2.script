@@ -1,0 +1,375 @@
+# ZOOM-BOUNCE-2: hammer both zoom limits with notches that arrive within a few
+# frames of each other (some with no wait at all between pushes), at the owner's
+# own cursor position and window size, looking for a one-frame presented-scale
+# overshoot at or just past a limit (leads 1 and 2 of the review). Run with
+# (needs the original game files and a GPU):
+#   python -I tools/test/viewer_wiring.py <exe> zoom_bounce_2 <out dir> --gpu --trace
+#     --env ANNO_VIEW_SIZE=2560x1369 --app-arg --play --app-arg data/maps/lan5.txt
+#     --app-arg --construction-menu --app-arg on --app-arg --water --app-arg enhanced
+# then check <out dir>.trace/frames.tsv (scale vs resample_scale, and the
+# resample-scale-derived eased tile width) for a one-frame disagreement. The REPORTS
+# evidence run used 40 repeats here; regenerate a longer version with the same shape
+# from a copy of this file's own generator (see the REPORTS entry).
+look 1080 635
+wait ms 1500
+# repeat 0: closest limit
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 250
+wheel -12 1080 635
+wait ms 0
+wheel -12 1080 635
+wait ms 3
+wheel -12 1080 635
+wait ms 0
+wheel -12 1080 635
+wait ms 3
+wait ms 200
+# repeat 0: farthest limit
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 250
+wheel 12 1080 635
+wait ms 0
+wheel 12 1080 635
+wait ms 3
+wheel 12 1080 635
+wait ms 0
+wheel 12 1080 635
+wait ms 3
+wait ms 200
+# repeat 1: closest limit
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 250
+wheel -12 1080 635
+wait ms 0
+wheel -12 1080 635
+wait ms 3
+wheel -12 1080 635
+wait ms 0
+wheel -12 1080 635
+wait ms 3
+wait ms 200
+# repeat 1: farthest limit
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 250
+wheel 12 1080 635
+wait ms 0
+wheel 12 1080 635
+wait ms 3
+wheel 12 1080 635
+wait ms 0
+wheel 12 1080 635
+wait ms 3
+wait ms 200
+# repeat 2: closest limit
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 250
+wheel -12 1080 635
+wait ms 0
+wheel -12 1080 635
+wait ms 3
+wheel -12 1080 635
+wait ms 0
+wheel -12 1080 635
+wait ms 3
+wait ms 200
+# repeat 2: farthest limit
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 250
+wheel 12 1080 635
+wait ms 0
+wheel 12 1080 635
+wait ms 3
+wheel 12 1080 635
+wait ms 0
+wheel 12 1080 635
+wait ms 3
+wait ms 200
+# repeat 3: closest limit
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 250
+wheel -12 1080 635
+wait ms 0
+wheel -12 1080 635
+wait ms 3
+wheel -12 1080 635
+wait ms 0
+wheel -12 1080 635
+wait ms 3
+wait ms 200
+# repeat 3: farthest limit
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 250
+wheel 12 1080 635
+wait ms 0
+wheel 12 1080 635
+wait ms 3
+wheel 12 1080 635
+wait ms 0
+wheel 12 1080 635
+wait ms 3
+wait ms 200
+# repeat 4: closest limit
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 20
+wheel -12 1080 635
+wait ms 250
+wheel -12 1080 635
+wait ms 0
+wheel -12 1080 635
+wait ms 3
+wheel -12 1080 635
+wait ms 0
+wheel -12 1080 635
+wait ms 3
+wait ms 200
+# repeat 4: farthest limit
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 20
+wheel 12 1080 635
+wait ms 250
+wheel 12 1080 635
+wait ms 0
+wheel 12 1080 635
+wait ms 3
+wheel 12 1080 635
+wait ms 0
+wheel 12 1080 635
+wait ms 3
+wait ms 200
+quit

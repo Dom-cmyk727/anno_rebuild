@@ -20,6 +20,7 @@
 #include <anno/app/cli.hpp>
 #include <anno/app/loader.hpp>
 #include <anno/app/png.hpp>
+#include <anno/app/section_overlap.hpp>
 #include <anno/app/still.hpp>
 #include <anno/app/zoom.hpp>
 #include <anno/formats/anlagen.hpp>
@@ -615,6 +616,22 @@ TEST_CASE(
           doctest::Approx(static_cast<double>(kt[anno::render::kGroups - 1].w) / kZoomEndFactor));
 }
 
+TEST_CASE("zoom_target_after: already at the closest-zoom limit, any number of further inward "
+          "notches - arriving one call at a time with no zoom_advance in between, as several "
+          "wheel events landing before a single frame draws would - leaves the target exactly "
+          "at the limit, never briefly past it (ZOOM-BOUNCE-2's own lead 1)") {
+    using namespace anno::app;
+    const auto levels = anno::render::ZoomLevels::original();
+    const double limit = levels.tile_w(0) * kZoomEndFactor;
+    double target = limit;
+    for (int notches = 1; notches <= 20; ++notches) {
+        // factor > 1: an inward ("closer") notch, exactly zoom_by's own call.
+        target = zoom_target_after(target, 1.1, levels);
+        CHECK(target == doctest::Approx(limit));
+        CHECK(target <= limit); // never even a floating-point hair past it
+    }
+}
+
 TEST_CASE("zoom_advance: the zoom is held while the next coarser level is not ready") {
     using namespace anno::app;
     const auto levels = anno::render::ZoomLevels::with_derived(3); // 84 42 20 10 5 2.5
@@ -654,6 +671,43 @@ TEST_CASE("zoom_advance: the zoom is held while the next coarser level is not re
     CHECK(zoom_advance(t, 8.0, 0, [](std::size_t g) { return g <= 3; }, levels).group == 3);
     // The 8192 limit of the grid: a window the hold alone would not keep within it gets
     // its scale raised by resampled_view (gpu_test: "resampled_view: ... limits").
+}
+
+TEST_CASE("zoom_advance: a reversing sequence of notches (the group sequence "
+          "0,1,2,1,0,1,2,3,4 ZOOM-BOUNCE-1 investigated, and its reverse) never moves `now` "
+          "away from the leg's own target, at any inter-notch delay or frame rate") {
+    using namespace anno::app;
+    const auto levels = anno::render::ZoomLevels::with_derived(2); // groups 0..4
+    const std::vector<std::size_t> forward = {0, 1, 2, 1, 0, 1, 2, 3, 4};
+    std::vector<std::size_t> groups = forward;
+    groups.insert(groups.end(), forward.rbegin() + 1, forward.rend());
+    int checked = 0;
+    for (double inter_notch_ms : {5.0, 15.0, 30.0, 60.0, 90.0, 120.0, 180.0, 300.0, 500.0}) {
+        for (double dt_ms : {2.0, 5.0, 8.0, 16.7, 33.3, 66.7}) {
+            ZoomState s = zoom_state(levels.tile_w(groups.front()), groups.front());
+            for (std::size_t i = 1; i < groups.size(); ++i) {
+                const double new_target = levels.tile_w(groups[i]);
+                const double sign = new_target > s.now ? 1.0 : new_target < s.now ? -1.0 : 0.0;
+                s.target = new_target;
+                double elapsed = 0.0, last = s.now;
+                while (elapsed < inter_notch_ms) {
+                    const double dt = std::min(dt_ms, inter_notch_ms - elapsed);
+                    s = zoom_advance(s, dt, 120, kAllReady, levels);
+                    ++checked;
+                    if (sign > 0) {
+                        CHECK(s.now >= last - 1e-9);
+                    } else if (sign < 0) {
+                        CHECK(s.now <= last + 1e-9);
+                    }
+                    last = s.now;
+                    elapsed += dt;
+                }
+            }
+        }
+    }
+    // Every combination of inter-notch delay and frame rate, over the whole reversing
+    // sequence, each step checked - far more than 200 individual checks.
+    CHECK(checked > 200);
 }
 
 TEST_CASE("--zoom-factor and --resample: the headless picture at a fractional scale") {
@@ -1064,4 +1118,63 @@ TEST_CASE("scenery under a building: the shipped scenarios' islands drop exactly
     CHECK(islands_n > 100);
     CHECK(dropped > 0);
     CHECK(kept_by_exception > 0);
+}
+
+// ZOOM-SMOOTH-3d (review of 3c, F1): the overlap decision as a pure function, synthetic
+// timestamps, no window, no real background thread. A 1000 ms call starting at t=10000 (ns
+// units: milliseconds * 1e6 for readability) is the fixture every case below shares.
+TEST_CASE("overlap_ms: a section entirely inside, one that starts during the call, one in "
+          "progress at the read, and one entirely before - anno::app::overlap_ms_old "
+          "(3c's own shape) must fail the second and third (ZOOM-SMOOTH-3d)") {
+    using anno::app::overlap_ms;
+    using anno::app::overlap_ms_old;
+    constexpr std::int64_t call_begin = std::int64_t{10'000} * 1'000'000; // t=10000 ms
+    constexpr double call_ms = 1000.0;                                    // ends at t=11000 ms
+    constexpr std::int64_t ms = 1'000'000;
+
+    // 1. Entirely inside the call (t=10200..10300): both old and new agree, no regression here.
+    {
+        const std::int64_t begin = call_begin + 200 * ms, end = call_begin + 300 * ms;
+        const auto n = overlap_ms(call_begin, call_ms, begin, end, end + 500 * ms);
+        const auto o = overlap_ms_old(call_begin, call_ms, begin, end);
+        REQUIRE(n.has_value());
+        REQUIRE(o.has_value());
+        CHECK(*n == doctest::Approx(100.0));
+        CHECK(*o == doctest::Approx(100.0));
+    }
+    // 2. Starts during the call (t=10600) and has not ended by the read, well after the call
+    // ends (t=11500): new correctly sees it running from 10600 to the call's own end (11000),
+    // 400 ms of overlap; old (no read_time_ns, end_ns == 0 taken literally) sees none.
+    {
+        const std::int64_t begin = call_begin + 600 * ms;
+        const std::int64_t read_time = call_begin + 1500 * ms;
+        const auto n = overlap_ms(call_begin, call_ms, begin, 0, read_time);
+        const auto o = overlap_ms_old(call_begin, call_ms, begin, 0);
+        REQUIRE(n.has_value());
+        CHECK(*n == doctest::Approx(400.0));
+        CHECK_FALSE(o.has_value());
+    }
+    // 3. Started before the call (t=9000) and still has not ended at the read (t=11200): new
+    // sees the whole call overlapped (1000 ms, bounded by the call's own span); old sees none.
+    {
+        const std::int64_t begin = call_begin - 1000 * ms;
+        const std::int64_t read_time = call_begin + 1200 * ms;
+        const auto n = overlap_ms(call_begin, call_ms, begin, 0, read_time);
+        const auto o = overlap_ms_old(call_begin, call_ms, begin, 0);
+        REQUIRE(n.has_value());
+        CHECK(*n == doctest::Approx(1000.0));
+        CHECK_FALSE(o.has_value());
+    }
+    // 4. Entirely before the call (t=8000..8500, long since ended): both agree, no overlap -
+    // the old shape's blind spot is specifically the still-running (end_ns == 0) case, not every
+    // past instance.
+    {
+        const std::int64_t begin = call_begin - 2000 * ms, end = call_begin - 1500 * ms;
+        const auto n = overlap_ms(call_begin, call_ms, begin, end, call_begin + 2000 * ms);
+        const auto o = overlap_ms_old(call_begin, call_ms, begin, end);
+        CHECK_FALSE(n.has_value());
+        CHECK_FALSE(o.has_value());
+    }
+    // An unused slot (begin_ns == 0) is never an overlap, whatever end_ns/read_time_ns are.
+    CHECK_FALSE(overlap_ms(call_begin, call_ms, 0, 0, call_begin + 5000 * ms).has_value());
 }

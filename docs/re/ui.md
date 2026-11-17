@@ -708,6 +708,10 @@ show the stock of the island the view is centred on. **Not evidenced:** what the
 over open sea and over another player's island (no shot is taken there), the exact centre point
 and the update timing - OQ-622.
 
+**Superseded by 5.5 (UI-STATUS-1, 2026-11-17):** the GOG code reads the tile under the cursor, every
+frame; the counters follow the city whose territory holds that tile, the fertility row the
+discovered island.
+
 **Rebuild rule, owner decision 2026-11-14 ("Always show my city", fix round R4):** the five
 counters show on every screen while the local player owns a city: the city on the island under
 the view's centre when that island holds one of the player's cities, otherwise the player's
@@ -786,6 +790,106 @@ named placeholders (column, crest, and in the options view `OPTION_BACKGROUND`; 
 composer against the GOG shots above, the window's CPU path against the composer, exact). Not
 built: the pages' bodies (the panel packets), tooltips, the header plank with the view's name
 (not drawn on any view's page since R2), the "?" view's selection-dependent content (OQ-642).
+
+### 5.5 The status bar's island (UI-STATUS-1 stage A, 2026-11-17)
+
+Code: GOG 2.0.0.5 `AnnoFrame.dll`, static disassembly (pefile/capstone, helper scripts in the
+worktree's `cache/ui-status-1/`, not committed). Callees in `AnnoWelt.dll` through its vtables
+(island `0x100cac2c`, city `0x100c2f40`, world `0x100ccdd8`). Tags: **D** read in the code, **P**
+pixels, **L** likely (inferred, not read to the end), **U** unknown (an OQ). This section replaces
+5.2's "not evidenced" part; the rebuild's rule in 5.2 is still the R4 rule until stage B.
+
+**The objects.**
+
+- The bar is `tEventStatusbar` (vtable `0x1008bcac`, RTTI `.?AVtEventStatusbar@@`, the
+  `iAnnoDrawEventStatusbar` interface). It is made once by `CreateAnnoStatusbarInstance`
+  `0x10066730` (constructor `0x10062ca0`), called from the frame's set-up at `0x1000a872`. Layout:
+  `0x10062fa0`, then `0x10063520`. Three slots matter:
+  - slot `+0x10` `0x10063aa0` = Update(values[11], flags);
+  - slot `+0x14` `0x10063e40` = SetRohstoffe(segments, bars, count);
+  - slot `+0x34` `0x10064060` = Tick(dt).
+- What it shows is decided by `tFrameGameFull::tStadtInfo` (vtable `0x10086614`, constructor
+  `0x10009cc0`, base constructor `0x10004ff0`). The frame holds it at `+0x1654`. Its fields:
+  - byte `+4`: the island number, `0xff` = none;
+  - byte `+5`: the city slot, `0xf` = none;
+  - `+0xc`: the world; `+0x10`: the local player;
+  - `+0x14`: the bar (stored by slot `+0x14` = `0x10004fa0`, called at `0x1000a8a2`);
+  - words `+0x2e`/`+0x30`: the last tile the fertility row was computed for.
+- `tStadtInfo` slot `+0xc` `0x10009920` fills the counters; slot `+0x10` `0x10009770` fills the
+  fertility row.
+- Texture indices in the bar's group are the `statusbar.tex` id + 1 (`STATUSBAR_GELDSYMBOL` 52 →
+  `0x35`, `EINWOHNER` 53 → `0x36`, `BAUMAT` 36..39 → `0x25..0x28`, `ROSHTOFFE` 40 → `0x29`,
+  `BALKEN` 54 → `0x37`, `STATUSBAR02`/`03` 55/56 → `0x38`/`0x39`). D for the indices; the +1 is
+  P/L, because it agrees with every measured element of 2.3.
+
+**Which point and which island or city**
+
+| Behaviour | Rule | Evidence | Conf. |
+|---|---|---|---|
+| The point | The map tile of the frame's **cursor object**, not the view centre. The frame's SetCursor `0x10007e00` stores the cursor at frame `+0x18` and in `tViewedInfo` `+8` (frame `+0x54`). `tViewedInfo` slot `+0x1c` (`0x100041f0`) returns the cursor's slot `+0x68`/`+0x6c` (tile x, y). It returns 0 when no cursor is set. The camera position (`tViewedInfo` `+0x15bc`) is not read. | `0x100052a0` `0x1000535f`-`0x1000536f` | D |
+| When it updates | **Every frame.** The frame tick `0x10005a10` first calls `0x100052a0` (`0x10005b6e`). That function: re-reads the cursor tile; writes the island/city bytes when they change (`0x100053e4`-`0x100053f7`); calls the fertility update with the tile (`0x1000540d`). The tick then calls the counters `0x10009920` (`0x10005bd7`) when frame `+0x16ec` bit `0x100` is set. The second caller pair is `0x1000b264`/`0x1000b27e`. With no cursor set, the bytes keep the last tile's island and city. | as given | D |
+| The mouse over the panel or the bar | Whether the cursor object keeps its last map tile then is not read (OQ-700). The HE gap at 01:43.5-02:03.25 fits "keeps it". | below | L |
+| Island at the tile | World slot `+0x8c` (`0x100a2660`): the island-table entry (`+0x6530`) named by the 8 × 8-chunk map byte at the tile. No island gives byte `0xff`. The island number is island slot `+0x40` (word `+0x98`). | `0x1000539a`, `0x100053cd` | D |
+| City at the tile | Island slot `+0xec` (`0x100860c0`) reads the tile record's owner nibble (`dword@4 >> 25 & 0xf`): the city whose **territory** holds the tile. 15 = none. | `0x100053bf` | D |
+| Over the sea | Gold only. The fertility row hides at the next tick (SetRohstoffe count `0xff`, `0x100097c9`). An island byte of `0xff` gives a null island and so a zero mask (L: world island table slot 255 is empty; the table has 256 entries, loop `0x100a26ed`). | `0x10009770`, `0x10009920` | D / L |
+| Sea inside an island's 8 × 8 chunks | The island is found; there is no city. Gold only. The fertility row hides 2 s later: count 0 sets the timer `+0xa8` = now + 2000 ms (`0x10063e5d`), and Tick hides the slots (`0x10064083`-`0x100640cb`). Land again within 2 s cancels the hide. The land test is either of: island slot `+0x98` (`0x10084c20`, the vertex height from table `0x100e2d90`) > 0.0; island slot `+0x64` (`0x1008b950`, an object raised above the vertex heights, meaning L). | `0x1000982c`-`0x10009863` | D |
+| Own city | Tile in the territory of a city whose owner (city slot `+0x1c`, `+0x20`) is the local player: gold, the four materials and the residents (flags 1 and 4). With a building armed, also the cost row (flag 2). | `0x10009b5b`-`0x10009c94` | D |
+| Foreign city | Tile in another player's territory: gold. The residents (icon and figure) show only when the city's property-0 mask has the local player's bit (`+0x61c`, city slot `+0xc8(0)` = `0x1002df80`; the rebuild's `City::player_mask`, "the players that know this city"). Never the materials, never the cost row. | `0x10009b5b`-`0x10009b84`, `0x10009bf9` | D |
+| Island tile outside every territory | Gold only. With a building armed (dynamic cast to `iAnnoCursorBau`, `0x10005ba4`; cursor kinds `0x100062c0`), the building's corner tiles are tried in order (x0, y0), (x0, y1 − 1), (x1 − 1, y0), (x1 − 1, y1 − 1) (jump table `0x10009ca4`). The first corner inside a city of the local player selects that city. | `0x100099a5`-`0x10009b23` | D |
+| Two own cities on one island | The city whose territory holds the tile. Each city shows its own stock. | city at the tile, above | D |
+| Fertility row and cities | The row does not depend on any city. It shows for any discovered island, whether own, foreign or without a city. | `0x10009770` | D |
+
+**The groups**
+
+| Group | Condition and data source | Evidence | Conf. |
+|---|---|---|---|
+| Gold | Always. The local player's slot `+0x60` (`0x10009b2b`). Icon `+0xf0` is never hidden; the figure `+0x118` is shown in every mode (`0x10063c38`, `0x10063c70`). Without a local player, 0. | Update `0x10063aa0` | D |
+| `STATUSBAR_BAUMAT` × 4 | Flag 4 (an own city). Each stock is city slot `+0x7c(ware)` (`0x1002da30`, dword `[city + 0x334 + 12 · ware]`) for wares `0x29` WERKZEUG, `0x2a` HOLZ, `0x2b` ZIEGEL, `0x2c` MAMOR, divided by 256 toward zero (`0x10009c08`-`0x10009c6c`). Icons `+0xf8..+0x104` sit at x = 132 + 60k, figures `+0x11c..+0x128` at x = 162 + 60k (`0x10063806`-`0x10063a11`, each times the width factor, 5.1). Without flag 4, icons and figures are hidden (`0x10063c70`-`0x10063cb3`). | | D |
+| `STATUSBAR_EINWOHNER` | Flag 1: an own city, or a foreign city that knows the player. City slot `+0x5c` gives the counter object (`+0x2ec`); its slot `+4` is all groups' residents (`0x10009c70`-`0x10009c7f`; `population.md`, the city counter object). Icon `+0xf4` at x 400, figure `+0x12c` at x 436 (`0x100636e3`, `0x10063725`). Hidden without flag 1 (`0x10063b3a`-`0x10063b63`). | | D |
+| The x of the residents icon | The code's x is 400. `hud.txt` measures 401 (sprite-sad 4.74). The 1-pixel difference is not explained; B's pixel check decides. | | D / P |
+| Cost row (UI-STATUS-2, location only) | Source: the armed `iAnnoCursorBau`. Its slot `+4` is the gold cost (`0x10009b3e`); its slot `+0` (ware) / 256 is each material (`0x10009b99`-`0x10009bf5`). Flag 2 is set when the city's owner is the local player (`0x10009b45`-`0x10009b4b`). Drawn only with flags 1 and 2 together: figures raised, cost figures `+0x130..+0x140` shown (`0x10063b65`-`0x10063bdd`; layout `0x100635e7`, `0x1006391b`-`0x100639e5`). Each cost is compared with its stock (`0x10063d88`-`0x10063e22`). A cost above the stock blinks 0xaabbee / 0xee8888 every 250 ms (Tick `0x10064114`-`0x1006419e`); otherwise the colour is 0xaabbee. | | D |
+| `STATUSBAR_ROSHTOFFE` slots | 4 slots, made at `0x10063a17`-`0x10063a61`: x = 547 + 40k (k = 0..3) times the width factor, y = bar row + 2. Each is a 30 × 30 icon with a `STATUSBAR_BALKEN` (5 × 29) child at x + 25 (`0x100656b0`, `push 0x19` at `0x1006576c`), bar maximum 100 (`push 0x64`). The slots start hidden (`0x10064b9e`). `hud.txt`'s 547/587/627 are slots 0-2; slot 3 (667) is used only on DSCHUNGEL islands. | | D / P |
+| ROSHTOFFE content | Shown when the island is discovered (next row). Climate c = island property 7 (`+0xc0`). Mask M[c] comes from jump table `0x10009904`: 0 POLAR `0x18000`, 1 TUNDRA `0xf009`, 2 NORD `0xf949`, 3 PRAERIE `0xf06b`, 4 DSCHUNGEL `0xf6b9`, 5 STEPPE and 6 WUESTE `0xf04d`, any other 0. These are the values of `SimConfig::raw_climate_mask` (AnnoScene `0x10009010`). For i = 0..11 ascending, while fewer than 4 slots are filled, segment i is taken when bit i of M[c] is set, bit i is not in `0xf009`, and i ≠ 7. The slot gets segment i (`STATUSBAR_ROSHTOFFE` id 40 + i; the byte passed is i + `0x38`, which `0x10063ee9` takes back off). | `0x10009870`-`0x100098f6` | D |
+| Segments per climate | POLAR none; TUNDRA none; NORD 6, 8, 11; PRAERIE 1, 5, 6; DSCHUNGEL 4, 5, 9, 10; STEPPE and WUESTE 2, 6. With none, count 0 hides the row after 2 s. Slots past the count are hidden. A slot whose segment and bar are unchanged is not redrawn (`0x10063eba`-`0x10063ecc`). | as above | D |
+| The GOG shot | GOG `hud_idle_running` shows exactly 6, 8, 11 in slots 0-2: a NORD island. | 2.3 | D + P |
+| `STATUSBAR_BALKEN` | The bar is 100 when bit i is set in island property 11 (`+0xac`), else 50 (`0x100098cb`-`0x100098da`). Property 11 is set at map placement to `0xF009 \| raw marks` (`annoscene.md` §5 step 10). Drawn by `0x10065890`: the bar canvas offset is H − ⌊H · v / 100⌋ + 1, with H = the icon texture's height. So 100 is about the full 29 rows and 50 about half. B's pixel check fixes the exact rows. Reading "half bar = possible in the climate but not fertile here" is L (OQ-702). | `0x10065890` | D / L |
+| Exploration flag | Island property `0xe` (island slot `+0xc4(0xe)` = `0x10087c30`, word `+0xa6`) & (1 << local player number) (`0x10009797`-`0x100097c2`). When the bit is clear, the row hides at once. Only the fertility row tests it; the counters never do. In the rebuild this word is `Island::players_present` (MAP-2: written at founding registration and from the `DISCOVER` record), **not** `Player::discovery` (player property 7). The original also writes `+0xa6` in the reveal (island slot `+0x130` = `0x10080c10`, `ship-founding.md`). Which events call that reveal besides founding, for example a ship passing by, is open (OQ-701). | | D / U |
+
+**The History Edition timeline against the code** (`HE_UI_1-analysis.md` §(c), crops in
+`he_ui_1_video\`).
+
+| HE observation | Code explanation | Confidence |
+|---|---|---|
+| F over islands before the founding (00:52.75-01:41.5, `crops\statusbar_fertility_icons_75s.png`) | The row needs only the island's discovery bit, no city | high (D rule, P frames) |
+| F flickers off for 0.5-2 s between 00:52 and 01:31 | Open sea outside the island's chunks hides the row at the next tick; sea inside the chunks hides it after 2 s | medium (cursor tiles per frame not measured) |
+| 01:43.5-02:03.25: F only, M hidden although the Kontor exists | M needs the tile inside the Kontor's **territory**; F needs only the island. The last map tile before the cursor went to the panel was on the island, outside the territory, and is kept (OQ-700) | medium |
+| 02:04.5-02:05.5: F only | M hides when the ghost leaves the Kontor's territory. F stays, so the tile was still on the island: the analysis's "left the island" is "left the territory" | medium-high |
+| 02:26.25-02:28.0 overlay | Update returns while the bar's byte `+0xac` is set (`0x10063aaa`). Its link to the overlay is not read | low |
+
+**HE recipe for the owner** (the owner plays; sound at 0 %; for OQ-700 and the comparison below):
+1. After founding, put the mouse on your Kontor's territory (counters show). Move it straight onto
+   the right panel without crossing other tiles, then onto the status bar. Do the counters stay?
+2. Put the mouse on your island outside the territory (well away from the Kontor), then on the
+   panel. Expected: gold and fertility only, and it stays on the panel.
+3. Put the mouse on an island you have never sailed near, if one is visible. Expected: gold only,
+   no fertility icons.
+4. Put the mouse on an AI city's territory: (a) before your ship has been near it; (b) after. The
+   code shows only gold in (a) and the residents figure in (b).
+
+**The owner's statement (2026-11-17, `ui_6.mp4`) against the code**
+
+| Case | Owner | Code (D unless noted) | Difference |
+|---|---|---|---|
+| Which point | The island under the mouse | The tile under the cursor object, every frame. Over the panel, the last map tile is kept (L, OQ-700) | Agrees |
+| His settled island | Goods, citizens and resource availability | The four materials and the residents show only while the tile is inside his city's **territory**. Elsewhere on his island: gold and fertility. With a building armed, the building's corners select his city. The fertility row shows on any land tile of the island | **Owner decision needed**: territory or whole island for goods and citizens |
+| Another island, no city | Only gold | Gold **and the fertility row** when he has discovered the island | **Owner decision needed** (main point) |
+| Another player's city | Only gold | Gold, the fertility row (if discovered) and the **residents figure** when that city knows him (city property 0) | **Owner decision needed**: fertility, and residents over a known foreign city |
+| Unexplored island | Nothing | No fertility (discovery bit clear). Counters need his own city or a foreign city that knows him, so in practice gold only. Edge case: a foreign city that knows him on an island he has not discovered shows its residents (L, needs the discovery writers, OQ-701) | Agrees (edge case open) |
+| Sea | (not stated) | Gold only. The fertility row hides at once, or 2 s later on sea inside an island's chunks | Nothing to decide unless the owner wants the delay gone |
+| Two own cities on one island | (not stated) | The city whose territory holds the tile | Nothing to decide |
+
+The rebuild's stage B needs a source the sim does not hold yet: island property 11 (the bars, OQ-702).
+The discovery word (`players_present`) exists, but is written only at founding and on load (OQ-701).
 
 ## 6. `data/ui/` layout format
 

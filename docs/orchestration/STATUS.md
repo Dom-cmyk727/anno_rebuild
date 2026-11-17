@@ -36,7 +36,9 @@ says who is doing what, where the work is, and what it waits on.
   in 20 with one mip level; a QUESTION to the owner, OQ-096b with OQ-096);
   [LAYER-CHECK-1](tasks/layer-check-1.md) (Windows, **RELEASED** 2026-11-17 ahead of RENDER-DIRECT-1b, which
   waits for the owner's answer: a test that `formats`, `sim` and `sim_load` include and link nothing above
-  them).
+  them; **reviewed** `8bb58166`, [review](reviews/2026-11-17-layer-check-1-review.md): link check and rule
+  table hold, **CHANGES REQUESTED**: headers outside `anno/` must be an allow list, not a deny list; the docs
+  section is moved out of the golden-writer section).
 - **UI lane: UI-TABS-1 started** (2026-11-16, the owner's go in the UI lane's session, as reported by it):
   `task/UI-TABS-1` from `main` `ac02d4a2`, packet `tasks/ui-tabs-1.md` on that branch (`6d20d16e`). Stage A: the
   tab and sub-tab switching (player, city view, options) with clicks and the keys D, S and C; stage B (the

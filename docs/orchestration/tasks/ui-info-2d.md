@@ -51,7 +51,7 @@ the owner's standing reference for building work.
 
 ## Gate and rules
 
-- OQ ids: OQ-725 and OQ-750..753; ask the UI lane for more.
+- OQ ids: OQ-725, OQ-750 and OQ-755 (OQ-751..754 belong to another lane); ask the UI lane for more.
 - GOG code by address (`py -3.14 E:\anno1503-worktrees\anno1503-UI-STATUS-1\cache\ui-status-1\adis.py`); HE pixels
   only.
 - Build (`cmake --preset msvc` if needed), then clang-format 23.1.3

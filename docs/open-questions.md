@@ -3551,9 +3551,10 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **What we know:** OQ-022's own kind=4/`Flagge01_01.PCX` finding (D: `AnnoGame.dll` `0x10004e60`); the static decode path's lack of a colour parameter (C: `iso.cpp:322`, `building.hpp`, `iso.hpp:276-277`).
 - **How to resolve:** check whether any `ANLAGEN` entry's `palette_ids` references colour table id 109 (or another `EffectsMulti`-kind table); if so, check whether the original ever renders that entry recoloured (Ghidra on the building-frame decoder/blitter in `AnnoDisplay.dll`, or a capture of a placed flag object across players in the original/History Edition).
 
-## OQ-711: How many view directions the entrance-arrow figure has (UI-INFO-2b, 2026-11-17; OPEN)
+## OQ-711: How many view directions the entrance-arrow figure has (UI-INFO-2b, 2026-11-17; RESOLVED BUILDINGS-REF-1)
 - **Question:** the arrow figure (FigurenHeader 1573, `Strassenanschluss01`, 8 frames of one step each) picks its frame by `((dir16 >> shift) & mask) * frames_per_direction` (AnnoDisplay.dll tHausFigur slot +0x6c 0x100055b0); mask = directions - 1 and shift come from a property setter (0x100052c7: shift 0 for 16 or more directions, 1 for 8..15, 2 below). Where the direction count of this figure is set was not traced.
 - **What we know:** the rebuild takes directions = the frame count (8): direction d gives frame 2d, the arrows point out of their side (frame 0 up-right for side 0, -x). Both stall shots are exact with it (one arrow each side for 1314, frames 0, 2, 4, 6).
+- **Resolved (BUILDINGS-REF-1, BUILDINGSOBJECTS part C 5, recorded in UI-INFO-2d):** 8 directions, the `tHausFigur` constructor default (AnnoDisplay.dll `0x10005cb0`: mask `+0x19` = 7, shift `+0x1a` = 1; frames per direction `+0x18` = 1 from the base `0x10005390`). Frame for arrow direction d = 2d, what the rebuild draws.
 - **How to resolve:** trace the property 0x13x writes for figure sets (the ANIM/BODY2 records) into tHausFigur.
 
 ## OQ-712: The preview's other parts - further sprite sets, the a4 list and the type height (UI-INFO-2b, 2026-11-17; OPEN)
@@ -3561,9 +3562,10 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **What we know:** among the GOG shots, 1301 and 1302 (a flag, set kind 9), 1023 (kind 9) and 801 (a second kind-2 set) have more sets; all four are scaled (OQ-612), so no exact check exists yet. Whether set 0 is always in the 0xa0 list and what +0x288 holds was not read.
 - **How to resolve:** read slot 0x60 of tHausGebaude/tHausAnim and the writer of type +0x288; compose the extra sets and compare the scaled shots once OQ-612's sampler is known, or capture an unscaled type with a second set.
 
-## OQ-713: Whether the map ghost draws the same entrance arrows (UI-INFO-2b, 2026-11-17; OPEN, QUESTION for the UI lane)
+## OQ-713: Whether the map ghost draws the same entrance arrows (UI-INFO-2b, 2026-11-17; CLOSED BUILDINGS-REF-1: no)
 - **Question:** the HE video (`he_01`, 3:32-4:21, `s3_market.png`, `s4_ghost_times.png`) shows green arrows on the placement ghost that turn with it. Does the ghost use the same type slot 0xa8 list (CONPO2, figure 1573) as the preview?
 - **What we know:** the preview's path is read (docs/re/ui.md 2.5); the ghost's draw path was not read in UI-INFO-2b, so the rebuild draws no arrows on the ghost.
+- **Closed (BUILDINGS-REF-1, BUILDINGSOBJECTS part C 2, recorded in UI-INFO-2d):** the map ghost draws **no** arrows, in GOG and HE. The only producer of arrow parts (AnnoGame `0x1000bb60`, type slot `0xa8`) is consumed only by View `0x1001d000`, the info-picture composer (D, a sweep of all modules); a GOG market ghost and HE tanner and market ghosts show no green arrows (P). Every building picture made by `0x1001d760` carries them (part C 4). The rebuild draws none on the ghost.
 - **How to resolve:** find the callers of type slot 0xa8 in AnnoWelt/AnnoFrame (the cursor's draw) and compare with 0x1001d000.
 
 ## OQ-714: The category column's hit width over grid column 0 (UI-INFO-2b, 2026-11-17; OPEN)

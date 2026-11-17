@@ -31,20 +31,22 @@ std::uint8_t red_at(const anno::assets::Rgba& img, int x, int y) {
 
 } // namespace
 
-TEST_CASE("info preview: CONPO2 arrows from an OBJECTPOS record") {
-    // FIRE (16 bytes), CONPO2 with two arrows of which the second has side 5, a truncated tail.
-    // One literal: GCC 13 -O3 reports a false array-bounds error for vector::insert of small
-    // vectors here.
-    const std::vector<std::uint8_t> rec = {'F', 'I', 'R', 'E', 0,   0, 16, 0, 0, 0, 0, 0,   0,
-                                           0,   0,   0,   0,   0,   0, 0,  0, 0, 0, 0, 'C', 'O',
-                                           'N', 'P', 'O', '2', 6,   0, 0,  2, 1, 4, 4, 5,   'C',
-                                           'O', 'N', 'P', 'O', '2', 9, 0,  1, 1, 1};
-    const auto arrows = ip::entrance_arrows(rec);
+TEST_CASE("info preview: the drawn arrows of a decoded OBJECTPOS record") {
+    // CONPO2 with two arrows of which the second has side 5 (skipped), and a CONPOS (not drawn).
+    anno::formats::objectpos::ObjectPos o;
+    anno::formats::objectpos::SubRecord fire{{'F', 'I', 'R', 'E', 0, 0}, {}};
+    fire.data.assign(16, 0);
+    anno::formats::objectpos::SubRecord conpo2{{'C', 'O', 'N', 'P', 'O', '2'}, {}};
+    conpo2.data = {0, 2, 1, 4, 4, 5};
+    anno::formats::objectpos::SubRecord conpos{{'C', 'O', 'N', 'P', 'O', 'S'}, {}};
+    conpos.data.push_back(0);
+    conpos.data.push_back(4);
+    o.records = {fire, conpo2, conpos};
+    const auto arrows = ip::entrance_arrows(o);
     REQUIRE(arrows.size() == 1);
     CHECK(arrows[0] == ip::EntranceArrow{0, 2, 1});
-    // CONPOS (the old two-byte form) is not read.
-    const std::vector<std::uint8_t> old = {'C', 'O', 'N', 'P', 'O', 'S', 2, 0, 0, 4};
-    CHECK(ip::entrance_arrows(old).empty());
+    o.records = {conpos};
+    CHECK(ip::entrance_arrows(o).empty());
 }
 
 TEST_CASE("info preview: the projection truncates toward zero") {

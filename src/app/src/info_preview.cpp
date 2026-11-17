@@ -70,28 +70,11 @@ std::vector<Placed> parts(const Input& in, unsigned rotation) {
 
 } // namespace
 
-std::vector<EntranceArrow> entrance_arrows(formats::Bytes objectpos) {
+std::vector<EntranceArrow> entrance_arrows(const formats::objectpos::ObjectPos& objectpos) {
     std::vector<EntranceArrow> out;
-    std::size_t i = 0;
-    while (i + 8 <= objectpos.size()) {
-        const std::size_t size = formats::u16_le(objectpos, i + 6);
-        if (i + 8 + size > objectpos.size())
-            break;
-        std::size_t name_len = 0;
-        while (name_len < 6 && objectpos[i + name_len] != 0)
-            ++name_len;
-        const bool conpo2 = name_len == 6 && objectpos[i] == 'C' && objectpos[i + 1] == 'O' &&
-                            objectpos[i + 2] == 'N' && objectpos[i + 3] == 'P' &&
-                            objectpos[i + 4] == 'O' && objectpos[i + 5] == '2';
-        if (conpo2) {
-            for (std::size_t k = 0; k + 3 <= size; k += 3) {
-                const EntranceArrow a{objectpos[i + 8 + k], objectpos[i + 9 + k],
-                                      objectpos[i + 10 + k]};
-                if (a.side <= 3)
-                    out.push_back(a);
-            }
-        }
-        i += 8 + size;
+    for (const auto& a : objectpos.conpo2()) {
+        if (a.side <= 3)
+            out.push_back(EntranceArrow{a.x3, a.y3, a.side});
     }
     return out;
 }

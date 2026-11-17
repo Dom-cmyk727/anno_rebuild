@@ -11,7 +11,7 @@
 #include <vector>
 
 #include <anno/assets/texture.hpp>
-#include <anno/formats/bytes.hpp>
+#include <anno/formats/objectpos.hpp>
 
 namespace anno::app::info_preview {
 
@@ -23,12 +23,12 @@ struct EntranceArrow {
     bool operator==(const EntranceArrow&) const = default;
 };
 
-/// The arrows in an Anlagen `OBJECTPOS` record: its sub-records are a 6-byte name, a u16 size and
-/// the data; `CONPO2` holds 3 bytes per arrow (AnnoGame.dll loader 0x10009e3e..0x10009edf: count
-/// = size / 3). A record whose side is not 0..3 is skipped (two types carry such bytes; the
-/// original indexes past its side table there). `CONPOS` (one type, 1542) is not read: the
-/// original's loader leaves its side byte unset. A truncated sub-record ends the walk.
-std::vector<EntranceArrow> entrance_arrows(formats::Bytes objectpos);
+/// The arrows the picture draws from a decoded Anlagen `OBJECTPOS` record (formats::objectpos:
+/// its CONPO2 records, AnnoGame.dll loader 0x10009e3e..0x10009edf). A record whose side is not
+/// 0..3 is skipped (types 261 and 1571 carry 215; the original indexes past its side table
+/// there). `CONPOS` (one type, 1542) is not drawn: the original's loader drops y and never writes
+/// the side.
+std::vector<EntranceArrow> entrance_arrows(const formats::objectpos::ObjectPos& objectpos);
 
 /// One image of the picture: its pixels (RGBA, alpha 0 = not drawn) and the pixel that lands on
 /// its projected point (a frame anchor, signed).

@@ -220,8 +220,12 @@ class TexCache {
                 in.building.push_back(*s);
         }
         if (complete && arrow_figure) {
-            if (const auto objectpos = entry->record("OBJECTPOS"))
-                in.arrows = info_preview::entrance_arrows(*objectpos);
+            if (const auto record = entry->record("OBJECTPOS")) {
+                // A malformed record draws no arrows (none in the GOG file: objectpos corpus).
+                if (const auto objectpos = formats::objectpos::ObjectPos::parse(*record);
+                    objectpos.ok())
+                    in.arrows = info_preview::entrance_arrows(objectpos.value());
+            }
             if (!in.arrows.empty())
                 in.arrow_frames = figure_frames(*arrow_figure);
         }

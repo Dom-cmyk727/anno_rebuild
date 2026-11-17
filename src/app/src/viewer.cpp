@@ -1694,9 +1694,19 @@ void Viewer::handle(const SDL_Event& e) {
         if (continuous_) {
             // Every notch, also a fraction of one (a precision wheel), is a
             // factor of zoom_opt_.step; wheel up = closer.
+            // ZOOM-BOUNCE-3: the event exactly as SDL and this call see it, into the window
+            // trace already running (ANNO_VIEW_TRACE) if there is one - a lead synthetic dev-
+            // script notches cannot exercise (two real opposite ticks closer together than a
+            // captured frame).
+            const double target_before = zoom_target_;
             zoom_by(
                 std::pow(zoom_opt_.step, static_cast<double>(e.wheel.y)),
                 std::pair<double, double>{e.wheel.mouse_x * density, e.wheel.mouse_y * density});
+            if (trace_ != nullptr) {
+                trace_->wheel({trace_->now_ms(), e.wheel.y, e.wheel.integer_y,
+                               e.wheel.direction == SDL_MOUSEWHEEL_FLIPPED, e.wheel.mouse_x,
+                               e.wheel.mouse_y, target_before, zoom_target_});
+            }
             break;
         }
         scroll_ += e.wheel.y;
@@ -3570,6 +3580,14 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
         rec.view_h = view.h;
         rec.group = group_;
         rec.scale = scale();
+        // ZOOM-BOUNCE-2: what this frame actually handed to the renderer (view's own scale
+        // above, resample's own below) - a bug that changes one but not the other, or changes
+        // them together the view state alone would not report, shows up by comparing them.
+        if (resample != nullptr) {
+            rec.resample_scale = resample->scale;
+            rec.resample_offset_x = resample->offset_x;
+            rec.resample_offset_y = resample->offset_y;
+        }
         rec.drawable_w = w;
         rec.drawable_h = h;
         rec.t_start_ms = trace_->ms_at(draw_start_);

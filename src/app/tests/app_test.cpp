@@ -616,6 +616,22 @@ TEST_CASE(
           doctest::Approx(static_cast<double>(kt[anno::render::kGroups - 1].w) / kZoomEndFactor));
 }
 
+TEST_CASE("zoom_target_after: already at the closest-zoom limit, any number of further inward "
+          "notches - arriving one call at a time with no zoom_advance in between, as several "
+          "wheel events landing before a single frame draws would - leaves the target exactly "
+          "at the limit, never briefly past it (ZOOM-BOUNCE-2's own lead 1)") {
+    using namespace anno::app;
+    const auto levels = anno::render::ZoomLevels::original();
+    const double limit = levels.tile_w(0) * kZoomEndFactor;
+    double target = limit;
+    for (int notches = 1; notches <= 20; ++notches) {
+        // factor > 1: an inward ("closer") notch, exactly zoom_by's own call.
+        target = zoom_target_after(target, 1.1, levels);
+        CHECK(target == doctest::Approx(limit));
+        CHECK(target <= limit); // never even a floating-point hair past it
+    }
+}
+
 TEST_CASE("zoom_advance: the zoom is held while the next coarser level is not ready") {
     using namespace anno::app;
     const auto levels = anno::render::ZoomLevels::with_derived(3); // 84 42 20 10 5 2.5
@@ -655,6 +671,43 @@ TEST_CASE("zoom_advance: the zoom is held while the next coarser level is not re
     CHECK(zoom_advance(t, 8.0, 0, [](std::size_t g) { return g <= 3; }, levels).group == 3);
     // The 8192 limit of the grid: a window the hold alone would not keep within it gets
     // its scale raised by resampled_view (gpu_test: "resampled_view: ... limits").
+}
+
+TEST_CASE("zoom_advance: a reversing sequence of notches (the group sequence "
+          "0,1,2,1,0,1,2,3,4 ZOOM-BOUNCE-1 investigated, and its reverse) never moves `now` "
+          "away from the leg's own target, at any inter-notch delay or frame rate") {
+    using namespace anno::app;
+    const auto levels = anno::render::ZoomLevels::with_derived(2); // groups 0..4
+    const std::vector<std::size_t> forward = {0, 1, 2, 1, 0, 1, 2, 3, 4};
+    std::vector<std::size_t> groups = forward;
+    groups.insert(groups.end(), forward.rbegin() + 1, forward.rend());
+    int checked = 0;
+    for (double inter_notch_ms : {5.0, 15.0, 30.0, 60.0, 90.0, 120.0, 180.0, 300.0, 500.0}) {
+        for (double dt_ms : {2.0, 5.0, 8.0, 16.7, 33.3, 66.7}) {
+            ZoomState s = zoom_state(levels.tile_w(groups.front()), groups.front());
+            for (std::size_t i = 1; i < groups.size(); ++i) {
+                const double new_target = levels.tile_w(groups[i]);
+                const double sign = new_target > s.now ? 1.0 : new_target < s.now ? -1.0 : 0.0;
+                s.target = new_target;
+                double elapsed = 0.0, last = s.now;
+                while (elapsed < inter_notch_ms) {
+                    const double dt = std::min(dt_ms, inter_notch_ms - elapsed);
+                    s = zoom_advance(s, dt, 120, kAllReady, levels);
+                    ++checked;
+                    if (sign > 0) {
+                        CHECK(s.now >= last - 1e-9);
+                    } else if (sign < 0) {
+                        CHECK(s.now <= last + 1e-9);
+                    }
+                    last = s.now;
+                    elapsed += dt;
+                }
+            }
+        }
+    }
+    // Every combination of inter-notch delay and frame rate, over the whole reversing
+    // sequence, each step checked - far more than 200 individual checks.
+    CHECK(checked > 200);
 }
 
 TEST_CASE("--zoom-factor and --resample: the headless picture at a fractional scale") {

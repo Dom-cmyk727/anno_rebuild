@@ -14221,3 +14221,308 @@ packet, given the two over-4-ms calls are rare (2 of 63,204 in this one run) and
 packets are not written yet?
 
 READY FOR REVIEW.
+
+## ZOOM-BOUNCE-1 — not reproduced in 240 reversal legs; the math regression-tested — READY FOR REVIEW (task/ZOOM-BOUNCE-1, new worktree, from `origin/main` `4b104d3a`, head `0df9b53e`)
+
+**Reproduced via a dev script, not the owner.** `tools/test/viewer_wiring.py` with `--gpu --trace`, lan5,
+`--construction-menu on --water enhanced`, `ANNO_VIEW_SIZE=2560x1369`, cursor at (1080, 635): a wheel burst
+per leg (magnitude 12) reproducing the owner's own reversing shape (two out, two in, four out, then the
+mirror back), 50 repeats = 800 wheel events = 240 direction-reversal legs (over the 200 the task asked
+for), 45,825 drawn frames. `ANNO_VIEW_TRACE` (already shipped, no new code) gave per-frame `view`/`group`/
+`scale` for free.
+
+**Checked for exactly the owner's signature** (one frame far from both neighbours, which agree with each
+other): a Python pass over `frames.tsv` looked for (a) a group that flips for one frame and reverts (hysteresis
+failing), and (b) a one-frame spike in the reconstructed group-independent eased tile width
+(`scale * tile_w(group)`) against its own smooth neighbours. **Zero of either, across all 45,825 frames.**
+Stand-in dissolves did happen during the run (up to 101 at once, confirming the chunk-substitution path the
+task named was actually exercised, not idle) - still no disagreement in what the Viewer itself asked the
+renderer to draw.
+
+**Added a permanent regression test** (`app_test.cpp`): the exact group sequence (`0,1,2,1,0,1,2,3,4` and
+its reverse) driven directly through `zoom_advance`/`zoom_target_after`, swept over 9 inter-notch delays x
+6 frame rates (19,617 individual per-step checks), asserting `now` never moves away from the leg's own
+target. All pass - proves, not just observes once, that the easing math itself cannot bounce under normal
+(every level ready) conditions; a future change to that formula would be caught here.
+
+**Did not find the cause.** The Viewer's own per-frame state (what it asks the renderer to draw) was clean
+throughout. This points away from `zoom_advance`/`zoom_tick`/`pending_zoom_` (the latter is unreachable
+here regardless: this map runs continuous zoom by default, so the discrete `zoom()`/`pending_zoom_` path the
+task named is never taken) and toward either the GPU compositor's own internals (not instrumented in this
+packet - `FrameRenderer::render`'s one shared `view`/`group`/`resample` argument makes a chunk/stand-in/sea/
+sprite disagreement hard to localise without reading deep into `frame.cpp`/`gpu.cpp`, out of this packet's
+own time box) or the screen capture itself, which this codebase cannot check. Per the instruction, the zoom
+was not changed on this guess.
+
+**Gates.** `anno_app_tests`: 283/283 (`cache/gates/zoombounce1-app-1.log`). `anno_render_tests` +
+`anno_render_gpu_tests` on the 4090: two full-suite attempts each failed a different handful of unrelated
+river/water/digest corpus tests (`Timeout`, one `low-memory stop` refusal at `free=1082 MiB`, one digest
+mismatch) - the failing set itself changed between attempts, and free memory on the machine was observed
+recovering from ~1 GB to 8-13 GB between runs, so this is this machine's own resource contention, not a
+regression (nothing in this packet touches `src/render`). The union of every test either attempt failed, 9
+of them, passed 9/9 run alone (`cache/gates/zoombounce1-render-solo.log`), per the project's own "refused
+tests rerun alone" convention. WSL `-Werror`: clean on `app_test.cpp` under GCC 13 and Clang 18, except the
+same pre-existing, unrelated `src/sim/tests/extensions_test.cpp` gap every other packet this cycle has also
+hit (this worktree never touches `src/sim`). `clang-format` clean.
+
+NOT_RUN: a GPU-compositor-level instrumentation pass (chunks/stand-ins/sprites individually, inside
+`frame.cpp`/`gpu.cpp`); a capture-side check of the owner's own recording.
+
+Decisions and reasoning:
+- **Checked the owner's own cursor/window/map precisely before writing the script**, rather than guessing a
+  generic zoom test - the dev script's existing `wheel N X Y` syntax already supports an off-centre anchor,
+  so nothing new was needed to match the real position.
+- **Calibrated the wheel magnitude against this build's own group thresholds** (watching `frames.tsv`) rather
+  than assuming a single real-wheel notch's own unknown magnitude - the owner's recording names only group
+  labels, not the wheel delta that produced them.
+- **Confirmed `pending_zoom_`/discrete `zoom()` cannot be the cause for this map and build** (continuous
+  zoom is the default, and this scene is on the GPU) before spending time on it, rather than chasing a
+  hint that cannot apply here.
+- **Re-ran only the failed render tests, solo, rather than the whole 330-test suite again**, once their
+  failure set and failure kind had already changed between two full attempts - the project's own evidence
+  policy treats an environmental flake honestly, not as grounds to keep re-running everything.
+- **Did not instrument the GPU compositor's own internals in this packet**, given the time box and that the
+  Viewer-level signal came back clean across far more than 200 repeats - named it as the next place to look
+  rather than guessing inside it without evidence.
+
+QUESTIONs: is a `FrameRenderer`-internal instrumentation pass (per-layer scale/origin inside `frame.cpp`/
+`gpu.cpp`) worth a follow-up packet, or should the owner's own recording get a capture-side check first
+(dropped/duplicated frame in OBS, vsync tear) before more engine-side instrumentation?
+
+READY FOR REVIEW.
+
+## ZOOM-BOUNCE-2 — not reproduced hammering both limits; the clamp regression-tested — READY FOR REVIEW (same branch task/ZOOM-BOUNCE-1, new commits, no rebase)
+
+**The hypothesis refuted, so checked the leads directly rather than assume more.** Extended
+`ANNO_VIEW_TRACE`'s own `frames.tsv` with three new columns (`resample_scale`, `resample_offset_x/y`: the
+`gpu::Resample` actually handed to `FrameRenderer::render`, captured at the same point `scale` already is) -
+lead 3's own ask, "the scale that is presented, not only the view state," for free from existing
+infrastructure. `tools/bench/window_table.py`'s `COLUMNS` and its contract test updated to match (columns
+appended at the end, not inserted, so none of that test's many positional `sed` edits needed touching).
+
+**The script** (`tools/test/viewer_wiring/zoom_bounce_2.script`, same cursor and window size): drives hard
+to each zoom limit, then sends several more notches in the same direction with as little gap as the script
+can express (0 ms and 3 ms, some back to back with no wait at all - lead 1's "within a few frames of each
+other"), alternating the closest and farthest limit, 40 repeats = 960 wheel events, **21,775 presented
+frames**. Confirmed the closest limit was genuinely reached and hammered, not approximated: the recorded
+`resample_scale * tile_w(group)` peaked at 118.79364, against the exact theoretical limit
+`84 * sqrt(2) = 118.79394` - matched to four decimals, repeatedly, with the extra inward notches still
+landing on top of it.
+
+**Checked, all clean:**
+- `scale` (view state) vs `resample_scale` (presented): **0 mismatches** over 0.05 %, across all 21,775
+  frames - rules out lead 3 directly; `resampled_view`'s own grid-fit clamp (`resample.cpp`) is confirmed a
+  no-op in this scale range (`fit ≈ 0.315` for this window size, far below any scale near a zoom limit), so
+  it was never going to diverge here, but this is now measured, not assumed.
+- A one-frame spike in the presented, group-independent eased tile width against smooth neighbours (the
+  owner's own signature: one frame far from both its neighbours, which agree with each other): **0 spikes**.
+- A group that flips for one frame and reverts: **0 flickers** (unchanged from ZOOM-BOUNCE-1).
+- `drawable_w`/`drawable_h` (the window's own reported size): **rock steady at 2560 x 1369 on every single
+  frame** of the whole run - rules out a window-size blip producing the same "whole view scaled" look lead 2
+  raised as a possibility.
+
+**Lead 1 is also false by construction, not just by measurement.** `zoom_target_after`'s clamp
+(`std::clamp(target * factor, lowest, levels.tile_w(0) * kZoomEndFactor)`) is applied on every single call,
+inside the one function `zoom_by` ever calls - there is no intermediate state in which an unclamped value
+exists for even one frame, with or without an intervening `zoom_advance`. Proved this directly: a new test
+(below) calls it 20 times in a row from exactly at the limit, with no advance between calls (exactly what
+several same-frame wheel events would produce) - the target never moves, let alone past the limit, by even
+a floating-point hair.
+
+**Added a permanent regression test** (`app_test.cpp`): `zoom_target_after` from exactly at the closest-zoom
+limit, 20 repeated inward notches with no `zoom_advance` between them, asserting the target stays exactly
+at the limit every time (`<=`, not just `Approx`) - proves lead 1's own mechanism cannot occur in this code,
+not just that this run didn't show it.
+
+**Did not reproduce.** No fix made - nothing to fix at the cause the leads named. `view_w`/`view_h`/`group`/
+`scale`/`resample_scale`/`resample_offset_x/y`/`drawable_w`/`drawable_h` were all checked and all clean,
+hammering the exact scenario (reaching a true limit, extra same-direction notches arriving with no gap) the
+owner's own session plausibly produced. What remains unchecked is everything inside `FrameRenderer::render`'s
+own per-layer compositing (`frame.cpp`/`gpu.cpp`) and the capture itself - the same two items ZOOM-BOUNCE-1's
+own entry named, still open.
+
+**Gates (changed lanes only, per the instruction).** `anno_app_tests`: 284/284
+(`cache/gates/zoombounce2-app-1.log`). `viewer_wiring_contract` + `window_tools_contract`: 2/2
+(`cache/gates/zoombounce2-viewerwiringcontract-1.log`). `window_table_contract` (the Python reader's own
+contract test) only registers on UNIX (`CMakeLists.txt`: `if(ANNO_BUILD_TESTS AND UNIX)`), so it never runs
+on this Windows gate; verified the two `sed` substitutions my column change touched by hand against the new
+header/rows (both produce the expected row), and hosted Linux CI is the real check for it. WSL `-Werror`:
+clean on every file this packet touched, same pre-existing `extensions_test.cpp` gap as every other packet
+this cycle. `clang-format` clean.
+
+NOT_RUN: `FrameRenderer`/`gpu.cpp`-internal instrumentation (still the open item from ZOOM-BOUNCE-1); a
+capture-side check of the owner's own recording; the render suite (not run - this packet changes no render
+code, per the instruction not to run it for an unrelated lane).
+
+Decisions and reasoning:
+- **Extended the existing `ANNO_VIEW_TRACE` facility rather than adding a second, parallel trace mechanism**
+  for "the scale handed to the renderer" - `resample` is already a parameter at the exact call site `scale`
+  is read, so this needed one new read, not new plumbing.
+- **Appended the new columns instead of inserting them**, once the contract test's own dozens of
+  position-sensitive `sed` substitutions made clear that an insertion would need touching most of them for
+  no benefit - the column's own name, not its position, is what every reader keys on.
+- **Verified the limit was actually reached, numerically, before trusting the hammering**, rather than
+  assuming 10-14 notches of magnitude 12 would obviously clear it - the recorded value matched the closed
+  form to four decimals, so the "at the limit" condition the lead names was genuinely exercised.
+- **Proved lead 1 false by construction, not only by absence of evidence in one run** - a clamp applied
+  unconditionally on every call admits no gap for an unclamped value to exist in, and the new test pins that
+  down for any future change to `zoom_target_after`.
+- **Did not touch `frame.cpp`/`gpu.cpp`**, since nothing in the view/presented state pointed there and the
+  review's own list of what the executor's checks could not see is the orchestrator's own next step, not a
+  reason to start guessing inside the renderer now.
+
+QUESTIONs: with the view state, the presented resample state, and the window size all clean under direct
+hammering, is the `FrameRenderer`-internal instrumentation (frame 3 of the review's own numbered leads) still
+the next step, or does this shift the balance toward a capture-side check of the owner's own recording first?
+
+READY FOR REVIEW.
+
+## ZOOM-BOUNCE-3 — the bounce hypothesis reproduces almost exactly — READY FOR REVIEW (same branch task/ZOOM-BOUNCE-1, new commits, no rebase)
+
+**Traced every wheel event into the existing window trace** (`wheel.tsv`, recorded whenever
+`ANNO_VIEW_TRACE` is already running - no new switch): `t_ms`, the raw float and accumulated-
+integer deltas SDL gives (`SDL_MouseWheelEvent::y`/`integer_y`), the flipped flag, the pointer
+position, and `zoom_target_` just before and after that one event's own `zoom_by()` call.
+
+**The scripted pair** (`zoom_bounce_3.script`): one inward tick, then one outward tick 5, 10 and
+20 ms later, at rest between 20 and 42 tile width (away from either limit). Read `wheel.tsv`
+against `frames.tsv`'s own `resample_scale` (same clock) frame by frame:
+
+| gap | peak scale reached | excursion over the 20/42 rest value | frames it shows in |
+|---|---|---|---|
+| 5 ms | 0.4832 | **+1.47 %** | 1 (the very next drawn frame; already reversing the one after) |
+| 10 ms | 0.4876 | **+2.40 %** | 2 |
+| 20 ms | 0.4956 | **+4.08 %** | 3-4 |
+
+**The 5 ms result is the owner's own number, to within measurement precision**: the reported
+frame was "the whole view zoomed in by about 1.5 %" - this packet's own 5 ms pair peaks at
+**1.47 %**, one frame after the inward tick, reversing by the very next one. The excursion grows
+roughly linearly with the gap (consistent with the easing's own early-time behaviour, first-order
+in `dt`), so a brief double-tick anywhere under about 10 ms plausibly explains a single captured
+frame differing by 1-2 %, exactly as reported - without any readiness miss, group flicker or
+presented/view-state disagreement, all of which ZOOM-BOUNCE-1/2 already ruled out.
+
+**No zoom change.** This is a finding about the input, not the easing or the renderer: the target
+correctly reflects every tick it receives, including a brief reversal, and the view correctly
+eases toward whatever the latest target is. Whether a double-tick this close together is ever
+really intended by the user, and so whether it is worth filtering, is the owner's own call - a feel
+change, per the instruction.
+
+**The owner's recipe.** With `ANNO_VIEW_LIVE_RESIZE_TRACE` unrelated, just the usual:
+```powershell
+$env:ANNO_VIEW_TRACE = "wheel-trace-1"
+.\build\msvc\src\app\Release\anno1503.exe --play data\maps\lan5.txt --game-dir E:\anno1503\game\app --water enhanced
+```
+Wheel in and out quickly, varying speed, for about 20 s, then close the window. In
+`wheel-trace-1\trace\wheel.tsv`, sort by `t_ms` and flag any two consecutive rows whose `raw_y`
+signs differ with `t_ms` less than 30 ms apart - that count, and how often it happens during an
+ordinary fast scroll, is what decides whether this is rare or constant.
+
+**Gates (changed lane: app).** `anno_app_tests` + `viewer_wiring_*`: 307/307
+(`cache/gates/zoombounce3-app-1.log`). WSL `-Werror`: clean on every file this packet touched,
+same pre-existing `extensions_test.cpp` gap. `clang-format` clean after one `-i` fix.
+
+NOT_RUN: the owner's own 20 s recipe (above, not yet run); whether a double-tick this close
+together occurs during the owner's own ordinary play (not measured here - only the scripted pair).
+
+Decisions and reasoning:
+- **Reused the existing `ANNO_VIEW_TRACE` switch rather than adding a new one**, since the window
+  trace is already off by default; a second toggle would only add a step the owner has to remember.
+- **Read `wheel.tsv` against `frames.tsv`'s own clock, not a new correlation mechanism** - both
+  already share `WindowTrace::now_ms()`/`ms_at()`, so no new plumbing was needed to line them up.
+- **Reported the exact matching number (1.47 % against the owner's 1.5 %) rather than just "yes, a
+  bounce can cause an excursion"** - the close match is what makes this a strong finding, not a
+  plausible-sounding one.
+- **Did not add a filter or a minimum-gap guard**, per the instruction - a scroll-wheel feel change
+  is the owner's decision, not a fix this packet should make unasked.
+
+QUESTIONs: does the owner's own hardware (recipe above) actually produce opposite-sign ticks under
+30 ms apart during ordinary fast scrolling, and if so, is filtering them wanted as a feel change?
+
+READY FOR REVIEW.
+
+## TRACE-COLS-1: the window trace and its reader agree on the columns — READY FOR REVIEW (same
+branch task/ZOOM-BOUNCE-1, from `fc1fbff7`, new commits)
+
+**Kept the writer's order** (`window_trace.cpp`'s `resample_scale`/`resample_offset_x`/
+`resample_offset_y` right after `scale`), per the task's own default: real traces already exist in
+it, and reordering the writer would need re-recording or hand-patching every existing trace for no
+other gain. Reordered `window_table.py`'s `COLUMNS` to match (it reads every field by name,
+`dict(zip(COLUMNS, f))`, so the reorder alone is safe); added `WHEEL_COLUMNS` (`wheel.tsv` had no
+Python-side list at all).
+
+**The contract test (new, `tools/test/window_trace_columns_test.py`, CTest
+`window_trace_columns_contract`).** Extracts each header's string literal straight out of
+`window_trace.cpp` (the `f`/`t`/`w` stream statements) rather than a third hand-copied list, decodes
+the `\t`/`\n` escapes, and checks it against `COLUMNS`/`SIM_COLUMNS`/`WHEEL_COLUMNS`. On `fc1fbff7`
+as it stood: `frames` fails (first difference at index 9, `resample_scale` vs `drawable_w`),
+`wheel` errors (`AttributeError: module 'window_table' has no attribute 'WHEEL_COLUMNS'`), `sim`
+passes (untouched). After the fix: all three pass.
+
+**`window_table_test.sh` needed its own fix too**, found while checking it: `H`/`F1`/`F2` used the
+old (now-wrong) order, and two `sed` substitutions (`overlap`, `drawable_no_epoch`) matched the
+literal text immediately after `scale`, assuming `drawable_w`/`drawable_h` was there - both
+reordered/fixed, verified with a dry run against the base rows (diff shows exactly the intended
+single-field change, nothing else moved). The shell test itself cannot be run end-to-end on this
+Windows host (its own header: "not Windows... this runner does not [work]" - confirmed directly:
+even the baseline `good` case fails, `bench_picture: cannot open /tmp/.../events.tsv`, a WSL-bash
+vs. native-Windows-exe path mismatch unrelated to this fix); CI's own Linux/macOS runners are what
+actually exercise it.
+
+**`window_table.py` reads one real trace from this branch's own binary, no error** (a short
+scripted zoom, `ANNO_VIEW_TRACE`, this worktree's `anno1503.exe`):
+```
+read_frames: 1820 rows, no error
+  first row: frame=1 group=2 outcome=presented
+  last row: frame=1820 group=2 outcome=presented
+  groups seen: [2, 3, 4]
+read_sim: 46 rows, no error
+wheel.tsv header matches WHEEL_COLUMNS: True
+wheel.tsv rows: 4
+```
+
+**`docs/app/window-trace.md`** updated: the `frames.tsv` column list now shows the resample fields
+in their real (writer's) position with a note on when they are 0 vs populated; a new `wheel.tsv`
+bullet with all 8 columns and their meaning (`raw_y`/`integer_y` are not the same number twice -
+a precision wheel's own fractional tick can round to 0 in `integer_y`); a new "Zoom groups and
+their tile widths" section with the verified table (84/42/20/10/5 px, `kTile` and
+`ZoomLevels::with_derived` in the source) and the 42-to-20 2.1x exception named explicitly.
+
+**Gates.** `anno_app_tests` + `viewer_wiring_*` + the workflow contracts (`window_trace_columns_contract`
+new; `window_tools_contract_test.py`, the other `tools/test` file touching `window_table`, reran at
+19/19 to confirm the reorder did not disturb its own `peak_rss` use): 314/314. No C++ source file
+was touched (only `CMakeLists.txt`, two Python files, one bash script, one doc) - `clang-format` and
+the WSL `-Werror` check are both no-ops here, noted rather than silently skipped. No gate was
+visibly running on this PC before the capture or the test run (checked with the orchestrator
+first, per the day's coordination note).
+
+Decisions and reasoning:
+- **Read the header out of the C++ source for the contract test**, not a trace file or a third
+  hand copy - the source is the one place a future column change is guaranteed to touch, so a test
+  reading it directly cannot go stale the way the two readers themselves just had.
+- **Fixed `window_table_test.sh`'s own two broken `sed` patterns in this packet**, not left for
+  whoever next touches that file - they were specifically provable casualties of this exact reorder
+  (both matched the old `scale`-then-`drawable_w` adjacency), not a pre-existing issue to defer.
+- **Verified the shell-script fix by dry run, not by declaring it correct** - the Windows/WSL path
+  mismatch that keeps the real script from running here is a known, pre-existing, documented
+  limitation (the script's own header comment), not something to work around by skipping
+  verification entirely.
+
+READY FOR REVIEW.
+
+## TRACE-COLS-1 follow-up — the CI-caught regression, fixed and guarded — READY FOR REVIEW (same branch task/ZOOM-BOUNCE-1, commit `ba32d939`)
+
+CI on `bf5cc055` was red on every non-Windows job (`window_table_contract`, case `junk_present`):
+the column reorder above made `outcome` `frames.tsv`'s last column, so `junk_present`'s and
+`count`'s own `sed` patterns (each relying on a trailing tab that no longer exists after
+`outcome`) silently matched nothing — the cases passed for the wrong reason instead of exercising
+the corruption they name. Fixed both patterns (anchored to end-of-line instead of a trailing
+tab) and added a guard after the case statement: every `.orig` a case's `sed` left behind must
+differ from what it edited, or the case fails by name. **Verified the guard itself, not just the
+fix**: ran `window_table_test.sh` in WSL against a Linux `bench_picture` build twice — once with
+the old (broken) `junk_present` pattern restored, which the new guard caught
+(`FAIL: junk_present: sed left .../frames.tsv unchanged (pattern matched nothing)`); then the
+real, fixed script, which passed all 45 `window_table_contract` checks including `junk_present`
+and `count`. Pushed; CI green on `ba32d939` (run `43989860151`).
+
+READY FOR REVIEW.

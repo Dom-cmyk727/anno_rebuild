@@ -18,9 +18,9 @@ fail() {
     echo "FAIL: $*" >&2
     exit 1
 }
-H=$'frame\tepoch\tgeneration\tview_x\tview_y\tview_w\tview_h\tgroup\tscale\tdrawable_w\tdrawable_h\tt_start_ms\tpicture_ms\tacquire_start_ms\tacquire_end_ms\tacquire_status\ttexture\tsubmit_ms\tpresent_start_ms\tpresent_end_ms\tpresent_status\toutcome'
-F1=$'1\t1\t1\t0\t0\t8\t8\t2\t1\t8\t8\t3.0\t0.1\t3.2\t3.5\tSuccessOptimal\t1\t4.0\t4.5\t5.0\tSuccess\tpresented'
-F2=$'2\t1\t1\t0\t0\t8\t8\t2\t1\t8\t8\t5.5\t0.1\t5.6\t6.0\tTimeout\t0\t-1.000000\t-1.000000\t-1.000000\t-\tacquire_skipped'
+H=$'frame\tepoch\tgeneration\tview_x\tview_y\tview_w\tview_h\tgroup\tscale\tresample_scale\tresample_offset_x\tresample_offset_y\tdrawable_w\tdrawable_h\tt_start_ms\tpicture_ms\tacquire_start_ms\tacquire_end_ms\tacquire_status\ttexture\tsubmit_ms\tpresent_start_ms\tpresent_end_ms\tpresent_status\toutcome'
+F1=$'1\t1\t1\t0\t0\t8\t8\t2\t1\t1\t0\t0\t8\t8\t3.0\t0.1\t3.2\t3.5\tSuccessOptimal\t1\t4.0\t4.5\t5.0\tSuccess\tpresented'
+F2=$'2\t1\t1\t0\t0\t8\t8\t2\t1\t1\t0\t0\t8\t8\t5.5\t0.1\t5.6\t6.0\tTimeout\t0\t-1.000000\t-1.000000\t-1.000000\t-\tacquire_skipped'
 make_case() { # matrix, case
     local c="$1/$2"
     mkdir -p "$c/trace"
@@ -105,7 +105,7 @@ for bad in gap mismatch count contradictory incomplete notime sim_outcome presen
     notime) rm "$c/time.txt" ;;
     sim_outcome) sed -i.orig 's/\taccepted\t/\trejected\t/' "$c/trace/sim.tsv" ;;
     present_order) sed -i.orig 's/\t4.0\t4.5\t5.0\tSuccess/\t4.0\t5.5\t5.0\tSuccess/' "$c/trace/frames.tsv" ;;
-    overlap) sed -i.orig 's/^2\t1\t1\t0\t0\t8\t8\t2\t1\t8\t8\t5.5\t/2\t1\t1\t0\t0\t8\t8\t2\t1\t8\t8\t4.8\t/' "$c/trace/frames.tsv" ;;
+    overlap) sed -i.orig 's/^2\t1\t1\t0\t0\t8\t8\t2\t1\t1\t0\t0\t8\t8\t5.5\t/2\t1\t1\t0\t0\t8\t8\t2\t1\t1\t0\t0\t8\t8\t4.8\t/' "$c/trace/frames.tsv" ;;
     failed_submit) sed -i.orig 's/\t0\t-1.000000\t-1.000000/\t0\t5.800000\t-1.000000/' "$c/trace/frames.tsv" ;;
     epoch_back) sed -i.orig 's/^1\t1\t1\t/1\t2\t1\t/' "$c/trace/frames.tsv" ;;
     junk_cols) sed -i.orig 's/^1\t1\t1\t0\t0\t/1\t1\tabc\tx\t0\t/' "$c/trace/frames.tsv" ;;
@@ -116,10 +116,18 @@ for bad in gap mismatch count contradictory incomplete notime sim_outcome presen
     # Both present events moved, so the trace stays consistent and only the cross-check refuses it.
     swapped) sed -i.orig 's/^5\tframe_presented\t1\t1$/4.9\tframe_presented\t1\t1/; s/^5\tpresented\t0\t1$/4.9\tpresented\t0\t1/' "$c/trace/events.tsv" ;;
     too_many) sed -i.orig 's/lines=1/lines=0/' "$c/run.txt" ;;
-    drawable_no_epoch) sed -i.orig 's/^2\t1\t1\t0\t0\t8\t8\t2\t1\t8\t8\t/2\t1\t1\t0\t0\t8\t8\t2\t1\t16\t16\t/' "$c/trace/frames.tsv" ;;
+    drawable_no_epoch) sed -i.orig 's/^2\t1\t1\t0\t0\t8\t8\t2\t1\t1\t0\t0\t8\t8\t/2\t1\t1\t0\t0\t8\t8\t2\t1\t1\t0\t0\t16\t16\t/' "$c/trace/frames.tsv" ;;
     generation_back) sed -i.orig 's/^2\t1\t1\t/2\t1\t0\t/' "$c/trace/frames.tsv" ;;
     reasons_count) printf 'turn\tt_ms\tapplied\trejected\toutcome\treasons\tbatch\tdeltas\n3\t1.0\t1\t0\taccepted\t-\t1\t1\n4\t1.5\t1\t1\trejected\ta,b,c\t0\t0\n' > "$c/trace/sim.tsv" ;;
     esac
+    # TRACE-COLS-1's column reorder silently broke junk_present's and count's own sed patterns (a
+    # trailing \t that no longer exists once outcome became frames.tsv's last column): the
+    # corruption never applied and the case passed for the wrong reason. Guard against that class of
+    # mistake: every .orig this case's sed left behind must differ from what it edited.
+    while IFS= read -r -d '' orig; do
+        edited="${orig%.orig}"
+        cmp -s "$orig" "$edited" && fail "$bad: sed left $edited unchanged (pattern matched nothing)"
+    done < <(find "$WORK/m_$bad" -name '*.orig' -print0)
     expected=1
     table "$WORK/m_$bad" "$expected" "a window case with $bad evidence"
     grep -q "^| good | 8x8 | 8x8 | " "$WORK/out" || fail "$bad: the good case lost its row"

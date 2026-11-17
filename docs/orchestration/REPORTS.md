@@ -14849,3 +14849,133 @@ landing candidate's own build): both pass, run directly with `python3 -I tools/l
   silently inheriting someone else's justification.
 
 READY FOR REVIEW.
+
+## FERTILITY-1 stage 1a — placement class for single-quad tile objects — READY FOR REVIEW
+
+Branch `task/FERTILITY-1a` (base origin/main `4dfdd9b7`, packet `docs/orchestration/tasks/fertility-1.md`
+"Stage 1a" and answer 2). Commits: `00c631eb` re(annowelt), `9d936f6d` feat(sim), `30103625` test(sim),
+`6684c7da` docs(sim), then this report.
+
+**The rule, as read (D; `adis.py`, capstone, on the pinned GOG DLLs):**
+- **Class:** the type's own flag word (`word [type+0x12]`) `& 3 == 1` selects the four-vertex mean, before any
+  window or class test (AnnoGame `0x10008f99`-`0x10008fac`). All 291 shipped such types are `0x29`
+  (`ROHSTOFF` 180, `ROHSTWACHS` 81, `ROHSTDUERR` 30; PRODTYPE 225-227, group `0xe1`).
+- **Height:** `(p[0] + p[1] + p[stride] + p[stride+1]) >> 2` (with `cdq; and edx,3`; floor for the
+  non-negative sum), the four vertices of the record's origin tile whatever the footprint and rotation
+  (`0x10008fae`-`0x10008fd9`). The vertex pointer and stride W+1: AnnoWelt `0x1007cb50`-`0x1007cb91`.
+- **Overlap:** island step `0x1007c8ad`-`0x1007c912` calls type slot `+0x6c` (`0x10008920`) per non-zero id under
+  the whole rotated footprint. For a placed group `0xe1`: existing flag word `& 0x20` returns 1 (`0x10008931`),
+  caller flag `0x10000000` returns 0 (`0x10008945`, never set by these callers), and the group switch
+  (`0x10008974`-`0x10008a12`) has no `0xe1` case, so it ends at `0x10008a3e` (0). So the verdict per existing
+  object is exactly "its flag word has bit `0x20`". That is 352 registry types that share the tile (the three
+  raw-material PRODTYPEs, `RUINE` `0x26`, `STEIN` `0x3a`), and 569 that refuse. This resolves the L of `ui.md`
+  4.1 row (b) at code level.
+- **Skipped classes:** `A & 0x7000` in {`0x4000`, `0x2000`} accepts (`0x1007cbc2`-`0x1007cbd6`); group `0x141`
+  accepts (`0x1007cbd8`-`0x1007cbe9`).
+- **Threshold:** `rec[8] >= ftol([0x100e339c] / [0x100c9c20])` (`0x1007cbeb`-`0x1007cc06`). `[0x100c9c20]` =
+  0.04f; `[0x100e339c]` = 0 in the image, written by `0x1007b340` (0.04f x 16.0f -> `[0x100e2d88]`) and
+  `0x1007b3a0` (doubles it -> 1.28f). `f32(1.28)/f32(0.04)` = 32.0, the same value the section 2 emulation read.
+
+**Code:** `placement_rule` gets `Class::TileObject` (`F <= 0xffff`, `F & 3 == 1`, bit `0x10` still `Other`)
+and `tile_object_height`. It is pure and integer only, with no new state. `PlacementParams` gets
+`level_exempt_classes = {0x4000, 0x2000}` (cited). `min_level` (32) has its source comment completed. Oracle
+`tools/placement_ref.py`: `terrain_class` marks the class supported (`place()` already transcribed the path),
+plus the new `tilecorpus` command.
+
+**Tests (all new cases executed, see the gate):**
+- `placement_tile_object_test.cpp`, 6 unit cases:
+  - the floor: 128 -> 32 accept, 127 -> 31 refused, 131 -> 32;
+  - slopes allowed; no 0xf0 quantisation (accept 50);
+  - the east boundary column reads 0;
+  - `min_level` is read from the params;
+  - overlap: stone and 0x29 share the tile; a building or a road refuses; occupancy comes before height;
+    a 3 x 3 checks its whole footprint;
+  - each skipped class, with the configurable list and group (an empty list refuses, the group stays);
+  - rotation: a 3 x 1 is out of bounds at rot 0/2 and fits at rot 1/3 with the same origin quad 36;
+  - the 3 x 3 reads only its origin quad;
+  - Unsupported: no terrain, bit 0x10, an unknown id.
+- Vectors T-1..T-12 added to `placement_vectors.txt`: the oracle file now holds 89 cases, 0 mismatches.
+- **Corpus:** `tile object: placement_rule agrees with the oracle over every shipped island tile` and ctest
+  `placement_tile_corpus_reference_agrees`.
+  - Inputs: ROHSTWACHS 1 (1 x 1 crop object) and ROHSTOFF 3215 (3 x 3), at every tile of all 1,133 islands of
+    the 515 `.scp`/`.sze` files, 17,206,784 tiles per type.
+  - Result: accept 12,672,094, low 18,647,018, occupied 2,595,308, bounds 499,148, unsupported 0.
+  - Agreement: 2,266/2,266 digest lines, C++ = oracle = the file.
+  - The occupancy model is the corpus's own: every footprint tile of a GELAENDE/FLUESSE/PROD2 item, the first
+    item wins. It tests the rule, not the loader.
+
+**Fixture/golden/replay changes (complete list):**
+1. `placement_vectors.txt` R-20 (renamed `road_single_quad_tile_object`, a data-defined STRASSE `0x4185`):
+   `unsupported` became `accept 48`, because `F & 3 == 1` is now the tile-object class and class `0x4000` skips
+   the level test.
+2. `placement_rule_test.cpp` "the ordinary class predicate ..." row `0x0085`: `Unsupported` became accepted,
+   height 48, for the same reason.
+3. New: `placement_vectors.txt` T-1..T-12 (the count rose from 77 to 89); `tile_object_corpus.txt`.
+
+No golden, replay, scenario-corpus hash or state hash changed. A `BuildCmd` never reaches the class: a type
+without a building list that is not a land road is `Unsupported` before the placement rule (`apply.cpp`
+step 1). The scenario loader does not call `placement_rule`. The gate's scenario, replay, save, founding and
+determinism cases all pass unchanged. **No visible change in any existing test map.**
+
+**Failure proof (each mutation applied, rebuilt, run, then reverted):**
+- C++ M1, ceiling `(sum + 3) >> 2`: 3 cases fail. The vectors fail, the floor case fails (127 -> accepted),
+  and the corpus has 1,299 of 2,266 lines differ.
+- C++ M2, exemptions ignored: 2 cases fail, the vectors (T-7/T-8/T-9, R-20) and the skipped-classes case. The
+  corpus does not catch it, because no shipped tile object has an exempt class or group; the vectors carry
+  that rule.
+- Oracle mutations, against the vectors:
+  - threshold 31: T-2 fails;
+  - ceiling mean: T-1, T-2 fail;
+  - class unsupported again: 26 mismatches;
+  - no `0x2000` exemption: T-7 and the coast case fail;
+  - crop overlaps everything: T-6 fails.
+
+**Gate:**
+- `cmake --build --preset msvc`: clean, no warnings.
+- clang-format 23.1.3 `--dry-run --Werror`: clean on the 4 changed C++ files.
+- `run_selected.py`, gate log `cache/gates/fertility-1a-02.log`: `selected=448 executed=446 failed=0 empty=0
+  skipped=2 (opt-in 2) incomplete=0 sanitizer_lines=0`, VERDICT PASS.
+  - Selector: the sim placement, tile-object, stand-in, build-terrain, founding, determinism, replay, save,
+    scenario, salt, quarry, road and build cases, plus the placement Python oracles.
+  - Required: the corpus pair, the vectors and the skipped classes. No memory refusals.
+  - Run `-01` was stopped part-way for the UI lane's QUIET and is void. Its empty lock directory was removed
+    before `-02`.
+- `check_unix_warnings.sh` (WSL, GCC 13 / Clang 18 `-O3 -Werror`): clean: the negative controls fail as expected; GCC 417 + 83 files and Clang 417 + 83 files are clean, exit 0 (log `cache/gates/fertility-1a-unix-warnings.log`; a first attempt failed to start with a WSL path error, exit 127, and compiled nothing).
+
+**NOT_RUN:**
+- The re-run of `tools/placement_emulate.py` (no `unicorn` on this host). The earlier 25,000-case run included
+  two `0x29` types with 0 mismatches, but did not count them separately.
+- The WSL `-O1` sanitizer lane.
+- The app lane and the full suites: the orchestrator's, at landing.
+- macOS.
+
+**Acceptance table:**
+
+| Requirement | Positive proof | Negative control | Evidence | Disposition |
+|---|---|---|---|---|
+| Floor of the four-corner mean >= 32 | 128 -> 32, 131 -> 32 accepted | 127 -> 31 refused; M1 ceiling fails 3 cases + 1,299 corpus lines | unit case, T-1/T-2, corpus | pending review |
+| Threshold in config with source | `PlacementParams::min_level` 32, cited | `min_level = 33` refuses 32 | unit case | pending |
+| Overlap verified in code | stone, 0x29 share | building, road -> Occupied; oracle "overlaps everything" fails T-6 | `0x10008931`/`0x10008a3e`, unit case, T-4..T-6 | pending |
+| Skipped classes kept | 0x4000, 0x2000, group 0x141 accept 16 | empty list or group 0 refuses; M2 fails | unit case, T-7..T-9 | pending |
+| Rotation | rot 1/3 fit with the origin quad | rot 0/2 out of bounds | unit case, T-12 | pending |
+| Oracle = C++ on real terrain | 2,266/2,266 lines | M1 changes 1,299 lines | corpus pair | pending |
+| No gameplay/fixture drift | 446 executed, 0 failed incl. scenario/replay/save | - | gate `-02` | pending |
+
+**Decisions and reasoning:**
+- **The class predicate** is `F & 3 == 1` with bit `0x10` excluded and `F <= 0xffff`, not "flag word == 0x29".
+  The original branches on `& 3` only (`0x10008fa1`). Bit `0x10` would add the coverage test, which is
+  evidenced for the mountain class only, so it stays Unsupported.
+- **The skipped classes are a vector in `PlacementParams`**, not a literal, following CLAUDE.md "no hardcoded
+  limits". Only the tile-object branch reads it; the coast and road paths keep their own documented
+  behaviour.
+- **The corpus is a shared digest file**, not a C++ copy of the oracle. The file holds counts and FNV only (the
+  precedent is `fisher_runtime_census.txt`). Both the Python oracle (ctest, about 98 s) and the C++ case compare
+  against it.
+- **Two corpus types:** the packet asked for one crop object. The 3 x 3 ROHSTOFF was added because it is the
+  only shipped type where the footprint (bounds, overlap) and the quad differ.
+- **The corpus occupancy model is stated as the corpus's own**, so it is not mistaken for a loader claim. The
+  sim loader keeps one tile object per origin tile.
+- **No new OQ:** nothing was guessed. The one unread point, the `0x29` share of the old emulation, is NOT_RUN,
+  not a question.
+
+READY FOR REVIEW.

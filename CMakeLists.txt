@@ -362,6 +362,12 @@ if(ANNO_BUILD_TESTS)
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/house_live_ref_contract_test.py
                      --ref ${CMAKE_SOURCE_DIR}/tools/house_live_ref.py
                      --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/house_live_vectors.txt)
+    # DOCS-SIM-1: finite source/document inventory and its public-command controls.
+    add_test(NAME sim_capabilities_agree
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/sim_capabilities.py)
+    add_test(NAME sim_capabilities_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/sim_capabilities_contract_test.py)
+    set_tests_properties(sim_capabilities_agree sim_capabilities_contract PROPERTIES LABELS "workflow")
     add_test(NAME pins_contract COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/pins_contract_test.py)
     add_test(NAME population_oracles_agree
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/sim_stream.py --check)

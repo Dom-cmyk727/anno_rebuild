@@ -15288,3 +15288,59 @@ NOT_RUN: corrected-head hosted CI (awaiting focused review before ordinary push)
 QUESTIONs: none. Independent focused correction review requested from the orchestrator before push.
 
 Focused pre-push correction review: orchestrator independently approved the seven-entry allowlist correction with no P1/P2; canonical 2/2 and unrelated-cap control verified. Corrected-head hosted CI remains pending.
+
+## 2026-11-18 — DOCS-SIM-1 — READY FOR REVIEW
+
+- Branch task/DOCS-SIM-1 from accepted `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e`; no board/main merge.
+- Read packet at `395d6feab90facbc786eb134e4285f8dc0297882`; preserved all prior branches/evidence.
+- [Current capabilities](../sim/capabilities.md): 33 direct Rules members, 58 expanded rows; shared NavClassCost expanded once.
+- Commands: all 14 Body alternatives, wire mappings, apply boundaries and separately qualified production UI availability.
+- Classes: all 25 RuntimeClass rows, TickKind/payload/gate and explicit Quarry payload override.
+- Hooks: all 15 Seams members, including placement/removal/rewrite/emptiness outside advance.
+- Scheduler: 28 named/supporting call tokens; numbered gameplay phases distinguished from incidental calls.
+- Rules{} defaults, Living profile, explicit booking overrides, city-name load and fisher extension are kept separate.
+- Corrected only three stale source comments (House/Quarry); all C++ tokens match the accepted base.
+- `tools/sim_capabilities.py`: read-only source/document reconciliation; normalized first three table columns, not prose certification.
+- Unsupported/missing/empty/duplicate inputs and incomplete mappings refuse; --dump emits JSON without writing.
+- `sim_capabilities_agree` and `sim_capabilities_contract` are registered/discovered in canonical CTest/CI.
+- Final public contract: 26 subcases, 0 failures; 4 legal controls and 22 intended refusals, replacements checked.
+- Controls include real row omission, extra/duplicate rows, new Rules field, default/constant/enum order drift, command/wire/class/hook/phase drift.
+- Missing/empty input, unsupported declarations and comments-as-nondeclarations are covered on relocated copies.
+- Retained failure: initial dispatch-bypass mutant wrongly agreed; added exact bounded visitor-use guard and trailing class-table guard.
+- Final bypass and trailing-mutation controls fail for their intended diagnostic; real inputs remain unchanged.
+- Independent count cross-checks use archive field lists/guards and seam_names, not only generated rows.
+
+Initial focused tools gate `cache/docs-sim-1/focused-dev.log` (picture, then 8 selected tools):
+
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=8 executed=8 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+Final checker/required contract `cache/docs-sim-1/guarded-capabilities-final.log`:
+
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- Final pair supersedes preliminary checker receipts; unchanged lint/self-test and four stream/highmap reference receipts reused.
+- The earlier same-build picture contract is reused explicitly; no broad matrix or original voyage repeated.
+- 0 memory refusals, skips, empty/incomplete outcomes or sanitizer reports; no isolated memory rerun needed.
+- clang-format 23.1.3 checks the three changed comment files; diff check and all new links pass.
+- All 119 tracked sim fixtures unchanged; 0 pins/goldens/recordings regenerated; state/section/PRNG/wire/default identities unchanged.
+- [Acceptance table, retained failure and SHA256 evidence](evidence/docs-sim-1.md); raw logs stay in cache/docs-sim-1/.
+
+Decisions and reasoning:
+- Use finite current-source extraction rather than a runtime registry or general C++ analyzer.
+- Check declarations/default expressions/mappings and call surface mechanically; require independent review for reachability, gating and meaning.
+- Preserve explicit inert, reserved/refused, partial and unverified statuses; a unit proof is not a production town or original-runtime proof.
+- Reject unsupported scanned syntax rather than silently omitting declarations; no automatic documentation refresh in tests/CI.
+- Keep hooks outside advance and external behavior of None-tick classes visible.
+
+NOT_RUN: broad C++/ASan/full-suite, original-file town/corpus, live UI/HE, native Windows/WSL; hosted CI pending exact-head push.
+QUESTIONs: none requiring a policy decision; independent orchestrator source/prose review and exact-head CI remain pending.

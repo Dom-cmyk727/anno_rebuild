@@ -44,8 +44,8 @@ enum class TickKind : std::uint8_t {
     SmallFarm,
     /// The market and the Kontor (D 0x1006b6d0, T24): the cart send.
     Market,
-    /// The house (D 0x10076230): the population update is P2's; until then the tick
-    /// does nothing and touches nothing, `last` included, like TickKind::None.
+    /// The house (D 0x10076230): tick_building calls house_tick when
+    /// Rules::house_updates is enabled; otherwise `last` is untouched, like None.
     House,
     /// The Inn (D 0x100755f0, MAP-POP-CLOSE-2 K1): the alcohol fetch send (job 0x33). Runs only
     /// with Rules::house_updates, like the house.

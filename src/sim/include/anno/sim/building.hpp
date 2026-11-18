@@ -3,9 +3,9 @@
 // A building is the common part the original's base class holds (D: AnnoWelt.dll
 // base constructor 0x100734c0: position, rotation, the flag bytes +0x0e / +0x0f)
 // plus the payload of its runtime class: one of the production structs of
-// production.hpp, or `Inert` for every class whose tick is not ported (public
-// buildings, houses, military, ships, stalls, the base class; markets have their own
-// payload since T24). Inert
+// production.hpp, or `Inert` for most classes whose tick is not ported (public
+// buildings, military, shipyards, stalls and the base class). House, Inn and Market
+// have dedicated payloads; Quarry has claims despite its None class tick. Inert
 // holds a slot all the same: the scheduler arithmetic divides by the length of
 // the list including its null holes, so the order in which buildings tick stays
 // faithful while those classes are unported.

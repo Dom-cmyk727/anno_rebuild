@@ -732,7 +732,7 @@ std::optional<BuildingClass> production_kind_for_tick(TickKind tick) {
     case TickKind::SmallFarm:
         return BuildingClass::SmallFarm;
     case TickKind::Market: // reads prod.max_figures / figure_ids only when present
-    case TickKind::House:  // no production data (P1: the tick does nothing yet)
+    case TickKind::House:  // no production data; live house_tick is rule-gated
     case TickKind::Inn:    // reads prod.max_figures / figure_ids / input_per_step only when present
     case TickKind::None:
         break;

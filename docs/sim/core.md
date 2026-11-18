@@ -2,6 +2,10 @@
 
 Spec for `src/sim` (`anno_sim`), the deterministic simulation (PLAN M3). Evidence: [`docs/re/tick-loop.md`](../re/tick-loop.md) (static analysis of the GOG 2.0.0.5 binaries; D = disassembled/decompiled, P = parsed from game files). Everything here is integer arithmetic; no float takes part in simulation state.
 
+For current implemented, rule-gated and unported paths, see the
+[source-checked capability inventory](capabilities.md). Historical stage notes do
+not supersede that caller-based snapshot.
+
 ## World PRNG
 - **Table:** `T[i]` = the `i`-th output (0-based) of the MSVC CRT `rand()` after `srand(1)`: `x ← x · 214013 + 2531011 (mod 2³²)`, output `(x >> 16) & 0x7fff`. Length 2048 in the original (D: `AnnoWelt.dll` `0x100a3980`). The original's table at `AnnoWelt.dll` `0x100cb8f8` equals this sequence entry for entry (P/D, 2026-10-17). Facts (tick-loop.md §3): SHA-256 of the 4096 bytes (u16 LE) `41bc794652bedbd69cd452d4b34a4877a92ccf1effea4c0b116d56706b45efdc`, min 21, max 32757, 1991 distinct values; our own check value: sum 33,419,328. `src/sim/tests/sim_test.cpp` compares the generated table with the DLL's bytes when the game files are present.
 - **Draw:** `cursor ← (cursor + 1) mod len; return T[cursor]` (D: world slot `+0xb4` = `0x100a1740`). The cursor is the only state; the sequence repeats every `len` draws.

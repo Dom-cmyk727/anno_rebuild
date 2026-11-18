@@ -24,6 +24,7 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | 1.5 [ANNOSCENE-ORE-2](tasks/annoscene-ore-2.md) | ACCEPTED bounded research after P2 correction; no engine implementation | `b12d22b39caee90429aef77b52659aa2bfedb38e` | [44273143955](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44273143955), exact-head docs CI green | [Acceptance and preserved finding](reviews/2026-11-18-annoscene-ore-2-review.md) |
 | 1.6 [OQ-562-1](tasks/oq-562-1.md) | ACCEPTED bounded headless causal diagnosis after focused CI correction | `b7046e5e279fa979d83079feb56dc83a660f32ef` | [44282873819](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44282873819), all 12 jobs success at exact head | [Acceptance and preserved failure](reviews/2026-11-18-oq-562-1-review.md) |
 | 1.7 [SIM-LIMITS-1](tasks/sim-limits-1.md) | RELEASED to EXECUTOR II MAC, 2026-11-18 | Independent accepted base `9edb151c414246d306194a703db71475affbdad4` | Await executor source checkpoint | Report directly to Mac orchestrator for independent review |
+| 1.8 [DOCS-SIM-1](tasks/docs-sim-1.md) | PREPARED, NOT RELEASED; dispatch independently reviewed | To use the accepted SIM-LIMITS-1 full head named at release | Not started | Await SIM-LIMITS-1 review and exact-head CI; then direct release authorized |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -142,3 +143,13 @@ base. Preserve all OQ/wildlife/ore branches and evidence. Centralize the four co
 bounds with unchanged bytes/identities and focused consumer checks, then ordinary-push the
 task branch and send READY FOR REVIEW directly to this orchestrator with full head, exact-head
 CI and evidence. No main merge/push, owner policy change or DOCS-SIM-1 start is authorized.
+
+
+## Next handoff — owner-authorized 2026-11-18
+
+SIM-LIMITS-1 is active. Once its frozen result is independently reviewed and exact-head
+CI succeeds, accept it and release DOCS-SIM-1 directly, without owner relay. The executor
+reports both checkpoints to the Mac orchestrator. DOCS-SIM-1's prepared packet has had
+independent dispatch review: its finite set includes every Seams member, and mechanical
+declaration/default/mapping checks are explicitly separated from reviewed behavior claims.
+No premature SIM acceptance, source integration or gameplay-policy decision is implied.

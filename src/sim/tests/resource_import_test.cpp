@@ -18,6 +18,8 @@
 #include <anno/sim_load/original_registry.hpp>
 #include <anno/test/game_dir.hpp>
 
+#include "alloc_probe.hpp"
+
 namespace sim = anno::sim;
 namespace ri = anno::sim::resource_import;
 namespace {
@@ -301,6 +303,127 @@ TEST_CASE("resource import: errors expose no partial success or input mutation")
     CHECK(exhausted.error().consumed == 1);
     CHECK(r.island.tiles.object(0) == 0);
     CHECK(r.plane == original.plane);
+}
+
+TEST_CASE("resource import: one prepared index handles unsorted unrelated and following facts") {
+    auto input = fields(first_vector());
+    input["types"] = "104:226:1:1:41:0:105;105:291:1:1:9:70:404";
+    auto small = rig(input);
+    std::reverse(small.facts.begin(), small.facts.end());
+    const auto repeated = small.records.front();
+    small.records.assign(16, repeated);
+    small.draws.assign(16, 4);
+    auto large = small;
+    for (std::uint32_t id = 1000; id < 5096; ++id)
+        large.facts.push_back({sim::TypeId{id}, 0, 0});
+    std::reverse(large.facts.begin(), large.facts.end());
+    const auto first_id = large.facts.front().id;
+    const auto measured = [](const Rig& r) {
+        anno::test::AllocScope allocations;
+        auto result = evaluate(r);
+        const auto bytes = allocations.bytes();
+        return std::pair{std::move(result), bytes};
+    };
+    REQUIRE(small.records.front().type == sim::TypeId{104});
+    REQUIRE(small.types->find(small.records.front().type) != nullptr);
+    REQUIRE(small.facts.size() == 2);
+    REQUIRE(small.facts[0].id == sim::TypeId{105});
+    REQUIRE(small.facts[1].id == sim::TypeId{104});
+    const auto baseline = measured(small);
+    const auto indexed = measured(large);
+    if (!baseline.first)
+        std::cout << "INDEX_BASELINE_ERROR kind="
+                  << static_cast<unsigned>(baseline.first.error().kind)
+                  << " record=" << baseline.first.error().record
+                  << " consumed=" << baseline.first.error().consumed << "\n";
+    if (!indexed.first)
+        std::cout << "INDEX_LARGE_ERROR kind=" << static_cast<unsigned>(indexed.first.error().kind)
+                  << " record=" << indexed.first.error().record
+                  << " consumed=" << indexed.first.error().consumed << "\n";
+    REQUIRE(baseline.first);
+    REQUIRE(indexed.first);
+    CHECK(indexed.first.value().variation == std::vector<std::uint8_t>{75, 12, 13, 14});
+    CHECK(indexed.first.value().variation == baseline.first.value().variation);
+    CHECK(indexed.first.value().consumed == 16);
+    CHECK(indexed.first.value().tiles.object(0) == 104);
+    CHECK(indexed.first.value().tiles.phase(0) == 7);
+    CHECK(indexed.first.value().records ==
+          std::vector<ri::Disposition>(16, ri::Disposition::Accepted));
+    CHECK(large.facts.front().id == first_id); // Sorting never mutates caller facts.
+    // Test-only existing allocator probe: one owned index, not no index (old linear
+    // scans) or a new index for every resource. No wall-clock threshold or public
+    // instrumentation. sort/adjacent validation + lower_bound establish work bounds.
+    const auto payload =
+        static_cast<std::uint64_t>(large.facts.size() - small.facts.size()) * sizeof(ri::TypeFacts);
+    REQUIRE(indexed.second >= baseline.second);
+    const auto extra = indexed.second - baseline.second;
+    CHECK(extra >= payload);
+    CHECK(extra < 2 * payload);
+    std::cout << "RESOURCE_INDEX records=16 required_facts=2 unrelated_facts=4096 extra_bytes="
+              << extra << " one_index_payload=" << payload << "\n";
+    const auto selected = ri::select(*large.types, large.facts, large.climate, sim::TypeId{104}, 4);
+    REQUIRE(selected);
+    CHECK(selected.value() == 4);
+    auto duplicate = large;
+    duplicate.facts.push_back(duplicate.facts.front()); // Nonadjacent in supplied order.
+    const auto rejected = evaluate(duplicate);
+    REQUIRE_FALSE(rejected);
+    CHECK(rejected.error().kind == ri::ErrorKind::Facts);
+    CHECK(rejected.error().consumed == 0);
+    const auto standalone =
+        ri::select(*duplicate.types, duplicate.facts, duplicate.climate, sim::TypeId{104}, 4);
+    REQUIRE_FALSE(standalone);
+    CHECK(standalone.error() == ri::ErrorKind::Facts);
+    large.facts.erase(
+        std::remove_if(large.facts.begin(), large.facts.end(),
+                       [](const ri::TypeFacts& f) { return f.id == sim::TypeId{105}; }),
+        large.facts.end());
+    const auto missing_following = evaluate(large);
+    REQUIRE_FALSE(missing_following);
+    CHECK(missing_following.error().kind == ri::ErrorKind::Facts);
+    CHECK(missing_following.error().record == 0);
+    CHECK(missing_following.error().consumed == 1); // Still after accepted placement/draw.
+    CHECK(large.island.tiles.object(0) == 0);
+    CHECK(large.plane == std::vector<std::uint8_t>{171, 12, 13, 14});
+}
+
+TEST_CASE("resource import: registered zero sentinel differs from legal sibling") {
+    auto r = rig(fields(first_vector()));
+    sim::TypeRegistry::Builder builder;
+    sim::BuildingType ordinary;
+    ordinary.id = sim::TypeId{0};
+    ordinary.prodtype = 291;
+    ordinary.flags_word = 9;
+    builder.add(ordinary);
+    ordinary.id = sim::TypeId{800};
+    builder.add(ordinary);
+    const auto types = builder.build();
+    REQUIRE(types);
+    r.types = types.value();
+    REQUIRE(r.types->find(sim::TypeId{0}) != nullptr);
+    REQUIRE(r.types->find(sim::TypeId{800}) != nullptr);
+    r.facts.clear(); // Ordinary nonresource placement never needs selector metadata.
+    r.draws.clear();
+    r.records = {{sim::TypeId{800}, 0, 0, 0, 9}};
+    const auto sibling = evaluate(r);
+    REQUIRE(sibling);
+    CHECK(sibling.value().tiles.object(0) == 800);
+    CHECK(sibling.value().tiles.phase(0) == 9);
+    CHECK(sibling.value().tiles.item_height(0) == 48);
+    CHECK(sibling.value().variation == r.plane);
+    CHECK(sibling.value().records == std::vector{ri::Disposition::Accepted});
+    CHECK(sibling.value().consumed == 0);
+    std::cout << "REGISTERED_ZERO lookup_zero=present legal_sibling=accepted object=800 draws=0\n";
+    r.records[0].type = sim::TypeId{0};
+    const auto zero = evaluate(r);
+    std::cout << "REGISTERED_ZERO zero_result=" << (zero ? "accepted" : "refused") << "\n";
+    REQUIRE_FALSE(zero); // Removing only the zero guard must fail HERE, after legal sibling.
+    CHECK(zero.error().kind == ri::ErrorKind::Facts);
+    CHECK(zero.error().record == 0);
+    CHECK(zero.error().consumed == 0);
+    CHECK(r.island.tiles.object(0) == 0);
+    CHECK(r.island.tiles.phase(0) == 0);
+    CHECK(r.plane == std::vector<std::uint8_t>{171, 12, 13, 14});
 }
 
 TEST_CASE("resource import: original Tutorial first resource prefix") {

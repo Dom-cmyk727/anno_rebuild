@@ -7,35 +7,35 @@
 
 namespace anno::sim::resource_import {
 namespace {
-const TypeFacts* find(std::span<const TypeFacts> facts, TypeId id) {
-    const auto it =
-        std::find_if(facts.begin(), facts.end(), [id](const TypeFacts& f) { return f.id == id; });
-    return it == facts.end() ? nullptr : &*it;
-}
-bool valid_facts(std::span<const TypeFacts> facts, const ClimateFacts& climate) {
+// Invocation-local, id-ordered copy. No persistent registry/cache or public probe.
+formats::Result<std::vector<TypeFacts>, ErrorKind> prepare(std::span<const TypeFacts> facts,
+                                                           const ClimateFacts& climate) {
     if (climate.slots.size() != 16)
-        return false;
+        return ErrorKind::Facts;
     for (const auto* row : {&climate.slots, &climate.tag104, &climate.tag201, &climate.tag404}) {
         if (row != &climate.slots && !row->empty() && row->size() != 8)
-            return false;
+            return ErrorKind::Facts;
         if (std::any_of(row->begin(), row->end(), [](TypeId id) { return !id.valid(); }))
-            return false;
+            return ErrorKind::Facts;
     }
-    for (auto it = facts.begin(); it != facts.end(); ++it)
-        if (!it->id.valid() || it->id.v == 0 ||
-            std::find_if(facts.begin(), it, [&](const TypeFacts& f) { return f.id == it->id; }) !=
-                it)
-            return false;
-    return true;
+    std::vector<TypeFacts> sorted(facts.begin(), facts.end());
+    std::sort(sorted.begin(), sorted.end(),
+              [](const TypeFacts& a, const TypeFacts& b) { return a.id < b.id; });
+    for (auto it = sorted.begin(); it != sorted.end(); ++it)
+        if (!it->id.valid() || it->id.v == 0 || (it != sorted.begin() && (it - 1)->id == it->id))
+            return ErrorKind::Facts;
+    return sorted;
 }
-} // namespace
-
-formats::Result<std::uint8_t, ErrorKind> select(const TypeRegistry& types,
-                                                std::span<const TypeFacts> facts,
-                                                const ClimateFacts& climate, TypeId id,
-                                                std::uint32_t draw) {
-    if (!valid_facts(facts, climate))
-        return ErrorKind::Facts;
+const TypeFacts* find(std::span<const TypeFacts> sorted, TypeId id) {
+    const auto it = std::lower_bound(sorted.begin(), sorted.end(), id,
+                                     [](const TypeFacts& f, TypeId key) { return f.id < key; });
+    return it == sorted.end() || it->id != id ? nullptr : &*it;
+}
+// Only callers holding successfully prepared facts reach this selector.
+formats::Result<std::uint8_t, ErrorKind> select_prepared(const TypeRegistry& types,
+                                                         std::span<const TypeFacts> facts,
+                                                         const ClimateFacts& climate, TypeId id,
+                                                         std::uint32_t draw) {
     const auto* type = types.find(id);
     const auto* current = find(facts, id);
     if (!type || !current)
@@ -82,6 +82,18 @@ formats::Result<std::uint8_t, ErrorKind> select(const TypeRegistry& types,
                                      : static_cast<std::uint8_t>(it - climate.slots.begin());
 }
 
+} // namespace
+
+formats::Result<std::uint8_t, ErrorKind> select(const TypeRegistry& types,
+                                                std::span<const TypeFacts> facts,
+                                                const ClimateFacts& climate, TypeId id,
+                                                std::uint32_t draw) {
+    const auto prepared = prepare(facts, climate);
+    if (!prepared)
+        return prepared.error();
+    return select_prepared(types, prepared.value(), climate, id, draw);
+}
+
 formats::Result<Output, Error>
 evaluate(const TileLayer& input, const VertexGrid& grid, std::span<const std::uint8_t> variation,
          const TypeRegistry& types, std::span<const TypeFacts> facts, const ClimateFacts& climate,
@@ -92,8 +104,9 @@ evaluate(const TileLayer& input, const VertexGrid& grid, std::span<const std::ui
         std::int64_t{input.x0()} + input.width() - 1 > std::numeric_limits<std::int32_t>::max() ||
         std::int64_t{input.y0()} + input.height() - 1 > std::numeric_limits<std::int32_t>::max())
         return Error{ErrorKind::Geometry, 0, 0};
-    if (!valid_facts(facts, climate))
-        return Error{ErrorKind::Facts, 0, 0};
+    const auto prepared = prepare(facts, climate);
+    if (!prepared)
+        return Error{prepared.error(), 0, 0};
     // Do not allow an unknown existing object to hide behind another rejection.
     for (std::uint64_t i = 0; i < input.tile_count(); ++i)
         if (input.object(i) != 0 && !types.find(TypeId{input.object(i)}))
@@ -145,7 +158,8 @@ evaluate(const TileLayer& input, const VertexGrid& grid, std::span<const std::ui
             if (out.consumed == draws.size())
                 return error(ErrorKind::Exhausted);
             const auto draw = draws[out.consumed++];
-            const auto variant = select(types, facts, climate, record.type, draw);
+            const auto variant =
+                select_prepared(types, prepared.value(), climate, record.type, draw);
             if (!variant)
                 return error(variant.error());
             const auto i = out.tiles.index_of(record.x, record.y);

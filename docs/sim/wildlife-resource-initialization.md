@@ -157,3 +157,22 @@ See [original placement](../re/ship-placement.md),
 [terrain view](../../src/sim/include/anno/sim/terrain_view.hpp),
 [helper API](../../src/sim/include/anno/sim/resource_import.hpp) and
 [authored vectors](../../fixtures/synthetic/sim/resource_import_vectors.txt).
+
+## 5. Reviewed correction: prepared metadata (2026-11-18)
+
+C/A: prepare a private id-sorted copy once per evaluator invocation. Validate
+climate row shape/ids and adjacent metadata duplicates once, then use binary
+lookup in the internal selector. Metadata work is O(F log F + R log F) for F
+facts and R accepted resource records, instead of repeated O(R F²) validation.
+The standalone public selector prepares/validates its own invocation. This is
+transient indexing only; caller order and input ownership stay unchanged.
+Missing current/following metadata still refuses after the accepted draw, while
+invalid/duplicate facts refuse before work. Original selection/placement/draw
+semantics and every supported-domain restriction above remain unchanged.
+
+A bounded many-facts test uses the existing test-only allocation probe to
+distinguish one owned index from zero (the old scan) or per-resource rebuilding;
+production exposes no counters. Standard sort and binary-search structure bound
+comparison work without a wall-clock threshold. The zero-sentinel regression
+registers both ordinary id 0 and its legal nonzero sibling, so missing-type
+refusal cannot substitute for the explicit zero guard.

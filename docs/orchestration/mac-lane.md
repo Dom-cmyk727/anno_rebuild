@@ -32,9 +32,10 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife resource [WILDLIFE-RESOURCE-1](tasks/wildlife-resource-1.md) | ACCEPTED after FIX-1; landing pending | `0627532f330dc898b80941ea31d9dafe87980aa4` | [44372186862](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44372186862), all12 successful | [Review](reviews/2026-11-18-wildlife-resource-1-review.md) |
 | Wildlife composition [WILDLIFE-PREFIX-1](tasks/wildlife-prefix-1.md) | LOCAL REVIEW APPROVED; two macOS CI jobs cancelled without runner | `1441183a74be4745415c23c399f80648bf886314` | [44385455810](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44385455810), terminal FAIL:9 success,2 no-runner cancellations, aggregate failure | [Review](reviews/2026-11-18-wildlife-prefix-1-review.md) |
 | Wildlife stone [WILDLIFE-STONE-1](tasks/wildlife-stone-1.md) | ACCEPTED bounded import; Windows landing pending | `18473cf4b1d44cadfa564636f56b889bdcabe146`; source `f3e18bdf` | [44390015763](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44390015763), all12 jobs successful | [Review](reviews/2026-11-18-wildlife-stone-1-review.md) |
-| Wildlife cliff [WILDLIFE-CLIFF-1](tasks/wildlife-cliff-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `11bc3be60acc71a4c9fbf03dff077e908b4c8204`; source `eb3ea560` | [44417567937](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44417567937), in progress | [Review](reviews/2026-11-19-wildlife-cliff-1-review.md) |
-| Wildlife rock [WILDLIFE-ROCK-1](tasks/wildlife-rock-1.md) | CHANGES REQUIRED: one P2 evidence correction; no code defect found | `81e8f03f3bf882afe00272c27a8f1e0989f56283`; source `26899502` | [44420622010](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44420622010), in progress | [Review](reviews/2026-11-19-wildlife-rock-1-review.md) |
-| Wildlife rock correction [WILDLIFE-ROCK-FIX-1](tasks/wildlife-rock-fix-1.md) | RELEASED to EXECUTOR II MAC; prose-only scope | Same task branch, base `81e8f03f` | Frozen-source gates reusable | Focused reportback to Mac orchestrator |
+| Wildlife cliff [WILDLIFE-CLIFF-1](tasks/wildlife-cliff-1.md) | ACCEPTED bounded projection; Windows landing pending | `11bc3be60acc71a4c9fbf03dff077e908b4c8204`; source `eb3ea560` | [44417567937](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44417567937), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-cliff-1-review.md) |
+| Wildlife rock [WILDLIFE-ROCK-1](tasks/wildlife-rock-1.md) | LOCAL REVIEW APPROVED after FIX-1; exact-head CI pending | `6c6554a23a7e637f2c88fb360cf050aff643c613`; source `26899502` | [44422288006](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44422288006), in progress | [Review](reviews/2026-11-19-wildlife-rock-1-review.md) |
+| Wildlife rock correction [WILDLIFE-ROCK-FIX-1](tasks/wildlife-rock-fix-1.md) | LOCAL REVIEW APPROVED; P2 closed, prose-only | `6c6554a2` | Frozen-source gates reused; exact CI pending | [Focused review](reviews/2026-11-19-wildlife-rock-1-review.md) |
+| Wildlife fertility header [WILDLIFE-FERTILITY-1](tasks/wildlife-fertility-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `6c6554a2` | Not started | Frozen reportback directly to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -608,3 +609,23 @@ and reports directly here for focused re-review. Fertility-header implementation
 is not released until the correction closes; its next packet will explicitly
 trace loader effects and callbacks rather than treating metadata as a no-op.
 CLIFF and ROCK exact-head CI remain pending at this review. Main untouched.
+
+
+## Latest dispatch — ROCK correction closed; fertility header released
+
+Focused independent re-review APPROVES corrected ROCK6c6554a2, no blocking finding.
+The writer extent/concrete callbacks and omitted derived-cache scope are corrected;
+all15 new receipts verified, runtime delta from26899502 empty. Valid Debug/ASan/
+real-prefix gates reused; no repeat. Exact CI44422288006 remains pending.
+
+CLIFF11bc3be6 is now ACCEPTED for its bounded projection: exact CI44417567937/all12
+jobs successful and independent review complete. Carry the later cache-scope
+clarification when Windows stacks it; no original-world completeness claim.
+
+[WILDLIFE-FERTILITY-1](tasks/wildlife-fertility-1.md) is RELEASED after independent
+dispatch review. Establish FRUCHTBAR49's actual ordered loader effects/callbacks,
+then implement only the proven transient-header slice and continue to the next
+unsupported boundary. Explicitly check empty-tile-fill1a0, immutable terrain/view
+lifetimes and duplicate source order. It does not overlap FERTILITY-1 crop/UI policy.
+No World/native/tag/default changes. Executor ordinary-pushes its task branch and
+reports frozen results directly here; no owner relay or self-approval. Main untouched.

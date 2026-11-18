@@ -1,8 +1,7 @@
 # WILDLIFE-CLIFF-1 — independent review, 2026-11-19
 
-Verdict: **LOCAL REVIEW APPROVED**, no blocking findings for this bounded transient
-import slice. Exact-head CI remains pending; neither landing nor live wildlife is
-claimed.
+Verdict: **ACCEPTED** for the bounded transient import projection after independent
+review and exact-head CI. Landing and live wildlife are not claimed.
 
 - Head: `11bc3be60acc71a4c9fbf03dff077e908b4c8204`.
 - Tree: `eceb6a397cf0ada3cb3d5cbd2700ab46564ecdd3`.
@@ -73,3 +72,15 @@ Release WILDLIFE-ROCK-1 on this reviewed head after independent dispatch review:
 establish flags0x8018/group0x141, especially mode0 and upper-bit effects, then
 continue once to the next unsupported boundary. Keep pending CI explicit.
 Windows owns stacking and landing; main remains untouched.
+
+
+## Terminal CI and scope clarification — 2026-11-19
+
+Exact head11bc3be6 CI44417567937 now has all12 jobs successful, including all five
+C++ configurations and aggregate gate. Full jobs receipt inspected; SHA256
+`252254cf38b371e0442ebecb5da970a8f6ac2dcebc8a9fd118dd98376bd620c3`.
+This accepts the bounded projection, not World integration. The later
+[ROCK-FIX review](2026-11-19-wildlife-rock-1-review.md)
+clarifies two executed derived-cache callbacks omitted from that projection;
+no tile/variation/draw outcome or CLIFF code changes. Preserve this limitation
+when stacking. Main remains untouched; landing belongs to Windows.

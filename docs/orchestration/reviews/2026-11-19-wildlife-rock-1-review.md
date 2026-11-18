@@ -1,9 +1,9 @@
 # WILDLIFE-ROCK-1 — independent review, 2026-11-19
 
-Verdict: **CHANGES REQUIRED** for one P2 documentation/evidence finding. No
-production-code defect was found in the bounded tile/variation/draw projection.
-Do not mark the packet accepted or advance into FRUCHTBAR until this correction
-has received focused re-review. No repeated C++ gate is requested.
+Current verdict: **LOCAL REVIEW APPROVED after FIX-1** at `6c6554a23a7e637f2c88fb360cf050aff643c613`.
+The original P2 below is closed by focused re-review; no production-code defect
+was found. Exact corrected-head CI remains pending; landing is not accepted.
+The original requested correction and evidence are retained below.
 
 - Head: `81e8f03f3bf882afe00272c27a8f1e0989f56283`.
 - Tree: `5da2fdae92b74880c021527b1d7b55cd96ea6b86`.
@@ -77,3 +77,27 @@ and report back for focused re-review. Reuse unchanged runtime gates. A later
 fertility-header packet must establish its actual loader/callback effects, not
 skip metadata or treat it as draw-free without evidence. Main remains untouched;
 Windows retains stacking/landing ownership.
+
+
+## Focused correction approved — 2026-11-19
+
+Correction head `6c6554a23a7e637f2c88fb360cf050aff643c613`, tree
+`6b39b412811886c4acbe1e6131325b25762ff7bb`; tested runtime still26899502.
+Independent primary reviewer `/root/review_docs_sim_dispatch` re-read the nine-file
+prose delta and approved P2 closure: complete writer extent, concrete19c/188/1a0
+mapping, executed omitted-cache effects, historical receipt preservation and
+future consumer initialization/rebuild obligation. The additional lower-writer
+World+f8 claim matches actual tail caller flags: mask7000, only2000/4000 branches;
+caller04000000 does not reach it. No further engine change or gate is needed.
+
+The orchestrator verified all15 new receipt hashes and an empty runtime/test/tool/
+fixture/data/CMake/CI delta against26899502. Frozen-source results remain applicable;
+no expensive rerun. Original evidence source hashes now explicitly identify old
+prose, not new addenda. One optional wording note ('Its separate' in the fix evidence
+could name the lower writer) is nonblocking: the detailed contract locates the call
+unambiguously. It requires no additional correction round.
+
+Corrected-head CI [44422288006](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44422288006)
+remains in progress at this review. No pending job counted as passed. Release
+WILDLIFE-FERTILITY-1 on this locally reviewed dependency, with independent dispatch
+review, while exact-head acceptance stays separate. No World/native/tag policy change.

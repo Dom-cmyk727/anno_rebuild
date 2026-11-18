@@ -404,3 +404,34 @@ policy choice. Its future packet must preserve original admission and variant
 effects; the separate variant plane cannot be stored in growth phase or spare
 aux bits, and BuildCmd eligibility must not be widened for scenery import.
 The prerequisite is not released before the INIT review.
+
+## Latest dispatch — INIT locally approved; RESOURCE released
+
+WILDLIFE-INIT-1 at97d893af (source0efffe58) is independently APPROVED for its
+bounded research/reference scope, no blocking findings. Primary DLL bytes,
+14 authored examples,26 CLI checks/two distinguishing mutants,15 receipt hashes,
+executed-input identities and119 unchanged existing fixtures were checked.
+Review: [2026-11-18-wildlife-init-1-review.md](reviews/2026-11-18-wildlife-init-1-review.md).
+Exact-head CI44359989371 is still pending; no landing acceptance is claimed.
+Whole-profile original RNG alignment remains NOT_ESTABLISHED. The grouped225–256
+values are kind values, not content type ids; that minor wording is clarified
+in the review and next packet.
+
+[WILDLIFE-RESOURCE-1](tasks/wildlife-resource-1.md) is RELEASED to EXECUTOR II MAC,
+with independent dispatch review. Base remains accepted2f9e4c0b; INIT is read by
+exact ref, no pending implementation intake. Scope: resolve the finite original
+resource selector/admission and implement an ordered C++ import-prefix evaluator
+with owned scratch tiles, separate transient variation plane and exact draw
+accounting. Prove the bounded real Tutorial prefix and distinguishing controls.
+No live World wiring, tag allocation, default/state/digest change or unrelated
+load lifecycle research. Frozen pushed results, CI and evidence go directly to
+this Mac orchestrator for review before the next unit.
+
+LOAD-FIX CI44354548420 at533ee3fc is terminal FAILURE:10 jobs succeeded,
+build-macos134979143062 was cancelled with no steps because no hosted runner
+acquired it, and the aggregate gate failed. Root verified the terminal JSON,
+12-job inventory and annotation against all3 reported SHA256s. This is an
+infrastructure NOT_RUN, with no product-test failure in that run. Local review
+stands; final acceptance is blocked on an authenticated retry of that unavailable
+lane and dependent gate. Successful lanes are retained, and no fake source change,
+empty commit or full rerun is authorized. Main remains untouched.

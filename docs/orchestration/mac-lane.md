@@ -27,8 +27,9 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | 1.8 [DOCS-SIM-1](tasks/docs-sim-1.md) | ACCEPTED bounded inventory/tools scope after focused corrections | `1fab3ca9ec80cb69a119ea7201e4a7332bd1ddf0` | [44321152729](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44321152729), all 12 jobs success; first failure preserved | [Independent review](reviews/2026-11-18-docs-sim-1-review.md) |
 | 2.6 [KBEWOHN-1](tasks/kbewohn-1.md) | LOCAL REVIEW APPROVED; final CI macOS runner unavailable, retry pending | `6fb7dbb359288289c70ac10161579b5f7666ae11`; tested source `3c20430b` | [44336688872](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44336688872), terminal FAIL (no macOS runner); source44335070081 PASS | [Independent review](reviews/2026-11-18-kbewohn-1-review.md) |
 | Wildlife import [WILDLIFE-LOAD-1](tasks/wildlife-load-1.md) | LOCAL REVIEW APPROVED; macOS C++ CI never obtained runner | `f1e245d2769306451d4c2079aadf6a64be93defd` | [44344197686](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44344197686), FAIL: 10 successful jobs, 1 cancelled runner, failed aggregate gate | [Independent review](reviews/2026-11-18-wildlife-load-1-review.md) |
-| Wildlife correction [WILDLIFE-LOAD-FIX-1](tasks/wildlife-load-fix-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `533ee3fc96a560f1c3189f3a4d32ce113abff65a`; source `73edb244` | [44354548420](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44354548420), pending | [Independent review](reviews/2026-11-18-wildlife-load-fix-1-review.md) |
-| Wildlife initialization [WILDLIFE-INIT-1](tasks/wildlife-init-1.md) | RELEASED directly to EXECUTOR II MAC after LOAD-FIX local review | Independent accepted base `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e` | Not started | Bounded fresh-load contract/reference, no World or tag allocation |
+| Wildlife correction [WILDLIFE-LOAD-FIX-1](tasks/wildlife-load-fix-1.md) | LOCAL REVIEW APPROVED; CI blocked by no hosted macOS runner | `533ee3fc96a560f1c3189f3a4d32ce113abff65a` | [44354548420](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44354548420), 10 success, build-macos cancelled, aggregate failed | [Review](reviews/2026-11-18-wildlife-load-fix-1-review.md) |
+| Wildlife initialization [WILDLIFE-INIT-1](tasks/wildlife-init-1.md) | ACCEPTED bounded research/reference; landing pending | `97d893af9d78e6662dd8859acc3a905f71c80402` | [44359989371](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44359989371), all12 successful | [Review](reviews/2026-11-18-wildlife-init-1-review.md) |
+| Wildlife resource [WILDLIFE-RESOURCE-1](tasks/wildlife-resource-1.md) | CHANGES REQUIRED; focused FIX-1 released | `3aab2a93680a9edf97ab4c5b0ac932eaae130513` | [44368707576](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44368707576), pending at handoff | [Review](reviews/2026-11-18-wildlife-resource-1-review.md) |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -447,3 +448,19 @@ changed. Ready for the Windows orchestrator's normal stacking/landing procedure,
 not merged here. Scope remains research/reference, not full RNG alignment.
 EXECUTOR II MAC continues RESOURCE-1 closeout and reports its separate frozen
 candidate directly here. LOAD-FIX's no-runner CI block is unchanged.
+
+## Latest dispatch — RESOURCE focused corrections
+
+RESOURCE3aab2a93 has two independent P2 findings: repeatedO(R×F²) metadata
+validation, and a zero-id regression that succeeds through missing-type refusal
+instead of exercising the new guard. Original selector/import semantics otherwise
+passed the bounded primary review; tests/evidence review found no additional
+blocker. All37 receipt hashes and119 old fixtures were verified.
+
+[WILDLIFE-RESOURCE-FIX-1](tasks/wildlife-resource-fix-1.md) is RELEASED on the
+executor's existing task branch. Prepare/index facts once per invocation; pair
+a registered-zero refusal with a successful nonzero control and a single causal
+mutation. Focused Debug/ASan plus one real-prefix Debug verification only. No
+broad repeat, World/persistence work or default change. Executor pushes its own
+branch and reports exact frozen results directly to the Mac orchestrator for
+focused re-review. The next ordered raw-input adapter is not released yet.

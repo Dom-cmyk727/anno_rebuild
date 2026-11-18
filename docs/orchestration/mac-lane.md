@@ -25,7 +25,7 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | 1.6 [OQ-562-1](tasks/oq-562-1.md) | ACCEPTED bounded headless causal diagnosis after focused CI correction | `b7046e5e279fa979d83079feb56dc83a660f32ef` | [44282873819](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44282873819), all 12 jobs success at exact head | [Acceptance and preserved failure](reviews/2026-11-18-oq-562-1-review.md) |
 | 1.7 [SIM-LIMITS-1](tasks/sim-limits-1.md) | ACCEPTED compatibility maintenance; behavior and bytes unchanged | `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e`; code `33871080` | [44298551123](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44298551123), all 12 jobs success at exact head | [Acceptance](reviews/2026-11-18-sim-limits-1-review.md) |
 | 1.8 [DOCS-SIM-1](tasks/docs-sim-1.md) | ACCEPTED bounded inventory/tools scope after focused corrections | `1fab3ca9ec80cb69a119ea7201e4a7332bd1ddf0` | [44321152729](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44321152729), all 12 jobs success; first failure preserved | [Independent review](reviews/2026-11-18-docs-sim-1-review.md) |
-| 2.6 [KBEWOHN-1](tasks/kbewohn-1.md) | LOCAL REVIEW APPROVED after documentation corrections; exact-head CI pending | `6fb7dbb359288289c70ac10161579b5f7666ae11`; tested source `3c20430b` | [44336688872](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44336688872), pending | [Independent review](reviews/2026-11-18-kbewohn-1-review.md) |
+| 2.6 [KBEWOHN-1](tasks/kbewohn-1.md) | LOCAL REVIEW APPROVED; final CI macOS runner unavailable, retry pending | `6fb7dbb359288289c70ac10161579b5f7666ae11`; tested source `3c20430b` | [44336688872](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44336688872), pending | [Independent review](reviews/2026-11-18-kbewohn-1-review.md) |
 | Wildlife import [WILDLIFE-LOAD-1](tasks/wildlife-load-1.md) | RELEASED directly to EXECUTOR II MAC; independent formats prerequisite | Accepted base `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e` | Not started | Dispatch independently approved by `/root/review_docs_sim_dispatch`; report directly here |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
@@ -271,3 +271,14 @@ wildlife helpers, create animals, choose state tags or change draws/defaults.
 This keeps the wildlife/hunting path progressing while CI runs, without a waiver.
 The executor ordinary-pushes its branch and sends READY FOR REVIEW directly here;
 the orchestrator reviews before World integration. Windows owns main landing.
+
+### KBEWOHN CI infrastructure receipt
+
+Exact final run44336688872 at6fb7dbb remains in progress, but macOS job134915336938
+is cancelled before execution. Its public annotation says the hosted runner never
+acquired the job after multiple attempts; macOS arm64 capacity notices accompany it.
+This is NOT_RUN, not a test pass or a source defect. Source run44335070081 remains
+separate. An authenticated GitHub operator should retry only the no-runner job once
+the run permits it; the Mac orchestrator currently has no authenticated CI session.
+No empty commit, full gate repeat or gameplay repair is warranted. WILDLIFE-LOAD-1
+continues independently; KBEWOHN acceptance remains pending.

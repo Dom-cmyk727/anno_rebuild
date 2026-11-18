@@ -55,3 +55,13 @@ stacking and landing; no main push is claimed.
 WILDLIFE-LOAD-1 may proceed independently from the already accepted2f9e4c0b base.
 It consumes no pending KBEWOHN implementation and changes no World state or random
 sequence. This scheduling decision does not waive KBEWOHN's exact-head CI condition.
+
+## Hosted runner unavailable — subsequent receipt
+
+The final run's macOS job134915336938 was cancelled without acquiring a hosted
+runner. Public GitHub annotation: "The job was not acquired by Runner of type
+hosted even after multiple attempts"; capacity notices name macOS arm64. No
+executed test failure is inferred. Overall run was still in progress at inspection.
+Raw public pages and a timestamped receipt are retained privately under
+cache/kbewohn-ci-watch/. Acceptance remains pending an authenticated narrow retry
+and exact-head terminal green result. The independent formats task continues.

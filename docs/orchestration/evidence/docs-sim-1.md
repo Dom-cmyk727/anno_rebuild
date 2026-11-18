@@ -161,3 +161,69 @@ predecessor is retained uncancelled; corrected exact-head CI remains pending.
 - `cache/docs-sim-1/enum-prose-correction-final.log`: `65780e52b0083fb2c62a777d36cfd6ef5357376ca8beefc3f279bf9715d53bc3`.
 - `cache/docs-sim-1/frozen-enum-prose-before-gate.json`: `538dd971f31343f563ba92cf4fda3b60dc0bed762d32692e48a792101b89e7a2`.
 - `cache/docs-sim-1/source-inventory-corrected.json`: `24cde650552ca61a63b618dfd71fbe0cc8a65be5a131663ed8720c500185d54f`.
+
+## Windows CI portability correction — current review checkpoint
+
+Exact predecessor CI [44307300031](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44307300031)
+on reviewed head 9d4a0e15 builds but fails only sim_capabilities_contract in the
+Windows test lane: `real inventory omission: replacement must apply exactly once,
+found 0`. The first two relocated legal controls passed. Public artifact
+14430724547 was downloaded and matched its published ZIP SHA256 before extraction.
+
+```text
+COUNTS: selected=2647 executed=2195 failed=1 empty=0 skipped=451 (required-asset=423 platform=7 opt-in=21 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+```
+
+A private relocated copy with every actual checker input and both Python tools
+converted to pure CRLF reproduces exactly that exit 1 and message; its original
+input bytes remain intact. The defect was owned mutation infrastructure: the row
+needle used splitlines() then appended LF while read_bytes/decode retained CRLF.
+The contract now uses splitlines(keepends=True) for both real-row omission needles
+and write_bytes for mutations, avoiding Windows text output's CRLF-to-CRCRLF
+translation. Every existing exact-one-replacement and intended-diagnostic check
+is retained; finally blocks also assert exact byte restoration.
+
+Six additional public-command cases cover LF and CRLF independently: legal, real
+row omission with exact drift/exit 1, and byte-restored legal. The full corrected
+contract passes 36 cases (10 legal/restored, 26 intended refusals), both on the
+normal source inputs and on the separate all-CRLF relocated copy. Original real
+source/doc inputs are never mutated. No production checker or capability semantics
+change; among the eight frozen inputs only the contract test differs from 9d4a0e15.
+
+Latest authoritative affected gate: cache/docs-sim-1/newline-correction-final.log
+(required public contract then checker; same-build picture reused):
+
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+newline-correction-before-gate.json matches all eight inputs after that run.
+The prior enum/prose and other local receipts remain preserved, with the contract
+receipt superseded only by this portability correction. Existing unchanged lint/
+reference checks remain reused; no engine, eight-check, original voyage, broad
+suite or sanitizer rerun. All fixtures/pins/defaults/identities remain unchanged.
+
+The prior hosted build-macos cancellation occurred before any step because no
+arm64 runner was acquired (orchestrator-verified annotations); it is distinct from
+this real owned Windows failure. Both results remain retained. Focused re-review
+is required before ordinary push; corrected-head CI and native Windows execution
+remain pending, not implied by the Mac's CRLF reproduction.
+
+- `cache/docs-sim-1/windows-ci-failure-14430724547.zip`: `f9e530b3b7d4512924429c79198cbd944bfe71fe48a6d8b583f8dfda49140e18`.
+- `cache/docs-sim-1/windows-ci-failure-14430724547.log`: `19385fede43125ad4412b58a8a6d38d3765b2c96d9648528e4343e07819a8011`.
+- `cache/docs-sim-1/reproduce-crlf-contract.py`: `fd103df50518f2bc53d8a8b63552e50ec91fd11364301b1ff5e9ead2af70a8bf`.
+- `cache/docs-sim-1/crlf-contract-before-fix.json`: `944c30d9fd62f21008577c7be1860f704116af001875a556ab90df1085a7f9f2`.
+- `cache/docs-sim-1/crlf-contract-after-fix.json`: `003bd55e3fc371889467baa11dcb04b02d03d3cee9f392da728a76b90f84957b`.
+- `cache/docs-sim-1/newline-contract-direct.log`: `34c29744a57a46f50c17af20e928f2df7a62f2926b92ed8db3d5d857ba171c89`.
+- `cache/docs-sim-1/newline-correction-before-gate.json`: `5764f32ac1c951a48bc8f93f0bb17319d2675f2a6fbbb29ed2991162b641ed80`.
+- `cache/docs-sim-1/newline-correction-final.log`: `8252127b206a49e157c98eae75852272031247d647679b787a347b1025cb07e1`.
+
+Focused CRLF correction review: independently approved at contract SHA256
+`cd402f75a70ef5d1c5d47315bd03a6a13e9175c09ebbe8bf1b7bbf5d11e18a39`.
+Reviewer independently ran all 36 cases on LF and CRLF inputs and verified exact
+byte restores, all eight frozen hashes and the final canonical 1+1 receipts.
+Corrected exact-head hosted CI remains pending; no further local campaign required.

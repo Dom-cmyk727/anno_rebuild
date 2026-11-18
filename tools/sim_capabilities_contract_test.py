@@ -52,15 +52,17 @@ def main():
                 raise AssertionError(f'{label}: replacement must apply exactly once, found {text.count(old)}')
             replacement = text.replace(old, new)
             assert replacement != text
-            (root/path).write_text(replacement, encoding='utf-8')
+            # Bytes avoid platform newline translation (CRLF must not become CRCRLF).
+            (root/path).write_bytes(replacement.encode('utf-8'))
             try:
                 run(label, 1, diagnostic)
             finally:
                 (root/path).write_bytes(originals[path])
+                assert (root/path).read_bytes() == originals[path], label
 
         run('legal relocated explicit root', 0, 'agreement')
         run('legal relocated default root', 0, 'agreement', explicit=False)
-        row = next(line+'\n' for line in originals[DOC].decode().splitlines() if line.startswith('| `rule:slot_policy`'))
+        row = next(line for line in originals[DOC].decode('utf-8').splitlines(keepends=True) if line.startswith('| `rule:slot_policy`'))
         changed('real inventory omission', DOC, row, '', 'missing inventory row: rule:slot_policy')
         changed('extra inventory row', DOC, row, row+'| `rule:invented` | `bool` | `false` | invented | none |\n', 'extra inventory row: rule:invented')
         changed('duplicate row', DOC, row, row+row, 'duplicate identity rule:slot_policy')
@@ -92,7 +94,7 @@ def main():
         run('PayloadTag initializer restored', 0, 'agreement')
         changed('changed class tick', FILES[5], '{C::Workshop, T::Workshop, P::Workshop, 500}', '{C::Workshop, T::None, P::Workshop, 500}', 'drift class:Workshop:')
         changed('changed class payload', FILES[5], '{C::Workshop, T::Workshop, P::Workshop, 500}', '{C::Workshop, T::Workshop, P::Inert, 500}', 'drift class:Workshop:')
-        hook = next(line+'\n' for line in originals[DOC].decode().splitlines() if line.startswith('| `hook:on_placed`'))
+        hook = next(line for line in originals[DOC].decode('utf-8').splitlines(keepends=True) if line.startswith('| `hook:on_placed`'))
         changed('omitted command hook', DOC, hook, '', 'missing inventory row: hook:on_placed')
         changed('new Seams member', FILES[3], 'Seam<PlaceHook> on_placed;', 'Seam<PlaceHook> on_placed;\n Seam<PlaceHook> extra_hook;', 'missing inventory row: hook:extra_hook')
         changed('new phase call', FILES[7], 'w.route_cache_.begin_advance();', 'new_phase();\n w.route_cache_.begin_advance();', 'missing inventory row: phase:new_phase')
@@ -113,6 +115,31 @@ def main():
         run('comment is not a declaration', 0, 'agreement')
         (root/CFG).write_bytes(originals[CFG])
         run('restored legal control', 0, 'agreement')
+
+        # Git may check these files out with LF or CRLF. Exercise both on every
+        # host, using the public CLI and the actual row's complete byte sequence.
+        for style, ending in [('LF', b'\n'), ('CRLF', b'\r\n')]:
+            styled = {p: data.replace(b'\r\n', b'\n').replace(b'\n', ending)
+                      for p, data in originals.items()}
+            for path, data in styled.items():
+                (root/path).write_bytes(data)
+            run(f'{style} legal control', 0, 'agreement')
+            doc = styled[DOC]
+            removed = next(line for line in doc.splitlines(keepends=True)
+                           if line.startswith(b'| `rule:slot_policy`'))
+            assert doc.count(removed) == 1, f'{style}: replacement must apply exactly once'
+            broken = doc.replace(removed, b'')
+            assert broken != doc, style
+            (root/DOC).write_bytes(broken)
+            try:
+                run(f'{style} real inventory omission', 1,
+                    'missing inventory row: rule:slot_policy')
+            finally:
+                (root/DOC).write_bytes(doc)
+            assert all((root/p).read_bytes() == data for p, data in styled.items()), style
+            run(f'{style} byte-restored control', 0, 'agreement')
+        for path, data in originals.items():
+            (root/path).write_bytes(data)
     # No production input may be changed by this test.
     for path, data in originals.items():
         assert (ROOT/path).read_bytes() == data, path

@@ -15303,7 +15303,7 @@ Focused pre-push correction review: orchestrator independently approved the seve
 - `tools/sim_capabilities.py`: read-only source/document reconciliation; normalized first three table columns, not prose certification.
 - Unsupported/missing/empty/duplicate inputs and incomplete mappings refuse; --dump emits JSON without writing.
 - `sim_capabilities_agree` and `sim_capabilities_contract` are registered/discovered in canonical CTest/CI.
-- Final public contract: 30 subcases, 0 failures; 6 legal/restored controls and 24 intended refusals, replacements checked.
+- Final public contract: 36 subcases, 0 failures; 10 legal/restored controls and 26 intended refusals, replacements checked.
 - Controls include real row omission, extra/duplicate rows, new Rules field, default/constant/enum order drift, command/wire/class/hook/phase drift.
 - Missing/empty input, unsupported declarations and comments-as-nondeclarations are covered on relocated copies.
 - Retained failure: initial dispatch-bypass mutant wrongly agreed; added exact bounded visitor-use guard and trailing class-table guard.
@@ -15312,7 +15312,9 @@ Focused pre-push correction review: orchestrator independently approved the seve
 - Review P2 fixed: RuntimeClass/PayloadTag/TickKind positions and initializer identities now checked; 54 enum rows, 197 total mechanical rows.
 - Retained both formerly green enum faults (Plain = 1, payload Workshop = 21); each now refuses with exact drift and has a restored legal control.
 - Corrected reviewed enforce_research reader/independent permission checks and persisted-bills prerequisite for live houses.
-- Final pre-gate 8-input manifest matches after the run; predecessor logs/CI remain intact, with no engine or broad rerun.
+- Final newline-correction-before-gate.json 8-input manifest matches after the run; no engine or broad rerun.
+- Windows CI44307300031 failed only the owned omission needle (LF vs CRLF); retained artifact14430724547 and exact all-CRLF reproduction.
+- Keep original line endings in needles and write mutation bytes; exact-one/diagnostic checks retained; LF/CRLF legal/omission/restored cases added.
 
 Initial focused tools gate `cache/docs-sim-1/focused-dev.log` (picture, then 8 selected tools):
 
@@ -15323,7 +15325,7 @@ COUNTS: selected=8 executed=8 failed=0 empty=0 skipped=0 (required-asset=0 platf
 VERDICT: PASS
 ```
 
-Final corrected checker/required contract `cache/docs-sim-1/enum-prose-correction-final.log`:
+Final portable checker/required contract `cache/docs-sim-1/newline-correction-final.log`:
 
 ```text
 COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
@@ -15346,5 +15348,12 @@ Decisions and reasoning:
 - Reject unsupported scanned syntax rather than silently omitting declarations; no automatic documentation refresh in tests/CI.
 - Keep hooks outside advance and external behavior of None-tick classes visible.
 
-NOT_RUN: broad C++/ASan/full-suite, original-file town/corpus, live UI/HE, native Windows/WSL; hosted CI pending exact-head push.
+Preserved Windows predecessor, cache/docs-sim-1/windows-ci-failure-14430724547.log:
+
+```text
+COUNTS: selected=2647 executed=2195 failed=1 empty=0 skipped=451 (required-asset=423 platform=7 opt-in=21 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+```
+
+NOT_RUN: broad C++/ASan/full-suite, original-file town/corpus, live UI/HE, corrected native Windows/WSL; hosted CI pending corrected-head push.
 QUESTIONs: none requiring a policy decision; independent orchestrator source/prose review and exact-head CI remain pending.

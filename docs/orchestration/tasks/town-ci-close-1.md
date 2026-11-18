@@ -13,6 +13,7 @@ warning thresholds or CI matrix coverage may change to make a build green.
 |---|---|---|---|---|
 | GCC Release freight compilation | Exact warning flags compile corrected path | Reproduce original diagnostic; compare unchanged assignment behavior | Saved compiler outputs, existing freight tests | Pending |
 | Clang C++20 doctest compatibility | Real doctest includes the supported standard header | Original dependency include triggers obsolete-header failure | Minimal include/control plus test build | Pending |
+| Optional timing diagnostics | x86 GCC Release compiles the nonempty-guarded helper; public runner still prints paired samples | Original x86 compile fails; empty input cannot be indexed | Compiler controls and stats-enabled runner test | Pending |
 | No gameplay/identity drift | Existing freight assignment, lifecycle, save/replay cases | Refusals and replacement controls retain behavior | Focused canonical Debug and sanitizer tests | Pending |
 | Integration | All exact-head CI jobs pass, including corrected town GCC linkage | Preserve original failed jobs and any new failures | Run id and full head | Pending |
 

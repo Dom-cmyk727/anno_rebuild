@@ -448,6 +448,9 @@ void PlayRunner::stop() {
         // UI-WINDOW-1 fix round R2: the measurement ANNO_PUBLISH_STATS asks for (sim thread
         // joined: the vectors are this thread's now).
         const auto line = [](const char* what, std::vector<std::uint64_t> v) {
+            if (v.empty()) {
+                return;
+            }
             std::sort(v.begin(), v.end());
             std::fprintf(stderr, "publish stats: %s n %zu median %llu us p95 %llu us max %llu us\n",
                          what, v.size(), static_cast<unsigned long long>(v[v.size() / 2]),

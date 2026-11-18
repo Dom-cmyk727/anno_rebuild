@@ -14954,3 +14954,67 @@ Decisions and reasoning:
 - Reuse unrelated native lanes because no scheduler, field, feature implementation or default changed; retain the prescribed full pins gate once.
 
 NOT_RUN: native Windows/Linux with game files, original/HE, unsupported LeakSanitizer, town measurement and UI activation. QUESTIONs: none remaining for this prerequisite. Orchestrator handover review pending; TOWN awaits acceptance.
+
+## 2026-11-18 — TOWN-START-1 — READY FOR REVIEW / CI BLOCKED
+
+- Branch `task/TOWN-START-1`; accepted setup base `ad360af024543a71e083dc3de714b7f48f354e63`.
+- Initial measured source `8415cf82`; single corrective measured source `f36c22fa50cff7d1ade22b804d9216ef5feb8060`; linkage-only correction `c9132c39`. Final delta is tests/docs only; no production repair, fixture/default/pin/state change.
+- [Frozen recipe](../sim/town-start-1.md), [compact evidence and acceptance table](evidence/town-start-1/README.md), [SHA256 index](evidence/town-start-1/sha256.json).
+- Candidate A unchanged, seat 0, seed 26031, original cargo; house_updates/city_booking and fisher_rules selected before creation. Sail/Found/Unload/Build/roads through World::apply; normal Advance only.
+- Exactly 900,000 ticks after founding; 61 checkpoints spaced 15,000 ticks; founding 85,850, final 985,850. Visits 100 ms / 50 ticks; no extended budget or third opening.
+- Initial recipe: three houses, stalls, SmallFarm and forester. Ends with three capped Pioneers / 24 people; chapel Build at 100,850 refuses ConstructionDenied. Farm omission is INCONCLUSIVE: both finish food 883 raw and food-first samples 0.
+- Correction first declared and committed: reviewed forester site (238,128), stalls/market, SmallFarm/fishery, target houses, supported wool/cloth/inn/quarry/bricks/salt/chapel chains with ordinary resource/stage waits. No crop, ore, fish or goods injection.
+- Target derives from chapel stage 3 requiring 125 whole residents and Pioneer Wohnmax 8: ceil(125/8) = 16 houses, not 125 fixed-point residents. Orchestrator independently checked the table and stage pass.
+- Corrected baseline: 16 capped Pioneers / 128 people, no Settler. Final money 24,648; tools 4,608 raw, wood 1,744, bricks 0, food 2,182 (256 raw per ton).
+- Final first predicates: goods 15 houses / food 1; food scores 105–128, goods mean 0–32, infrastructure 0 throughout. Cap status is separate from projected upgrade eligibility.
+- UpgradeCheck (AnnoWelt 0x10075dd0) maps goods mean through BedarfTab: first positive index 9 means mean >= 68. Four-term mean includes leather/cloth/salt/inn; cloth alone contributes at most 32. No claim that leather alone or wildlife is mandatory.
+- Inn built at 790,850 (23.5 game minutes after founding); chapel at 925,850 (28 minutes). Only 6.5 / 2 minutes of subsequent observation; no steady-state claim. Final chapel stock positive in 15 houses, inn stock 0 in all 16.
+- Salt mine waits for wood 1,744 / 3,840 (shortfall 2,096), tools 4,608 / 1,280. Quarry/brickmaker wait for stage 5, mask 15; stage 5 needs 50 Settlers. No denied Build or no-site result in corrected baseline.
+- Chosen SmallFarm potato raw/alcohol output remain 0 at checkpoints. Read-only source-island inventory: 0 young/ripe potatoes (708/709). Missing crop planting is a known unsupported action for this alcohol chain; alternatives and unique irreducibility are not proved.
+- Corrective omission of both food producers: 16 houses built, 0 surviving houses/residents, food 0 at end; food-first house-samples 273 versus baseline 1. This is recipe sensitivity, not isolated per-producer mass balance.
+- Both experiments' same-seed full traces and 61 checkpoint hashes match; corrective baseline SHA256 `9fd9f51f5973b5f132a93ba8271fb6559bbaa88dfc2d9ef26d972c90df7ee1f1`.
+- Pure local diagnostic food-full/food-zero control distinguishes the predicate and asserts World hash unchanged. No live world or cloned world stock is edited.
+- Flag-enabled loader fish: 420,795 total / 420,374 usable; island 0: 38,271 / 38,271. These are runtime-fill counts with fisher_rules, not flag-off embedded-map counts.
+- [Initial 30-second table](evidence/town-start-1/run-01-checkpoints.tsv); [corrective table with omission arm](evidence/town-start-1/run-02-checkpoints.tsv). Raw arms/commands/producer/house rows remain in `cache/town-start-1/run-01/` and `run-02/`.
+
+Default-off corrected gate: `cache/town-start-1/default-off-02.log`, required picture contract then main selection, verbatim:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=2 executed=1 failed=0 empty=0 skipped=1 (required-asset=0 platform=0 opt-in=1 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+Corrected enabled gate: `cache/town-start-1/enabled-02.log`, 279.72 s, same build/contract reused, verbatim:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+Final linkage-only follow-up `cache/town-start-1/default-off-linkage-01.log`, unchanged picture contract reused, verbatim:
+```text
+COUNTS: selected=2 executed=1 failed=0 empty=0 skipped=1 (required-asset=0 platform=0 opt-in=1 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+- GCC Debug initially found town-owned subobject-linkage in Candidate::p. Correction c9132c39 keeps helpers internal. Removing only the added comment and unnamed-namespace wrapper reproduces the measured file byte-for-byte (linkage-only-proof.json); enabled experiment reused explicitly, no third opening. CI verification of that correction is reported in chat.
+- This single executed CTest entry contains the three world runs. Initial enabled gate also passed 1/1 in 274.07 s; both initial logs retained. No memory refusal, timeout, world fault or invariant failure; no reruns of a whole gate.
+- Authorized full-pins REUSE from setup tested code `e71f2dc0`, `cache/town-start-setup-1/pins-check-01.log`; required pins contract 1/1 and main receipt verbatim:
+```text
+COUNTS: selected=1709 executed=1691 failed=0 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+PINS check: PASS; 0 pins moved; 0 fixture byte changes; scope=full; selection=^(anno_sim_tests\.|anno_sim_replay_|population_oracles_agree$|integration_stream_reference_|highmap_digest_reference_agrees$); evidence=cache/town-start-setup-1/pins-check-01.log
+```
+- That PINS summary line is from `pins-check-01.out`. Exact production/rules/fixtures/pins and build/workflow dependency comparison is empty; no new full-check execution claimed.
+- Dev target build: no compiler warning; existing duplicate-library linker warning retained. clang-format 23.1.3 and diff check pass.
+- Warning script once on f36c22fa, exit 0, 216.481 s: 1,006 project compiles / 2 rejected shadow controls / four clean passes, `cache/town-start-1/warnings-01.out`; actual Apple Clang 21 for both historical labels. Preserved macOS launcher adaptations only, no source suppression.
+- Host: Apple M5 Max, 18 logical CPUs, 48 GiB RAM, macOS 27.0.1; CMake 3.31.10 / Ninja 1.13.2. No competing gate at launch; admission enabled, jobs 1, ANNO_TEST_THREADS 4. Run 02 launch load average NOT_RECORDED, not copied from run 01.
+- [Code-checkpoint CI 44255019025](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44255019025) is RED: GCC Release freight_state.hpp:33:8 potential null dereference while compiling unchanged freight.cpp; Clang ASan libstdc++ 15 ciso646:49 C++20-header diagnostic in unchanged test_support sources. These inherited failures are separate from the town-owned linkage failure fixed above; all first failures remain in history, not test execution or sanitizer diagnoses.
+- Public annotations/job snapshots are indexed in cache. Other jobs and publication-head CI are reported in chat after the push. A green docs-only publication cannot erase the original code-checkpoint failures.
+- Orchestrator disposition: preserve failures; no freight repair, suppression or blind CI retry. Unchanged source is not a proven compiler root cause or waiver. Acceptance/landing remains blocked.
+
+Decisions and reasoning:
+- Use the single authorized correction to address the insufficient population target and nonproductive wood site; preserve the initial opening as history, not a wildlife conclusion.
+- Stop at the unchanged budget with numeric predicates, late-service timing and incomplete-chain boundaries; no third recipe or production campaign.
+- Use read-only scans and public commands only; distinguish fixed layout choices, aggregate goods thresholds and actual capabilities from guesses about individual mandatory goods.
+- Reuse the accepted unchanged 86-minute pins campaign with its explicit dependency proof; run only affected measurement/default-off checks and required contracts.
+- Publish own-run tables and hashes only; keep raw logs/game paths in cache and original files read-only. Independent review is the orchestrator's; no reviewer subagent.
+
+NOT_RUN: Windows/HE, enabled ASan measurement, native GCC 13/Clang 18 local warnings, equilibrium, alternative openings. QUESTION: CI failures require separate triage; no unique irreducible progression blocker is established by this bounded opening. READY FOR REVIEW / CI BLOCKED.

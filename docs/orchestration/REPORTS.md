@@ -15809,3 +15809,64 @@ Decisions and reasoning:
 
 NOT_RUN: original/HE runtime, new Unicorn emulation, Windows/WSL/full/long suites, full pins/warnings, LeakSanitizer, World/native/global cursor integration.
 QUESTIONs: none blocking bounded review; establish exact flags 0x8018/group 0x141 path before another continuation. Independent orchestrator review pending.
+
+
+## 2026-11-19 — WILDLIFE-ROCK-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-ROCK-1` from locally reviewed CLIFF `11bc3be6`; no extra intake/main merge/rebase.
+- Frozen tested source `26899502717c4d6b2c61ed799bde0db8a7fe4c3e`, tree `388a378ef6a733f43ec9f52660af45024a5a7a25`.
+- Publication appends report/evidence only; exact pushed head/tree and CI accompany direct handoff.
+- [Contract](../sim/wildlife-rock.md) acceptance rows precede implementation; [evidence](evidence/wildlife-rock-1.md) holds primary spans, controls, counts and hashes.
+- D: Game 0x10009048–0x10009095 quantizes each unsigned cell minimum; mode 0 takes high at 0x10009105–0x10009109.
+- Hand two-cell minima 35/55 -> 32/48 produce 48, versus wrong mode 2 result 32, mean 50, max vertex quantum 64 or unrounded 55.
+- Modes 0/2 coincide for one cell; quantize/max commute. Controls use a genuine multi-cell difference, not invented rounding behavior.
+- D: getter 0x10007d80–0x10007d86 zero-extends u16 0x8018; no sign-extension into caller bit 31 or new reached upper-bit effect.
+- Re-read admission/compatibility/wrapper/writer plus clipped id-window getter 0x10083c80–0x10083d85; no new flag filter/callback.
+- Exact flags 0x8018 / group 0x141 added by facts, not id 1512. Original flags preserved; existing bit 0x20 distinction unchanged.
+- Shared window-range loop supplies mode 0/high and old mode 2/low; ordinary mode 1 origin mean unchanged, computed height replaces file height.
+- Existing writer, compatibility, owned scratch/index, bounded coverage/offset domain and sticky errors reused; no new overlay plane.
+- Nine authored rows append to reference (44 total), predecessor 35 rows byte-identical; public CLI contract 23 controls passes.
+- C++ covers nonflat/raw-height distinction, all nonsquare rotations/chunks, exact partial/sparse OR, bounds/coverage and both placement orders.
+- One actual-code mode mutant: legal control 80/80; wrong low branch fails 3 intended height assertions (32 versus 48), 77 pass.
+- Canonical source/binary untouched, post-mutation build checked; fresh private Python controls use -I -B from first child.
+- Same raw Tutorial HHbb stream, supplied stamp 500/mode 0/draw 7: 4,760 completed/accepted, refused 0, resource-class/draws 4,589.
+- 84 stones / 63 cliffs / 24 rocks / 0 spawns / 16 completed GELAENDE epilogues (33–48).
+- Former 42/39/type 1512 at (59,90), rotation 0: height 48, 2 writes, 0 draws, cursor 2,333; actual quad minima 32/48 distinguish mode 2.
+- Both final rock cells: id 1512, phase 0, height 48, offsets 0/1, rotation 0, anchors both 1 after later partial writes; all asserted.
+- Prior stone/cliff fields, first resource 6/48/draw 1, header mask counts 1,024/977 retained.
+- Next unsupported boundary is header 49 FRUCHTBAR before effects; record 0 is header convention, not a placed-object ordinal.
+- Typed diagnostic partial only. HIRSCH 71 remains unreached; measured local 4,589 draws do not prove original global cursor closure.
+
+```text
+# cache/wildlife-rock-1/debug-final.log (main synthetic selection)
+COUNTS: selected=21 executed=21 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-rock-1/asan-final.log (main synthetic selection)
+COUNTS: selected=21 executed=21 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-rock-1/real-final.log (separate original Debug case)
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# Three separate required contracts per synthetic profile, all six exact receipts in evidence
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- Required: mode-discriminator C++ case, public adapter refusal case, resource_import_reference_contract; excluded from main counts.
+- No unexpected failure, memory refusal, timeout, empty, incomplete, skip or sanitizer report; no whole gate rerun.
+- Strict four-TU O3/Werror Apple Clang 21/GCC 15.3 clean; GCC shadow control rejected. Format 23.1.3/lint/diffcheck pass.
+- Compiler warnings 0; inherited Apple duplicate-library linker warning retained. No full warning sweep claim.
+- 276 fixtures audited: only nine authored rows append; pins/recordings unchanged. Byte audit, not full pins.py execution.
+- Shared site/writer/raw decoder/sim_load adapter bytes unchanged; reuse PE/HIRSCH/helper/picture/long campaigns with explicit dependency reason.
+- Source/original input/binary/command/inventory/log SHA receipts in evidence; original bytes/listings remain private.
+- Host Apple M5 Max / 18 logical / 48 GiB / macOS 27.0.1; jobs 1 / threads 2 / admission on, coordinator/awake assertion preserved.
+- Separate CLIFF CI 44417567937 remains in progress at closeout (8 successes/3 pending); no acceptance inferred. ROCK exact CI read after push.
+
+Decisions and reasoning:
+- Establish unsigned mode/upper-bit behavior first, share one quantized range implementation, and preserve original compatibility flags.
+- Use legal controls that distinguish real alternative modes/sources, keeping zero nonresource draws and partial writer effects exact.
+- Advance only the released class and stop the next header; never promote diagnostic local completion into World/global initialization.
+- Reuse unaffected evidence and preserve predecessor failures, without a new broad matrix or self-approval.
+
+NOT_RUN: original/HE/new Unicorn/Windows/WSL/full or long suites, full pins/warnings, LeakSanitizer, World/native/wildlife lifecycle/global cursor integration.
+QUESTIONs: none blocking bounded review; establish FRUCHTBAR loader/callback and owned fertility representation before continuing. Independent review pending.

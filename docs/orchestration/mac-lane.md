@@ -24,7 +24,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | 1.5 [ANNOSCENE-ORE-2](tasks/annoscene-ore-2.md) | ACCEPTED bounded research after P2 correction; no engine implementation | `b12d22b39caee90429aef77b52659aa2bfedb38e` | [44273143955](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44273143955), exact-head docs CI green | [Acceptance and preserved finding](reviews/2026-11-18-annoscene-ore-2-review.md) |
 | 1.6 [OQ-562-1](tasks/oq-562-1.md) | ACCEPTED bounded headless causal diagnosis after focused CI correction | `b7046e5e279fa979d83079feb56dc83a660f32ef` | [44282873819](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44282873819), all 12 jobs success at exact head | [Acceptance and preserved failure](reviews/2026-11-18-oq-562-1-review.md) |
 | 1.7 [SIM-LIMITS-1](tasks/sim-limits-1.md) | ACCEPTED compatibility maintenance; behavior and bytes unchanged | `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e`; code `33871080` | [44298551123](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44298551123), all 12 jobs success at exact head | [Acceptance](reviews/2026-11-18-sim-limits-1-review.md) |
-| 1.8 [DOCS-SIM-1](tasks/docs-sim-1.md) | RELEASED to EXECUTOR II MAC, 2026-11-18 | Accepted base `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e` | Await executor source checkpoint | Report directly to Mac orchestrator for independent review |
+| 1.8 [DOCS-SIM-1](tasks/docs-sim-1.md) | LOCAL REVIEW APPROVED after focused correction; exact-head CI pending | `9d4a0e15c01c6f2afe708fa95f6a6c90e648f6b8` | [44307300031](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44307300031), queued at review | [Independent review](reviews/2026-11-18-docs-sim-1-review.md) |
+| 2.6 [KBEWOHN-1](tasks/kbewohn-1.md) | PREPARED, independently reviewed; release after DOCS-SIM acceptance | Proposed base `9d4a0e15c01c6f2afe708fa95f6a6c90e648f6b8` | Not started | Next gameplay dependency; report directly to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -181,3 +182,25 @@ commands, runtime-class and hook inventory with bounded source/document drift ch
 new game behavior. All Seams members are included; mechanical checks and reviewed semantics
 are distinguished. The executor reports its frozen pushed head, exact CI and evidence directly
 to this orchestrator. Earlier branches and evidence remain intact; Windows owns main landing.
+
+## Current checkpoint — DOCS-SIM reviewed, next gameplay packet prepared
+
+The owner authorizes direct release of the next gameplay task after DOCS-SIM-1
+review. Its corrected frozen head is independently locally approved; exact-head
+CI44307300031 is still pending, so acceptance and next-task release have not been
+claimed. The initial enum-initializer blind spot, two prose corrections and
+receipt-pointer fix are documented in the review; unaffected tests were reused.
+
+KBEWOHN-1 is next: complete original figure classification before wildlife/hunting
+integration. Independent dispatch review `/root/review_docs_sim_dispatch` approved
+the bounded packet. Direct original-data reading corrected the historical premise:
+57 names, 20 existing real mappings plus one empty sentinel, hence 37 omitted;
+WUESTE legitimately equals0. Exact-value tests replace the old nonzero criterion.
+No new lifecycle, extension-tag allocation, load-draw assumption or owner policy
+is needed. The candidate must measure registry-digest and affected pin changes;
+this is not permission to claim animals or hunting already run.
+
+The earlier WILDLIFE-1a remains locally reviewed on its preserved branch with
+inherited CI closure pending. Its later state/load ordering and materialization
+contract still need a separate packet. KBEWOHN-1 neither silently takes that
+candidate nor blocks on it. No main/STATUS/TASKS changes by this lane.

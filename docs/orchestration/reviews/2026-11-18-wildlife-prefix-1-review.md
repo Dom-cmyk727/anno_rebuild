@@ -71,3 +71,15 @@ where original overlay semantics differ. No World/native/tags/default changes.
 Full scene callbacks, original runtime/HE, actual global PRNG cursor, fauna
 materialization, target-host game-file runs and late-game scale remain unproved.
 Exact-head CI is required for acceptance; Windows owns stacking/landing.
+
+
+## CI follow-up while releasing CLIFF
+
+CI44385455810 is not green: eight jobs succeeded, two macOS jobs were cancelled
+without a runner (runner_id0, empty steps), and Windows remained running at the
+latest check. Cancelled jobs are135088771726 (build-macos) and135088771902
+(cpp macos-clang). This is infrastructure absence, not a passing Mac build.
+Local approval stands; exact-head acceptance remains pending authenticated narrow
+retry. Private jobs-API snapshot SHA256:
+`62c773bdcc1f0f8ccd10bafbc6638e91f62a490c3a8bb94765ce0e62622ad117`.
+No original gate was repeated, and no source change was made to trigger CI.

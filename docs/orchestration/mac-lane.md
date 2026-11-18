@@ -30,8 +30,9 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife correction [WILDLIFE-LOAD-FIX-1](tasks/wildlife-load-fix-1.md) | LOCAL REVIEW APPROVED; CI blocked by no hosted macOS runner | `533ee3fc96a560f1c3189f3a4d32ce113abff65a` | [44354548420](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44354548420), 10 success, build-macos cancelled, aggregate failed | [Review](reviews/2026-11-18-wildlife-load-fix-1-review.md) |
 | Wildlife initialization [WILDLIFE-INIT-1](tasks/wildlife-init-1.md) | ACCEPTED bounded research/reference; landing pending | `97d893af9d78e6662dd8859acc3a905f71c80402` | [44359989371](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44359989371), all12 successful | [Review](reviews/2026-11-18-wildlife-init-1-review.md) |
 | Wildlife resource [WILDLIFE-RESOURCE-1](tasks/wildlife-resource-1.md) | ACCEPTED after FIX-1; landing pending | `0627532f330dc898b80941ea31d9dafe87980aa4` | [44372186862](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44372186862), all12 successful | [Review](reviews/2026-11-18-wildlife-resource-1-review.md) |
-| Wildlife composition [WILDLIFE-PREFIX-1](tasks/wildlife-prefix-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `1441183a74be4745415c23c399f80648bf886314` | [44385455810](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44385455810), in progress at handoff | [Review](reviews/2026-11-18-wildlife-prefix-1-review.md) |
-| Wildlife stone [WILDLIFE-STONE-1](tasks/wildlife-stone-1.md) | RELEASED to EXECUTOR II MAC | Explicit local dependency base `1441183a` | Not started | Frozen reportback to Mac orchestrator |
+| Wildlife composition [WILDLIFE-PREFIX-1](tasks/wildlife-prefix-1.md) | LOCAL REVIEW APPROVED; two macOS CI jobs cancelled without runner | `1441183a74be4745415c23c399f80648bf886314` | [44385455810](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44385455810), Windows still running at latest check; no acceptance | [Review](reviews/2026-11-18-wildlife-prefix-1-review.md) |
+| Wildlife stone [WILDLIFE-STONE-1](tasks/wildlife-stone-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `18473cf4b1d44cadfa564636f56b889bdcabe146`; source `f3e18bdf` | [44390015763](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44390015763), running | [Review](reviews/2026-11-18-wildlife-stone-1-review.md) |
+| Wildlife cliff [WILDLIFE-CLIFF-1](tasks/wildlife-cliff-1.md) | RELEASED to EXECUTOR II MAC | Explicit locally reviewed base `18473cf4` | Not started | Frozen reportback to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -522,3 +523,27 @@ RESOURCE0627532f is now ACCEPTED: exact CI44372186862 and all12 jobs verified gr
 Its [review](reviews/2026-11-18-wildlife-resource-1-review.md) records both closed
 findings and terminal receipt hashes. Ready for Windows-owned stacking/landing;
 main remains untouched. Decoder/helper original no-runner failures remain separate.
+
+## Latest dispatch — STONE reviewed; CLIFF released
+
+STONE18473cf4/sourcef3e18bdf is independently locally APPROVED by primary and
+causal-test reviewers. All40 receipt hashes and276 baseline fixture files checked.
+The corrected raw HHbb parse independently reproduces258 accepted records,
+255 resource draws,3 stones and4 completed epilogues. First Debug15 passes/1failure
+is preserved; corrected2/2 plus1 required contract and ASan15/15 plus3 required
+contracts support the corrected scope. No runtime change hid the expectation error.
+CI44390015763 is still running; acceptance is not claimed.
+
+[WILDLIFE-CLIFF-1](tasks/wildlife-cliff-1.md) is RELEASED after independent dispatch
+review. Establish the flags0x12/group0x141 cliff behavior, especially later placement
+over a non-replaceable cliff, and continue the same original prefix only to the
+next unsupported boundary. No World/native/tag/default changes or global-RNG claim.
+The executor ordinary-pushes its task branch and reports frozen results directly
+to this Mac orchestrator for review and the next release.
+
+PREFIX CI44385455810 currently has8 successful jobs,2 cancelled macOS jobs and
+Windows still running. Both cancellations have runner_id0 and no steps:
+build-macos135088771726 and cpp(macos-clang)135088771902. These establish no
+build/test result. Windows/owner authenticated narrow retry remains required;
+no fake source commit or broad rerun is authorized. STONE's newer successful
+build-macos does not retroactively accept PREFIX's exact head.

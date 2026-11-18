@@ -15311,7 +15311,8 @@ Focused pre-push correction review: orchestrator independently approved the seve
 - Economy peer ran: 62,616 passing assertions / 7 expected checkpoint hash failures; no physical/accounting change.
 - Host retry only corpus: 6,501 passing assertions / 50 expected create_hash failures; stripped rows otherwise equal.
 - Authorized exact two-producer regen: 50 scenario create_hash + 7 Tutorial checkpoint hashes, and nothing else.
-- Of 120 baseline fixture files, 118 unchanged; pins.txt unchanged; all historical and independent oracle bytes retained.
+- Filesystem snapshot: 120 files / 118 unchanged (includes one ignored Python cache); tracked: 119 / 117 unchanged, 2 changed.
+- pins.txt unchanged; all historical and independent oracle bytes retained; original manifest/hash preserved.
 - Subsequent scoped pins check: 0 pins moved, 0 fixture writes; scope partial, not the unrelated full campaign.
 
 Canonical final receipts (`cache/kbewohn-1/`; exact command/inventory/hash in evidence):

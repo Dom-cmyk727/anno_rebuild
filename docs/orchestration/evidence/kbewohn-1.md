@@ -15,7 +15,7 @@ self-referential report commit. No main/board/rebase/force push or other-lane ed
 | Zero and unknown policy | WUESTE is engaged optional 0; absent/empty/UNUSED/unknown import as 0 | unknown spelling must not be a known named zero | figure identity spelling case; primary accessor/loader read | pending |
 | Corpus and consumer preservation | 368 records / 50 names; 272 corrected, 96 unchanged; every other field and predicate equal | wrong nonzero identity fails exact-value assertion, despite being nonzero | field-audit.json; Debug/ASan concrete readers | pending |
 | Content compatibility | old original-registry native/replay accepted before, refused after at registry check | legal old registry control first; corrected registry specifically refuses | identity-before.log / identity-after.log; C++ identity test | pending |
-| Bounded fixture regeneration | only 50 creation hashes + 7 economy checkpoint hashes; 118 other files unchanged | both prechecks fail before writing; nonwriting check passes after | fixtures-after-audit.json; producer receipts below | pending |
+| Bounded fixture regeneration | only 50 creation hashes + 7 economy checkpoint hashes; 117 other tracked files unchanged | both prechecks fail before writing; nonwriting check passes after | fixtures-after-audit.json; producer receipts below | pending |
 
 ## Primary evidence and limits
 
@@ -68,7 +68,11 @@ header substitution is used.
 | `fixtures/synthetic/sim/current/scenario_corpus.txt` | `5127ee709709b637fcda451c625637b9decce0c07223f125bd6c12bad69f04a6` | `b5d5f36ee8512a37e29f07d77ef91d05a87de07b38827a4d8c468dbaa0f63668` | 50 create_hash values only |
 | `fixtures/synthetic/sim/current/loop_checkpoints.txt` | `4710d524faa914f483eff4f6c3495b59d5c897f36245b973a60163a5dea2df76` | `3178eb9fc6a88d7f2b0374720b2207fa26d6b1e2c7988aea606a652b3a292014` | 7 checkpoint hashes only; entry/tick unchanged |
 
-All 120 baseline fixture files were hashed; 118 are byte-identical.
+The filesystem snapshot hashes 120 files: 2 changed and 118 byte-identical.
+Git tracks 119 of those files: the same 2 changed and 117 byte-identical.
+The additional snapshot member is an unchanged, ignored Python bytecode cache
+under the legacy reference tools directory; no tracked fixture is omitted.
+The original snapshot, manifest and their hashes remain intact.
 `pins.txt` remains `c6c5cb7cba3d1fc95151bdf1e0e83d8ad4bc112b5be7386fb6b1430f0146a1bf`: 0 pins moved.
 Historical fixtures and every other current replay/log/oracle file remain unchanged.
 The Tutorial economy loop also loads the full original registry; its 7 state hashes

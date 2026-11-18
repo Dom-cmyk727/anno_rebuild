@@ -21,7 +21,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | 1.2 [WILDLIFE-1a](tasks/wildlife-1a.md) | LOCAL REVIEW PASSES; inherited CI closure pending; no World integration | `756e008b8027cf9186b4e79e3ae2e76b1dab4c29`, pure helpers only | [44262049576](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44262049576); not claimed green | [Conditional local review](reviews/2026-11-18-wildlife-1a-review.md) |
 | 1.3 [NET-ADR-1](tasks/net-adr-1.md) | ACCEPTED documentation; owner decisions remain open | `cf7109fe14fa729cbb0f1c775fd243cd06b34c26` | [44264630010](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44264630010), exact-head docs CI green | [Acceptance](reviews/2026-11-18-net-adr-1-review.md) |
 | 1.4 [MIL-RE-1](tasks/mil-re-1.md) | ACCEPTED bounded static research; no combat implementation | `20edc775e12a4e8cd73d703d80b8ea0e4bb4e02b` | [44268712248](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44268712248), exact-head docs CI green | [Acceptance](reviews/2026-11-18-mil-re-1-review.md) |
-| 1.5 [ANNOSCENE-ORE-2](tasks/annoscene-ore-2.md) | CHANGES REQUESTED: unassigned quantity branch projection; focused correction released | `9fecc2f09a13028514813f794380fe4939363ed3`; not accepted | Reported docs CI 44271754490; no acceptance from CI alone | [Focused review](reviews/2026-11-18-annoscene-ore-2-review.md); correction sent directly |
+| 1.5 [ANNOSCENE-ORE-2](tasks/annoscene-ore-2.md) | ACCEPTED bounded research after P2 correction; no engine implementation | `b12d22b39caee90429aef77b52659aa2bfedb38e` | [44273143955](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44273143955), exact-head docs CI green | [Acceptance and preserved finding](reviews/2026-11-18-annoscene-ore-2-review.md) |
+| 1.6 [OQ-562-1](tasks/oq-562-1.md) | RELEASED 2026-11-18; opening command/timing/money/wood discrepancy | New task branch from accepted `9edb151c414246d306194a703db71475affbdad4`; no main merge | Pending | Pending |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -99,3 +100,12 @@ ANNOSCENE-ORE-2 review found a P2 in the unassigned-marker quantity projection: 
 cleared, the original jumps past the take-flag check and uses world property14 bit2. The current
 audit wrongly preserves quantity for both settings. A focused read/projection/corpus/docs fix
 is released directly; preserve its failed evidence. No next implementation or OQ-562 release yet.
+
+## Latest dispatch — ore correction accepted, OQ-562-1 released
+
+ANNOSCENE-ORE-2 is ACCEPTED at b12d22b3, exact docs CI 44273143955 green. The focused
+re-review closes its one P2; the previous correction status above is historical. OQ-562-1
+is released directly to EXECUTOR II MAC from accepted repair stack 9edb151c, avoiding the
+older baseline's known CI failures. This is an explicitly named new task-branch base, not
+an automatic merge/rebase of preserved work and not a main landing. Scope is the three
+opening-recipe discrepancies and their causal regressions; no living/default/map change.

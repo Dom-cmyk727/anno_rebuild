@@ -30,8 +30,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife correction [WILDLIFE-LOAD-FIX-1](tasks/wildlife-load-fix-1.md) | LOCAL REVIEW APPROVED; CI blocked by no hosted macOS runner | `533ee3fc96a560f1c3189f3a4d32ce113abff65a` | [44354548420](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44354548420), 10 success, build-macos cancelled, aggregate failed | [Review](reviews/2026-11-18-wildlife-load-fix-1-review.md) |
 | Wildlife initialization [WILDLIFE-INIT-1](tasks/wildlife-init-1.md) | ACCEPTED bounded research/reference; landing pending | `97d893af9d78e6662dd8859acc3a905f71c80402` | [44359989371](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44359989371), all12 successful | [Review](reviews/2026-11-18-wildlife-init-1-review.md) |
 | Wildlife resource [WILDLIFE-RESOURCE-1](tasks/wildlife-resource-1.md) | ACCEPTED after FIX-1; landing pending | `0627532f330dc898b80941ea31d9dafe87980aa4` | [44372186862](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44372186862), all12 successful | [Review](reviews/2026-11-18-wildlife-resource-1-review.md) |
-| Wildlife composition [WILDLIFE-PREFIX-1](tasks/wildlife-prefix-1.md) | LOCAL REVIEW APPROVED; two macOS CI jobs cancelled without runner | `1441183a74be4745415c23c399f80648bf886314` | [44385455810](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44385455810), Windows still running at latest check; no acceptance | [Review](reviews/2026-11-18-wildlife-prefix-1-review.md) |
-| Wildlife stone [WILDLIFE-STONE-1](tasks/wildlife-stone-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `18473cf4b1d44cadfa564636f56b889bdcabe146`; source `f3e18bdf` | [44390015763](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44390015763), running | [Review](reviews/2026-11-18-wildlife-stone-1-review.md) |
+| Wildlife composition [WILDLIFE-PREFIX-1](tasks/wildlife-prefix-1.md) | LOCAL REVIEW APPROVED; two macOS CI jobs cancelled without runner | `1441183a74be4745415c23c399f80648bf886314` | [44385455810](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44385455810), terminal FAIL:9 success,2 no-runner cancellations, aggregate failure | [Review](reviews/2026-11-18-wildlife-prefix-1-review.md) |
+| Wildlife stone [WILDLIFE-STONE-1](tasks/wildlife-stone-1.md) | ACCEPTED bounded import; Windows landing pending | `18473cf4b1d44cadfa564636f56b889bdcabe146`; source `f3e18bdf` | [44390015763](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44390015763), all12 jobs successful | [Review](reviews/2026-11-18-wildlife-stone-1-review.md) |
 | Wildlife cliff [WILDLIFE-CLIFF-1](tasks/wildlife-cliff-1.md) | RELEASED to EXECUTOR II MAC | Explicit locally reviewed base `18473cf4` | Not started | Frozen reportback to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
@@ -547,3 +547,15 @@ build-macos135088771726 and cpp(macos-clang)135088771902. These establish no
 build/test result. Windows/owner authenticated narrow retry remains required;
 no fake source commit or broad rerun is authorized. STONE's newer successful
 build-macos does not retroactively accept PREFIX's exact head.
+
+
+## CI closeout — 2026-11-19
+
+STONE18473cf4 is ACCEPTED: independently reviewed and exact CI44390015763/all12
+jobs successful. [Acceptance review](reviews/2026-11-18-wildlife-stone-1-review.md)
+records terminal receipt hashes. Ready for Windows-owned stacking; main untouched.
+PREFIX1441183a remains locally approved but not accepted: terminal CI44385455810
+has9 successful jobs,2 no-runner cancellations and aggregate failure. The review
+records complete receipts; no rerun or source-trigger commit was made.
+CLIFF is finishing its frozen handoff; its reported focused gates are not yet an
+orchestrator approval. Do not interrupt that closeout or expand its assigned scope.

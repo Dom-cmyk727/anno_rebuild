@@ -83,3 +83,15 @@ Local approval stands; exact-head acceptance remains pending authenticated narro
 retry. Private jobs-API snapshot SHA256:
 `62c773bdcc1f0f8ccd10bafbc6638e91f62a490c3a8bb94765ce0e62622ad117`.
 No original gate was repeated, and no source change was made to trigger CI.
+
+
+## Terminal CI disposition — 2026-11-19
+
+Run44385455810 completed FAILURE:9 successful jobs,2 cancelled macOS jobs with
+runner_id0 and no steps, then failed aggregate gate135114760503. Windows completed
+successfully. Local review stands; no exact-head acceptance. Authenticated narrow
+retry of unavailable jobs and the dependent gate remains pending.
+Retained `cache/wildlife-cliff-1/prefix-ci-closeout.json` SHA256
+`ea84a80248bcc0fd18a527ee6d1c0e0ad1ca23a7c27660a6b4ad339b24f1c5f8`;
+`prefix-ci-jobs-closeout.json` SHA256
+`4fd7a1ee58d953716c05a6683cd411fa6d11e92668ffb44117273453705bd686`.

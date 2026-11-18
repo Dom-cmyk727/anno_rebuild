@@ -1,7 +1,7 @@
 # WILDLIFE-STONE-1 — independent review, 2026-11-18
 
-Verdict: **LOCAL REVIEW APPROVED**, no blocking findings in the bounded transient
-import scope. Exact-head hosted CI remains pending; this is not landing acceptance.
+Verdict: **ACCEPTED** for the bounded transient import scope, after independent
+review and exact-head green CI. Updated2026-11-19; Windows-owned landing remains pending.
 
 - Reviewed head: `18473cf4b1d44cadfa564636f56b889bdcabe146`.
 - Tree: `7f3614c0987689403d5870ceec925b32e62fa137`.
@@ -71,3 +71,18 @@ Release WILDLIFE-CLIFF-1 on this locally reviewed dependency head, subject to it
 bounded dispatch review. Establish flags0x12/group0x141, particularly the missing
 replaceability bit, and continue only to the next unsupported boundary. Keep exact
 CI acceptance separate. Windows retains stacking/landing ownership; main untouched.
+
+
+## Terminal CI acceptance — 2026-11-19
+
+Run44390015763 is completed SUCCESS at the exact reviewed head18473cf4. All12
+jobs, including all five C++ configurations and the aggregate gate, succeeded.
+The orchestrator read the complete retained jobs receipt and checked every head
+and conclusion. No test was repeated for this closeout.
+
+Receipts under `cache/wildlife-cliff-1/`:
+- `stone-ci-closeout.json`: SHA256 `9aa44466ec1427b98230012fdab1504a39bb5f7d40ecb9074d0a729df818980e`.
+- `stone-ci-jobs-closeout.json`: SHA256 `e9d657b49952928be1be6efd472ef728d6c1a61e5832f1eb1dd01fd365ad0a4f`.
+
+This accepts this head's reviewed scope, not historical PREFIX CI or full wildlife
+initialization. Main was not changed; CLIFF continues on its authorized branch.

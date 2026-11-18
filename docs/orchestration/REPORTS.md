@@ -14904,3 +14904,69 @@ READY FOR REVIEW.
   text even while its page is hidden.
 
 READY FOR REVIEW.
+
+
+## NET-ADR-1 — READY FOR REVIEW (Mac, 2026-11-18)
+
+Pinned base `b5c0ada209d94a0082bc88d793c917c7222e6a21`; docs only.
+N0 inventory recorded before amendments; independent review pending with orchestrator.
+
+| Current statement | Replacement / unresolved choice | Location | Validation |
+|---|---|---|---|
+| Raw asset-file hashes decide joins | ADR 0005 parsed simulation content; aggregate still required | ADR §0/§5 | Registry/rules/config/walk interfaces and ADR 0005 read |
+| One global state number describes compatibility | Framing 139 plus ten base versions, script schema, recognized tags and PRNG semantics | ADR §0.1 | world.hpp, state_fields.hpp, extension_context.hpp |
+| Language/graphics cannot affect compatibility | Accepted goal; city_names remains hashed, so implementation incomplete | ADR §0.1 | fields(Rules), ADR 0005 |
+| Historical six peers / computer seats define MVP | Five-human workload, configurable capacity; no implemented AI takeover | ADR §0.2/§14 | SetupLimits, lan-mvp |
+| Drop after grace transfers to AI | Historical model only; owner chooses no-AI disposition | ADR §0.2/§10, owner page | Symbolic checker, command variants, D-10 |
+
+- Spec disposition: ADR §0 is the current reconciliation; §5 and §12 point to its
+  separate compatibility components. ADR remains Proposed; ADR 0005/0006 policy is unchanged.
+- Existing identities traced: framing 139, ten base versions 1, command 1, save 1, replay 4,
+  script schema, PRNG 5/missing sites, registry/walk/config/rules/seams/script digests.
+- Required seams named: manifest/comparators, canonical templates/map aggregate, localized
+  name removal, session admission/issuer binding and ownership-event codec. No network exists.
+- Active header tag 1 must be compared separately from Rules::digest; unknown tags refuse.
+- §0.2 traces join, ACK, snapshot/hash match, future activation/input, disconnect,
+  reconnect and host transfer. A matching root or packet arrival grants no command authority.
+- Trusted-LAN admission is distinguished from cryptographic authentication. Reconnect
+  entitlement is not solved by epoch equality; wrap and JoinAsk race gaps remain explicit.
+- Historical T41/T45 measured tables and T43/T47/T52/T61 synthetic inputs are retained.
+  Six-peer/AI labels remain historical; no retiming, remeasurement or new constants.
+- D-9/D-10 owner page contains eight choices with options, tradeoffs/dependencies and blank
+  answers: ADR, UDP port, limits, Venetians/natives, dropped seats, migration, fish and stage.
+- Existing ship-start/peace/shared visibility/no-alliance requirements recorded; no map
+  selected and no living default changed. General D8/D9 versus no-AI MVP conflict exposed.
+- Construction enforcement already exists in BuildCmd; the choice is policy, not missing code.
+- Fish exists behind header tag 1, but this main pin's ship-start API does not forward it;
+  accepted branch-only setup work is a dependency, not silently imported here.
+- Future order §16: headless state/codec, identities/ownership, lossy harness, real snapshot
+  catch-up, reconnect, Windows sockets/viewer, live acceptance. Owner-blocked steps identified.
+- Acceptance: named contradictions have source/decision citations and explicit unresolved
+  disposition; negative check is that no historical model result is called a live LAN result.
+  Orchestrator disposition pending; this executor makes no policy approval.
+- Validation log: `cache/net-adr-1/document-checks-02.log` (links/anchors, whitespace,
+  allowed paths, preserved historical numeric rows and source/fixtures unchanged).
+- Document checks: `DOC_LINKS: checked=92 failed=0`;
+  `HISTORICAL_NUMERIC_ROWS: preserved=136 changed=0`; `DIFF_CHECK: PASS`;
+  `SCOPE: docs_only=1 source_tools_data_fixtures_assets_changes=0`; `DOCUMENT_VERDICT: PASS`.
+- Initial check 01 found existing §8.7 links ending T52 F2 while its heading is F7;
+  corrected those anchors only, preserving the historical text and all numeric rows.
+- Hosted CI: exact pushed-head run and terminal docs gate are supplied in the frozen handoff;
+  code jobs are not required by the repository's docs-only classifier.
+- NOT_RUN: local C++/Python suites, original-game reads, LAN/mixed-edition/live socket tests,
+  new performance measurements. Documentation-only packet; none is claimed as passed.
+- Separate town/wildlife CI repair and gameplay branches remain untouched; a docs gate
+  cannot close their inherited failures or authorize their landing.
+
+**Decisions and reasoning:**
+- Amend current normative seams and add dated scope notes; preserve the long model history
+  so prior numerical evidence remains reproducible with its original assumptions.
+- Require named semantic identity comparisons instead of raw-file/build equality, while
+  retaining actual current digest failures until ADR 0005 implementation exists.
+- Keep accepted architecture separate from proposed protocol budgets and owner policy.
+- Reuse this clean owned checkout at the reviewed checkpoint; import no pending repair.
+
+**QUESTIONs:** owner answers D-9a/b/c and D-10a/b/c/d/e on the linked decision page.
+D-1 map and D-2 living defaults remain separate. No network implementation is authorized here.
+
+READY FOR REVIEW.

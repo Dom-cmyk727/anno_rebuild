@@ -11,6 +11,14 @@
 2. **On the LAN:** two to six real PCs (Windows and Linux mixed) find the game, join, choose colours, play, and survive a disconnect and a rejoin. The checklist goes in `docs/testing/lan-playtest.md`.
 3. **Performance:** with six players' cities on the largest generated world, at 3840 × 2160, the PLAN §0.3 frame targets and a measured sim-tick budget hold.
 
+
+**Contract reconciliation, 2026-11-18:** [ADR 0003 §0](../adr/0003-network-transport.md#0-current-contract-reconciliation-net-adr-1-2026-11-18)
+replaces §4's raw-file/global-number handshake with ADR 0005/0006 identities. Historical
+D8/D9 and six-peer AI assumptions below do not resolve the no-AI five-human MVP.
+The [D-9/D-10 owner page](../orchestration/decisions/net-adr-1-owner.md) leaves the remaining
+session choices open; own UDP, ship-start and the overall migration requirement remain.
+Neither the proposed limits nor a mixed-edition working session are established by this note.
+
 ## 1. The owner's requirements (2026-10-26, as given)
 
 | # | Requirement |

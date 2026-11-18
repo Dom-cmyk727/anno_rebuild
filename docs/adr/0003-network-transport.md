@@ -1,11 +1,82 @@
 # ADR 0003: Network transport and sessions
 
 - **Status:** Proposed
-- **Date:** 2026-10-26. Corrected 2026-10-27 (round bq F1): the fragment cap and the window time. Retention proposal 2026-10-27 (T43). Round bs F1, 2026-10-27: progress cursors, global caps, joiner backlog, acknowledgement loss. Round bt F2, 2026-10-27: the shared owner enforces tail and deadline caps on each host advance, before the new turn is retained. T45 measurement 2026-10-27: labeled `World::load` and `run_turn` costs, and encoded turn sizes. T47 F3, 2026-10-27: channel-0 arrivals during load and replay enter the backlog through `Table.note_backlog`. T52, 2026-10-27: observable join activation, hash-report delivery and a shared-link schedule ([§8.7](#87-ordered-join-protocol-ownership-events-and-queue-bounds-t52-f2)). T52 F1, 2026-10-27: the hash match is not the seat transition, the activation turn is chosen after the host has the report, and hash retention and the shared queues are bounded. The model and the defaults below are unchanged. T52 F2, 2026-10-27: the protocol is checked event by event in `tools/join_activation.py` with ordered channel-0 delivery; ownership events ride in the turn stream, input needs a fresh grant, and the queues are bounded with overflow rules. The F1 rows and the F1 "all MET" claims are superseded. Status stays Proposed. T61 F2, 2026-10-30: [§15](#15-t61-synthetic-jitter-experiment-not-a-network-measurement) records the validated synthetic study. Status stays Proposed.
+- **Date:** 2026-10-26. Corrected 2026-10-27 (round bq F1): the fragment cap and the window time. Retention proposal 2026-10-27 (T43). Round bs F1, 2026-10-27: progress cursors, global caps, joiner backlog, acknowledgement loss. Round bt F2, 2026-10-27: the shared owner enforces tail and deadline caps on each host advance, before the new turn is retained. T45 measurement 2026-10-27: labeled `World::load` and `run_turn` costs, and encoded turn sizes. T47 F3, 2026-10-27: channel-0 arrivals during load and replay enter the backlog through `Table.note_backlog`. T52, 2026-10-27: observable join activation, hash-report delivery and a shared-link schedule ([§8.7](#87-ordered-join-protocol-ownership-events-and-queue-bounds-t52-f7)). T52 F1, 2026-10-27: the hash match is not the seat transition, the activation turn is chosen after the host has the report, and hash retention and the shared queues are bounded. The model and the defaults below are unchanged. T52 F2, 2026-10-27: the protocol is checked event by event in `tools/join_activation.py` with ordered channel-0 delivery; ownership events ride in the turn stream, input needs a fresh grant, and the queues are bounded with overflow rules. The F1 rows and the F1 "all MET" claims are superseded. Status stays Proposed. T61 F2, 2026-10-30: [§15](#15-t61-synthetic-jitter-experiment-not-a-network-measurement) records the validated synthetic study. Status stays Proposed.
 
 ADR 0002 is reserved for the float walk (T34) and is not this document.
 
 This is the design of the `net` library. It does not add code. The owner approves it before W3 step 2. Numbers are either taken from a decision or from the original, or they are the measurements in [§13](#13-budgets). Nothing here is a guess stated as a measurement.
+
+## 0. Current contract reconciliation (NET-ADR-1, 2026-11-18)
+
+This amendment supersedes the raw-file handshake in the earlier plan and the AI/six-seat
+assumptions **for the five-human MVP**. It changes no policy approval: this ADR remains
+**Proposed**. Own UDP is already the owner's architectural choice; the outstanding choices
+are on the [D-9/D-10 owner page](../orchestration/decisions/net-adr-1-owner.md).
+[ADR 0005](0005-edition-neutral-content.md) and
+[ADR 0006](0006-save-sections.md) are accepted policy. Their dated historical implementation
+notes are not a claim that every consequence is implemented at this packet's main pin
+`b5c0ada2`. No C++ network session exists in `src/` at that pin.
+
+### 0.1 Compatibility components and implemented seams
+
+The required handshake compares these components separately, refuses any difference before
+simulation/input admission, and names the differing component (section/tag or content domain,
+plus local and remote versions/digests where applicable). A matching build label or global
+number cannot substitute for these comparisons. A build revision is provenance, not a
+replacement for semantic identities. The network manifest, its encoding, comparisons and
+component-specific refusal messages remain **required implementation seams**.
+
+| Component to compare | Existing implementation / remaining seam at the pin |
+|---|---|
+| Protocol and command/save/log framing | This ADR proposes network protocol 1; `command.hpp::kCommandWireVersion` is 1, `world.hpp::kSaveVersion` is 1, replay frame is 4. `kStateHashVersion` is global framing 139, not a complete gameplay identity. No network framing comparator exists. |
+| Ordered section base versions and script schema | `world.hpp::kSectionVersions` has ten named base versions, all 1, including `script`; `state_fields.hpp::StateIO` visits them for hash/save/load and names a refused section/version. `kScriptSchema` is separately checked by native header and replay readers. A network schema manifest is still required. |
+| Recognized extensions and active optional rules | `extension_context.hpp::kKnownExtensions` exposes ordered `(section, tag, name)` entries. Header tag 1 is `fisher_rules`, validated u8 0/1; absence is default off. `extensions.hpp` refuses unknown/invalid tags and malformed lengths/order; it never skips unknown state. Compare recognized schemas even when all features are off, and compare active extension values in addition to `Rules::digest()`. The latter alone omits fisher's flag. |
+| PRNG semantics | `world.hpp::kPrngTimelineVersion` is 5; `replay.cpp::prng_timeline_missing` enumerates unported sites and depends on active house rules. Replay checks both version and missing-site list. Network identity must also cover any future tag-declared draw semantics; a shared seed alone is insufficient. |
+| Canonical simulation content | `TypeRegistry::digest()`, `walk_tables_digest`, `SimConfig::digest()` and `Rules::digest()` exist; `ReplayLog` records and `replay()` compares them, plus seam names via `seams_digest` and program identity via `script_content_digest`. ADR 0005 additionally requires canonical identities for templates actually used and map/setup. The edition-neutral aggregate, shared template manifest and network comparison are not implemented by those local replay checks. |
+| Session/map configuration and initial world | `game_setup.hpp::digest(GameSetup)` exists and includes seed, seats and world options; it is not a world hash or a network ownership table. Fixed-map identity must name the selected layout and its version/digest, not pretend it is generated. The resolved map, enabled rules, seam/script inputs and setup must agree; compare initial roots at the same tick/turn boundary before starting. Mapping that configuration into a production session remains a seam. |
+
+Use **parsed, resolved simulation content**, not equality of `Anlagen.dat`, `FigurenHeader.dat`
+or any other raw original file. Edition, graphics, audio and language are excluded by accepted
+ADR 0005 policy. Current `state_fields.hpp::fields(Rules)` still serializes `city_names`;
+removing localized words from state and supplying presentation names is outstanding work,
+with the owning base-version change required by ADR 0006. Do not hide that difference by
+omitting a real digest comparison. Reader parity alone proves neither language-neutral hashes
+nor a mixed GOG/History Edition network game. Later mod overlays must contribute the
+**deterministically resolved** simulation data and rules to these same identities; different
+resolved inputs refuse. Overlay ordering/format is outside this ADR.
+
+[State §9.7–9.8](../sim/state.md#97-section-versions-and-extensions-2026-11-14-save-sections-1a)
+governs native framing: absent known tags mean defaults, unknown tags refuse with section and
+number, changed base versions refuse with found/expected versions. No negotiation may skip a
+tag or migrate an old base automatically. A newer loader's ability to read an absent optional
+tag is distinct from ADR 0006's stricter multiplayer requirement that recognized schemas agree.
+
+### 0.2 Five-human session authority and historical model boundaries
+
+The [MVP](../plan/lan-mvp.md) is a **five-human workload**, not a capacity constant.
+`SetupLimits::max_seats` currently defaults to 6 and is configurable. Player ids in
+`Command::issuer` are engine ids, not a five-value wire enum. The symbolic checker's u8 seat
+and the packet's fixed-width fields are format constraints to review when implementing, not
+permission to narrow engine ids or silently adopt a player cap. The six-peer and AI-labelled
+rows in §8/§13/§14 retain their original inputs; they are historical comparisons, not proof
+of the five-human production workload, implemented AI, or adopted budgets.
+
+| State / event | Required authority and transition; implementation status |
+|---|---|
+| Discovery → handshake → lobby | Host admits a session participant and binds it to a seat only after compatibility succeeds. Admission establishes a session/seat identity; trusted-LAN v1 is not cryptographic authentication (§12). A packet's claimed player id is never authority. Production admission/mapping is unimplemented. |
+| Snapshot and catch-up | An ACK proves transport receipt only. Loading a snapshot and matching the selected turn's root prove state agreement at that boundary, not permission to issue commands. Keep the generation/attempt, pin and deadline rules of §8. |
+| Future activation → input enabled | Replay the ownership event at the agreed future turn, then complete the fresh input grant/lag checks (§8.5–8.7). The admitted/authenticated session-to-seat mapping stamps `Command::issuer`; reject stale or non-owning senders. `run_turn`/`Recorder` are local deterministic drivers, not this protocol. No seat-activation command/event codec exists in the current command variants. |
+| Disconnect / grace expiry | Close that connection's input authority; preserve ordered commands already accepted. The proposed grace/recovery machinery remains bounded. **No AI takeover exists.** Whether to keep the seat idle, pause or end on expiry awaits D-10; historical `AI` ownership labels do not decide it. |
+| Reconnect | Prove the same seat entitlement, retire the old pair incarnation, then restore from retained history or fresh snapshot and pass activation/input checks again. Delayed ACKs, reports and commands from old incarnations must not regain authority. Entitlement/authentication and JoinAsk delivery are required seams, not solved by an epoch alone. |
+| Host-role transfer | Overall host migration remains required. Carry accepted command sequences, authoritative connected/ownership state and the next turn frontier, reconciling missing turns before resuming (§9). A single late packet cannot define membership. MVP timing is D-10; election/partition safety is not established by the symbolic join checker. |
+
+Retain §3's pair epochs on all channels/timers, §8.7's attempt and ownership-event identities,
+contiguous sequence checks, bounded windows/pins/backlogs and refusal/restart deadlines.
+Never evict turns still required by an admitted join to claim success. Incarnation wrap safety,
+JoinAsk loss/retry/first-flight races, unused-channel traffic after a drop (OQ-320), and measured
+shared-link/jitter behavior (OQ-371) remain open. The synthetic §15 study narrows sensitivity;
+it is neither a live session nor a measured network. This amendment adopts no timer or cap.
 
 ## 1. Context and the owner's requirements
 
@@ -18,7 +89,7 @@ The owner required (R14, D3, D9, D10, `docs/plan/lan-endless.md` §4 and §7):
 - the host leaving, and another player becoming host;
 - a short drop must not end the game for everyone;
 - a hash check that stays cheap over a long session;
-- a dropped human seat goes to the AI after 60 s and comes back on rejoin (D9);
+- historically, a dropped human seat goes to the AI after 60 s (D9); this conflicts with the no-AI MVP, whose disposition is explicitly unresolved in §0.2 and D-10;
 - in multiplayer the host sets the speed, and 400 % is refused (D10).
 
 The original (`docs/re/tick-loop.md` §4–§5) is the model being replaced, not the byte format. It sends a turn every 100 ms, keeps turns for resend, keep-alives every 1 s in game and drops a client after four missed ones, and checks an MD5 of a full save every 60 s. There is no fixed command lead, no join-in-progress, and a desync reloads the last agreed snapshot or ends the game. Our wire format is the sim's (`docs/sim/state.md` §8.5), which is explicitly not byte-compatible with the original.
@@ -90,14 +161,7 @@ Proposed default: 17 130. It is the smallest count that admits the largest measu
 
 **Discovery.** The host listens on `net.port` and also sends a UDP broadcast on that port every `net.discover_ms`, default 1000, carrying the session id, the player count and the host's name. A client may instead be given an IP and the same port. The port number is **not chosen here** (OQ-250): `tick-loop.md` does not record the original's listen port, and a made-up default would be a guess. Until it is set, the host refuses to open a socket.
 
-**Handshake.** Before tick 0, both sides compare, and a mismatch refuses the peer with a named reason (`docs/plan/lan-endless.md` §4):
-
-- content hash of `Anlagen.dat`, `FigurenHeader.dat`, the island templates and the walk tables;
-- build version and `kStateHashVersion`;
-- `kCommandWireVersion` (`command.hpp`, currently 1);
-- the rules-preset digest;
-- the generator version, its parameters and the seed;
-- `GameSetup`: seats, colours, world options (W1; the type is T36's, and this ADR names the fields the plan already lists).
+**Handshake.** Compare the separate compatibility components in [§0.1](#01-compatibility-components-and-implemented-seams), including canonical parsed content, recognized schemas and active rules. This replaces the earlier raw-file/build/global-number list. Fixed-map sessions compare layout/setup identity; generator identity applies only when generation is actually used. Refuse each mismatch by its component name. These are requirements for a future network implementation, not an existing session API.
 
 Then every peer builds the world and exchanges `World::state_hash()` before tick 0. A difference refuses the session. No turn is sent until the hashes match.
 
@@ -146,6 +210,10 @@ Two checks, both of `World::state_hash()`, which is the root of the hierarchical
 The cost of step 2's tree is paid only on a mismatch, not every check.
 
 ## 8. Join-in-progress
+
+**Scope amendment, 2026-11-18:** AI-seat takeover below is historical model terminology.
+The no-AI MVP uses §0.2 and the unresolved D-10 disposition; it cannot take an implemented
+computer player's seat. The retention/activation safeguards below remain proposed requirements.
 
 A new player asks the host, naming a free seat or a seat the AI is holding. The host does the handshake of [§5](#5-the-session-states) against the running session's setup. The joiner does not change it. The peers already in the game keep playing. Pause remains the mismatch path ([§7](#7-hash-checks)) and the host hand-over ([§9](#9-host-migration)).
 
@@ -205,7 +273,7 @@ A generation is the immutable save at `S` and the pin of turns after it. The hos
 
 Concurrency, the number of overlapping generations and the retained-turn span are global. A generation does not keep a private copy of `concurrent_transfers`. A second joiner who asks while `t - t_save <= snapshot_age_ms`, and while the table still has a free transfer slot, shares that generation. The pin is the union of the turns those joiners still need. An image older than `snapshot_age_ms` is not shared; the running join on it is not evicted by age. The next ask opens another generation when `max_generations` and the tail span allow it. Three joiners on two generations, with a cap of two, refuse the third even though each generation holds only one joiner. An ask that finds the global slots taken is refused. The joins already running stay as they are. A new generation whose span would pass `tail_turns_max` is refused, and turns already pinned stay.
 
-Cancel or disconnect frees that joiner's reassembly buffer and backlog and drops that joiner's reference. The pin remains while any join that still needs the turn is running, including a turn the rolling log has already left, so one cancel does not evict the other joiner's turns. A released slot can be taken by a later ask. When the last joiner who needs a turn finishes or leaves, that turn follows the rolling rule again. Completion means the host has accepted a report for the selected checkpoint `H` compared at that same turn, the ownership event for the joiner's seat is in turn `A` (a turn still unsent at that acceptance), the joiner has replayed turn `A`, and the joiner has opened input after the `InputGrant` / `InputReq` / `InputGo` exchange, so the host holds its `InputOn` ([§8.7](#87-ordered-join-protocol-ownership-events-and-queue-bounds-t52-f2)). Ownership at `A` and input are separate: every peer replays `A`, and the joiner's input stays off while the highest turn in its transport buffer, delivered or not, is more than `input_lag_max` ahead of its applied cursor. Received and applied keep moving during the flights. The receivable-prefix gate in [§8.6](#86-causal-readiness) is the model comparison, not this completion. The joiner then receives channel 0 with the rest of the table. The fluid equality in [§8.3](#83-budgets) is the optimistic comparison, not this completion. The reassembly buffer is freed at completion; the turns received but not yet applied are not. They stay in the joiner's live buffer and are applied in order exactly once, and the host's pin for that joiner ends when `InputOn` arrives, or on restart. Turns received on channel 0 during the transfer sit in that backlog until replay, and [§13](#13-budgets) charges them.
+Cancel or disconnect frees that joiner's reassembly buffer and backlog and drops that joiner's reference. The pin remains while any join that still needs the turn is running, including a turn the rolling log has already left, so one cancel does not evict the other joiner's turns. A released slot can be taken by a later ask. When the last joiner who needs a turn finishes or leaves, that turn follows the rolling rule again. Completion means the host has accepted a report for the selected checkpoint `H` compared at that same turn, the ownership event for the joiner's seat is in turn `A` (a turn still unsent at that acceptance), the joiner has replayed turn `A`, and the joiner has opened input after the `InputGrant` / `InputReq` / `InputGo` exchange, so the host holds its `InputOn` ([§8.7](#87-ordered-join-protocol-ownership-events-and-queue-bounds-t52-f7)). Ownership at `A` and input are separate: every peer replays `A`, and the joiner's input stays off while the highest turn in its transport buffer, delivered or not, is more than `input_lag_max` ahead of its applied cursor. Received and applied keep moving during the flights. The receivable-prefix gate in [§8.6](#86-causal-readiness) is the model comparison, not this completion. The joiner then receives channel 0 with the rest of the table. The fluid equality in [§8.3](#83-budgets) is the optimistic comparison, not this completion. The reassembly buffer is freed at completion; the turns received but not yet applied are not. They stay in the joiner's live buffer and are applied in order exactly once, and the host's pin for that joiner ends when `InputOn` arrives, or on restart. Turns received on channel 0 during the transfer sit in that backlog until replay, and [§13](#13-budgets) charges them.
 
 On host migration ([§9](#9-host-migration)) an in-progress joiner is not a connected seat. The successor is not handed this generation's save. Each running join restarts on the new host, which writes its own fresh image. The §9 pause is the role change the plan already specifies. The restart does not add a pause. Peers who already have the world keep it; they use the rolling log and the resend §9 already describes.
 
@@ -215,7 +283,7 @@ On host migration ([§9](#9-host-migration)) an in-progress joiner is not a conn
 2. Share an open generation when §8.4 allows it. Otherwise save at the current boundary `S` and open the pin at `S+1`.
 3. Send the image on channel 1. Send turns `S+1` onward on channel 0 during that transfer. A full channel-1 window does not delay channel 0.
 4. The joiner `load`s the image, then `run_turn`s from `S+1`. `load_ms` and `replay_turns_per_s` are the model's names for those two costs. The defaults stay 0 and 100. T45 measured both on one host and records them as a labeled scenario in [§13](#13-budgets). The defaults were not replaced (OQ-281). The fluid equality with the host cursor stays the optimistic comparison in [§8.3](#83-budgets). The receivable-prefix gate in [§8.6](#86-causal-readiness) is a model input. It is not the seat message.
-5. The joiner sends commands only after input is opened by the grant / request / go exchange ([§8.7](#87-ordered-join-protocol-ownership-events-and-queue-bounds-t52-f2)). A stored hash match at `H` does not open input, the seat transition at `A` does not open input, and input does not wait until received and applied sit on `H` again. The host names `A` only after it has accepted the report for that same `H`, and `A` is a turn the host has not sent yet; the ownership change is an event in turn `A`. A mismatch, a cancel, an abandoned pair, a cap or an input that never becomes fresh restarts that joiner (and restores its seat's previous owner by a second event if `A` was published). An expired checkpoint alone does not: the host waits for a later watermark and selects a later hash turn. `paused` stays false. A mismatch that includes a peer already in the game is [§7](#7-hash-checks).
+5. The joiner sends commands only after input is opened by the grant / request / go exchange ([§8.7](#87-ordered-join-protocol-ownership-events-and-queue-bounds-t52-f7)). A stored hash match at `H` does not open input, the seat transition at `A` does not open input, and input does not wait until received and applied sit on `H` again. The host names `A` only after it has accepted the report for that same `H`, and `A` is a turn the host has not sent yet; the ownership change is an event in turn `A`. A mismatch, a cancel, an abandoned pair, a cap or an input that never becomes fresh restarts that joiner (and restores its seat's previous owner by a second event if `A` was published). An expired checkpoint alone does not: the host waits for a later watermark and selects a later hash turn. `paused` stays false. A mismatch that includes a peer already in the game is [§7](#7-hash-checks).
 6. A cap that trips during the transfer or the chase restarts this joiner only. Turns still named by another running pin stay. The table is not paused. `Table.advance` does this before it retains the new host turn. An older generation is selected first when the union overflows. A younger pin that still fits stays. `Table.attach` refuses a save past `fragment_max` before a generation is stored, and it refuses an ask whose clock is not the owner's clock. `Table.note_backlog` restarts a backlog past `receive_backlog_turns`. Those calls are the path for the parts in the byte bound. A caller does not retain a later turn by querying the span.
 
 This is the plan's OpenTTD-style join (`docs/plan/lan-endless.md` §4). The snapshot is `World::save()` / `World::load`, not a second format.
@@ -243,9 +311,9 @@ A replay rate at or below the live 10 turns/s does not reach the boundary; the r
 
 Joiner-applied counts a turn only after its `replay_step_ms` interval has elapsed. The shared owner walks that interval before the cursor moves. A deadline, a tail cap, or a horizon that stops the walk keeps the last completed turn. A walk that ends on `catchup_ms` is that stop: the owner restarts and the turn is not counted, so input stays disabled. On the one-fragment clock the step for turn 10 runs from 1 150 ms to 1 160 ms. `catchup_ms` of 1 155 or 1 159 therefore restarts with applied 9, the same applied cursor as `catchup_state_at` at that instant. At 1 160 ms that helper reports applied 10, because it has no owner; the deadline restart at that millisecond reports applied 9. A horizon of 1 155 under the 600 000 ms deadline stops the same unfinished step with applied 9. The 600 000 ms deadline still enables input at 1 160 ms on turn 10, because that step finishes while the joiner is still running. A horizon or deadline before `transfer.done_ms + load_ms` does not start replay. Channel 0 still delivers during that interval. A snapshot that completes at 3 000 ms, read with `horizon_ms` 2 000, stops at 2 000 ms with applied 0, received 18 and backlog 18. Input stays disabled. A nonzero `load_ms` that leaves load completion after the horizon keeps those cursors. `receive_backlog_turns` 5 restarts that joiner at the sixth arrival, 750 ms, with applied 0. A deadline on an arrival's millisecond restarts before that arrival is stored. `catchup_state_at` has no owner and still counts the arrival. `pin_turns` is the applied cursor, and `host_span` is the host frontier at the stop time.
 
-Channel 1 keeps the window of 32. One window of 32 payloads of 1 200 bytes serializes in 3 072 µs at 100 Mbit/s. One channel-0 datagram of 69 bytes serializes in 6 µs. The sum, 3 078 µs, is under the 150 ms one-way delay, which is why this clock omits both. The channels are not placed on one queue. A shared link, jitter, and the flight of the channel-2 hash datagram are not in the model. [§8.7](#87-ordered-join-protocol-ownership-events-and-queue-bounds-t52-f2) is the design for those three. It does not change this clock, and OQ-320 stays open until a `netsim` case or a measured link tests it. The fluid quotients are not recomputed: `17 130 * 150 = 2 569 500`, and `2 569 500 = 32 * 80 296 + 28`, so the 150 ms-RTT figure remains 80.3 s; `17 130 * 300 = 5 139 000 = 32 * 160 593 + 24`, so the 300 ms-RTT figure remains 160.6 s.
+Channel 1 keeps the window of 32. One window of 32 payloads of 1 200 bytes serializes in 3 072 µs at 100 Mbit/s. One channel-0 datagram of 69 bytes serializes in 6 µs. The sum, 3 078 µs, is under the 150 ms one-way delay, which is why this clock omits both. The channels are not placed on one queue. A shared link, jitter, and the flight of the channel-2 hash datagram are not in the model. [§8.7](#87-ordered-join-protocol-ownership-events-and-queue-bounds-t52-f7) is the design for those three. It does not change this clock, and OQ-320 stays open until a `netsim` case or a measured link tests it. The fluid quotients are not recomputed: `17 130 * 150 = 2 569 500`, and `2 569 500 = 32 * 80 296 + 28`, so the 150 ms-RTT figure remains 80.3 s; `17 130 * 300 = 5 139 000 = 32 * 160 593 + 24`, so the 300 ms-RTT figure remains 160.6 s.
 
-The one-fragment row makes the two clocks visible. The snapshot fragment arrives at 150 ms. The fluid comparison then applies turn 1 at 160 ms (`counterexample_1188_done_ms=160`). On the causal clock that turn is not receivable until 250 ms, readiness with an empty prefix is 150 ms, and input is enabled at 1 160 ms on turn 10 while the host is on turn 11. Tokens: causal_one_fragment_arrival_ms=250, causal_one_fragment_done_ms=1160. Those tokens are the 600 000 ms deadline. They are not the 1 160 ms deadline above. They are also not the seat transition in [§8.7](#87-ordered-join-protocol-ownership-events-and-queue-bounds-t52-f2). At 1 160 ms this model has applied 10, received 10 and host 11. The host learns that only from a later watermark, and the cursors have moved by the time the watermark arrives.
+The one-fragment row makes the two clocks visible. The snapshot fragment arrives at 150 ms. The fluid comparison then applies turn 1 at 160 ms (`counterexample_1188_done_ms=160`). On the causal clock that turn is not receivable until 250 ms, readiness with an empty prefix is 150 ms, and input is enabled at 1 160 ms on turn 10 while the host is on turn 11. Tokens: causal_one_fragment_arrival_ms=250, causal_one_fragment_done_ms=1160. Those tokens are the 600 000 ms deadline. They are not the 1 160 ms deadline above. They are also not the seat transition in [§8.7](#87-ordered-join-protocol-ownership-events-and-queue-bounds-t52-f7). At 1 160 ms this model has applied 10, received 10 and host 11. The host learns that only from a later watermark, and the cursors have moved by the time the watermark arrives.
 
 Admission is unchanged. `J` is still the reserved upper bound, not the applied frontier. The defaults `load_ms` 0, `replay_turns_per_s` 100 and `turn_store_cap` 1200 are unchanged. The numbers below are model output from those inputs and from the T45 labeled rates. They are not a measured join.
 
@@ -438,6 +506,9 @@ All 18 runs have clean validators and seated lag 2 turns at the horizon; no run 
 
 ## 9. Host migration
 
+**Scope amendment, 2026-11-18:** required overall; MVP scheduling awaits D-10. The following
+is a proposed recovery design, not an implemented election protocol or a partition-safety proof.
+
 Every peer already has the world, so only the role moves: who numbers turns and who collects commands.
 
 The successor is the lowest seat index that is still connected. Every peer can compute that from the same connected-set, so there is no vote. "Connected" means a packet was received within `net.grace_ms` ([§10](#10-drops-and-outages)).
@@ -454,6 +525,10 @@ On the way:
 If the successor also vanishes before step 6, the next-lowest seat repeats the same steps. The game ends only when no human seat is connected ([§10](#10-drops-and-outages)). A join that was still receiving a snapshot restarts on the successor, as [§8](#8-join-in-progress) defines. That restart is not a further pause.
 
 ## 10. Drops and outages
+
+**Scope amendment, 2026-11-18:** the AI transitions in this historical proposal and its
+`grace_ms` rationale are not executable MVP policy. Use §0.2 and the owner
+decision page for the no-AI replacement. All numbers below remain proposed, not newly adopted.
 
 Every number in this section is configuration. The defaults and the reasons:
 
@@ -511,7 +586,7 @@ v1 does not authenticate. Anyone on the LAN who can see the broadcast can ask to
 
 What v1 does check:
 
-- `protocol_version`, `kCommandWireVersion`, `kStateHashVersion`, the content hash and the setup digest, at the handshake;
+- the separate framing, schema/section, PRNG, recognized-tag, active-rule, canonical-content and session identities in §0.1, at the handshake;
 - every length and count is refused before a buffer is sized to it: the packet header ([§3](#3-the-packet-format)), fragment `count` ([§4](#4-the-channels)), and the turn decoder (`state.md` §8.5, "checked before any allocation");
 - `World::load` of a snapshot runs the save checks before it builds containers (`state.md` §9.5);
 - the issuer of a command is the host's stamp, not a field the client is trusted to set.
@@ -591,7 +666,7 @@ The one-second hash is not this transfer. Channel 1 is separate from channel 0.
 
 **OQ-251 is closed** by the `S01_07_01` row: one `state_hash()` is 7.9 ms median with every chunk dirty and 0.34 ms median after `prepare_hash`, and `save()` is 11 474 169 bytes. The status of this ADR stays Proposed until the owner approves it.
 
-An empty turn payload is 8 + 4 + 4 = 16 bytes. With the 25-byte header and 28 bytes of IPv4+UDP, one datagram is 69 bytes. That 69 is this empty datagram. A turn whose commands are the T45 1 216-byte burst is two fragments, accounted in [§8.7](#87-ordered-join-protocol-ownership-events-and-queue-bounds-t52-f2). At 10 turns per second that is 690 bytes/s from the host to each other peer. At 6 peers the host sends to 5 others: 3 450 bytes/s, plus one hash report of the same order once per second per peer. A single placement's `TurnEntry` is a few dozen bytes (`state.md` §8.5), so a command on every turn from every seat stays in the same thousands of bytes per second. The snapshot is the save measured above, and it is sent on a join or a resync, not on the one-second hash. The steady-state figure does not include it.
+An empty turn payload is 8 + 4 + 4 = 16 bytes. With the 25-byte header and 28 bytes of IPv4+UDP, one datagram is 69 bytes. That 69 is this empty datagram. A turn whose commands are the T45 1 216-byte burst is two fragments, accounted in [§8.7](#87-ordered-join-protocol-ownership-events-and-queue-bounds-t52-f7). At 10 turns per second that is 690 bytes/s from the host to each other peer. At 6 peers the host sends to 5 others: 3 450 bytes/s, plus one hash report of the same order once per second per peer. A single placement's `TurnEntry` is a few dozen bytes (`state.md` §8.5), so a command on every turn from every seat stays in the same thousands of bytes per second. The snapshot is the save measured above, and it is sent on a join or a resync, not on the one-second hash. The steady-state figure does not include it.
 
 ### T45 measurement (2026-10-27)
 
@@ -654,11 +729,16 @@ The T45 rates are `replace()` copies. The slowest row is still `endless02` empty
 
 Seed 1 at 2% data loss keeps the snapshot transfer times 113 250, 198 750 and 127 050 ms. Channel 0 draws its own LCG from the same seed over the 6 010-turn catch-up horizon (`catchup_ms / turn_ms + max_attempts + 2`) and drops 128 data sends on that horizon. It does not drop acknowledgements. `endless02` at 438 turns/s then enables input at 205 153 ms, applied turn 2 050, host turn 2 051. The fluid comparison on that transfer still meets at 204 944 ms on turn 2 049. The host span 2 051 stays inside 4 096.
 
-What this establishes is the boundary, the refusal rules, and that these measured inputs fit the existing caps without pausing the table. What it does not establish is a shared link, jitter, the channel-2 hash's own flight, another machine, or a real play. [§8.7](#87-ordered-join-protocol-ownership-events-and-queue-bounds-t52-f2) is the design for the link and the hash flight. OQ-320 stays open until `netsim` or a measured link tests it. No socket is added.
+What this establishes is the boundary, the refusal rules, and that these measured inputs fit the existing caps without pausing the table. What it does not establish is a shared link, jitter, the channel-2 hash's own flight, another machine, or a real play. [§8.7](#87-ordered-join-protocol-ownership-events-and-queue-bounds-t52-f7) is the design for the link and the hash flight. OQ-320 stays open until `netsim` or a measured link tests it. No socket is added.
 
 T52 F2 does not recompute this table and does not change `load_ms`, `replay_turns_per_s` or `turn_store_cap`. The input column is the model gate. 1 160 ms and 179 160 ms are model comparisons from `catchup_state_at`; they are not rows of the §8.7 protocol (whose `endless02` row opens input at 179 560 ms on the checker's own 10 ms replay step). The exact `endless02` datagram total is in §8.7. The 96 948 576 byte figure above is memory. It is not the transmit-queue cap in §8.7.
 
 ## 14. The `netsim` test plan
+
+**Current target, 2026-11-18:** reproduce these properties for five humans, without a computer
+player substituting for a disconnected seat, after D-10 defines expiry and migration scope.
+The six-peer cases below are the historical W3 workload; keep their inputs/results distinct.
+Neither workload has passed a production C++ network harness at this pin.
 
 `netsim` runs N peers in one process. The link between them can delay, jitter, drop, reorder and disconnect. Each human seat has a command bot. No game files are required for the cases below; they build a world the sim can construct without `Anlagen.dat`. The scenario measurement of [§13](#13-budgets) stays a separate, manual run.
 
@@ -671,7 +751,7 @@ From W3's acceptance (`docs/plan/lan-endless.md`):
 1. 6 peers, 150 ms latency, 2 % loss, 10 000 turns. The roots match at every check.
 2. One peer's world is changed under the test. The mismatch is seen within one `hash_every` interval, `diff_trees` names a path, the snapshot loads, and the roots match again.
 3. A peer is dropped and rejoins inside `grace_ms`. It catches up and the roots match. The seat is the same seat.
-4. A new peer joins a running game and takes a free seat. The pass condition is the protocol of [§8.7](#87-ordered-join-protocol-ownership-events-and-queue-bounds-t52-f2), run through the ordered transport: the host has accepted a report for the selected `H` compared at that same turn; the ownership event is in turn `A = C + command_delay` and every peer, including a second joiner and a restarted joiner, replays it with identical roots at matching turns; and the joiner opens input only on a delivered `InputGrant` with received minus applied at most `input_lag_max`. Delivered but unapplied turns are kept. The first accepted command is stamped `current + command_delay`. The others do not pause. Cases: a lost watermark, checkpoint or report is repaired by the channel-0 resend and later messages on that pair wait behind it; a checkpoint at its two-interval deadline restarts that joiner only (the exact-deadline millisecond does not accept, one millisecond earlier does); a report for a turn other than the selected `H` does not accept; a turn lost after `H` does not open input stale; two overlapping joins on one generation and on two generations keep both attempts; a cancel after `A` releases the seat on every peer; and a 1 216-byte burst every turn with ACKs blocked stays inside the 32-sequence window.
+4. A new peer joins a running game and takes a free seat. The pass condition is the protocol of [§8.7](#87-ordered-join-protocol-ownership-events-and-queue-bounds-t52-f7), run through the ordered transport: the host has accepted a report for the selected `H` compared at that same turn; the ownership event is in turn `A = C + command_delay` and every peer, including a second joiner and a restarted joiner, replays it with identical roots at matching turns; and the joiner opens input only on a delivered `InputGrant` with received minus applied at most `input_lag_max`. Delivered but unapplied turns are kept. The first accepted command is stamped `current + command_delay`. The others do not pause. Cases: a lost watermark, checkpoint or report is repaired by the channel-0 resend and later messages on that pair wait behind it; a checkpoint at its two-interval deadline restarts that joiner only (the exact-deadline millisecond does not accept, one millisecond earlier does); a report for a turn other than the selected `H` does not accept; a turn lost after `H` does not open input stale; two overlapping joins on one generation and on two generations keep both attempts; a cancel after `A` releases the seat on every peer; and a 1 216-byte burst every turn with ACKs blocked stays inside the 32-sequence window.
 5. The host is killed at 20 turns chosen by the test. Each time the lowest remaining seat becomes host and the roots match afterwards.
 6. The link is cut for 0.5 s, 2 s and 5 s. No seat is given to the AI (all three are inside `grace_ms`), and every peer catches up from the buffer.
 7. A long run, the plan's 8-hour 6-peer session, is not part of the ordinary test. It is the W9 run. `netsim` keeps the same assertions so that run is the same harness with a longer limit.
@@ -703,3 +783,29 @@ The command delay of 2, the 100 ms turn, the 60 s grace and the 10-minute full c
 
 - **OQ-372.** Open. The wire form of an ACK-only datagram (design assumption: payload length 0, no sequence consumed, the `sequence` field repeats the next sequence) and the encoded size of the T52 messages and of an ownership `TurnEntry` (14 bytes). These are design assumptions in §8.7, not wire commitments.
 - **OQ-373.** Open. The design limits `input_lag_max` 6, `input_host_lag_max` 6 (plus one round trip of turns), `max_outstanding_wm` 4, `max_root_pins` 2, `wait_cap` 64 datagrams, `input_ready_ms` 20 000, `select_margin_ms` 100, `deadline_rtts` 2, `rtt_initial_ms` 1 000 and `seated_lag_max` 20 turns, with the reasons in §8.7, and two domains the checker found (T52 F3): replay at most 73 ms per 100 ms turn on `endless02` (the catch-up arithmetic against `catchup_ms` 600 000 ms), and a one-way delay up to 1 500 ms in the normal row (the 32-datagram window at 10 turns per second ends it at about a 3.2 s round trip). None is adopted as an engine default.
+
+## 16. Bounded implementation order (NET-ADR-1, 2026-11-18)
+
+The following are future packets, not authorized implementation by this documentation task.
+Each needs a frozen source identity, focused negative controls and its own handoff:
+
+1. **Mac, headless protocol/state model:** encode proposed transitions and bounded refusal paths;
+   preserve the model's known gaps. D-9 approval/limits and D-10 session disposition block
+   freezing production policy, while isolated models can retain explicit hypothetical inputs.
+2. **Mac, identity and ownership:** implement the §0.1 manifest, named mismatch refusals and
+   admitted session-to-seat mapping, with spoofed-issuer/stale-incarnation controls. ADR 0005's
+   missing canonical/language seams block a mixed-edition compatibility claim.
+3. **Mac, loss/reorder/duplicate harness:** real protocol codec and per-peer sequences, including
+   JoinAsk races, wrap bounds, replayed grants and idle channels after reconnect. No sockets yet.
+4. **Mac, snapshot/catch-up:** use real World saves/turns and identical-boundary roots; test pin,
+   queue, deadline and activation failures. Historical measurements are inputs, not speed promises.
+5. **Mac, reconnect and host transfer:** prove rejoin entitlement and recovery ownership;
+   D-10 blocks the chosen no-AI expiry and MVP migration policy. Never model an absent AI as done.
+6. **Windows, socket adapter and viewer session:** implement the transport seam after headless
+   checks; D-9 port and limits block deployment. Preserve opaque addresses and issuer authority.
+7. **Windows/live multi-peer acceptance, Mac headless support:** the selected five-human map,
+   real loss/disconnect/reconnect/migration cases and mixed editions only after their dependencies
+   pass. D-1 map, D-2 living defaults and D-10 fish/build policy remain owner decisions.
+
+The next bounded implementation boundary should be the headless state/codec contract after
+owner review, not a combined socket/gameplay/mod framework. No network or throughput gate ran here.

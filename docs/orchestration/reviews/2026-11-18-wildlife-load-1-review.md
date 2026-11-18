@@ -55,3 +55,13 @@ corrects the documented load domain and adds an executable raw-stamp boundary,
 without World wiring. It consumes no decoder implementation or pending KBEWOHN
 source. Direct release keeps gameplay prerequisites moving while this CI runs;
 it is not a waiver of exact-head CI or permission to silently choose feature tags.
+
+## Terminal hosted CI — runner unavailable
+
+Exact run44344197686 atf1e245d2 finished Failure. The API job inventory records
+ten successes, cancelled macos-clang job134942185691 with no steps, and a failed
+aggregate gate. Public annotation: the job was not acquired by a hosted runner
+after multiple attempts, with capacity and internal-server notices. This does not
+reopen the decoder source review or justify rerunning successful lanes. Acceptance
+awaits a narrow authenticated retry at the same head. The independent helper
+correction and prepared initialization contract continue as separately scoped work.

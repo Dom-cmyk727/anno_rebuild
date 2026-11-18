@@ -25,3 +25,22 @@ Use resource-limited owned containers/builds and admission control; never stop a
 Do not repeat the town experiment if the change has no path into its commands or results;
 justify reuse explicitly. Stop at a clean reviewed CI-green candidate. Landing stays with the
 Windows orchestrator. Report the cherry-pickable repair delta for other branches; do not modify them.
+
+## Diagnostic expansion and closeout scope
+
+The first build fixes exposed additional independent failures; they are included in this
+isolated package rather than sent to the gameplay executor. The final source/evidence review
+is recorded in [the repair review](../reviews/2026-11-18-town-ci-close-1-review.md).
+
+| Additional requirement | Proof and limitation |
+|---|---|
+| Publication statistics tolerate empty input | Empty guard plus existing real threaded runner with two matching nonempty count/quantile rows; no timing/default change |
+| Mine native load never dereferences an empty destination | Original existing byte-layout test aborts under libc++ DEBUG hardening; corrected 28-case recovery and 56-case Debug/ASan selections pass; bytes/hash identity unchanged |
+| Test fixtures compile without warning suppression | Checked accesses/lifetimes and explicit prerequisites; seven GCC x86 Release translation-unit controls plus focused canonical execution |
+| Diagnostics arrive in a finite batch | GCC Release Ninja keep-going retains nonzero status and logs independent failures; controlled two failures plus one successful target prove status is not hidden |
+| Narrow selection covers the edited island fixture | Initial similarly named selection gap disclosed; supplemental exact case passes in Debug and ASan without repeating freight |
+
+Original failed CI and local attempts remain preserved. The final changed-test gates run at
+9edb151c; earlier production and minimap gates retain their original pins and dependency reuse.
+The exact-head hosted CI run remains the final acceptance condition. No other worktree takes
+these changes automatically; the landing orchestrator handles integration into the accepted stack.

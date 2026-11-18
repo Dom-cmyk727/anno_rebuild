@@ -5,8 +5,8 @@ Mac orchestrator, 2026-11-18. Independent read-only source/evidence reviewer:
 
 Branch `task/TOWN-CI-CLOSE-1` starts at town report
 `156badab35516609e92796e85a4fb0b9314ddac6`. Current source is
-`d1e5c13a2a81568f0df5ebeb4ae86697c24b6568`; CI
-[44262416790](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44262416790).
+`9edb151c414246d306194a703db71475affbdad4`; CI
+[44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323).
 The local report checkpoint `3514802f` preserves earlier receipts and conditional review.
 It is documentation, not a substitute for a green source build.
 
@@ -85,3 +85,49 @@ Wildlife continued in its separate branch. No wildlife source, running job, owne
 assertion or coordinator was changed. No main push, merge, force or automatic other-lane intake.
 The Windows orchestrator retains stacking and landing authority. Once CI is green, accept town
 on this repaired stack; do not describe the preserved original red town ref as green.
+
+## Final Release diagnostic batch (9edb151c; CI pending)
+
+The keep-going run 44262416790 collected seven failing translation units. Its retained build
+artifact matches GitHub artifact 14410400224 SHA256
+`1d53e7ca6d8016361462e5a0a565d33f3af0e8734e2ee22672ef16f940aa408c`.
+The batch is test-only: sized codec suffix buffers, checked fixture lookups, and explicit
+post-mutation player/route preconditions. A failed precondition records REQUIRE failure before
+returning; no null path silently passes. Script's before-state remains a value copy.
+
+The container fixture retains actual lvalue copy assignment into a differently populated vector,
+checks optional replacement/reset/emplacement, source independence and the existing move path.
+This replaces the empty-destination assignment branch of that test; fresh-copy construction
+remains separately covered. It is not described as unchanged branch coverage.
+
+Independent review verified all seven corrected TUs compile under x86 GCC 15.2 with the exact
+Release warning flags, O3/NDEBUG/C++20 and Werror. Compiler controls use local include/build-fixture
+roots, so they are not byte-for-byte hosted CI commands. All seven diagnostic logs are empty and
+objects nonempty; compiler identity and x86 ELF architecture were checked. No warnings suppressed.
+
+The first narrow selection matched a similarly named container test rather than the edited island
+fixture. The reviewer caught the inventory mismatch. Preserve the initial selection and add only
+the missing case in Debug and ASan; do not claim the 8/9 selection covers the island-copy assertions.
+Supplementary receipts and final hosted CI remain required before acceptance.
+
+### Batch receipts and independent closure
+
+At clean 9edb151c, Debug executes 9/9 including the real original-file freight voyage;
+ASan/UBSan executes 8/8 (no long freight rerun). Supplemental island-copy gates execute
+1/1 in Debug and 1/1 under ASan/UBSan. All four also execute the required picture contract
+1/1. Failed, skipped, empty, incomplete and sanitizer-line counts are zero. The reviewer
+re-parsed each log and checked the exact selection, source identity and hashes. The missed
+island test is now covered, without restarting the completed freight run.
+
+| File under cache/town-ci-close-1 | SHA256 |
+|---|---|
+| batch-dev.log | 47c26e61b32d55d5876df7797a1fc91c28c09d9d5492e6b91ba780a6bf755a69 |
+| batch-asan.log | 612ef75a74799407c97fbcc1aba7b9772ec2824b12ec39911fc7b0e7fad837d5 |
+| batch-island-dev.log | 1c27f4b1661633bf5cfd22fe6a3854e255b0a69bddfd14900656454c5caa948d |
+| batch-island-asan.log | 4f223773affc223063feb10bdc64be5dde2a7a0d7ade5b0887852e687c752350 |
+| batch-x86-results.log | 5e6515bec16a8f5dbba4f75ad0d29e429c558fa2d1a3b06c079524a584e43787 |
+| compile-batch.sh | 0683d3a2c5008c0c81cfb57eb430b3d66dbda5bd4f95d2e8a7cae834a504135d |
+
+Final independent source/evidence review is approved conditionally on exact-head hosted CI.
+No known local blocker remains. Earlier gates retain their original pins and are reused by
+explicit dependency; this is not a new full game-file or target-GPU campaign.

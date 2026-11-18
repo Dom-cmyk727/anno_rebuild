@@ -193,3 +193,56 @@ VERDICT: PASS
 - `cache/sim-limits-1/gcc-release-results.log`: `752cd2eadd9a473a5f4d82885ba14fe76167c5c04b29dbb4de4af2769f2b4fac`.
 - `cache/sim-limits-1/compile-release.sh`: `49d7e2473e5dcf031632c424ed68c636f1feed37e88fe9b67513d6db407fd3ea`.
 - `cache/sim-limits-1/build-dev-first.log`: `8e617a039a2544d73ed81007ef0e83cef77b69a910bc21f866dac1b166ff9fab`.
+
+## Focused CI lint correction — 2026-11-18
+
+CI run [44294408513](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44294408513)
+compiled Linux GCC successfully but failed `anno_sim_tests_lint_sim_passes` on seven
+`constexpr_count` declarations. The earlier local focused selector omitted lint;
+this is an owned coverage omission, not an inherited or gameplay failure. The
+failed head `c4f52d286b6589eb86467d8681c3f03af35a4a43` and its original results remain
+unchanged. Artifact 14422993528 and its raw test log are retained in private cache.
+
+```text
+COUNTS: selected=2778 executed=2295 failed=1 empty=0 skipped=482 (required-asset=449 platform=7 opt-in=26 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+```
+
+The correction adds seven exact path/declaration exceptions through the existing
+reasoned allowlist: three fixed command field widths, two bounds derived solely
+from u16 command framing, and two aggregate split-serialization obligations.
+There is no lint implementation, gameplay-capacity, engine, fixture or identity
+change. Existing unused-entry enforcement remains enabled.
+
+Direct lint passes; its self-test reports `lint_sim self-test: 70 cases, 0 failures`.
+A private copied source tree passes, then a single added
+`inline constexpr std::uint32_t unrelated_gameplay_cap = 8;` fails with exactly one
+`constexpr_count` finding and exit 1. Removing it restores exit 0. Real production
+source is never mutated by this control.
+
+Canonical selection (`--select '^anno_sim_tests_lint_sim_(passes|self_test)$'`,
+`--jobs 1`) in `cache/sim-limits-1/lint-correction-gate.log`:
+
+```text
+COUNTS: selected=2 executed=2 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+The prior required picture contract on this same unchanged build is reused via
+`--skip-auto-contract`. All 11 frozen source/spec/test hashes and all 119 tracked
+fixture blobs still match their recorded identities. The 55-case Debug and ASan
+gates, original voyage and compiler receipts remain applicable and were not
+repeated. Other running CI jobs were left untouched.
+
+Evidence SHA256s:
+
+- `cache/sim-limits-1/ci-linux-gcc-failure.zip`: `bffb44df26b2fbeab0824af8c34083543189f5bf0832a9f2113241207f06a221`.
+- `cache/sim-limits-1/ci-linux-gcc-failure.log`: `cf5c174445d518da1b5e25751ae629c04bf7e8b961fee3899da664d523e11bc9`.
+- `cache/sim-limits-1/lint-correction-direct.log`: `c90ca6eba541545a82beb573bfcbcc47531df735edd4ff68c814ab50296e6948`.
+- `cache/sim-limits-1/lint-correction-self-test.log`: `25d5dbd23f182403d85606da5bdd4ceb5f592c1fa1516ac9754f8c8c9a303903`.
+- `cache/sim-limits-1/lint-correction-control.py`: `76a5bbd540ae4cb799f137503729efdc15037912868bb7f75ce343ec0b76431e`.
+- `cache/sim-limits-1/lint-correction-control.json`: `99356dcef509ee6ae30c17d8b35eca471d7865392fdd9ed728a458cb7d94a40c`.
+- `cache/sim-limits-1/lint-correction-control.log`: `b82b31eb40ef2a4e65f9d721f73350e7329c4007c25d3a87beb0c918a841d348`.
+- `cache/sim-limits-1/lint-correction-gate.log`: `55160103a67a4fb9a6fa3e83a546629fa8146625e48d6ce9a8ef5f3373d677dc`.
+
+Focused pre-push correction review: orchestrator independently approved the seven-entry allowlist correction with no P1/P2; canonical 2/2 and unrelated-cap control verified. Corrected-head hosted CI remains pending.

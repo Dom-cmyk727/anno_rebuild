@@ -15256,3 +15256,35 @@ Decisions and reasoning:
 - Windows delta: shared compatibility helpers/header and four auto-registered tests; no format change.
 - NOT_RUN: native Windows/WSL/original-runtime/HE/GPU, LeakSanitizer, full suite/town campaign.
 - QUESTIONs: none blocking. Exact-head CI and final review are supplied directly at handoff.
+
+### SIM-LIMITS-1 — focused CI lint correction — READY FOR REVIEW
+
+- Prior head `c4f52d28`, CI 44294408513: Linux GCC compiled, then `anno_sim_tests_lint_sim_passes` failed on seven new constexpr declarations.
+- The earlier focused local selection omitted lint. Preserve this owned failure and all original gate evidence.
+- Exact CI receipt:
+
+```text
+COUNTS: selected=2778 executed=2295 failed=1 empty=0 skipped=482 (required-asset=449 platform=7 opt-in=26 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+```
+
+- Correction: seven narrow, justified entries in the existing `tools/lint_sim_allow.txt`; no engine or lint-rule changes.
+- Direct lint passes; lint self-test: 70 cases, 0 failures.
+- An unrelated gameplay-cap declaration in a private source copy fails with exactly one constexpr_count finding (exit 1); clean and restored controls pass (exit 0).
+- Canonical lint and self-test, `cache/sim-limits-1/lint-correction-gate.log`:
+
+```text
+COUNTS: selected=2 executed=2 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+Decisions and reasoning:
+- Allow fixed wire-layout widths, u16-framing-derived bounds and aggregate serialization obligations by exact declaration; preserve the policy against fixed gameplay capacities.
+- Reuse Debug/ASan 55-case gates and their picture contract: all 11 frozen inputs remain identical; all 119 fixture blobs unchanged, 0 pins moved.
+- Preserve failed CI artifact 14422993528 and raw log in private cache; hashes and full control details are in the [evidence addendum](evidence/sim-limits-1.md#focused-ci-lint-correction--2026-11-18).
+- No 55-case/voyage rerun, prior-head rewrite or cancellation of other CI jobs.
+
+NOT_RUN: corrected-head hosted CI (awaiting focused review before ordinary push); unchanged engine gates were reused.
+QUESTIONs: none. Independent focused correction review requested from the orchestrator before push.
+
+Focused pre-push correction review: orchestrator independently approved the seven-entry allowlist correction with no P1/P2; canonical 2/2 and unrelated-cap control verified. Corrected-head hosted CI remains pending.

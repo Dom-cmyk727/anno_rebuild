@@ -171,3 +171,14 @@ src/sim/include/anno/sim/fisher.hpp:kFisherWaterThreshold = 32;  # original heig
 
 # FISHER-1b permanent header tag 1, owner-reserved on the board; a wire discriminant, not a limit.
 src/sim/include/anno/sim/extension_context.hpp:static constexpr std::uint16_t tag = 1;  # state.md §9.8 permanent fisher_rules tag
+
+# --- command_framing.hpp / state_fields.hpp (SIM-LIMITS-1)
+# Fixed wire widths and their derived framing bounds are compatibility invariants,
+# not gameplay capacities. Harvest counts guard the existing split serialization.
+src/sim/include/anno/sim/command_framing.hpp:^inline constexpr std::uint64_t head_bytes = 12;  # ClientRecord freight header: u64 ship plus u32 stop count, fixed wire layout
+src/sim/include/anno/sim/command_framing.hpp:^inline constexpr std::uint64_t stop_bytes = 20;  # command stop: u64 warehouse, two i32 coordinates and u32 action count; distinct from native save layout
+src/sim/include/anno/sim/command_framing.hpp:^inline constexpr std::uint64_t action_bytes = 13;  # command action: u8 direction, u32 goods and u64 tons, fixed wire layout
+src/sim/include/anno/sim/command_framing.hpp:^inline constexpr std::uint64_t max_stops = \(kMaxRecordPayload - head_bytes\) / stop_bytes;$  # derived only from the u16 payload framing and fixed command widths, not a world capacity
+src/sim/include/anno/sim/command_framing.hpp:^inline constexpr std::uint64_t max_actions =$  # derived from the u16 payload framing after one minimum stop, not a gameplay capacity
+src/sim/include/anno/sim/state_fields.hpp:^inline constexpr std::size_t kHarvestCommonMembers = 7;$  # aggregate serialization obligation: seven existing common HarvestState members
+src/sim/include/anno/sim/state_fields.hpp:^inline constexpr std::size_t kHarvestMasonMembers = 2;$  # aggregate serialization obligation: two existing conditional mason members in fields(Figure)

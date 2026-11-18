@@ -5,12 +5,15 @@ after the candidate gate closed with a preserved FAIL and MAC-HEAVY-1b was accep
 Start from main, not the failed UI candidate; no overlap with a GATE-RUN.
 This refresh preserves the original measurement scope from the 2026-11-16 packet.
 
-**Setup dependency found at intake:** the current ship-start loader cannot receive the existing
-ExtensionContext. Measurement creation waits for [TOWN-START-SETUP-1](town-start-setup-1.md)
-and the orchestrator's review/release. Do not disable the required fisher option or patch a live world.
+**Setup dependency ACCEPTED; measurement RELEASED 2026-11-18:**
+[TOWN-START-SETUP-1 review](../reviews/2026-11-18-town-start-setup-1-review.md), exact-head CI
+44209875238 green. Use base `ad360af024543a71e083dc3de714b7f48f354e63`, which forwards the
+existing ExtensionContext. The unmodified task/TOWN-START-1 at `b5c0ada2` may be fast-forwarded
+to that accepted head; no rebase/reset or moving-main merge. Keep the required fisher option
+at creation and never patch a live world's rules.
 
-**Base:** `origin/main` at the time of starting (name the commit in the report). Branch `task/TOWN-START-1`, a new
-worktree. About 3 to 4 hours. One concern: measure how far a town founded from the ship gets through the public
+**Base:** accepted setup head above (a local stack pending Windows landing). Branch `task/TOWN-START-1`,
+the existing owned worktree. About 3 to 4 hours. One concern: measure how far a town founded from the ship gets through the public
 command path alone. Measurement only: no rule, default, state number, save layout or pin changes. Never rebase,
 force-push or push `main`. No reviewer subagents.
 

@@ -1,6 +1,6 @@
-# TOWN-START-SETUP-1 — code and local evidence reviewed; CI pending
+# TOWN-START-SETUP-1 — ACCEPTED
 
-**Disposition: no blocking code/local-evidence finding; acceptance awaits exact-head CI.**
+**Disposition: ACCEPTED within the setup-forwarding scope; no blocking findings.**
 Reviewer: Mac orchestrator (Orchestrator II Mac), independent read-only review.
 Reviewed head `ad360af024543a71e083dc3de714b7f48f354e63`, tree
 `ea620a8889e2bc8e0512370fde6de6db8210f462`; tested code
@@ -8,7 +8,9 @@ Reviewed head `ad360af024543a71e083dc3de714b7f48f354e63`, tree
 `b5c0ada209d94a0082bc88d793c917c7222e6a21`.
 The final descendant adds report/evidence docs only. CI push run
 [44209875238](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44209875238)
-was still in progress when checked; no hosted success is claimed yet.
+is completed/success. The orchestrator independently verified the push event, exact head and
+all 12 successful jobs, including gate and all five C++ configurations. Hosted CI has no
+original game files; it does not replace the local original-file results or target-host landing gates.
 
 ## Code and discriminating tests
 
@@ -50,9 +52,16 @@ not builds, tests or the historical 5,184.520-second pins campaign. The checkout
 
 ## Release boundary and efficient next packet
 
-When exact-head CI passes, record acceptance and release TOWN-START-1 on this accepted head (or a
-landed equivalent). It may be a local stack: no main landing or owner relay is required to begin the
-measurement after review. The Windows orchestrator still owns final stacking and target-host landing.
+TOWN-START-1 is RELEASED on accepted head `ad360af024543a71e083dc3de714b7f48f354e63` as a
+local stack. The executor may fast-forward its unmodified task/TOWN-START-1 from `b5c0ada2` to
+this head using a normal fast-forward-only merge, or create its measurement branch from this head
+if the original branch is unavailable. No reset/rebase/force or moving-main merge is authorized.
+No main landing or owner relay is required to begin the measurement. The Windows orchestrator
+still owns final stacking and target-host landing.
+
+**Owner/landing handoff:** packet TOWN-START-SETUP-1; head
+`ad360af024543a71e083dc3de714b7f48f354e63`; CI run 44209875238; this review file.
+The optional forwarding seam is accepted, not a town-growth demonstration or a default change.
 
 For the next measurement-only packet, reuse this full pins result if the delta is confined to test
 harness/registration and docs and leaves production, rules, fixtures and pins byte-identical. Verify

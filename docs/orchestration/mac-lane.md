@@ -385,3 +385,22 @@ to approve faithful development again. A different random-order policy would
 require owner approval; none is selected. Executor continues only INIT examples,
 contract and handoff, not resource implementation. The packet's automatic owner-
 question wording is clarified accordingly. No defaults or source changed.
+
+### LOAD-FIX CI infrastructure receipt; INIT remains active
+
+At exact head533ee3fc, CI44354548420 build-macos job134979143062 was
+cancelled before any steps. The executor preserved the jobs JSON and public
+annotation: the hosted runner never acquired the job after multiple attempts.
+Other C++ lanes were still running at this receipt; this is not a terminal
+aggregate verdict or a product failure. Independent local review remains
+approved, final acceptance pending. No source change or empty commit is warranted.
+If the aggregate ends blocked, an authenticated operator should retry only the
+unexecuted lane and dependent gate, retaining successful lanes.
+
+EXECUTOR II MAC continues WILDLIFE-INIT-1 and reports its frozen pushed head,
+focused gate and CI directly to this Mac orchestrator for review. The next
+faithful prerequisite is the ordered GELAENDE resource prefix, not a new owner
+policy choice. Its future packet must preserve original admission and variant
+effects; the separate variant plane cannot be stored in growth phase or spare
+aux bits, and BuildCmd eligibility must not be widened for scenery import.
+The prerequisite is not released before the INIT review.

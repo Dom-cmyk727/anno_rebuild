@@ -65,3 +65,15 @@ executed test failure is inferred. Overall run was still in progress at inspecti
 Raw public pages and a timestamped receipt are retained privately under
 cache/kbewohn-ci-watch/. Acceptance remains pending an authenticated narrow retry
 and exact-head terminal green result. The independent formats task continues.
+
+## Terminal CI receipt
+
+Source3c20430b run44335070081 is terminal Success; final6fb7dbb run44336688872
+is terminal Failure, with no-runner macOS cancellation and failed aggregate gate.
+The earlier in-progress statements above are historical. Source-page SHA256:
+5f24122d5dbcf959260002951ddaeef4a1476d730c49bdb496785b0fd886b7bf.
+Final-page SHA256:
+fc7906784e12259ca97b9e7f77891b5dc51190a882a1b65569e3d02c3ca94195.
+Both pages bind the full reported commit; raw pages/terminal JSON are retained in
+cache/kbewohn-1/. This is a public-HTML receipt with collapsed matrix inventory,
+not a fabricated leaf-job count. Exact-final-head green remains required.

@@ -333,6 +333,13 @@ if(ANNO_BUILD_TESTS)
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/wildlife_ref_contract_test.py
                      --ref ${CMAKE_SOURCE_DIR}/tools/wildlife_ref.py
                      --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/wildlife_vectors.txt)
+    add_test(NAME wildlife_initialization_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/wildlife_init_ref.py
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/wildlife_init_vectors.jsonl)
+    add_test(NAME wildlife_initialization_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/wildlife_init_ref_contract_test.py
+                     --ref ${CMAKE_SOURCE_DIR}/tools/wildlife_init_ref.py
+                     --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/wildlife_init_vectors.jsonl)
     add_test(NAME whale_reference_agrees
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/whale_ref.py
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/whale_vectors.txt)

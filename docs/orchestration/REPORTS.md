@@ -15348,3 +15348,61 @@ Decisions and reasoning:
 - Preserve first failures and minimal controls; no unrelated campaign or whole-matrix rerun.
 
 QUESTIONs: none for this bounded evaluator. Production storage/tag allocation and full RNG closure remain separate orchestrator-owned work.
+
+## 2026-11-18 — WILDLIFE-RESOURCE-FIX-1 — READY FOR RE-REVIEW
+
+- Same branch `task/WILDLIFE-RESOURCE-1`; reviewed parent `3aab2a93680a9edf97ab4c5b0ac932eaae130513` preserved.
+- Correction source `754ef6a01fb6ed416cc4468513625d3a2486d2f1`; report/evidence-only closeout follows.
+- Read review and packet at `03d035a4` without merging orchestration. No source intake, rebase, main push or reviewer subagent.
+- F0: recorded both causal checks before edits in the existing acceptance table; final dispositions are in the evidence addendum.
+- R-F1: old preceding-prefix duplicate scan cost F(F−1)/2 per validation; evaluate called public select, repeating it per resource.
+- A private id-sorted copy is prepared once per evaluate; adjacent duplicate checks are linear, selector lookups use lower_bound.
+- Standalone public select prepares/validates its own invocation. No static cache, public counter or registry/state field.
+- Metadata comparison work is O(F log F + R log F). Missing-current/following error timing and consumed prefix are preserved.
+- Bounded case: 2 required + 4,096 unrelated unsorted facts, 16 resources; variant 4 / phase 7 / draws 16.
+- Existing test-only allocation probe measures extra 32,768 bytes, exactly one index payload; no timing threshold.
+- The allocation check distinguishes no owned index or per-resource rebuilding; sort/adjacent/binary-search code establishes comparisons.
+- Nonadjacent duplicates refuse at consumed 0 in evaluate and standalone select; absent following id refuses after draw 1.
+- R-F2: ordinary 0 and 800 are both registered; both lookups asserted present, with valid geometry/climate and no selector metadata.
+- Legal 800 accepts, stores height 48/phase 9, draws 0; zero gets Facts at record 0/consumed 0 with unchanged inputs.
+- One private mutation removes only `|| record.type.v == 0`; actual dedicated C++ doctest is relinked, not copied into another oracle.
+- Legal sibling still passes; zero becomes accepted and fails the intended `REQUIRE_FALSE(zero)` assertion (mutant exit 1).
+- `zero-proof.log`, source/binary hashes and exact failure in the [evidence addendum](evidence/wildlife-resource-1.md#wildlife-resource-fix-1--2026-11-18).
+- Canonical source never changed during mutation; explicit canonical rebuild completed, binary hash matches legal control.
+- Preserve exploratory `index-first.log`, `index-diagnostic.log`, `index-setup.log`: new rig copied from a vector element while expanding it.
+- Setup assertion exposed its corrupted record id; fix copies the record first and keeps the assertion. `index-corrected.log` passes.
+- No initial exploratory failure is presented as a clean pinned acceptance gate; all original RESOURCE failures/receipts remain.
+- F3: canonical gates at clean correction source, jobs 1 / threads 2, game files set, shared memory admission retained.
+- Debug selector: all resource-import cases + reference agreement, required public reference contract; bounded real prefix once.
+- `cache/wildlife-resource-fix-1/debug-final.log` (required contract, then main):
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=6 executed=6 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+- ASan/UBSan selector: authored/errors/index/zero cases + reference agreement, required public contract; halt on sanitizer errors.
+- `cache/wildlife-resource-fix-1/asan-final.log` (required contract, then main):
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=5 executed=5 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+- Real Debug receipt: supported 1 / unsupported 0 / accepted 1 / draws 1 / variant 6 / height 48; index path now exercised.
+- 20 authored vectors and 16 public reference checks unchanged. All 120 parent fixture blobs unchanged; 0 pins/recordings moved.
+- Apple Clang 21 and cached GCC 15.3 target-only -O3 -Werror pass both changed TUs; negative shadow control rejects.
+- Existing Apple duplicate-static-library linker warning remains; no compiler warning. Format 23.1.3, lint and diff checks pass.
+- Reuse parent picture contracts (inputs unchanged) and long sailing/render/corpus evidence: their implementations/fixtures are unchanged and helper remains unwired.
+- CI will be read immediately after ordinary push of report head; exact corrected-head CI acceptance is not claimed here.
+- NOT_RUN: full suite, Windows adapters/HE/runtime comparison, whole-map RNG alignment, next adapter and production integration.
+- Independent focused re-review pending the Mac orchestrator. No new gameplay/default/World/native/registry/tag/pin behavior.
+
+Decisions and reasoning:
+- Use one local sorted metadata copy: scalable deterministic lookup, caller facts remain immutable, no persistent identity cost.
+- Preserve lazy missing-fact refusal after the accepted draw; indexing must not turn absence into an early or guessed decision.
+- Register zero deliberately: a missing-type branch cannot prove the explicit sentinel guard. Keep the legal sibling in both proof arms.
+- Use the existing test allocator and bounded source structure instead of a timing threshold or public performance instrumentation.
+- Rebuild canonical targets and rerun only reached checks; preserve prior failures and unchanged evidence rather than repeat a matrix.
+
+QUESTIONs: none. Stop for focused re-review; no next adapter/World/persistence unit started.

@@ -106,3 +106,60 @@ Paths below are checkout-relative; logs remain private in cache. No original rec
 - `AnnoWelt.dll`: `f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`.
 - `AnnoFrame.dll`: `dd3f36ff564d2685d10795272c4ed3c0b2da32a946c2883fb1158ff439249b91`.
 - `AnnoScene.dll`: `5b521f9541332846d32b57c93eaaee9c9d8de2ac2404cd75da0fe93e0e36fd38`.
+
+## WILDLIFE-RESOURCE-FIX-1 — 2026-11-18
+
+READY FOR RE-REVIEW; the original receipts above remain historical at their stated pins.
+Parent `3aab2a93680a9edf97ab4c5b0ac932eaae130513`; correction source `754ef6a01fb6ed416cc4468513625d3a2486d2f1`.
+Independent review of the parent requested R-F1/R-F2; no self-approval is claimed.
+
+| Finding | Positive / causal proof | Negative / work structure | Disposition |
+|---|---|---|---|
+| R-F1 old evaluate → public select repeated O(F²) prefix duplicate scans per resource | Unsorted 2 required + 4,096 unrelated metadata rows, 16 resource records; variant 4, phase 7, draws 16; following-id lookup; standalone selection | Sorted copy once, adjacent duplicate validation, internal lower_bound lookups; extra allocation 32,768 bytes equals one index payload, not zero or 16 copies; nonadjacent duplicate refuses at consumed 0; missing following metadata refuses at consumed 1 | Locally executed; re-review pending |
+| R-F2 old test lacked registered id 0 | Both ordinary ids 0/800 registered and looked up; valid geometry/climate, no selector facts/draws; 800 accepts | 0 refuses Facts at record 0/consumed 0 without input changes; removing ONLY zero guard reaches accepted 0 and fails REQUIRE_FALSE(zero), while sibling still passes | Locally executed; re-review pending |
+
+- Debug main 6/6 plus required reference contract 1/1; ASan/UBSan main 5/5 plus required reference contract 1/1.
+  Every final failed/empty/skipped/incomplete/sanitizer count is 0. Canonical gates identify clean correction source above.
+- Debug runs the real raw prefix once on the new index path: accepted 1, unsupported 0, draws 1, variant 6, height 48.
+- 20 authored vectors / 16 public reference checks remain unchanged; all 120 parent fixture blobs are identical. No pin/recording changes.
+- The memory measurement checks index ownership/repetition, not comparison counts. The one sort, linear adjacent check and binary lookup code establish the metadata comparison bound O(F log F + R log F). No wall-clock limit or public counter.
+- First new rig failed because assign used an element of the same vector as its expansion source; the setup assertion showed a corrupted record id.
+  Corrected by copying the record first, retained setup assertion. Exploratory failed logs are preserved, not represented as clean pinned gates.
+- Private zero mutation edits one clause only. The actual dedicated C++ doctest is relinked with that private object; it is not a duplicated helper/client oracle.
+  Legal 0; mutant 1 with legal sibling marker and intended REQUIRE_FALSE(zero) failure. Canonical source is untouched; explicit canonical rebuild reports no work, binary hash matches legal control.
+- Relevant Apple Clang 21 / GCC 15.3 -O3 -Werror checks pass both changed TUs; GCC negative shadow control rejects.
+  Existing Apple duplicate-static-library linker warning is preserved; no compiler warnings.
+- Reuse unchanged picture contracts and long sailing/render/corpus evidence from the parent. No renderer, bench tool, reference, fixture, World, registry, native, tag or default implementation changed.
+- NOT_RUN: full suite, Windows/HE/runtime parity, whole-map RNG timeline and production integration. These are not this correction.
+
+### Fix receipt SHA256s
+
+Paths are checkout-relative; logs and mutant listings remain private.
+
+| File | SHA256 |
+|---|---|
+| `src/sim/src/resource_import.cpp` | `21a355d65fb5319e9275675900a783f347a6ebd57fae4bfdfb04401d7bf421b4` |
+| `src/sim/tests/resource_import_test.cpp` | `e553a4f5b5ed442d444521c0e78b934979f31074580aa248814a710a760190f5` |
+| `docs/sim/wildlife-resource-initialization.md` | `aad8788133201b504aef4c76cd75008a70480c702ac937e5a1ebc3c333f475cb` |
+| `tools/resource_import_ref.py` | `e9aaa0b19d04649fb38dbd3d5895200dd96f71305d2a20e6c4a90ffc9ba11976` |
+| `tools/resource_import_ref_contract_test.py` | `cd4fe190de611f0f7dd82eef7e8a81bd333f475e4cca0186ae8c35a33631cb46` |
+| `fixtures/synthetic/sim/resource_import_vectors.txt` | `223aaa36ea05cd736f8a7c1d536f5574323834bbc9c599d84a31d739108c366b` |
+| `build/dev/src/sim/anno_sim_tests` | `e20d2ba736599aa3c7e0f6db2372597861df256c32537e1cdb9fe855a6197486` |
+| `build/asan/src/sim/anno_sim_tests` | `1043b1b159be4e2f4e4b31e913b96a6d0e70ab884866ed53ef91122610f9c5de` |
+| `cache/wildlife-resource-fix-1/debug-final.log` | `371f286af8cfbfce21a84b0512333ff9c6548bff41855eac35553406aafbb8ba` |
+| `cache/wildlife-resource-fix-1/asan-final.log` | `0bd1b877af6fbcfc939e899e1ffd8eb332f476513c640c714c1823cab0152cda` |
+| `cache/wildlife-resource-fix-1/zero-proof.py` | `595d5f0f7fa91da3e6d454bea6f89ccd93d6ebc98a7be0b136575bd4ffbc4a8f` |
+| `cache/wildlife-resource-fix-1/zero-proof.log` | `3256eb428644884134faaa659bc46a0b5aa5da70ccbd3fa5da7cd9cb4d363e72` |
+| `cache/wildlife-resource-fix-1/zero-mutant.cpp` | `ad5fc7ba0977ac49f790b35f91665c808ae231c7a7bb9c8bd557f03b346455a1` |
+| `cache/wildlife-resource-fix-1/zero-mutant-tests` | `aa962be4684624fadbe6cf50861724933cb497c694a3a0091e39667285b17fbb` |
+| `cache/wildlife-resource-fix-1/zero-legal.log` | `0e46a4b658fcbeade96127f5f5621236ef43614bdf697a3502225f8e5956e5a2` |
+| `cache/wildlife-resource-fix-1/zero-mutant.log` | `f669d6396f9db189e48085821011ff2401cc3a671e15d26aaa1d18b01cae7f37` |
+| `cache/wildlife-resource-fix-1/zero-identities.json` | `bdf4f707b0431b7cb8032dedc202bdd2095241da595d910eec93917a066f3ed9` |
+| `cache/wildlife-resource-fix-1/index-first.log` | `c41dbd72f55ebeae7ef373769a906fdbc40acfb48a74e71c473ff72810e70bbd` |
+| `cache/wildlife-resource-fix-1/index-diagnostic.log` | `0fbc7e773909edc0b2abf4cd8aa2a4798e17feba792e21c400c39b4a0f35aafa` |
+| `cache/wildlife-resource-fix-1/index-setup.log` | `908348f55dea21a2d645d2f975238d7233cfa9251b8b64be19de81e90ffe4155` |
+| `cache/wildlife-resource-fix-1/index-corrected.log` | `87c7a82145cd71b87562f66e9b3528fcadd31d9238712ebb7e8d7cb3c703582e` |
+| `cache/wildlife-resource-fix-1/rebuild-dev-canonical.log` | `c2ed93ffd93c840755c0e91392ae593b1b52de9b7aaf6c208123feaceb1dde2e` |
+| `cache/wildlife-resource-fix-1/build-asan-01.log` | `6b09f7f74918cf98f4379ac250f9dfd24b664704312046b81ba1d0ee081a4bf4` |
+| `cache/wildlife-resource-fix-1/gcc.console` | `79333139b915b514bc39b8fdc699ca741f9d3574babaecbbead7afaad4af7fd2` |
+| `cache/wildlife-resource-fix-1/clang-warnings.json` | `2809551129f4c9d3c1ee62d9d8c891a8bd7fd347db374e368f8495b6666bec33` |

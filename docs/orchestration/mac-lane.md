@@ -32,7 +32,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife resource [WILDLIFE-RESOURCE-1](tasks/wildlife-resource-1.md) | ACCEPTED after FIX-1; landing pending | `0627532f330dc898b80941ea31d9dafe87980aa4` | [44372186862](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44372186862), all12 successful | [Review](reviews/2026-11-18-wildlife-resource-1-review.md) |
 | Wildlife composition [WILDLIFE-PREFIX-1](tasks/wildlife-prefix-1.md) | LOCAL REVIEW APPROVED; two macOS CI jobs cancelled without runner | `1441183a74be4745415c23c399f80648bf886314` | [44385455810](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44385455810), terminal FAIL:9 success,2 no-runner cancellations, aggregate failure | [Review](reviews/2026-11-18-wildlife-prefix-1-review.md) |
 | Wildlife stone [WILDLIFE-STONE-1](tasks/wildlife-stone-1.md) | ACCEPTED bounded import; Windows landing pending | `18473cf4b1d44cadfa564636f56b889bdcabe146`; source `f3e18bdf` | [44390015763](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44390015763), all12 jobs successful | [Review](reviews/2026-11-18-wildlife-stone-1-review.md) |
-| Wildlife cliff [WILDLIFE-CLIFF-1](tasks/wildlife-cliff-1.md) | RELEASED to EXECUTOR II MAC | Explicit locally reviewed base `18473cf4` | Not started | Frozen reportback to Mac orchestrator |
+| Wildlife cliff [WILDLIFE-CLIFF-1](tasks/wildlife-cliff-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `11bc3be60acc71a4c9fbf03dff077e908b4c8204`; source `eb3ea560` | [44417567937](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44417567937), in progress | [Review](reviews/2026-11-19-wildlife-cliff-1-review.md) |
+| Wildlife rock [WILDLIFE-ROCK-1](tasks/wildlife-rock-1.md) | RELEASED to EXECUTOR II MAC | Explicit locally reviewed base `11bc3be6` | Not started | Frozen reportback to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -559,3 +560,26 @@ has9 successful jobs,2 no-runner cancellations and aggregate failure. The review
 records complete receipts; no rerun or source-trigger commit was made.
 CLIFF is finishing its frozen handoff; its reported focused gates are not yet an
 orchestrator approval. Do not interrupt that closeout or expand its assigned scope.
+
+
+## Latest dispatch — CLIFF reviewed; ROCK released, 2026-11-19
+
+CLIFF11bc3be6/sourceeb3ea560 is independently locally APPROVED: primary and
+causal-test reviews found no blocking defects.52 receipt/source/input hashes and
+276 baseline fixtures checked; nine reference rows append, no old fixture changes.
+Debug19/19 and ASan18/18 each pass three additional separate required contracts.
+The first cached-Python mutant failure remains retained; fresh-directory bytecode
+isolation and the actual production predicate mutant provide causal proof.
+Exact CI44417567937 is still in progress, so acceptance remains pending.
+
+Independent original-input continuation reproduces2,387 accepted records,2,333
+resource draws,29 stones,25 cliffs and nine completed epilogues. No spawns yet.
+Next boundary42/39/type1512/flags0x8018 is explicit, not skipped or called refusal.
+
+[WILDLIFE-ROCK-1](tasks/wildlife-rock-1.md) is RELEASED after independent dispatch
+review. Establish mode0 height and upper-bit effects, extend only that evidenced
+fact-defined class, then continue once to the next unsupported boundary. Preserve
+shared writer/ownership and existing classes; no World/native/tag/default changes.
+The executor ordinary-pushes its task branch and reports frozen results directly
+to this Mac orchestrator for review and the next release. Windows retains landing
+and cross-lane identity ownership; main remains untouched.

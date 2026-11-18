@@ -4,6 +4,36 @@
 
 namespace anno::formats::insel {
 
+namespace {
+/// Original record width, not an engine population or island-size limit.
+constexpr std::size_t kHirschEntryLen = 8;
+} // namespace
+
+Result<std::vector<HirschRecord>, std::string> decode_hirsch(Bytes payload) {
+    if (payload.size() % kHirschEntryLen != 0) {
+        return std::string("HIRSCH payload length is not a multiple of 8");
+    }
+    std::vector<HirschRecord> out;
+    out.reserve(payload.size() / kHirschEntryLen);
+    for (std::size_t p = 0; p < payload.size(); p += kHirschEntryLen) {
+        out.push_back({u16_le(payload, p), u16_le(payload, p + 2), payload[p + 4], payload[p + 5],
+                       u16_le(payload, p + 6)});
+    }
+    return out;
+}
+
+ByteBuffer encode_hirsch(std::span<const HirschRecord> records) {
+    ByteBuffer out;
+    for (const auto& r : records) {
+        put_u16_le(out, r.x);
+        put_u16_le(out, r.y);
+        out.push_back(r.flags);
+        out.push_back(r.raw5);
+        put_u16_le(out, r.goods);
+    }
+    return out;
+}
+
 Result<Block, std::string> Block::parse(Bytes payload) {
     if (payload.size() < kBlockHeaderLen) {
         return std::string("block header");
@@ -120,6 +150,18 @@ std::optional<Bytes> Island::record(std::string_view name) const {
         }
     }
     return std::nullopt;
+}
+
+Result<std::optional<std::vector<HirschRecord>>, std::string> Island::hirsch_records() const {
+    const auto raw = record("HIRSCH");
+    if (!raw) {
+        return std::optional<std::vector<HirschRecord>>{};
+    }
+    auto decoded = decode_hirsch(*raw);
+    if (!decoded) {
+        return decoded.error();
+    }
+    return std::optional<std::vector<HirschRecord>>(std::move(decoded).value());
 }
 
 namespace {

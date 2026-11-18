@@ -17,6 +17,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -90,6 +91,23 @@ struct PlacedObject {
     auto operator<=>(const PlacedObject&) const = default;
 };
 
+/// One raw 8-byte HIRSCH entry (AnnoWelt.dll 0x100946c0–0x10094873).
+/// These are spawn records, not figures. No species, live id or jitter is decoded.
+struct HirschRecord {
+    std::uint16_t x = 0, y = 0;
+    /// Bit 0 controls later load-time jitter; preserve every other bit too.
+    std::uint8_t flags = 0;
+    /// Entry byte 5 is unused by the inspected loader, not an animal kind.
+    std::uint8_t raw5 = 0;
+    std::uint16_t goods = 0;
+    auto operator<=>(const HirschRecord&) const = default;
+};
+
+/// Strict accessor policy: refuse trailing partial entries, unlike the original's
+/// payload_size >> 3. Empty is valid. Values own their data and retain file order.
+Result<std::vector<HirschRecord>, std::string> decode_hirsch(Bytes payload);
+ByteBuffer encode_hirsch(std::span<const HirschRecord> records);
+
 struct Island {
     Version version = Version::Insel5;
     /// The 12-byte INSEL5 head or the 8-byte INSEL4 payload.
@@ -106,6 +124,11 @@ struct Island {
     [[nodiscard]] Result<std::vector<Block>, std::string> blocks(std::string_view name) const;
     /// Payload of the first record called `name`.
     [[nodiscard]] std::optional<Bytes> record(std::string_view name) const;
+    /// Decode the first HIRSCH record, matching record()'s duplicate policy.
+    /// nullopt means absent; an engaged empty vector means present-empty.
+    /// Only this explicit accessor checks HIRSCH length; island parsing is unchanged.
+    [[nodiscard]] Result<std::optional<std::vector<HirschRecord>>, std::string>
+    hirsch_records() const;
     /// The HEIGHT grid, one byte per tile, row-major.
     [[nodiscard]] Result<std::vector<std::uint8_t>, std::string> heights() const;
     /// The GFXID grid, one u16 per tile, row-major.

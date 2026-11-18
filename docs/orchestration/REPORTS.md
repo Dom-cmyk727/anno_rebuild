@@ -15288,3 +15288,63 @@ NOT_RUN: corrected-head hosted CI (awaiting focused review before ordinary push)
 QUESTIONs: none. Independent focused correction review requested from the orchestrator before push.
 
 Focused pre-push correction review: orchestrator independently approved the seven-entry allowlist correction with no P1/P2; canonical 2/2 and unrelated-cap control verified. Corrected-head hosted CI remains pending.
+
+## 2026-11-18 — WILDLIFE-RESOURCE-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-RESOURCE-1`; accepted base `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e`.
+- Implementation source `2f65d5b87c424e4f6115b5b0639521b7d8f152ec`; report-only closeout follows.
+- R0 finite receiver: Frame kind 0x101 → AnnoGame constructor 0x10007650/vtable 0x100215a4 → scene/world/island catalogue.
+- Selector AnnoGame 0x10001b30–0x10001c78: kind/goods/tag, low-byte draw & 7, climate remapping and first 16-slot match.
+- R1 [contract](../sim/wildlife-resource-initialization.md) and 18 authored examples preceded C++; final fixture has 20.
+- R2 `resource_import::evaluate` copies TileLayer and a separate transient variation plane; ordered admission/placement/selector effects.
+- Supported: type flag words 0x09/0x29, positive footprints with u16 offsets, nonnegative origins, addressed world tiles fitting i32.
+- Full footprint bounds/overlap use current scratch; mode-1 height uses unsigned origin quad / 4, threshold 32 except group 0x141.
+- Unsupported classes, malformed geometry/facts and exhausted draws return typed errors, never partial successful Output.
+- R3: accepted/rejected/nonresource counts, both overlap orders, duplicate resources, two draws and a second defined id; final guards refuse invalid row/record ids.
+- Phase is raw state & 63; variation uses high nibble and preserves low nibble. Placement stores computed height, not file height.
+- Real unfiltered Tutorial/01Discover01 prefix: header 34, type 70/kind 226, local (59,29), corners 48, climate 2.
+- Result: supported 1, unsupported 0, accepted 1, consumed draws 1, variant 6; growth phase remains distinct and input unchanged.
+- Current raw WARE must be present/exactly UNUSED; explicit metadata supplies documented 0. Following goods must be resolved/present.
+- First real gate failed `REQUIRE(type->output_goods.size() > 0)`, values `0 > 0`; preserved in `debug-final-01.log`.
+- The registry omits UNUSED. Only the test metadata acquisition changed to parsed raw Anlagen; registry/digest is untouched.
+- Private applied C++ wrong-mask proof: legal plane 75 / phase 7 / draws 1 exits 0; mutant plane 224 exits 1 at intended check.
+- Mutant is a one-replacement private overlay, with source/binary hashes; canonical source and gated binaries are unmodified.
+- Independent Python: 20 hand-derived prefix vectors and 16 public checks, including applied mask/draw/ordering mutants.
+- R4 host: Apple M5 Max, 18 logical CPUs, 48 GiB RAM, macOS 27.0.1, Apple Clang 21; gates jobs 1 / threads 2.
+- Shared memory admission retained under host permissions. No refused-memory case, empty test, incomplete result or sanitizer line.
+- Final changed-scope commands: canonical runner, authored/errors + reference agreement; required reference contract, jobs 1.
+- Debug final correction: `cache/wildlife-resource-1/debug-facts-final.log` (contract, then main):
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=3 executed=3 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+- ASan final correction: `cache/wildlife-resource-1/asan-facts-final.log` (contract, then main):
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=3 executed=3 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+- Reused real proof: `debug-final-02.log`, main selected 3 / executed 3 / failed 0; reference contract 1/1, no skips/empty/incomplete/sanitizer lines.
+- Reused picture contracts: Debug `debug-synthetic-01.log` and ASan `asan-final-01.log`, each selected 1 / executed 1 / failed 0, other counts 0.
+- Only invalid-id guards changed; valid raw prefix facts and picture inputs are unchanged. No whole gate or real corpus rerun.
+- Both new TUs pass target-only -O3 -Werror under Apple Clang 21 and GCC 15.3; negative shadow control rejected.
+- Builds retain the existing Apple duplicate-static-library linker warning; no compiler warnings. Lint and clang-format 23.1.3 pass.
+- All 119 pre-existing sim fixture blobs unchanged; 0 pins/recordings moved. Only the authored resource fixture is added.
+- [Acceptance table, receipt SHA256s and limits](evidence/wildlife-resource-1.md); raw logs and primary listings stay private in cache.
+- CI: exact report head will be read immediately after ordinary push; no hosted-CI acceptance is claimed by this frozen report.
+- NOT_RUN: production World integration, full original world RNG alignment, active graphical callback profile, HE/runtime comparison.
+- NOT_RUN: unrelated long sailing/render/corpus matrices and target-host full suite; no callsite wires this helper into them.
+- Independent review pending Mac orchestrator. Correction gates include report-only dirty docs; executable inputs are frozen at the source pin.
+
+Decisions and reasoning:
+- Keep original import admission separate from BuildCmd eligibility: scenery 0x29 must not widen player construction.
+- Keep selector facts and variation transient: current registry lacks UNUSED metadata; no silent digest or persistence change.
+- A fixed selector output still consumes the proven accepted world draw; no dummy advancement substitutes for placement/variant effects.
+- Error rollback is an owned-evaluator adaptation, not an original-loader claim. Error includes record index and consumed prefix.
+- Future integration must supply raw metadata, ordered records, storage/tag coordination and feature-off identity before live wiring.
+- Preserve first failures and minimal controls; no unrelated campaign or whole-matrix rerun.
+
+QUESTIONs: none for this bounded evaluator. Production storage/tag allocation and full RNG closure remain separate orchestrator-owned work.

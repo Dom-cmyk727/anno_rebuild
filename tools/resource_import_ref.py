@@ -134,9 +134,11 @@ def main():
             actual, expected = evaluate(fields(left)), fields(right)
             if set(actual) != set(expected):
                 raise ValueError('expected keys')
-            for key in ('objects', 'phase', 'height', 'plane'):
+            for key in ('objects', 'phase', 'height', 'plane') + (('anchor',) if 'anchor' in expected else ()):
                 if len(numbers(expected[key])) != int(fields(left)['w'])*int(fields(left)['h']):
                     raise ValueError('expected geometry')
+            if 'anchor' in expected and any(v not in (0, 1) for v in numbers(expected['anchor'])):
+                raise ValueError('expected anchor bit')
             if int(expected['consumed']) < 0 or any(s not in {'accepted', 'bounds', 'occupied', 'terrain', 'coverage'} for s in expected['status'].split(',')):
                 raise ValueError('expected disposition/count')
             count += 1

@@ -35,6 +35,8 @@ def main():
         trial('missing-following', next(x for x in text.splitlines() if '104:226:' in x).replace(';105:291:1:1:9:70:404', ''), 2)
         trial('unsupported', first.replace(':41:', ':8:'), 2)
         trial('geometry', first.replace('plane=171,12,13,14', 'plane=171'), 2)
+        stone = next(x for x in text.splitlines() if 'anchor=1,0,0,0,0,0,0,0,0' in x)
+        trial('expected-anchor-geometry', stone.replace('anchor=1,0,0,0,0,0,0,0,0', 'anchor=1'), 2)
         # The original placement helper is shared by the Python reference only.
         (root/'placement_ref.py').write_text((args.ref.parent/'placement_ref.py').read_text())
         source = args.ref.read_text()
@@ -58,7 +60,7 @@ def main():
             else:
                 run(mutant, args.vectors, 1)
             print(f'APPLIED {name}: legal control 0, mutant 1')
-    print('resource import contract: 18 public checks passed')
+    print('resource import contract: 19 public checks passed')
     return 0
 
 

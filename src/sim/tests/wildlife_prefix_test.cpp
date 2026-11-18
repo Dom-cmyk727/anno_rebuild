@@ -525,21 +525,22 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     CHECK(old_boundary->effect.height == 48);
     CHECK(old_boundary->effect.draws == 0);
     CHECK_FALSE(old_boundary->effect.variant);
-    // Independent raw-order/reference continuation: later ordinary resources
-    // replace the top two stone cells, leaving its bottom row intact.
+    // Independent HHbb item-layout parse plus original place(): all four
+    // cells retain the stone. The earlier private HbbH parse is preserved as failed evidence.
+    CHECK(old_boundary->raw.x == 107);
+    CHECK(old_boundary->raw.y == 43);
     const auto& tiles = out.islands[0].resource.tiles;
-    CHECK(tiles.object(tiles.index_of(88, 72)) == 115);
-    CHECK(tiles.object(tiles.index_of(89, 72)) == 68);
-    for (std::int32_t x = 88; x <= 89; ++x) {
-        const auto i = tiles.index_of(x, 73);
-        CHECK(tiles.object(i) == 1558);
-        CHECK(tiles.phase(i) == 19);
-        CHECK(tiles.item_height(i) == 48);
-        CHECK(tiles.foot_dx(i) == x - 88);
-        CHECK(tiles.foot_dy(i) == 1);
-        CHECK(tiles.foot_rotation(i) == 0);
-        CHECK(tiles.foot_anchor(i) == 0);
-    }
+    for (std::int32_t y = 43; y <= 44; ++y)
+        for (std::int32_t x = 107; x <= 108; ++x) {
+            const auto i = tiles.index_of(x, y);
+            CHECK(tiles.object(i) == 1558);
+            CHECK(tiles.phase(i) == 0);
+            CHECK(tiles.item_height(i) == 48);
+            CHECK(tiles.foot_dx(i) == x - 107);
+            CHECK(tiles.foot_dy(i) == y - 43);
+            CHECK(tiles.foot_rotation(i) == 0);
+            CHECK(tiles.foot_anchor(i) == (x == 107 && y == 43));
+        }
     std::uint64_t epilogues = 0;
     for (const auto& h : out.islands[0].headers)
         epilogues += h.water_mask_updates.has_value();

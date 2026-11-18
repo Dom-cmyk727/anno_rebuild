@@ -90,13 +90,22 @@ class remains unsupported. HIRSCH header 71 still has not been reached.
 An independent raw-order parse composed with original `placement_ref.place()`
 reproduces the counts, boundary and writes (private receipt, no C++ output input).
 
-P/C: predecessor record 35/22 (1558) accepts at (88,72), rotation 0, computed
-height 48, four writes, no resource draw and no variation. Later ordinary
-resource records replace its top row with types 115/68. Its two bottom cells
-retain type 1558, phase 19, height 48, offsets (0,1)/(1,1), rotation 0 and clear
-anchors. The real test asserts this final state, not just an Accepted label.
-Two further stones (type 1549) use the same facts path; the last has computed
-height 0, independently exercising group 0x141's level bypass in original data.
+P/C: predecessor record 35/22 (1558) accepts at (107,43), rotation 0, computed
+height 48, four writes, no resource draw and no variation. All four final cells
+retain type 1558, phase 0, height 48, offsets (0,0)/(1,0)/(0,1)/(1,1), rotation
+0 and only the top-left anchor. The real test asserts these fields, not just an
+Accepted label. Two further stones (type 1549) use the same facts path, both with
+computed height 32. The low-height bypass is distinguished by the authored
+height-15 / result-0 vector, not by these original records.
+
+The first final Debug run failed only the real case's newly added cell assertions:
+a private independent script mistakenly read six-byte items as type/offsets/state
+instead of the documented type/state/signed-offsets (insel.md). Its counts and
+boundary happened to match, but its coordinates/heights did not. The private
+wrong-layout script/output, first canonical failure and diagnostic probe are
+preserved. Corrected independent parsing agrees on all four original cells;
+the engine implementation is unchanged. This supersedes the initial coordinate
+and real low-height claims; it does not erase the failing evidence.
 
 C: all 20 predecessor resource rows remain byte-for-byte unchanged; six authored
 stone rows extend the same reference/vector mechanism. Optional authored anchor

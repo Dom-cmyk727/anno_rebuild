@@ -15018,3 +15018,179 @@ Decisions and reasoning:
 - Publish own-run tables and hashes only; keep raw logs/game paths in cache and original files read-only. Independent review is the orchestrator's; no reviewer subagent.
 
 NOT_RUN: Windows/HE, enabled ASan measurement, native GCC 13/Clang 18 local warnings, equilibrium, alternative openings. QUESTION: CI failures require separate triage; no unique irreducible progression blocker is established by this bounded opening. READY FOR REVIEW / CI BLOCKED.
+
+
+## TOWN-CI-CLOSE-1 — 2026-11-18 — isolated portability closure
+
+Owner requested this separate repair so TOWN-START-1 could close while WILDLIFE-1a continued.
+No wildlife source, running job, coordinator, original asset, main ref or other lane was changed.
+
+### Pins and changes
+
+Base: town report `156badab35516609e92796e85a4fb0b9314ddac6`. Frozen code:
+`283e8f9bf1f080caad8d3d0ef659ad3ad46fa04c` on `task/TOWN-CI-CLOSE-1`.
+
+- `8e502b323aea55da4a155ce64c22f138f5d3700d`: freight stops are copy-constructed and then moved
+  into the empty destination, avoiding GCC 15's optimized vector-copy null warning. Deep-copy,
+  validation, normalization and allocation-before-authoritative-write behavior remain unchanged.
+  Doctest is pinned to upstream `5eb20178ba43d7b3fd6dbf97b4d2a0907b59a42a`, the single
+  header-selection fix immediately after 2.4.12 ([PR 901](https://github.com/doctest/doctest/pull/901)).
+  Comparing all 270 archive files finds only the two header-selection files changed. Archive SHA256:
+  `41cf9b1c1408a7e24f4005f5accd9d6dae75e684255c7c7b28b223acfa8d4e8e`.
+- `739bb9e5`: publication-statistics helper returns before indexing an empty sample vector.
+  Nonempty output is unchanged. Both sample vectors are filled together and read after joining.
+
+- `48f88a19`: one existing zoom test binds the immutable original table by const reference,
+  avoiding an unnecessary copy that triggers another GCC 15 Release warning. Its assertions and
+  production zoom behavior are unchanged.
+- `283e8f9b`: Mine deserialization initializes its numeric temporary independently of the destination
+  optional. Reading a true presence byte previously led to dereferencing a still-empty optional.
+  The new code engages it only after successfully reading the value; writes/hashes/bytes are unchanged.
+
+No warning suppression, CI coverage reduction, fixture/golden update, simulation identity, default,
+state format or gameplay-rule change. Repairs are four individually cherry-pickable commits;
+other lanes may take them at an explicit integration checkpoint, never during running gates.
+
+### Acceptance evidence
+
+| Requirement | Positive proof | Failing original / counterexample | Result |
+|---|---|---|---|
+| Freight optimized compilation | Fixed GCC 15.2 and 15.3 compile with CI warning flags | Original freight assignment fails the same null-dereference diagnostic | PASS |
+| Clang test dependency | Actual test-support main compiles with fixed fetched header | Old doctest includes obsolete ciso646 under Clang 21/libstdc++ 15 and fails -Werror | PASS |
+| Publication stats compilation | Fixed x86 GCC 15.2 Release compile exits 0 | Original exits 1; ARM did not reproduce this warning and is not claimed as a reproduction | PASS |
+| Freight behavior | Existing authoritative deep-copy, grouping, refusal, lifecycle and persistence tests | Existing negative checks assert unchanged state on invalid commands | PASS |
+| Public threaded stats | Real PlayRunner case with ANNO_PUBLISH_STATS=1; two rows, n=50 each, ordered nonnegative quantiles in Debug and ASan | Empty-vector indexing is guarded; existing test compares sim outcomes | PASS |
+| Correct dependency used | Both actual build headers have SHA256 2b143b93771ec9a2e76cf41fb5705d3fa8ade00268c91ab3e99703ffeadc44a3 | No stale shared dependency override | PASS |
+
+Earlier canonical gates at clean 739bb9e5, Apple Silicon/M5 Max, 48 GiB, build jobs 3 and
+test jobs 2, admission enabled, game directory available read-only:
+
+| Gate | Selected | Executed | Failed/empty/skipped/incomplete | Sanitizer lines |
+|---|---:|---:|---|---:|
+| Debug affected selection | 37 | 37 | 0/0/0/0 | 0 |
+| ASan/UBSan affected selection | 37 | 37 | 0/0/0/0 | 0 |
+
+Each also executes the required picture_matrix_contract (1/1) and mandatory name/verdict checks.
+Selection includes synthetic freight schema/commands/lifecycle/native/state/authority/conservation,
+related test support and the public threaded PlayRunner case. This is not a full local game-file gate.
+Both builds use viewer off/GPU off. The two edited C++ files pass clang-format 23.1.3.
+
+Reproduce: configure Debug and ASan builds in separate build directories with the fixed dependency;
+build anno_sim_tests, anno_test_support_tests, anno_app_tests and bench_picture. Run
+`tools/test/run_selected.py` with `--asset-policy required --jobs 2`, ANNO_TEST_THREADS=2 and
+ANNO_PUBLISH_STATS=1. Exact command, source/build/binary identities and selection inventory are
+in the retained logs; no original bytes or raw host paths are published.
+
+### Preserved failures and decisions
+
+- Town source CI 44255019025 failed its helper linkage and two unchanged build paths.
+  Town report CI 44256560982 confirms the internal-linkage fix builds; inherited failures remain.
+- First repair CI 44258255346 exposed the publication-stats GCC Release warning.
+  CI 44259414215 next exposed the immutable zoom-table copy warning.
+- The original town GCC Debug test artifact was retrieved through its public artifact link after
+  annotation excerpts omitted the real failure. It contains 27 subprocess aborts plus a G3 replay
+  failure, all showing disengaged optional access. The gate returned 9 for incomplete crash evidence,
+  not a source-change guard. The existing layout test reproduces the exact assertion locally under
+  libc++ hardening, after 485 successful assertions, exit 134. This is genuine undefined behavior
+  hidden by the earlier Mac standard-library mode, not a harmless compiler warning.
+- Initial local preflight/workflow attempts lacked cmake on PATH and failed before running cases.
+  Next gate lacked the bench_picture executable required by its contract and failed. The following
+  gate passed that contract but rejected an unsupported negative-lookahead CTest selector. None is
+  counted as a behavior pass. The corrected POSIX selector passed 36/36 at 8e502b32 before the
+  stats follow-up; final gates above supersede that selection and add the public runner.
+- A first shell wrapper used zsh's read-only status name; preserve its compiler output and use the
+  separate clean before/after control for the terminal exit claim.
+- Avoid a broad doctest upgrade: the exact upstream header fix preserves assertion/discovery code.
+  Prefer a clear owning copy and a locally guarded statistic to warning suppressions.
+
+### Review and reuse
+
+Independent read-only reviewer: `/root/review_town_ci_close`. It inspected the full source delta,
+all 270 dependency files, freight callers/tests, paired statistics writes/join/clear, compiler
+controls and canonical evidence. Code review approved without P1/P2; final evidence disposition
+is in the Mac orchestrator review.
+
+TOWN-START-1's already reviewed public-command headless measurement is reused. It reaches neither
+freight route assignment nor PlayRunner statistics, and the doctest delta changes header selection
+only. It uses original format parsing, fresh ScenarioSpec/World::create, commands and hashing;
+there is no native save/load or replay in this measurement. The Mine reader is therefore unreachable.
+Its writer/hash branch remains byte-identical; corrected native-load evidence is recorded separately. The two complete deterministic town traces, negative food control and raw-hash audit remain
+the evidence; there is no new town run. Same unchanged simulation identities and fixtures.
+Town acceptance remains bounded: 16 Pioneer houses/128 residents, no Settler; no sustainable
+economy, live-viewer, original-runtime or multiplayer-scale claim. Landing and game-file stacked
+candidate gates remain with the Windows orchestrator.
+
+### Raw evidence hashes
+
+Files below are private under cache/town-ci-close-1/.
+
+| File | SHA256 |
+|---|---|
+| dev-final.log | 114a120548e316bce87c6a2b1621fa0cb362ffeecabd7d01365640fdcd1fea91 |
+| asan-final.log | 19cd3bbcacc50512eb34c0191abe5d716f6771f60e6719e4f8dc428381f425c8 |
+| ubuntu-gcc-before.log | 488974d505fe03697b30f710a53e47b001d438c770de5fd261effac155f4e264 |
+| ubuntu-gcc-after.log | ac55452791ddd9d6e55f5e1f3dbcd5ee40f34b0b55ae18baade542748b008022 |
+| clang-before.log | e0252caa612fd79448fee145df5711026ea30303c614f74ef0c0c69f30025f32 |
+| clang-after.log | 3d0ad8113f2a406336769b0ef4132efd5d2e2625f06c890fa766018da9431e91 |
+| play-x86-before.log | acece5de2b10751350428c3977dd8cd557e2471a1f7d0fbee2078447d7bc6c27 |
+| play-x86-results.log | aaf7601c7fc1d99c1b43e9e674c0df9d3b816aac1980b715b156f24be2140b9f |
+| stats-output-check.json | ab46b7b8c3ba98aa16784f45026393b4fb403a7f577a2a0eb4fe5fd52a24aaca |
+| dependency-resolution.json | 2c615bed2a7f92fd499d3c6b8a7b595fb86ebe1b26cc08204844c30f9a4fb91a |
+
+The standalone workflow self-tests also pass 29/29 with corrected PATH; the initial missing-tool failure is retained.
+
+### Superseding local recovery gates at 283e8f9b
+
+| Gate | Selected | Executed | Failed/empty/skipped/incomplete | Sanitizer lines |
+|---|---:|---:|---|---:|
+| Standard-library-hardened Debug: all prior 27 aborted cases plus G3 replay | 28 | 28 | 0/0/0/0 | 0 |
+| Debug: recovery plus 26 freight cases, real threaded runner and affected zoom case | 56 | 56 | 0/0/0/0 | 0 |
+| ASan/UBSan: same 56 cases | 56 | 56 | 0/0/0/0 | 0 |
+
+All three execute the required picture contract 1/1 and mandatory preflights. The recovery inventory
+was checked against all 28 original failures. The existing byte-layout case runs hand-written
+present/absent Mine bytes, hash/write/read round trips and every strict prefix. The original
+case aborts with libc++ hardening; the corrected source passes with that same mode retained.
+No new mirrored tests, fixture changes or rebaselines were needed. Independent Python stream
+goldens, simulation lint and formatting on all four edited C++ files pass. Public runner statistics
+again have exactly two matching positive-count rows with valid quantiles in both final gates.
+
+The old GCC failure artifact was downloaded via its public artifact link and verified against
+GitHub's API digest: artifact 14406747279, ZIP SHA256
+958ac60b85d12fd5c42f853c0670132ebe25d2be879de9c8a35101a1b59bbf36.
+
+| Recovery evidence | SHA256 |
+|---|---|
+| mine-hardening-before.log | a5476b992ea272e78c3e30505c24a3872f986f73898ad28124625bc61b765795 |
+| hardening-recovery.log | 8a24748683e9784cff5ead90facb2b131ec3a65c7e23f81d536d7e67ff94f342 |
+| dev-recovery.log | d0f8ae4edaa21c8edcfd5fa24d0b603f5572c3da854692f22738861dd1c499cc |
+| asan-recovery.log | 82b684f6d258e03601dd916d10eb7ead35de77bacaea18fc497d34d076627abd |
+| app-x86-before.log | 35a2ce9031083a6f9556a3764193899d8319742809312feb5127c1055571bd54 |
+| app-x86-after.log | e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 |
+| workflow-final.log | 1fcb172881edf02354983dc0143db9236ded0c04e8773b8cc65e36c88a2c8069 |
+
+### Independent final receipt review (CI pending)
+
+Reviewer `/root/review_town_ci_close` approves the source and local closure at
+`283e8f9bf1f080caad8d3d0ef659ad3ad46fa04c`, with no remaining local blocking findings.
+The reviewer independently re-parsed the three recovery logs with the canonical verdict reader:
+28/28 hardened, 56/56 Debug, and 56/56 ASan/UBSan, plus each mandatory picture contract 1/1.
+All have clean exact-head provenance and zero failed, empty, skipped, incomplete or sanitizer lines.
+The inventories were compared to the original artifact's failure list: all 27 aborted cases and
+G3 replay are present; both 56-case gates additionally include the 26 freight cases, affected zoom
+case and threaded runner. The hardened build cache retains libc++ DEBUG hardening; the sanitizer
+build retains ANNO_SANITIZE=ON. Final runner output independently gives exactly two rows of 50
+samples with ordered nonnegative quantiles in both gates.
+
+The reviewer also matched every raw-evidence hash in this report and independently matched the
+old failure ZIP against the retained GitHub API artifact digest and source identity. No test was
+rerun during receipt review. The genuine Mine-reader undefined behavior was identified during
+independent review and corrected without altering serialized bytes; it is not categorized as a
+compiler false positive. The existing hand-written layout case supplies the regression rather
+than a new implementation-shaped test.
+
+Final acceptance remains conditional on all required CI jobs passing at this exact source.
+CI run `44261293763` was still in progress when this review was written; no green CI result or
+package landing is asserted here. Any later code change requires updating this source pin and
+its applicable validation. TOWN-START-1 measurement reuse is approved only by the explicit
+no-native-reader call-path analysis above, not by a claim that prior runs checked native reload.

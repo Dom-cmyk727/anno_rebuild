@@ -14,8 +14,9 @@ Content hash:
 Original assets are required; the evidence includes the complete 472-file input
 inventory. Do not install a different map, rebalance its loadout or grant rights.
 
-The recipe uses state 134 / ECONBK1 / PRNG5 / replay 4 / command 1 / native wrapper
-1. Old 133 saves and logs refuse; do not relabel or repair them. Explicitly enable
+The historical measurement uses state 134 / ECONBK1 / PRNG5 / replay 4 / command 1 /
+native wrapper 1. These are its evidence identities, not a requirement to relabel a
+current world. Old 133 saves and logs refuse; do not relabel or repair them. Explicitly enable
 `city_booking` and retain `save_billed_goods`; keep `house_updates` false. These
 are canary settings. Application defaults remain unchanged.
 
@@ -30,13 +31,22 @@ turns; do not retain city/building pointers or substitute a nearer rival.
 
 ## Commands and observations
 
-Post `sim::Command{PlayerId{0}, body}` through `PlayRunner::post_command`.
+For window consumers, post `sim::Command{PlayerId{0}, body}` through
+`PlayRunner::post_command`.
 A queued receipt is not command acceptance. Match each actual `ShipArrived` to
 the ship and order; check the dock, crew and holds. For every transfer inspect
 `transferred_88`, the named warehouse stock and the resolved hold.
 
-Ticks below are simulation ticks of 2 ms, using 1000 ms advances. They are not
-wall-clock waits. Positions are tile centres in Q24.8 where stated.
+The measured headless driver submits commands directly, with no subsystem visits
+between same-tick commands, and advances once by 1000 ms before each observation.
+`run_turn.step_ms` is the interval **per subdivision**: 1000 ms with ten steps
+advances 10000 ms before polling. A zero-ms turn still visits subsystems; it is
+not an isolated command. PlayRunner's normal 100 % turns instead use ten 10 ms
+steps. This card establishes neither queue latency nor identical trajectories
+under those different schedules. See the [OQ-562 diagnosis](../orchestration/evidence/oq-562-1.md).
+
+Ticks below are simulation ticks of 2 ms, using single 1000 ms advances. They are
+not wall-clock waits. Positions are tile centres in Q24.8 where stated.
 
 | Tick | Existing typed operation | Required result |
 |---|---|---|
@@ -79,7 +89,11 @@ Source active city cost is 27, destination cost 20. Each independently charges
 1 gold per due 2000 ticks, with its own stamp. Source upkeep totals 90, destination
 47; resident income and existing player upkeep are both zero in this scenario.
 Final money is `30000 - 1000 - 90 - 47 = 28863`. Final source wood is 2368 raw and
-destination wood 512 raw. The integration test additionally closes tree/raw/
+destination wood 512 raw. The source's 2368 raw is measured at final arrival
+(tick 265000), not immediately after the second load (tick 218000): at that earlier
+stage stock is 1984 raw before the 512-raw load and 1472 raw after it. Another
+896 raw arrives during the last leg. Thus 1472 raw (5.75 t) and 2368 raw (9.25 t)
+are different-stage observations, not an unexplained shortfall. The integration test additionally closes tree/raw/
 producer-output/cart/stock accounting and all other owners' money.
 
 ## Windows adapter delta and remaining limits

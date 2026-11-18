@@ -15194,3 +15194,72 @@ CI run `44261293763` was still in progress when this review was written; no gree
 package landing is asserted here. Any later code change requires updating this source pin and
 its applicable validation. TOWN-START-1 measurement reuse is approved only by the explicit
 no-native-reader call-path analysis above, not by a claim that prior runs checked native reload.
+
+## 2026-11-18 — OQ-562-1 — READY FOR REVIEW
+
+- Base `9edb151c414246d306194a703db71475affbdad4`; no main or other task intake.
+- Test source `d91795a426fea97398a37c794ee6502612b5659c`; task branch `task/OQ-562-1`.
+- [Acceptance, inputs, first differences and full receipts](evidence/oq-562-1.md).
+- Independent review pending with the Mac orchestrator; no reviewer subagents.
+- Initial D6 passed 1/1, 96 assertions; disputed final values were messages, not proof.
+- Both current schedules share manifest/content/seed/rules/registry/owner/loadout.
+- Independent OpeningLoad and expansion loader initial hashes/digests match.
+- The matched direct apply/1000 ms path equals run_turn zero-command-step/one-idle-step hashes.
+- Historical D6 instead uses ten 1000 ms advances per poll and ten zero-ms visits per post.
+- This does not exercise the PlayRunner queue or a physical window.
+- First arrival event: 86000 in both; observations 86000 versus 90000.
+- Later event ticks: 171000/218000/265000 versus 177500/227000/277000.
+- Coarse observations: 180000/230000/280000; later command ticks deliberately differ.
+- The old relative +37500 predicate is observed at +40000, not +37500.
+- Both isolated Found transactions cost 350 gold; first coarse post also books 1 upkeep.
+- Construction totals 1000; source/destination upkeep 90/47 versus 96/51.
+- Final money: 30000 − 1000 − 137/147 = 28863/28853; no hidden founding fee.
+- Wood before/after the second load: 1984/1472 raw in BOTH schedules.
+- Final source wood: 2368 raw in BOTH; another 896 raw arrives during the final leg.
+- 1472/2368 raw 8.8 means 5.75/9.25 t; the original comparison used different stages.
+- All raw/worker/farm/cart/warehouse/export equations close; loss and remainder zero.
+- Final made/output: 3360/224 versus 3584/448; warehouse offered 3136 in each.
+- Eight total real arrival events, nonzero cuts/deliveries/cart loads, exact holds/destination stock.
+- Current internal pipeline figures are not imported state-134 goldens; historical evidence retained.
+- New cheap registered timing case: 0/1/1000 ms, zero steps, integer clock partition and altered interval.
+- Counted one-visit mutant fails hash/count (2 log entries versus 11), legal sibling passes.
+- Mutant restored byte-identically, rebuilt before sanitizer gates; no mutant committed.
+
+Exact receipts (`cache/oq-562-1/`; full hashes and initial/diagnostic receipts in evidence):
+
+```text
+focused-dev.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=4 executed=4 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+focused-asan.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=4 executed=4 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+wrong-interval.log
+COUNTS: selected=2 executed=1 failed=1 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+```
+
+- No memory refusal, timeout, incomplete/empty outcome or sanitizer diagnostic; no reruns for admission.
+- Builds pass with zero compiler warnings; duplicate-library linker warning retained and disclosed.
+- clang-format 23.1.3, diff checks and changed local links pass.
+- 0 pin/fixture/production/identity/default/PRNG changes; accepted baseline persistence/pin evidence reused.
+- Windows consumer delta: updated D6 title/schedules (W4 marker retained), one added sim timing test; API unchanged.
+- NOT_RUN: Windows/original runtime/HE, live window/queue timing, full suite/town, full pins and LeakSanitizer.
+- Exact-head hosted CI will be supplied directly in the final handover.
+
+Restored executable proof: `cache/oq-562-1/restored-dev.log` (binary/source SHA256s in evidence).
+```text
+COUNTS: selected=2 executed=2 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+Decisions and reasoning:
+- Correct the harness claim and measurement stages; do not change engine rules to force incomparable values equal.
+- Preserve the historical ten-visit arm as a control beside a matched production-driver comparison.
+- Keep state 134 receipts pinned; current full ledgers prove conservation without rebaselining internal output.
+- Run only affected Debug/ASan plus one bounded two-schedule real recipe; preserve initial and negative evidence.
+- QUESTIONs: none blocking; independent review and landing remain with the orchestrator.

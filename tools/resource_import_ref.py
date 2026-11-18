@@ -50,6 +50,8 @@ def evaluate(p):
     if len(slots) != 16:
         raise ValueError('slots')
     maps = {key: numbers(p[key]) for key in ('map104', 'map201', 'map404')}
+    if any(not 0 <= v < 0xffffffff for row in [slots, *maps.values()] for v in row):
+        raise ValueError('row type id')
     if any(a and len(a) != 8 for a in maps.values()):
         raise ValueError('maps')
     draws = numbers(p['draws'])
@@ -60,7 +62,8 @@ def evaluate(p):
     island = Island(0, 0, w, h, vertex, lambda x, y: objects[y*w+x])
     for row in p['records'].split(';'):
         tid, x, y, rot, state = map(int, row.split(':'))
-        if tid not in reg or rot not in range(4) or not 0 <= state <= 65535:
+        if (tid not in reg or rot not in range(4) or not 0 <= state <= 65535
+                or not 0 <= x <= 0x7fffffff or not 0 <= y <= 0x7fffffff):
             raise ValueError('record')
         t = reg[tid]
         if t.flags not in (9, 41) or x < 0 or y < 0:

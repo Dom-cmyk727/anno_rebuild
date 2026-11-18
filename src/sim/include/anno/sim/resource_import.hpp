@@ -15,7 +15,7 @@ namespace anno::sim::resource_import {
 
 // Explicit transient metadata: absence never means a guessed zero.
 struct TypeFacts {
-    TypeId id{0};
+    TypeId id;
     std::uint8_t goods0 = 0;
     std::uint16_t selector_tag = 0;
 };
@@ -26,7 +26,7 @@ struct ClimateFacts {
     std::vector<TypeId> tag104, tag201, tag404;
 };
 struct Record {
-    TypeId type{0};
+    TypeId type;
     std::int32_t x = 0, y = 0;
     std::uint8_t rotation = 0;
     std::uint16_t raw_state = 0;

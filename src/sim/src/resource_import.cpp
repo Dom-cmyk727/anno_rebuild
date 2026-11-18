@@ -15,9 +15,12 @@ const TypeFacts* find(std::span<const TypeFacts> facts, TypeId id) {
 bool valid_facts(std::span<const TypeFacts> facts, const ClimateFacts& climate) {
     if (climate.slots.size() != 16)
         return false;
-    for (const auto* row : {&climate.tag104, &climate.tag201, &climate.tag404})
-        if (!row->empty() && row->size() != 8)
+    for (const auto* row : {&climate.slots, &climate.tag104, &climate.tag201, &climate.tag404}) {
+        if (row != &climate.slots && !row->empty() && row->size() != 8)
             return false;
+        if (std::any_of(row->begin(), row->end(), [](TypeId id) { return !id.valid(); }))
+            return false;
+    }
     for (auto it = facts.begin(); it != facts.end(); ++it)
         if (!it->id.valid() || it->id.v == 0 ||
             std::find_if(facts.begin(), it, [&](const TypeFacts& f) { return f.id == it->id; }) !=
@@ -100,7 +103,8 @@ evaluate(const TileLayer& input, const VertexGrid& grid, std::span<const std::ui
         const auto index = static_cast<std::uint64_t>(out.records.size());
         const auto error = [&](ErrorKind kind) { return Error{kind, index, out.consumed}; };
         const auto* type = types.find(record.type);
-        if (!type)
+        // Object id 0 is TileLayer's empty sentinel, not a storable placement.
+        if (!type || !record.type.valid() || record.type.v == 0)
             return error(ErrorKind::Facts);
         if ((type->flags_word != 0x09 && type->flags_word != 0x29) || record.rotation > 3 ||
             type->width == 0 || type->height == 0 || record.x < 0 || record.y < 0 ||

@@ -224,7 +224,7 @@ TEST_CASE("resource import: authored ordered prefixes and draw-sensitive selecto
 
 TEST_CASE("resource import: errors expose no partial success or input mutation") {
     const auto original = rig(fields(first_vector()));
-    for (std::uint32_t test = 0; test < 12; ++test) {
+    for (std::uint32_t test = 0; test < 15; ++test) {
         auto r = original;
         auto expected = ri::ErrorKind::Facts;
         switch (test) {
@@ -276,6 +276,12 @@ TEST_CASE("resource import: errors expose no partial success or input mutation")
         }
         if (test == 11)
             r.facts[0].id = sim::TypeId{};
+        if (test == 12)
+            r.climate.slots[0] = sim::TypeId{};
+        if (test == 13)
+            r.records[0].type = sim::TypeId{0};
+        if (test == 14)
+            r.records[0].type = sim::TypeId{999};
         const auto plane = r.plane;
         const auto before = r.island.tiles.object(0);
         const auto result = evaluate(r);

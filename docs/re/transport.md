@@ -1397,7 +1397,18 @@ empty retained tiles remain code2/mask0 even at low heights. The per-subcell coa
 pass is also omitted (OQ-170). This replaces the earlier unknown-initializer stop,
 not the unresolved HEIGHT-to-runtime mapping.
 
-`0x100928a0..0x10092b32` (island+0x19c, called after placement at `0x10082ab9`) can fill
+**Dated slot correction, 2026-11-19 (WILDLIFE-ROCK-FIX-1):** concrete island
+vtable `0x100cac2c` maps `+0x19c` (pointer `0x100cadc8`) to `0x10084150`,
+the derived chunk-height-bound refresh actually called at `0x10082ab9`.
+The empty-tile fill below is `+0x1a0` (pointer `0x100cadcc`), not `+0x19c`;
+the earlier placement-call attribution is superseded. The complete placement
+writer reaches `ret` at `0x10082b0a`. Its separate `+0x188` event `0xcb` call
+at `0x10082ad8` reaches `0x1008f2d0` / index 2 / `0x1008f2f0` and increments
+chunk byte 5. These derived-cache callbacks still execute despite the wrapper
+observer bypass. [Projected-state correction](../sim/wildlife-rock.md#writer-callback-correction-2026-11-19)
+records the omitted-cache scope and future rebuild obligation.
+
+`0x100928a0..0x10092b32` (island `+0x1a0`, not the writer's `+0x19c` call) can fill
 empty tiles with types2/11 based on corner height and ground data, and can rewrite a code
 (`0x10092a40..0x10092a5d`). Therefore "no original placed-object item" need not mean the
 runtime type word stays0. **Exact stop for a universal grass/coast/water prediction:**

@@ -1,5 +1,12 @@
 # WILDLIFE-STONE-1 — frozen review evidence
 
+> Dated correction, 2026-11-19: the body and hash tables below retain the frozen
+> evidence for source `f3e18bdf75e19e4ae44daa6470a1e450285c6945`. The lower-writer endpoint/callback-bypass
+> inference is superseded by the addendum at the end and the
+> [addressed correction](../../sim/wildlife-rock.md#writer-callback-correction-2026-11-19).
+> Recorded documentation-source hashes describe the old frozen prose, not these
+> later addenda; no hash receipt, runtime result or numerical count is rewritten.
+
 READY FOR REVIEW; independent Mac orchestrator review pending.
 
 Final tested source `f3e18bdf75e19e4ae44daa6470a1e450285c6945`, tree `f0af0a89f0d5772530fa24ba9ef8dccbb891b9e7`.
@@ -157,3 +164,24 @@ Changed-source identities:
 NOT_RUN: original/HE runtime, fresh Unicorn admission emulation (module unavailable), Windows/WSL game-file suite, full pins/warnings and long unaffected corpora, LeakSanitizer, actual global RNG alignment, fauna materialization, World/native persistence. Inherited old emulation evidence is not a newly executed run.
 
 QUESTIONs: none blocking this bounded review. Next release must establish the concrete flags-0x12 KLIPPE class/overlap/coverage/write effects before continuing the same stream. No storage representation dependency was needed here. Numeric extension tags and World/native publication remain unreleased.
+
+## Focused writer-callback correction (2026-11-19)
+
+The complete AnnoWelt writer 0x10082040 reaches `ret` at 0x10082b0a.
+The earlier 0x10082637 endpoint and the inference that only getters/mask sampling
+remain inside the writer are superseded. At 0x10082ab9, concrete island +0x19c
+(pointer 0x100cadc8) calls 0x10084150, refreshing derived chunk-height bounds.
+At 0x10082ad8, +0x188 calls 0x1008f2d0 with event 0xcb / index 2 -> 0x1008f2f0,
+incrementing derived chunk dirty byte 5. These execute despite the separate
+wrapper observer bypass. The World +0xbc arm is event 0xcc, not this call.
+Empty-tile fill 0x100928a0 belongs to +0x1a0 (pointer 0x100cadcc), not +0x19c.
+
+The current result projects tile/variation/draw effects and omits those derived
+chunk-cache updates. They neither change the represented fields nor consume RNG
+in this profile, so the frozen numerical results/gates remain valid for this
+projection. Before any future World/render consumer uses those caches, correct
+initialization/rebuild requires a separate reviewed integration contract. Complete
+original writer state and complete callback bypass are not claimed. No FRUCHTBAR
+or empty-tile-fill effect is inferred. See the linked correction for finite target
+verification and matching module identities. Runtime/test/fixture bytes and frozen
+receipt tables are unchanged; documentation-source hash rows remain historical.

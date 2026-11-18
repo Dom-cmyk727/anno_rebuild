@@ -121,3 +121,18 @@ NOT_RUN here: original-runtime/History Edition and fresh original-admission
 emulation (the current Python has no unicorn); the new predicates were re-read
 from matching DLL instructions and hand-derived before implementation. Existing
 emulation evidence for original `place()` is inherited, not relabelled a new run.
+
+## Writer callback correction (2026-11-19)
+
+D: the wrapper bypass described above skips its active observer branch only.
+The complete lower writer 0x10082040 ends at `ret` 0x10082b0a and still executes
++0x19c at 0x10082ab9 -> 0x10084150 (derived chunk-height bounds) and +0x188 at
+0x10082ad8 -> 0x1008f2d0 event 0xcb / 0x1008f2f0 (dirty byte 5 increment).
+The earlier inference that only type getters/mask sampling remain is superseded.
+These internal callbacks do not change represented tiles/variation or consume RNG
+in the checked fresh profile; their derived chunk-cache writes are omitted by the
+transient projection, not bypassed. Correct initialization/rebuild is required under
+a separate reviewed contract before a future World/render consumer uses those
+caches. This result does not reproduce the complete original writer state.
+Empty-tile fill 0x100928a0 belongs to +0x1a0, not +0x19c. See the full
+[addressed correction](wildlife-rock.md#writer-callback-correction-2026-11-19).

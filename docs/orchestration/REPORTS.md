@@ -15870,3 +15870,25 @@ Decisions and reasoning:
 
 NOT_RUN: original/HE/new Unicorn/Windows/WSL/full or long suites, full pins/warnings, LeakSanitizer, World/native/wildlife lifecycle/global cursor integration.
 QUESTIONs: none blocking bounded review; establish FRUCHTBAR loader/callback and owned fertility representation before continuing. Independent review pending.
+
+### WILDLIFE-ROCK-1 focused fix — READY FOR FOCUSED RE-REVIEW (2026-11-19)
+
+- P2 evidence correction only, on the same branch from `81e8f03f`; no production defect found or runtime change authorized.
+- Verified full writer `0x10082040` through `ret` `0x10082b0a`; prior `0x10082637` read omitted executed tail callbacks.
+- Concrete island `+0x19c`, pointer `0x100cadc8`, target `0x10084150`; call `0x10082ab9` updates derived chunk bounds at `+0x94` bytes 2/3.
+- Concrete `+0x188`, pointer `0x100cadb4`, target `0x1008f2d0`; call `0x10082ad8` event `0xcb` / index 2 reaches `0x1008f2f0`, increments chunk byte 5.
+- World `+0xbc` branch is event `0xcc` / index 3, not this invocation. Type height getter `+0x58` is pure AnnoGame `0x10007d50`.
+- Empty-tile fill `0x100928a0` is `+0x1a0` at pointer `0x100cadcc`; narrow stale transport attribution corrected.
+- Wrapper observer bypass does not skip these internal calls. Projection omits derived caches, not their execution in the original.
+- Represented tile/variation/draw fields and counts remain valid; complete original writer state/callback bypass are not claimed.
+- Future World/render consumers need correct cache initialization/rebuild under a separate reviewed integration contract.
+- Dated corrections in transport and stone/cliff/rock contracts; frozen evidence gets labelled addenda, old source/hash tables and failures preserved.
+- [Focused correction evidence](evidence/wildlife-rock-fix-1.md) records finite targets/module hashes, changed files and unchanged-code audit.
+- Runtime/tests/tools/fixtures byte-equal tested `26899502`; Debug 21/21, ASan 21/21, each three required contracts, real Debug 1/1 reused.
+- Documentation/link/diff/source-audit checks only. NOT_RUN: new C++ build/gate/sanitizer/canary/mutation/full campaign, per fix packet.
+- No FRUCHTBAR work, state/registry/tag/default/World change, main merge/push, rebase or force push. Exact correction CI accompanies direct handoff.
+
+Decisions and reasoning:
+- Correct the finite evidence gap rather than alter a valid projected implementation or silently promote wrapper bypass into full callback suppression.
+- Preserve old receipts as frozen history and explicitly require cache reconstruction before future consumers depend on omitted derived state.
+- Reuse the valid frozen-source gates; no owner policy question or repeated expensive verification is needed. Independent focused re-review pending.

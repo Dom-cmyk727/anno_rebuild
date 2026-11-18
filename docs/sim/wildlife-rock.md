@@ -15,7 +15,7 @@ No World/native/default/tag/registry identity changes belong here.
 | D Game 0x10007d80–0x10007d86: zero-extended u16 flag word; 0x10009111–0x1000911a: only class-test bit 4 | 0x8018 remains 0x00008018, mode 0, no class flatness test | No sign-extension, no implicit mode 2 or raw file-height substitution; pending |
 | D Welt 0x1007c88a–0x1007cb48 and 0x1007cbdf | Same full overlap, per-world-block coverage and group 0x141 level bypass as cliff | Nonflat/all rotations, low result, chunk crossing, compatible/refused objects and partial anchors; pending |
 | D Game 0x10008923–0x10008a28 | Existing 0x8018 lacks 0x20, so ordinary resource after rock refuses; rock after resource and same-group overlays may pass | Legal installation and both orders, unchanged draw/variation behavior on rock; pending |
-| D complete fresh wrapper/writer path, Welt 0x1008ec90–0x1008ee59 / 0x10082040–0x10082637 | Neither bit 0x8000 nor 0x08 selects another reached arm; flags stay intact | Reuse concrete getters/mask sampler/observer bypass with finite reread, no new representation; pending |
+| D complete fresh wrapper/writer path, Welt 0x1008ec90–0x1008ee59 / 0x10082040–0x10082b0a | Neither bit 0x8000 nor 0x08 selects another reached arm; flags stay intact | Reuse concrete getters/mask sampler/observer bypass with finite reread, no new representation; pending |
 | P predecessor 42/39/type 1512 | Independently derive its admission/height/final writes in the same raw HHbb stream with supplied stamp 500/mode 0/draw 7 | One original Debug continuation, exact next unsupported boundary and separate counts; pending |
 
 ## Narrow path and height source
@@ -59,8 +59,10 @@ existing bit 0x10 plus anchor chooses skipped object writes. Type +0x94 and
 +0x84 remain the addressed walk-code byte +0x75 / mask +0x88 getters from the
 [cliff contract](wildlife-cliff.md), not reads of flag word +0x12. Bit 31 is clear,
 +c8 remains zero and import 0x04000000 bypasses observer/final getter paths.
-No new World call or PRNG draw occurs. This is not a claim for active graphics
-caches or all other original callers.
+No flag-specific PRNG draw is introduced. The internal writer callbacks still
+execute and update derived caches, as the dated correction below establishes;
+the wrapper bypass is not complete callback suppression. Active graphics caches
+and other original callers remain outside this profile.
 
 D/C: reuse the same tile record/partial writer, compatibility, prepared facts,
 Session scratch and header water-mask epilogues. No second overlay plane.
@@ -119,3 +121,45 @@ and are checked after the post-mutation build.
 NOT_RUN: original/History Edition runtime, new Unicorn emulation, full-world
 publication, actual global PRNG alignment and unknown FRUCHTBAR/later callbacks.
 No extra storage, state number, numeric tag, default or registry identity is added.
+
+## Writer callback correction (2026-11-19)
+
+D: focused re-review found that the prior read ending at 0x10082637 omitted the
+writer tail. Actual AnnoWelt 0x10082040 continues to `ret` at 0x10082b0a.
+The fresh wrapper bypass at 0x1008eccb–0x1008ecd3 and 0x1008ee33–0x1008ee52
+is unchanged, but does not skip the following calls inside the lower writer:
+
+- At 0x10082ab9, island slot +0x19c, concrete vtable 0x100cac2c pointer
+  0x100cadc8 -> 0x10084150–0x10084360, refreshes derived chunk-height bounds.
+  It uses terrain extrema and anchored item height; the type +0x58 target is
+  pure AnnoGame 0x10007d50–0x10007d53, with the addressed pure float conversion
+  0x100b5f90. Writes at 0x10084323/0x10084331 target bytes 3/2 of island +0x94
+  chunk records, not tile records or the separate variation plane.
+- At 0x10082ad8, island slot +0x188, pointer 0x100cadb4 -> 0x1008f2d0,
+  receives event 0xcb. Event minus 0xc9 gives index 2, target 0x1008f2f0;
+  0x1008f41e increments chunk byte 5. The World +0xbc branch at 0x1008f31c
+  belongs to event 0xcc / index 3, not this call.
+- The tail's separate World +0xf8 call at 0x10082afd is conditional on caller
+  class bits 0x2000/0x4000. This profile passes 0x04000000, so that branch is
+  not reached. No represented tile/variation write or PRNG call occurs in the
+  two reached derived-cache callbacks.
+
+D: empty-tile fill 0x100928a0 is island slot +0x1a0, pointer 0x100cadcc.
+It is not the +0x19c call made at 0x10082ab9. The inherited transport attribution
+is corrected separately; this does not establish its other callers or authorize
+interpreting FRUCHTBAR as effect-free/draw-free.
+
+A/C: this prepared prefix projects tile/variation/draw effects. It deliberately
+omits the original derived chunk-height-bound and dirty-byte cache updates;
+TileLayer's own dirty tracking is not claimed to reproduce those original bytes.
+The projected fields and measured counts are unchanged. Before future World/render
+consumers depend on those caches, their required initialization/rebuild must be
+provided under a separate reviewed integration contract. Neither complete callback
+bypass nor reproduction of the complete original writer state is claimed.
+
+Matching modules: AnnoWelt SHA256
+`f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`;
+AnnoGame SHA256
+`ac721220afd27ebca5fd2ece6a8ff452289b9d7458c4e091c68adea2012db7bc`.
+Frozen source 26899502 and prior numerical/gate receipts remain historical and
+unchanged. This prose correction adds no runtime behavior and reruns no C++ gate.

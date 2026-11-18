@@ -43,13 +43,15 @@ both pass. Same-group compatibility does not waive coverage: a footprint made
 entirely of kept overlay anchors still has no writable chunk mark and refuses.
 
 D: original wrapper 0x1008ec90–0x1008ee59 / lower writer
-0x10082040–0x10082637 use bit 31 / +0xc8 / incoming 0x10 / existing 0x10 and
+0x10082040–0x10082b0a use bit 31 / +0xc8 / incoming 0x10 / existing 0x10 and
 anchor; none selects a flag-0x08 arm in this fresh observer-inactive import
 profile. Existing addressed type vtable 0x1002185c resolves +0x94 to
 0x10007dc0–0x10007ea5 (walk-code byte +0x75 and rotation only), +0x84 to
 0x10007f10–0x10007f16 (returns +0x88 WALKMASK storage). These do not read
 flags word +0x12. The existing mask sampler and writer remain unchanged.
-No new callback/World access/PRNG call is introduced by flags 0x12.
+No additional flag-specific PRNG call is introduced by flags 0x12. The internal
+writer callbacks still execute; their derived-cache effects are projected out as
+specified in the dated correction below, not bypassed by the wrapper.
 The missing bit 0x20 is observable in compatibility, so it must not be erased
 merely because height and immediate writer selection match.
 
@@ -111,3 +113,19 @@ directory, so no bytecode cache is created for later mutation. All 21 controls
 then pass with actual output disagreement under the wrong compatibility bit.
 This is a test-isolation correction, not an engine behavior change or hidden
 negative-control success.
+
+## Writer callback correction (2026-11-19)
+
+D: the prior 0x10082637 endpoint was only part of the writer. The full function
+ends at `ret` 0x10082b0a and calls island +0x19c at 0x10082ab9 and +0x188 at
+0x10082ad8. Concrete targets are 0x10084150 (derived chunk-height bounds) and
+0x1008f2d0 event 0xcb -> 0x1008f2f0 (chunk dirty byte 5 increment). These execute
+inside the writer even with the separate wrapper observer bypass. Neither changes
+the represented tiles/variation or consumes RNG in the checked profile.
+
+This transient result projects tile/variation/draw effects and omits those derived
+chunk-cache updates. A future World/render consumer must obtain their correct
+initialization/rebuild under a separate reviewed integration contract before using
+them. The original complete writer state is not reproduced. Empty-tile fill
+0x100928a0 is separate slot +0x1a0, not the +0x19c refresh. See the full
+[addressed correction](wildlife-rock.md#writer-callback-correction-2026-11-19).

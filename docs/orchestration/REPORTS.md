@@ -15288,3 +15288,72 @@ NOT_RUN: corrected-head hosted CI (awaiting focused review before ordinary push)
 QUESTIONs: none. Independent focused correction review requested from the orchestrator before push.
 
 Focused pre-push correction review: orchestrator independently approved the seven-entry allowlist correction with no P1/P2; canonical 2/2 and unrelated-cap control verified. Corrected-head hosted CI remains pending.
+
+
+## 2026-11-18 — WILDLIFE-LOAD-1 — READY FOR REVIEW
+
+- Accepted base `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e`; no pending KBEWOHN/DOCS/helper intake.
+- [Acceptance table, corpus summary, exact receipts, source/log hashes](evidence/wildlife-load-1.md).
+- [Addressed raw format](../formats/insel.md#hirsch-raw-spawn-records-2026-11-18-wildlife-load-1); [bounded integration handoff](../sim/wildlife-load-boundary.md).
+- New HirschRecord: u16 x/y, u8 flags/raw5, u16 goods; values owned, original file order retained.
+- decode_hirsch(Bytes) returns Result<vector, string>; encode_hirsch(span) returns ByteBuffer.
+- Island::hirsch_records returns Result<optional<vector>, string>: absent differs from present-empty.
+- Original loader `0x100946c0`–`0x10094873` reread, matching AnnoWelt SHA in evidence.
+- Header comparator `0x100b4b20`, not an island lookup; original child dispatch `0x100a2f8c`–`0x100a2fbc` is sequential.
+- Accessor preserves existing first-record policy, keeps all duplicate chunks; not original duplicate emulation.
+- Strict nonmultiple-of-8 rejection is explicit accessor policy; existing opaque island parsing stays unchanged.
+- Seven C++ cases cover distinct fields/writer, raw u8 domain, order/extrema/ownership, absence, duplicates, lengths, corpus.
+- Python independent raw transcription: 9 hand-derived bundled vectors, 28 public CLI checks; zero/unknown inputs refuse.
+- Original corpus: 515 files / 1,133 islands; SCP 465 absent; SZE 668 present, 530 empty, 13,919 entries.
+- Malformed payloads 0, duplicate islands 0; C++/Python decoded-field SHA256 agree (evidence).
+- Private manifest preserves all input file hashes; no original records/bytes/listings committed.
+- Four counted production overlay faults fail intended assertions; legal zero survives; real source untouched.
+- Confirmed original arithmetic: `0x100946e9`–`0x10094705` is /500, base 0–131, max+jitter 162.
+- Inherited /1000 and 0–65 withdrawn in boundary; executor/root/independent review confirm, units remain unproved.
+- No timestamp code here; preserved helper/oracle correction belongs to the separately queued unit.
+- All 119 tracked sim fixture blobs unchanged; no pin/fixture/default/state/registry/draw changes or writer.
+
+Canonical receipts (`cache/wildlife-load-1/`; inventories and SHA256s in evidence):
+
+```text
+focused-dev.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=21 executed=21 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+focused-asan.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=21 executed=21 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+raw-bytes-dev.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+raw-bytes-asan.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- Initial GCC Release test warning at raw-byte vector writes retained; fixed authored buffer to an explicit 8-byte array.
+- Only that changed test reran 1/1 per profile; original other 20 cases and three required contracts reused unchanged.
+- GCC 15.3 strict -Werror: production TU clean, corrected test TU clean; no suppressed flags/assertions.
+- Final source freeze verified; clang-format 23.1.3, diff and links pass; no remaining compiler warning.
+- Exact-head hosted CI/status and full head/tree are supplied directly after the ordinary task-branch push.
+
+Decisions and reasoning:
+- Preserve uninterpreted file data, not guessed species/figures/time or engine population limits.
+- First-record convenience matches current API; all chunks remain available for future faithful dispatch.
+- New accessor has no production caller; reuse unrelated runtime campaigns rather than rerun them.
+- Next unit needs header/islands extension contracts, raw import, original time/mode and load-jitter ordering.
+- No tag allocation, World wiring/materialization, new RNG site or first-tick jitter substitution.
+- NOT_RUN: original/HE/native Windows/WSL runtime, full unrelated suites/warning sweep, live fauna, LeakSanitizer.
+- QUESTIONs: none for decoder; global ordering/mode provenance and tag coordination remain next-unit prerequisites.
+- Independent orchestrator review pending; no reviewer agents or main/rebase/force push; stop for review.

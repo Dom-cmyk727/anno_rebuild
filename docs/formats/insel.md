@@ -43,10 +43,57 @@ Order in templates: `INFO, HEIGHT…, GFXID…, GELAENDE…, FRUCHTBAR, [FLUESSE
 | `GELAENDE`, `PROD2` | block header + `n` × 6-byte items, same 32 × 32 block grid as `HEIGHT`; items place objects, see "Placed objects". `GELAENDE` = scenery (grass, bushes, trees, rocks, cliffs, ice floes), `PROD2` = built objects (roads, houses, walls, production) | P |
 | `FLUESSE` | block header with 8 × 8 blocks at multiples of 8, only non-empty blocks stored, + 6-byte placed-object items | P; what the river objects are ? OQ-024 |
 | `FRUCHTBAR` | `width × height` bytes, row-major, no blocks; values 0–10 | P (size asserted) |
-| `BERGWERK2`, `OCCUR`, `ANBAU`, `DISCOVER` (4), `KONTORID` (2), `DUERRE`, `LOCKED` (1, decoded: the island's lock byte, see below), `NAME`, `HIRSCH`, `EVENTINSEL`, `STAEDTE` | ? OQ-024 | P (sizes) |
+| `BERGWERK2`, `OCCUR`, `ANBAU`, `DISCOVER` (4), `KONTORID` (2), `DUERRE`, `LOCKED` (1, decoded: the island's lock byte, see below), `NAME`, `EVENTINSEL`, `STAEDTE` | ? OQ-024 | P (sizes) |
 
 ### LOCKED (decoded, task MAP-2)
 One byte, the island's persisted lock (AnnoWelt.dll island `+0xc4`, property `0x10`; loader `0x10089c0c`, serializer `0x10089d80`, which writes it only when non-zero). Present on 128 of the 1,133 islands: value 1 on 107 (8 scenario files), value 0 on the 21 `*_DUMMY.scp` templates; absent means 0. See `docs/re/ship-founding.md` section 11.5. The rebuild keeps the raw byte (`Island::lock`) and refuses a record that is not exactly one byte.
+
+### HIRSCH raw spawn records (2026-11-18, WILDLIFE-LOAD-1)
+
+**D:** GOG AnnoWelt.dll `0x100946c0`–`0x10094873`, SHA256
+`f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`.
+Each payload entry is exactly eight bytes, in file order:
+
+| Offset | Type | Raw field | Evidence |
+|---|---|---|---|
+| 0–1 | u16 LE | local tile x | `0x1009473c`–`0x10094764` |
+| 2–3 | u16 LE | local tile y | `0x10094744`–`0x1009475e` |
+| 4 | u8 | flags: bit 0 controls later load-time jitter; retain all bits | `0x100947f3`–`0x10094816` |
+| 5 | u8 | raw5, unused by the inspected loader; not a species | full entry body `0x10094721`–`0x10094830` |
+| 6–7 | u16 LE | raw goods discriminator | `0x100947ea`–`0x100947ef` |
+
+`HirschRecord`, `decode_hirsch`, `encode_hirsch` and `Island::hirsch_records`
+retain these fields without creating figures, changing coordinates, overriding
+goods, computing timestamps or consuming draws. The typed values own their data;
+the existing Island spans still require their original input buffer to live.
+
+**C — explicit parser policy:** an absent HIRSCH returns an absent optional;
+a present zero-length payload returns an engaged empty vector. The accessor
+uses `Island::record`'s **first** matching payload; later duplicate chunks remain
+in `Island::records`, including their original bytes/order. A partial trailing
+entry refuses with `HIRSCH payload length is not a multiple of 8`. This is stricter
+than the original count `payload_size >> 3` (`0x10094709`–`0x1009471b`): this
+handler counts only whole entries and performs no remainder check. That does not
+prove that an outer stream reader accepts unread trailing bytes. The new check
+occurs only when this accessor/decoder is called;
+it changes no existing island load, opaque record or chunk round-trip behavior.
+
+**D — duplicate boundary:** the loader's call at `0x100946dc` is the supplied
+header's string comparison (`0x100b4b20`–`0x100b4b6c`), not an island-wide lookup.
+The INSEL5 path dispatches each child header through island slot `+0xdc`
+(`0x100a2f8c`–`0x100a2fbc`); the wildlife table entry at `0x100cad08`
+selects `0x100946c0`. This loop has no repeated-name filter. The accessor's first
+policy must therefore not be represented as proof of original duplicate routing.
+A future loader can iterate preserved chunks and call `decode_hirsch` on each;
+upstream duplicate admissibility/global dispatch is not established here.
+
+**P:** this copy has 465 SCP files/465 islands, all HIRSCH-absent; 50 SZE files/
+668 islands, all HIRSCH-present, including 530 empty payloads and 13,919 entries.
+There are no duplicate HIRSCH headers or malformed lengths. Every observed entry's
+flag bit 0 is clear. Counts and the aggregate digest agree between C++ and the
+independent Python reference; see [the integration boundary](../sim/wildlife-load-boundary.md)
+and [wildlife section 3](../re/wildlife.md#3-hirsch-loader-and-thirschobject).
+No original records or decoded per-record listings accompany these summaries.
 
 ### Blocks
 `HEIGHT`, `GFXID`, `GELAENDE`, `PROD2`, `FLUESSE` start with a 6-byte block header:

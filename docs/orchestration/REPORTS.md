@@ -15194,3 +15194,65 @@ CI run `44261293763` was still in progress when this review was written; no gree
 package landing is asserted here. Any later code change requires updating this source pin and
 its applicable validation. TOWN-START-1 measurement reuse is approved only by the explicit
 no-native-reader call-path analysis above, not by a claim that prior runs checked native reload.
+
+## 2026-11-18 — SIM-LIMITS-1 — READY FOR REVIEW
+
+- Accepted independent base `9edb151c414246d306194a703db71475affbdad4`; OQ/wildlife/ore preserved.
+- Frozen source/spec/tests `3387108059ed05562555d90145275580c150cd7e`; no main merge/rebase/intake.
+- [Acceptance table, inventory, controls, hashes and limits](evidence/sim-limits-1.md).
+- Independent frozen-source/test/control review passed; final-pin/evidence review and CI pending.
+- State 139, ten section versions 1, PRNG 5, command 1, replay 4, wrapper 1 unchanged.
+- RejectDomain next to Reject explicitly distinguishes stored/defined, reserved and unknown.
+- NoDepositInReach remains reserved/refused; no producer exists. No accepted-code widening.
+- Shared predicate replaces copied endpoints in freight validation and native field reading.
+- Shared NavFailReason predicate retains 0/no-failure and codes through ShipBlocked 3.
+- Future appended enums require exhaustive-switch classification; no unchecked endpoint alias.
+- command_framing.hpp preserves kMaxRecordPayload and shares checked 12/20/13-byte arithmetic.
+- Named consumers: freight.cpp, config.cpp, state_fields.hpp, codec.cpp.
+- Maxima remain 3276 stops / 5038 actions with one stop; mixed counts checked separately.
+- Native stop minimum remains distinct 24 bytes (u64 action sequence count), not command 20.
+- Caller empty/count constraints, error categories, tags/aliases, field order and defaults retained.
+- Harvest guard now truthfully counts 7 common + 2 conditional mason aggregate members.
+- Nonzero mason subcells round-trip; ordinary handwritten bytes and independent oracle agree.
+- Actual validation/native/full load, codec encode/decode, Rules and typed command paths checked.
+- Huge hostile wire/native counts refuse with bounded diagnostics and no claimed element allocation.
+- First consumer gate 5/5; isolated hostile-count case 1/1; production probe 8 checks pass.
+- Six counted overlay controls fail intentionally; production header hashes unchanged throughout.
+- Omitted classification/member causes compiler failure; omitted mason row fails size/value checks.
+- Stale reserved-code reader and 24-byte command formula fail beside legal endpoint/ordinary controls.
+- All 11 frozen inputs match committed blobs; final Debug/ASan binaries match their gate hashes.
+- All 119 tracked sim fixtures unchanged; 0 pins/goldens/recordings moved, no write/update mode used.
+- Initial build's CAPTURE arity error retained; corrected before actual consumer execution.
+- x86 GCC 15.3 Release -Werror: all five changed TUs compile, empty diagnostic logs.
+
+Final canonical receipts (`cache/sim-limits-1/`; SHA256s in evidence):
+
+```text
+focused-dev.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=55 executed=55 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+focused-asan.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=55 executed=55 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- Originals required; jobs 2 / threads 2 / memory admission enabled; no competing workload observed.
+- No refused memory, timeout, empty, skipped, incomplete or sanitizer outcome; no gate restarted.
+- population_oracles_agree runs sim_stream.py --check; both integration refs run without writing.
+- Builds: 0 compiler warnings; inherited duplicate-library linker warning disclosed and retained.
+- clang-format 23.1.3, diff/links and source/fixture identity checks pass.
+
+Decisions and reasoning:
+- Preserve the existing valid domain; the last enum is reserved, so blindly widening to it is wrong.
+- Use exhaustive switches rather than a new registry/reflection framework; unknown codes stay refused.
+- Centralize command facts with checked math, keeping native sequence widths separate.
+- Bind the guard to the real 7+2 obligation; byte/round-trip tests separately catch serializer omissions.
+- Use private counted overlays to preserve the real source; normal rebuild/probes precede final gates.
+- Keep this bounded: no identity/default/asset/network/UI/other-lane changes or pins regeneration.
+- Windows delta: shared compatibility helpers/header and four auto-registered tests; no format change.
+- NOT_RUN: native Windows/WSL/original-runtime/HE/GPU, LeakSanitizer, full suite/town campaign.
+- QUESTIONs: none blocking. Exact-head CI and final review are supplied directly at handoff.

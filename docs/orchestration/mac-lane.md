@@ -22,7 +22,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | 1.3 [NET-ADR-1](tasks/net-adr-1.md) | ACCEPTED documentation; owner decisions remain open | `cf7109fe14fa729cbb0f1c775fd243cd06b34c26` | [44264630010](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44264630010), exact-head docs CI green | [Acceptance](reviews/2026-11-18-net-adr-1-review.md) |
 | 1.4 [MIL-RE-1](tasks/mil-re-1.md) | ACCEPTED bounded static research; no combat implementation | `20edc775e12a4e8cd73d703d80b8ea0e4bb4e02b` | [44268712248](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44268712248), exact-head docs CI green | [Acceptance](reviews/2026-11-18-mil-re-1-review.md) |
 | 1.5 [ANNOSCENE-ORE-2](tasks/annoscene-ore-2.md) | ACCEPTED bounded research after P2 correction; no engine implementation | `b12d22b39caee90429aef77b52659aa2bfedb38e` | [44273143955](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44273143955), exact-head docs CI green | [Acceptance and preserved finding](reviews/2026-11-18-annoscene-ore-2-review.md) |
-| 1.6 [OQ-562-1](tasks/oq-562-1.md) | RESUMED 2026-11-18 after stale gate handoff; Q0–Q4 remain active | New task branch from accepted `9edb151c414246d306194a703db71475affbdad4`; no main merge | Pending | Pending |
+| 1.6 [OQ-562-1](tasks/oq-562-1.md) | Frozen source under independent review; exact-head CI running | `1ea32f5ca0b634f91b0472394e8148bb8eb72208` | [44279553218](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44279553218), pending | Source/evidence review in parallel with CI; not accepted |
+| 1.7 [SIM-LIMITS-1](tasks/sim-limits-1.md) | QUEUED, NOT RELEASED; refreshed Mac/state139 packet | Independent accepted base `9edb151c414246d306194a703db71475affbdad4` | Not started | Await OQ-562 review and explicit release |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -118,3 +119,8 @@ MAC-HEAVY-1 receipts. No OQ-562 implementation or acceptance exists. Resume the 
 packet and keep a private current-task checkpoint note; do not rerun closed gates. The next
 planned packet remains SIM-LIMITS-1, to be refreshed and released only after this checkpoint
 is reviewed. No additional lane, merge or source mutation is introduced by this correction.
+
+OQ-562-1 now has a frozen pushed tests/docs checkpoint at1ea32f5c. Independent review runs
+in parallel with hosted CI; no premature acceptance. SIM-LIMITS-1 is refreshed against the
+accepted139 baseline and remains queued. Its old premise is corrected: NoDepositInReach is
+reserved, so preserving valid-domain semantics matters more than taking the last enum value.

@@ -254,8 +254,13 @@ TEST_CASE("freight original voyage: produced wood funds two automatic cycles and
     for (; automatic_advances < 6000; ++automatic_advances) {
         const auto position = ship_of(w, 1).pos;
         const auto stamp = ship_of(w, 1).nav->last;
-        const auto before_phase = w.freight_route(sim::FigureId{1})->phase;
-        const auto pending = w.freight_route(sim::FigureId{1})->expected_order_id;
+        const auto* route_before = w.freight_route(sim::FigureId{1});
+        REQUIRE(route_before != nullptr);
+        if (route_before == nullptr) {
+            return;
+        }
+        const auto before_phase = route_before->phase;
+        const auto pending = route_before->expected_order_id;
         const auto before_loads = loads.size(), before_unloads = unloads.size();
         run.advance(); // No commands until the uninterrupted two-cycle interval ends.
         const auto* r = w.freight_route(sim::FigureId{1});

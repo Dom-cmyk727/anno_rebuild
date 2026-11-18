@@ -111,9 +111,16 @@ void wave_ledger(const std::vector<SimEvent>& waves) {
 }
 void final_ledger(const World& w) {
     CHECK(w.script().state.signals == std::vector<std::uint8_t>{0, 0, 1, 1, 1, 1, 0, 0});
-    CHECK(w.players().find(PlayerId{0})->money == 209998); // 10000+99999+99999, no building debit
-    CHECK(w.players().find(PlayerId{31})->money == 10000);
-    CHECK(w.players().find(PlayerId{0})->permissions.size() == 462);
+    const auto* player0 = w.players().find(PlayerId{0});
+    const auto* player31 = w.players().find(PlayerId{31});
+    REQUIRE(player0 != nullptr);
+    REQUIRE(player31 != nullptr);
+    if (player0 == nullptr || player31 == nullptr) {
+        return;
+    }
+    CHECK(player0->money == 209998); // 10000+99999+99999, no building debit
+    CHECK(player31->money == 10000);
+    CHECK(player0->permissions.size() == 462);
     CHECK(w.check_invariants().empty());
 }
 struct Canary {
@@ -260,7 +267,12 @@ TEST_CASE("SCRIPT2 original imported actors retain source and startup") {
     REQUIRE(payload);
     CHECK(input.spec.script_source == std::string(payload.value().begin(), payload.value().end()));
     CHECK(input.world.script().source == input.spec.script_source);
-    const auto before = *input.world.players().find(PlayerId{0});
+    const auto* player_before = input.world.players().find(PlayerId{0});
+    REQUIRE(player_before != nullptr);
+    if (player_before == nullptr) {
+        return;
+    }
+    const auto before = *player_before;
     const auto initial_hash = input.world.state_hash();
     const auto initial_rng = input.world.rng().cursor();
     const auto researched = [](const Player& p) {

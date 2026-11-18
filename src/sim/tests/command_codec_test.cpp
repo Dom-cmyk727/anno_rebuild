@@ -1,5 +1,6 @@
 // Stage S8: the wire codec of the commands (docs/sim/state.md §8.5): exact bytes,
 // round trips, canonical decoding, hostile lengths and counts, fuzz.
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <type_traits>
@@ -480,8 +481,9 @@ TEST_CASE("command wire: fuzz over prefixes, suffixes and single-byte mutations"
             CHECK(!decodes(Bytes(wire.begin(), wire.begin() + static_cast<std::ptrdiff_t>(n))));
         }
         for (const std::uint8_t extra : {std::uint8_t{0}, std::uint8_t{1}, std::uint8_t{0xff}}) {
-            Bytes longer = wire;
-            longer.push_back(extra);
+            Bytes longer(wire.size() + 1);
+            std::copy(wire.begin(), wire.end(), longer.begin());
+            longer.back() = extra;
             CHECK(!decodes(longer));
         }
         // Mutating one byte: every value of every byte (the wire of a sample is small except

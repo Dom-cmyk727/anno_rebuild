@@ -288,7 +288,12 @@ TEST_CASE(
     CHECK_FALSE(sim::build_eligibility(w.types(), w.players(), sim::PlayerId{0}, sim::TypeId{1335})
                     .allowed());
     w.advance(0);
-    CHECK(w.players().find(sim::PlayerId{0})->permissions.size() == 462);
+    const auto* player_after = w.players().find(sim::PlayerId{0});
+    REQUIRE(player_after != nullptr);
+    if (player_after == nullptr) {
+        return;
+    }
+    CHECK(player_after->permissions.size() == 462);
     auto result = w.apply(command_test::build(0, command_test::kCity0,
                                               {command_test::at(sim::TypeId{1335}, 112, 112)}));
     REQUIRE_MESSAGE(result.ok(), sim::reject_name(result.status));

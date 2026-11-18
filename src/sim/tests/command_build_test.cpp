@@ -442,7 +442,7 @@ TEST_CASE("build flags are not on the wire") {
     CHECK(decoded.value().placements[0].type == sim::TypeId{1001});
     // The synthetic weaver stands in for 1001 (its id is beyond the codec's 12 bits).
     sim::BuildCmd imported = decoded.value();
-    imported.placements[0].type = r.t.weaver;
+    imported.placements.at(0).type = r.t.weaver;
     // Without money the flag of the original does not make the build free.
     check_refused(r.w, sim::Command{sim::PlayerId{0}, imported}, sim::Reject::CannotAfford);
 }

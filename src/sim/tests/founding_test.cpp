@@ -572,13 +572,20 @@ TEST_CASE("founding conflicts: two distant sites on one island both succeed, in 
         CHECK(w.rng().cursor() == 1236);
         CHECK(owned_by(w, 0) == 1976);
         CHECK(owned_by(w, 1) == 1976);
-        CHECK(w.players().find(sim::PlayerId{0})->money == 29650);
-        CHECK(w.players().find(sim::PlayerId{1})->money == 29650);
+        const auto* player0_after = w.players().find(sim::PlayerId{0});
+        const auto* player1_after = w.players().find(sim::PlayerId{1});
+        REQUIRE(player0_after != nullptr);
+        REQUIRE(player1_after != nullptr);
+        if (player0_after == nullptr || player1_after == nullptr) {
+            return;
+        }
+        CHECK(player0_after->money == 29650);
+        CHECK(player1_after->money == 29650);
         // No reveal: neither city's mask learned the other player, nobody discovered the other.
         CHECK(isl(w).cities[0]->player_mask.size() == 1);
         CHECK(isl(w).cities[1]->player_mask.size() == 1);
-        CHECK(w.players().find(sim::PlayerId{0})->discovery.size() == 1);
-        CHECK(w.players().find(sim::PlayerId{1})->discovery.size() == 1);
+        CHECK(player0_after->discovery.size() == 1);
+        CHECK(player1_after->discovery.size() == 1);
         CHECK(isl(w).players_present.size() == 2);
         CHECK(w.check_invariants().empty());
     }
@@ -1036,11 +1043,15 @@ TEST_CASE("founding demonstration: command, result, territory, a conflict and th
     sim::Command c1 = command_p1(62);
     found_of(c1).ship = sim::FigureId{7};
     const sim::ApplyResult r1 = rec.submit(c1);
+    const auto* player1_after = w.players().find(sim::PlayerId{1});
+    REQUIRE(player1_after != nullptr);
+    if (player1_after == nullptr) {
+        return;
+    }
     o << "== player 1 founds at (50, 62) with ship #7: " << sim::reject_name(r1.status) << " ==\n"
       << "city 1 owned by player " << isl(w).cities[1]->owner.v
       << "; the reveal added player 1 to city 0's mask (" << isl(w).cities[0]->player_mask.size()
-      << " players); player 1 discovered " << w.players().find(sim::PlayerId{1})->discovery.size()
-      << " owners\n"
+      << " players); player 1 discovered " << player1_after->discovery.size() << " owners\n"
       << ownership_diagram(w, 0, 100) << "\n";
     rec.advance(5000);
     rec.checkpoint();

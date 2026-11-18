@@ -631,8 +631,20 @@ TEST_CASE("container shapes of an island stand-in") {
     std::swap(islands[0], islands[2]);
     CHECK(table_fp(islands) != want_table);
     std::swap(islands[0], islands[2]);
-    std::vector<std::optional<IslandLike>> assigned;
+    // Exercise copy assignment over existing, different optional slots: replace,
+    // reset and emplace. Fresh ownership copies are covered by snapshot above.
+    std::vector<std::optional<IslandLike>> assigned{make_island(9, 1, 2), make_island(10, 2, 3),
+                                                    std::nullopt};
+    CHECK(table_fp(assigned) != want_table);
     assigned = islands;
+    CHECK(table_fp(assigned) == want_table);
+    REQUIRE(assigned.at(0).has_value());
+    CHECK_FALSE(assigned.at(1).has_value());
+    CHECK(assigned.at(2).has_value());
+    assigned.at(0).value().tiles.set_object(0, 701);
+    CHECK(table_fp(assigned) != want_table);
+    CHECK(table_fp(islands) == want_table);
+    assigned.at(0).value().tiles.set_object(0, 700);
     CHECK(table_fp(assigned) == want_table);
     assigned = std::move(islands);
     CHECK(table_fp(assigned) == want_table);

@@ -15288,3 +15288,59 @@ NOT_RUN: corrected-head hosted CI (awaiting focused review before ordinary push)
 QUESTIONs: none. Independent focused correction review requested from the orchestrator before push.
 
 Focused pre-push correction review: orchestrator independently approved the seven-entry allowlist correction with no P1/P2; canonical 2/2 and unrelated-cap control verified. Corrected-head hosted CI remains pending.
+
+## 2026-11-18 — WILDLIFE-INIT-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-INIT-1`; accepted base `2f9e4c0b`; source `0efffe589fd1b63530dff62cab4ce1189ab5b652`.
+- Source tree `29232be0f242c7f393c0a24a4b628bb047a3a2a7`; final report head / exact hosted CI supplied directly to the Mac orchestrator.
+- Read decoder f1e245d2 and corrected helpers 533ee3fc by pin only; no candidate intake, merge or rebase.
+- I0 acceptance table written before tracing; candidate is fresh original scenario + embedded unique islands + explicit seed, no advance or links/reuse.
+- Whole-profile original RNG alignment is **NOT_ESTABLISHED**, not declared impossible for all profiles.
+- Mode query/set: AnnoWelt `0x100a3790`–`0x100a37bb`, -1 queries bit 0, writes affect only bit 0.
+- Constructor `0x100a3a4b`/`0x100a3acd` clears bits 2/0/1; MAIN `0x100ae30b`–`0x100ae32a` restores bit 1 only.
+- Property 4 `0x100a33c5` returns u32 tick; island samples low u16 once at `0x1008c2dc`–`0x1008c2e6`; loader uses / 500.
+- Scene `0x100026db`–`0x10002720` / island `0x100a2f8c`–`0x100a2fbc` dispatch in stream order; no numeric sort or first-header lookup.
+- HIRSCH jitter follows successful allocations/file order; same-chunk insertion prepends, reversing traversal but not assigned draws.
+- Representative Tutorial/01Discover01: one island slot 11, 156 HIRSCH records/all bit 0 clear, no links/cities; player header kinds 8/2 exclude unnamed computer naming.
+- Its first nonempty GELAENDE header 34 precedes HIRSCH header 71; first admitted type 70 / kind 226 witness has corners 48 and no existing object.
+- Concrete missing original precursor: AnnoWelt `0x10089468` world draw after resource import; catalogue `+0x88` at `0x10089486` selects variation.
+- **4,589 parsed resource candidates are not an actual-draw total.** No complete load cursor claimed.
+- Catalogue receiver island `+0x1c` differs from world `+0x20`; four candidate tables point to AnnoGame `0x10001b30`, concrete dynamic receiver/selector closure still U.
+- Variation writes a **separate island +0x18 byte plane**, not growth phase/auxiliary base-tile bits. Import must not widen BuildCmd `placement_rule`.
+- Faithful resource prerequisite is OPEN; no renewed owner permission needed. An alternative changed draw phase is not approved or implemented.
+- [Initialization contract](../sim/wildlife-initialization.md) proposes source identities/header/islands fields, validation, default omission and native restoration; no numeric tags allocated.
+- Serial ordered draws must not run in parallel build_island; disabled import keeps current bytes/cursor; native restoration never rerolls.
+- I2: 14 authored vectors (12 load / 2 rebuild-restore), 0 disagreements; every expected result hand-derived.
+- Examples: out-of-order island slots, same/different chunks, absent/empty/repeated headers, unknown flag bits/raw byte 5, goods-only mode change, 499/500/65535, max jitter and resolved resource draw.
+- Public contract: 26 controls; applied wrong-order and / 1000 mutants fail exact timestamp assignment, legal raw-499 controls pass.
+- I4: new reference, required contract and required picture contract each execute once through canonical run_selected.py.
+- No skips, memory refusals, timeout, empty/incomplete result or sanitizer line; no whole gate rerun.
+
+Verbatim `cache/wildlife-init-1/focused.log` receipts (contract, picture contract, reference):
+
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- Python AST, lint / 70 self-tests, relative file links, no-public-host-path and diff checks pass.
+- After the gate only documentation was clarified; executable/vector/registration inputs unchanged and SHA-bound to provenance.
+- 119 existing sim fixtures unchanged; only new authored JSONL added; 0 pins moved and no regeneration.
+- No production src/, state/default/registry/draw-site/timeline change; CMake adds only the reference/contract pair.
+- Host: Apple M5 Max / 18 logical / 48 GiB / macOS 27.0.1, Python 3.14; original game files read-only.
+- [Evidence and receipt SHA256s](evidence/wildlife-init-1.md); raw logs and original reads stay ignored.
+- Hosted CI must bind the final pushed report head; queued/cancelled jobs are never described as green.
+
+Decisions and reasoning:
+- Use a real embedded representative and observable exclusions; do not generalize a tiny local model to a complete original timeline.
+- Keep query bit, sampled stamp, file order, traversal order and proposed native restoration as separate contracts.
+- Name the demonstrated missing draw and separate-plane effect; preserve candidate/actual-draw and candidate/dynamic-receiver distinctions.
+- Finish executable independent examples while stopping dependent integration at the finite faithful prerequisite; no dummy draw or speculative phase.
+- Preserve all previous branches/evidence and report directly; no reviewer agents, main push, force push or feature implementation.
+
+NOT_RUN: original/HE runtime, Windows/WSL, C++ build/sanitizers/whole suite (unaffected), World/native implementation, full original cursor and selector/callback closure.
+QUESTIONs: no new owner policy requested. Technical prerequisite and exact next edges remain OPEN in the contract; choosing divergent ordering would require separate owner approval.

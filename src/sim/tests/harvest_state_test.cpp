@@ -789,3 +789,41 @@ TEST_CASE("harvest state: hand-written bytes of a populated job and an ordered o
     CHECK(full.data() != splice(y_first));
     CHECK(full.data() != splice(id32));
 }
+
+TEST_CASE("harvest state: split mason subcells roundtrip without changing ordinary figure bytes") {
+    sim::Figure ordinary;
+    ordinary.id = sim::FigureId{17};
+    ordinary.kind = 400;
+    ordinary.job = 0x2a; // MAEHER: harvest_job in figure.hpp.
+    ordinary.harvest = sim::HarvestState{};
+    ordinary.harvest->start_delay = 0;
+    ordinary.harvest->target = {31, 47};
+    const auto bytes = [](const sim::Figure& figure) {
+        sim::WriteArchive out;
+        fields(out, figure);
+        return out.take();
+    };
+    const auto unchanged = bytes(ordinary);
+    auto ignored = ordinary;
+    ignored.harvest->goal_col = 2;
+    ignored.harvest->goal_row = 1;
+    CHECK(bytes(ignored) == unchanged); // Not part of an ordinary harvester's encoding.
+    auto mason = ordinary;
+    mason.job = 0x2c; // STEINMETZ: mason_job in figure.hpp.
+    mason.harvest->goal_col = 2;
+    mason.harvest->goal_row = 1;
+    const auto encoded = bytes(mason);
+    CHECK(encoded.size() == unchanged.size() + 2);
+    sim::ReadArchive in(encoded);
+    sim::Figure restored;
+    fields(in, restored);
+    REQUIRE_FALSE(in.failed());
+    CHECK(in.remaining() == 0);
+    REQUIRE(restored.harvest);
+    CHECK(restored.harvest->goal_col == 2);
+    CHECK(restored.harvest->goal_row == 1);
+    CHECK(restored.harvest == mason.harvest);
+    CHECK(restored.id == mason.id);
+    CHECK(restored.job == mason.job);
+    CHECK(bytes(restored) == encoded);
+}

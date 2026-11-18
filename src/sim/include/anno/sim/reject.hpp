@@ -116,6 +116,71 @@ enum class Reject : std::uint16_t {
     NoDepositInReach
 };
 
+// Classify every declared code explicitly. With the project's exhaustive-switch
+// warnings, appending an enum requires a deliberate stored/reserved classification.
+enum class RejectDomain { Unknown, Reserved, Stored };
+[[nodiscard]] constexpr RejectDomain reject_domain(Reject value) {
+    switch (value) {
+    case Reject::None:
+    case Reject::UnknownIssuer:
+    case Reject::UnknownIsland:
+    case Reject::UnknownCity:
+    case Reject::NotCityOwner:
+    case Reject::NotHost:
+    case Reject::BadSpeed:
+    case Reject::UnknownType:
+    case Reject::BadRotation:
+    case Reject::NotABuilding:
+    case Reject::SerialExhausted:
+    case Reject::Unsupported:
+    case Reject::OutOfIsland:
+    case Reject::TileNotOwned:
+    case Reject::Occupied:
+    case Reject::TerrainRefused:
+    case Reject::CannotAfford:
+    case Reject::NotResearched:
+    case Reject::AtomicAbort:
+    case Reject::NoBuildingAtTile:
+    case Reject::LineNotFound:
+    case Reject::BadIndex:
+    case Reject::BadValue:
+    case Reject::ListFull:
+    case Reject::Unencodable:
+    case Reject::UnknownFigure:
+    case Reject::NotAShip:
+    case Reject::NotShipOwner:
+    case Reject::ShipDisabled:
+    case Reject::NotAFoundingType:
+    case Reject::OutOfRange:
+    case Reject::SiteOwned:
+    case Reject::OwnCityOnIsland:
+    case Reject::NoRotationFits:
+    case Reject::FigureInTheWay:
+    case Reject::FigureFactsMissing:
+    case Reject::IslandLocked:
+    case Reject::NoCitySlot:
+    case Reject::ShipEmbarked:
+    case Reject::NotAWarehouse:
+    case Reject::HoldGoodsMismatch:
+    case Reject::UnsupportedGoods:
+    case Reject::StockFull:
+    case Reject::NoCargoFacts:
+    case Reject::HoldsFull:
+    case Reject::StockShort:
+    case Reject::PermissionContext:
+    case Reject::ConstructionDenied:
+    case Reject::CityAccounting:
+    case Reject::HouseDomain:
+        return RejectDomain::Stored;
+    case Reject::NoDepositInReach:
+        return RejectDomain::Reserved;
+    }
+    return RejectDomain::Unknown;
+}
+[[nodiscard]] constexpr bool is_stored_freight_reject(std::uint16_t value) {
+    return reject_domain(static_cast<Reject>(value)) == RejectDomain::Stored;
+}
+
 /// What one record of a command did (docs/sim/state.md §8.3): the status and, for
 /// a placement that was applied, the building it created.
 struct RecordResult {

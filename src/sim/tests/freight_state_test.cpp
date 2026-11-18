@@ -11,6 +11,7 @@
 #include <anno/sim/ship_orders.hpp>
 #include <anno/sim/state_fields.hpp>
 
+#include "alloc_probe.hpp"
 #include "freight_helpers.hpp"
 #include "island_helpers.hpp"
 namespace sim = anno::sim;
@@ -519,4 +520,186 @@ TEST_CASE("freight takeover: accepted public Move Load Unload take control and r
     assign();
     REQUIRE(ft::apply(w, sim::StopCmd{ft::ship_id}).ok());
     CHECK(w.freight_route(ft::ship_id) == nullptr);
+}
+
+TEST_CASE("freight compatibility: stored reject and navigation domains reach validation and load") {
+    const auto rejection_case = [](std::uint16_t code, bool legal) {
+        CAPTURE(code);
+        auto world = ft::make();
+        REQUIRE(ft::apply(world, ft::route(world)).ok());
+        auto& route = *ft::ship(world).freight;
+        route.status = sim::FreightStatus::Failed;
+        route.last_reject = static_cast<sim::Reject>(code);
+        CHECK(sim::FreightRoutes::validate(world).empty() == legal);
+        sim::WriteArchive bytes;
+        sim::freight_fields(bytes, route, ft::ship(world).holds.size());
+        REQUIRE_FALSE(bytes.data().empty());
+        sim::ReadArchive native(bytes.data());
+        sim::FreightState parsed;
+        sim::freight_fields(native, parsed, ft::ship(world).holds.size());
+        CHECK(!native.failed() == legal);
+        if (legal)
+            CHECK(native.remaining() == 0);
+        const auto loaded = sim::World::load(world.save(), ft::registry());
+        CHECK(loaded.ok() == legal);
+        if (loaded) {
+            const auto* restored = loaded.value().freight_route(ft::ship_id);
+            if (restored == nullptr) {
+                REQUIRE(restored != nullptr);
+                return;
+            }
+            CHECK(restored->last_reject == route.last_reject);
+        } else
+            CHECK(loaded.error().find("freight reject enum out of range") != std::string::npos);
+    };
+    rejection_case(0, true);
+    rejection_case(static_cast<std::uint16_t>(sim::Reject::CityAccounting), true);
+    rejection_case(static_cast<std::uint16_t>(sim::Reject::NoDepositInReach), false);
+    rejection_case(static_cast<std::uint16_t>(sim::Reject::NoDepositInReach) + 1U, false);
+    rejection_case(UINT16_MAX, false);
+    CHECK(sim::reject_domain(sim::Reject::NoDepositInReach) == sim::RejectDomain::Reserved);
+    CHECK(sim::reject_domain(static_cast<sim::Reject>(UINT16_MAX)) == sim::RejectDomain::Unknown);
+    for (const std::uint8_t code :
+         {std::uint8_t{0}, std::uint8_t{3}, std::uint8_t{4}, std::uint8_t{255}}) {
+        CAPTURE(code);
+        const bool legal = code <= 3;
+        auto world = ft::make();
+        REQUIRE(ft::apply(world, ft::route(world)).ok());
+        auto& route = *ft::ship(world).freight;
+        route.status = sim::FreightStatus::Failed;
+        route.nav_failure = code;
+        CHECK(sim::FreightRoutes::validate(world).empty() == legal);
+        sim::WriteArchive bytes;
+        sim::freight_fields(bytes, route, ft::ship(world).holds.size());
+        REQUIRE_FALSE(bytes.data().empty());
+        sim::ReadArchive native(bytes.data());
+        sim::FreightState parsed;
+        sim::freight_fields(native, parsed, ft::ship(world).holds.size());
+        CHECK(!native.failed() == legal);
+        if (legal)
+            CHECK(native.remaining() == 0);
+        const auto loaded = sim::World::load(world.save(), ft::registry());
+        CHECK(loaded.ok() == legal);
+        if (loaded) {
+            const auto* restored = loaded.value().freight_route(ft::ship_id);
+            if (restored == nullptr) {
+                REQUIRE(restored != nullptr);
+                return;
+            }
+            CHECK(restored->nav_failure == code);
+        } else
+            CHECK(loaded.error().find("freight navigation enum out of range") != std::string::npos);
+    }
+}
+
+TEST_CASE("freight compatibility: framing boundaries reach codec rules commands and native load") {
+    // Hand arithmetic: 12+3276*20=65532; 12+3277*20=65552.
+    // One stop: 32+5038*13=65526; 32+5039*13=65539.
+    // Mixed: 52+5037*13=65533; 52+5038*13=65546.
+    struct Case {
+        std::uint32_t stops, actions;
+        bool legal;
+        sim::Reject refusal;
+    };
+    const Case cases[] = {
+        {3276, 0, true, sim::Reject::None}, {3277, 0, false, sim::Reject::BadValue},
+        {1, 5038, true, sim::Reject::None}, {1, 5039, false, sim::Reject::BadValue},
+        {2, 5037, true, sim::Reject::None}, {2, 5038, false, sim::Reject::Unencodable}};
+    for (const auto& c : cases) {
+        CAPTURE(c.stops);
+        CAPTURE(c.actions);
+        auto world = ft::make();
+        auto& limits = sim::WorldTestAccess::rules(world).freight;
+        limits.max_stops = 3276;
+        limits.max_actions = 5038;
+        REQUIRE(world.rules().validate().empty());
+        auto cmd = ft::route(world);
+        auto stop = cmd.stops.at(0);
+        stop.actions.clear();
+        cmd.stops.assign(c.stops, stop);
+        cmd.stops.at(0).actions.assign(c.actions,
+                                       {sim::FreightDirection::LoadTarget, ft::goods, 0});
+        CHECK(sim::has_wire_form(cmd) == c.legal);
+        const auto encoded = sim::encode_record(cmd);
+        CHECK(encoded.ok() == c.legal);
+        if (encoded) {
+            CHECK(encoded.value().size() == 4ULL + 12 + 20ULL * c.stops + 13ULL * c.actions);
+            const auto decoded = sim::decode_record(encoded.value());
+            REQUIRE(decoded);
+            CHECK(decoded.value() == sim::Body{cmd});
+        }
+        const auto applied = world.apply({sim::PlayerId{0}, cmd});
+        CHECK(applied.status == c.refusal);
+        if (c.legal) {
+            CHECK(sim::FreightRoutes::validate(world).empty());
+            CHECK(sim::World::load(world.save(), ft::registry()).ok());
+        } else {
+            // A forged native definition must meet the same command framing,
+            // independently of the command ingress that refused it above.
+            REQUIRE(ft::apply(world, ft::route(world)).ok());
+            ft::ship(world).freight->stops = cmd.stops;
+            const auto loaded = sim::World::load(world.save(), ft::registry());
+            REQUIRE_FALSE(loaded);
+            CHECK(loaded.error().find("freight") != std::string::npos);
+        }
+    }
+    for (const bool stops : {false, true}) {
+        sim::Rules rules;
+        rules.freight.max_stops = 3276;
+        rules.freight.max_actions = 5038;
+        CHECK(rules.validate().empty());
+        if (stops)
+            ++rules.freight.max_stops;
+        else
+            ++rules.freight.max_actions;
+        CHECK(rules.validate().find("Rules.freight") != std::string::npos);
+    }
+    // These hostile counts are checked without materializing a vector or multiplying first.
+    static_assert(!sim::freight_wire::payload_size(UINT64_MAX, 0));
+    static_assert(!sim::freight_wire::payload_size(1, UINT64_MAX));
+    CHECK_FALSE(sim::freight_wire::payload_size(UINT64_MAX, UINT64_MAX));
+}
+
+TEST_CASE("freight compatibility: hostile wire and native counts allocate no claimed elements") {
+    // Hand-written wire heads: tag F075, payload len 12/32, stop/action count UINT32_MAX.
+    for (const bool actions : {false, true}) {
+        CAPTURE(actions);
+        std::vector<std::uint8_t> wire(actions ? 36 : 16, 0);
+        wire.at(0) = 0x75;
+        wire.at(1) = 0xF0;
+        wire.at(2) = actions ? 32 : 12;
+        if (actions)
+            wire.at(12) = 1; // One real stop header before its false action count.
+        std::fill(wire.end() - 4, wire.end(), 0xFF);
+        bool refused = false;
+        std::uint64_t allocated = 0;
+        {
+            anno::test::AllocScope scope;
+            refused = !sim::decode_record(wire).ok();
+            allocated = scope.bytes();
+        }
+        CHECK(refused);
+        // Test-only diagnostic budget: allows an error string, never the claimed vector.
+        CHECK(allocated < 1024);
+        // Native uses an 8-byte count, including the stop's action count: 24-byte stop.
+        std::vector<std::uint8_t> native(actions ? 32 : 8, 0);
+        if (actions)
+            native.at(0) = 1;
+        std::fill(native.end() - 8, native.end(), 0xFF);
+        sim::FreightState parsed;
+        sim::ReadArchive reader(native);
+        {
+            anno::test::AllocScope scope;
+            sim::freight_fields(reader, parsed, 0);
+            allocated = scope.bytes();
+        }
+        CHECK(reader.failed());
+        CHECK(allocated < 1024);
+        if (actions) {
+            REQUIRE(parsed.stops.size() == 1);
+            CHECK(parsed.stops.at(0).actions.empty());
+        } else {
+            CHECK(parsed.stops.empty());
+        }
+    }
 }

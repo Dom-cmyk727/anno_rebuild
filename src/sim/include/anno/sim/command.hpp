@@ -17,6 +17,7 @@
 #include <vector>
 
 #include <anno/formats/result.hpp>
+#include <anno/sim/command_framing.hpp>
 #include <anno/sim/freight_state.hpp>
 #include <anno/sim/ids.hpp>
 
@@ -210,9 +211,6 @@ enum WireType : std::uint16_t {
 
 /// The record type a body is written with (LegacyRawCmd: its own type field).
 [[nodiscard]] std::uint16_t wire_type(const Body& body);
-
-/// The longest payload a record can carry: its length field is a u16.
-enum : std::size_t { kMaxRecordPayload = 0xffff };
 
 /// ClientRecord = {u16 type, u16 len, payload[len]} (§8.5). An error (a message) for a
 /// payload longer than kMaxRecordPayload, or a LegacyRawCmd whose type is native.

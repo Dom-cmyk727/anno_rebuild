@@ -25,6 +25,19 @@ enum class NavFailReason : std::uint8_t {
     ShipBlocked = 3 ///< the ship entered a blocked state (state_word & move_blocked_mask)
 };
 
+// Stored freight uses the same codes, with 0 also representing no failure.
+// No default: a new NavFailReason must be classified under -Wswitch/-Werror.
+[[nodiscard]] constexpr bool is_stored_nav_failure(std::uint8_t value) {
+    switch (static_cast<NavFailReason>(value)) {
+    case NavFailReason::Unreachable:
+    case NavFailReason::BudgetExceeded:
+    case NavFailReason::OutsideWindow:
+    case NavFailReason::ShipBlocked:
+        return true;
+    }
+    return false;
+}
+
 enum class NavPlanKind : std::uint8_t {
     Nodes,    ///< a plan: the nodes, installed as the route (status 1 with runs)
     Arrived,  ///< status 2: no runs, the order is consumed and the ship idles

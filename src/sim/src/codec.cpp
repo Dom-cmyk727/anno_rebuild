@@ -233,19 +233,20 @@ std::uint64_t payload_size(const Body& body) {
         std::uint64_t operator()(const UnloadCmd&) const { return kUnloadSize; }
         std::uint64_t operator()(const LoadCmd&) const { return kLoadSize; }
         std::uint64_t operator()(const AssignFreightRouteCmd& c) const {
-            if (c.stops.empty() || c.stops.size() > (kMaxRecordPayload - 12) / 20)
+            if (c.stops.empty() || c.stops.size() > freight_wire::max_stops)
                 return kMaxRecordPayload + 1;
-            std::uint64_t size = 12 + c.stops.size() * 20;
+            std::uint64_t actions = 0;
             for (const auto& stop : c.stops) {
-                if (stop.actions.size() > (kMaxRecordPayload - size) / 13)
+                if (stop.actions.size() > freight_wire::max_actions - actions)
                     return kMaxRecordPayload + 1;
-                size += stop.actions.size() * 13;
+                actions += stop.actions.size();
                 for (const auto& action : stop.actions)
                     if (static_cast<unsigned>(action.direction) > 1 ||
                         action.tons > UINT64_MAX / 256)
                         return kMaxRecordPayload + 1;
             }
-            return size;
+            return freight_wire::payload_size(c.stops.size(), actions)
+                .value_or(kMaxRecordPayload + 1);
         }
         std::uint64_t operator()(const ControlFreightRouteCmd& c) const {
             return static_cast<unsigned>(c.control) <= 2 ? 9 : kMaxRecordPayload + 1;
@@ -451,23 +452,23 @@ std::uint64_t get_u64(In& in) {
     return lo | (hi << 32);
 }
 formats::Result<Body, std::string> decode_freight(Bytes p) {
-    if (p.size() < 12)
+    if (p.size() < freight_wire::head_bytes)
         return at("AssignFreight: short head", p.size());
     In in(p);
     AssignFreightRouteCmd cmd;
     cmd.ship = FigureId{get_u64(in)};
     const auto stops = in.u32();
-    if (stops == 0 || stops > in.left() / 20)
+    if (stops == 0 || stops > in.left() / freight_wire::stop_bytes)
         return std::string("AssignFreight: invalid stop count");
     for (std::uint32_t i = 0; i < stops; ++i) {
-        if (in.left() < 20)
+        if (in.left() < freight_wire::stop_bytes)
             return std::string("AssignFreight: truncated stop");
         FreightStop stop;
         stop.warehouse = BuildingId{get_u64(in)};
         stop.dock_x_q8 = in.i32();
         stop.dock_y_q8 = in.i32();
         const auto actions = in.u32();
-        if (actions > in.left() / 13)
+        if (actions > in.left() / freight_wire::action_bytes)
             return std::string("AssignFreight: invalid action count");
         for (std::uint32_t j = 0; j < actions; ++j) {
             const auto direction = in.u8();

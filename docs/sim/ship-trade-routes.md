@@ -897,3 +897,26 @@ publishedgateobjects/18SANhashes/tenbinary-eventparity;rehashed472originalfiles.
 Finalconsolidatedhandoff records exact approval andexplicitremainingplatform/
 economy/combinedidentitylimits. Thiscloseout changesdocumentationonly;no further
 gate/sourceworkrequested. Stopatcleancommittedownedcandidateandordinarypush.
+
+### Compatibility bounds maintenance (2026-11-18, SIM-LIMITS-1)
+
+This maintenance preserves state 139, every section version, command/replay/native
+versions and supported bytes. Stored freight rejection codes accept the defined
+nonreserved domain through `CityAccounting`; `NoDepositInReach` remains reserved
+and refused, as do unnamed codes. Navigation failure bytes remain 0..3, with 0
+also representing no failure. Exhaustive classification next to each enum requires
+a deliberate decision when a new enumerator is appended; validation and the native
+reader share those classifications and preserve their existing error messages.
+
+The shared command framing is `12 + 20*stops + 13*actions <= 65535`, checked before
+multiplication/addition. Existing maxima remain 3276 stops and 5038 actions (the
+latter with one stop); mixed definitions must also fit the combined formula.
+Callers retain their own nonempty/count constraints. Native stops still need at
+least **24** bytes, because their action sequence count is u64 rather than the
+command's u32. These widths must not be substituted for one another.
+
+`HarvestState` has seven common aggregate members serialized by its own field
+function and two sub-cell members serialized only for mason figures. Its layout
+guard counts that 7+2 split; the ordinary harvester's bytes are unchanged. The
+nonzero mason round-trip and independent handwritten/reference bytes guard the
+conditional serialization obligation separately from the aggregate count.

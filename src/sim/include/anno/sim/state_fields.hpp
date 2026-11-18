@@ -68,6 +68,7 @@
 #include <anno/formats/result.hpp>
 #include <anno/sim/archive.hpp>
 #include <anno/sim/clock.hpp>
+#include <anno/sim/command_framing.hpp>
 #include <anno/sim/config.hpp>
 #include <anno/sim/create.hpp>
 #include <anno/sim/events.hpp>
@@ -80,6 +81,7 @@
 #include <anno/sim/rng.hpp>
 #include <anno/sim/seams.hpp>
 #include <anno/sim/settings.hpp>
+#include <anno/sim/ship_step.hpp>
 #include <anno/sim/timers.hpp>
 #include <anno/sim/types.hpp>
 #include <anno/sim/walk_cells.hpp>
@@ -1201,8 +1203,11 @@ template <class A, Same<NavMotion> S> void fields(A& a, S& s) {
 
 template <> struct EnumInfo<HarvestStep> : ContiguousEnum<5> {};
 
-static_assert(field_count<HarvestState>() == 9,
-              "a HarvestState member needs a line in fields(HarvestState)");
+inline constexpr std::size_t kHarvestCommonMembers = 7;
+inline constexpr std::size_t kHarvestMasonMembers = 2;
+static_assert(field_count<HarvestState>() == kHarvestCommonMembers + kHarvestMasonMembers,
+              "HarvestState has 7 common members in fields(HarvestState) and 2 conditional mason "
+              "members in fields(Figure); classify any added member in this split");
 
 /// MAP-ECON-1 E2 (stream 126, docs/sim/forestry.md 2): u8 step, u32 start_delay, u32 wait, i32
 /// target x, i32 target y, the route (u64 count, i32 x and y each), u32 next, u32 along.
@@ -1282,15 +1287,16 @@ template <class A, Same<FreightAction> S> void fields(A& a, S& s) {
 static_assert(field_count<FreightState>() == 19);
 template <class A, Same<FreightState> S> void freight_fields(A& a, S& s, std::uint64_t hold_count) {
     std::uint64_t action_total = 0;
-    freight_seq(a, s.stops, 24, (65535U - 12U) / 20U, [&](auto& stop) {
+    // Native stop minimum is 24 bytes: its sequence count is u64, unlike wire's u32.
+    freight_seq(a, s.stops, 24, freight_wire::max_stops, [&](auto& stop) {
         a.u64(stop.warehouse.v);
         a.i32(stop.dock_x_q8);
         a.i32(stop.dock_y_q8);
-        freight_seq(a, stop.actions, 13, (65535U - 32U) / 13U,
+        freight_seq(a, stop.actions, freight_wire::action_bytes, freight_wire::max_actions,
                     [&](auto& action) { fields(a, action); });
         action_total += stop.actions.size();
         if constexpr (A::kReading) {
-            if (!a.failed() && 12 + s.stops.size() * 20 + action_total * 13 > 65535)
+            if (!a.failed() && !freight_wire::payload_size(s.stops.size(), action_total))
                 a.fail("freight definition exceeds command framing");
         }
     });
@@ -1313,13 +1319,13 @@ template <class A, Same<FreightState> S> void freight_fields(A& a, S& s, std::ui
     auto reject = static_cast<std::uint16_t>(s.last_reject);
     a.u16(reject);
     if constexpr (A::kReading) {
-        if (!a.failed() && reject > static_cast<std::uint16_t>(Reject::CityAccounting))
+        if (!a.failed() && !is_stored_freight_reject(reject))
             a.fail("freight reject enum out of range");
         s.last_reject = static_cast<Reject>(reject);
     }
     a.u8(s.nav_failure);
     if constexpr (A::kReading) {
-        if (!a.failed() && s.nav_failure > 3)
+        if (!a.failed() && !is_stored_nav_failure(s.nav_failure))
             a.fail("freight navigation enum out of range");
     }
 }

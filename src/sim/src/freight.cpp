@@ -46,9 +46,10 @@ Reject definition(const World& w, const std::vector<FreightStop>& stops, bool ca
         return Reject::BadValue;
     std::uint64_t count = 0;
     for (const auto& stop : stops) {
+        if (stop.actions.size() > w.rules().freight.max_actions - count)
+            return Reject::BadValue;
         count += stop.actions.size();
-        if (count > w.rules().freight.max_actions || !dock_valid(w, stop) ||
-            !stop.warehouse.valid() || serial_of(stop.warehouse) == 0 ||
+        if (!dock_valid(w, stop) || !stop.warehouse.valid() || serial_of(stop.warehouse) == 0 ||
             island_of(stop.warehouse).v >= w.config().island_slots)
             return Reject::BadValue;
         if (canonical) {
@@ -76,7 +77,7 @@ Reject definition(const World& w, const std::vector<FreightStop>& stops, bool ca
                 amounts.emplace(key, action.tons);
         }
     }
-    if (12 + stops.size() * 20 + count * 13 > kMaxRecordPayload)
+    if (!freight_wire::payload_size(stops.size(), count))
         return Reject::Unencodable;
     return Reject::None;
 }
@@ -220,8 +221,9 @@ std::string FreightRoutes::validate(const World& w) {
             !f.nav || f.parent.valid() || f.expiry_stamp || f.freight_generation == 0 ||
             definition(w, r.stops, true) != Reject::None || static_cast<unsigned>(r.status) > 2 ||
             static_cast<unsigned>(r.phase) > 5 || r.stop_index >= r.stops.size() ||
-            r.last_tick > w.clock().tick() || r.credit_ticks > r.last_tick || r.nav_failure > 3 ||
-            static_cast<unsigned>(r.last_reject) > static_cast<unsigned>(Reject::CityAccounting))
+            r.last_tick > w.clock().tick() || r.credit_ticks > r.last_tick ||
+            !is_stored_nav_failure(r.nav_failure) ||
+            !is_stored_freight_reject(static_cast<std::uint16_t>(r.last_reject)))
             return bad();
         const auto& stop = r.stops[r.stop_index];
         const auto actions = stop.actions.size();

@@ -368,3 +368,20 @@ ordering model before persistent implementation, or return a precise owner choic
 if omitted original draws make that profile impossible. No silent adaptation,
 World integration, tag allocation or defaults change. The executor reports its
 frozen pushed result and CI directly to this orchestrator; Windows owns landing.
+
+### WILDLIFE-INIT checkpoint — finite original-load prerequisite
+
+Independent primary review confirms an omitted resource-variant draw before
+HIRSCH in the proposed no-link/no-city Tutorial profile. The first nonempty
+GELAENDE placement succeeds on an empty flat tile; the original commits it, checks
+kind225–256 and draws through world+0xb4 before catalogue variant selection.
+The current importer copies fields without this draw. This is one established
+witness, not a claim that all4589 resource candidates draw or that every possible
+profile is impossible. INIT's whole-profile equivalence remains unestablished.
+
+The faithful-port objective is already authorized. A bounded original GELAENDE
+load prerequisite can be dispatched after INIT review without asking the owner
+to approve faithful development again. A different random-order policy would
+require owner approval; none is selected. Executor continues only INIT examples,
+contract and handoff, not resource implementation. The packet's automatic owner-
+question wording is clarified accordingly. No defaults or source changed.

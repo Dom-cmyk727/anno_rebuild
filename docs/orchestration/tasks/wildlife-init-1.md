@@ -119,12 +119,14 @@ intended next package should implement one supported fresh-load path and native
 round-trip without animal materialization. Do not silently generalize that proof
 to templates, reused islands, original savegames or all scenarios.
 
-If unavoidable omitted original draws prevent a faithful supported profile, stop
-that dependent contract at a concrete owner choice: complete the named missing
-original draw paths, or approve a named deterministic rebuild initialization phase
-with its changed ordering disclosed. Include the smallest demonstrated case,
-expected effects, recommended scope and evidence. Do not invent an adaptation,
-open an unbounded repair campaign or keep tracing unrelated lifecycle code.
+If omitted original draws prevent the proposed faithful profile, stop the dependent
+implementation and report the exact finite prerequisite, with its smallest witness,
+effects and recommended next scope. Continuing the already authorized faithful port
+through a bounded original-load correction is an orchestrator dispatch decision,
+not a new owner-policy approval. Only proposing a divergent deterministic rebuild
+initialization phase requires a concrete owner choice with changed ordering disclosed.
+Do not implement an adaptation, begin the prerequisite in this packet, launch an
+unbounded repair campaign or trace unrelated lifecycle code.
 
 ## I4 — focused verification, review and stopping criteria
 
@@ -145,6 +147,19 @@ The orchestrator provides independent read-only review; no executor reviewer age
 Stop at the reviewed contract/reference. No World integration, species creation,
 fauna sweep, hunting, tag reservation or default flip. Success is one evidenced
 profile plus executable distinguishing examples and a precise implementation
-handoff, or a bounded evidence-backed owner decision when no such profile exists.
+handoff, or an evidence-backed finite prerequisite when the proposed profile is not yet
+supported; an owner decision is needed only for a proposed policy deviation.
 At six hours, return a clean checkpoint with exact unread dependency rather than
 expanding the investigation. Do not pause independent steps merely waiting for CI.
+
+## Initialization witness, independently confirmed during execution
+
+Tutorial/01Discover01's first nonempty GELAENDE header34 places type70/kind226
+on a previously empty, flat tile. Original placement admission and commit precede
+the group225–256 branch's world draw atAnnoWelt0x10089468, followed by catalogue
+slot+0x88. HIRSCH header71 follows. The current importer has no corresponding
+resource-load draw. Executor and independent reviewer checked the matching original
+bytes and scenario/registry facts. This proves one missing predecessor, not4589
+actual draws or the complete timeline. Keep the full-profile claim unestablished.
+A bounded faithful GELAENDE-load prerequisite may follow this contract's review;
+no renewed owner permission is needed for that existing faithful-port objective.

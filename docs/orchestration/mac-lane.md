@@ -435,3 +435,15 @@ infrastructure NOT_RUN, with no product-test failure in that run. Local review
 stands; final acceptance is blocked on an authenticated retry of that unavailable
 lane and dependent gate. Successful lanes are retained, and no fake source change,
 empty commit or full rerun is authorized. Main remains untouched.
+
+## Acceptance receipt — WILDLIFE-INIT-1
+
+ACCEPTED:97d893af9d78e6662dd8859acc3a905f71c80402,
+CI44359989371 SUCCESS with all12 jobs independently reconciled against the
+complete public-API inventory. Review:
+[2026-11-18-wildlife-init-1-review.md](reviews/2026-11-18-wildlife-init-1-review.md).
+The head and both receipt hashes were verified; no tests repeated or source
+changed. Ready for the Windows orchestrator's normal stacking/landing procedure,
+not merged here. Scope remains research/reference, not full RNG alignment.
+EXECUTOR II MAC continues RESOURCE-1 closeout and reports its separate frozen
+candidate directly here. LOAD-FIX's no-runner CI block is unchanged.

@@ -1,11 +1,11 @@
-# SIM-LIMITS-1 — local review approved; exact-head CI pending
+# SIM-LIMITS-1 — source review approved; focused lint correction required
 
 Mac orchestrator, 2026-11-18. **LOCAL REVIEW APPROVED, NOT YET ACCEPTED.**
 Final head `c4f52d286b6589eb86467d8681c3f03af35a4a43`, tree
 `1d404c29e3ce591cd98ca0f0bea08df21577b59b`; code/spec/tests
 `3387108059ed05562555d90145275580c150cd7e`. The later commit changes two documentation
 files only. Exact-head [CI 44294408513](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44294408513)
-is the remaining acceptance condition. No green result is presumed.
+exposed an owned lint failure described below. Acceptance remains withheld.
 
 ## Reviewed scope
 
@@ -65,3 +65,20 @@ No further local campaign is needed. Original-runtime, live window/GPU, native t
 original-file runs, LeakSanitizer and full-suite/town coverage remain NOT_RUN. Hosted CI lacks
 original game assets and cannot extend the local corpus claim. Acceptance and DOCS-SIM-1
 release will be recorded only after the named run succeeds. Main landing remains Windows-owned.
+
+
+## Hosted CI finding and focused correction
+
+Linux GCC Debug builds successfully but fails anno_sim_tests_lint_sim_passes on seven new
+constexpr_count entries: head_bytes, stop_bytes, action_bytes, max_stops, max_actions and the
+two HarvestState member counts. Its canonical result is 2778 selected, 2295 executed passes,
+1 failed, 482 declared skips, no empty/incomplete/sanitizer outcomes. The local 55-case
+selection omitted this cheap lint check; no local lint success is claimed retroactively.
+
+Artifact14422993528 was downloaded and checked against GitHub's published ZIP SHA256
+bffb44df26b2fbeab0824af8c34083543189f5bf0832a9f2113241207f06a221. It remains failed evidence.
+The reviewed constants describe existing wire/layout invariants, not new gameplay capacities.
+Use the existing exact-entry/reason allowlist mechanism, verify canonical lint and its
+self-test, and prove an unrelated fixed gameplay cap is still caught. Do not weaken the
+checker or broadly allow a file. Independent focused review and a new exact-head CI success
+are required. Unchanged production/test local receipts remain reusable; no broad rerun.

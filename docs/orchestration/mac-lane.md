@@ -23,7 +23,7 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | 1.4 [MIL-RE-1](tasks/mil-re-1.md) | ACCEPTED bounded static research; no combat implementation | `20edc775e12a4e8cd73d703d80b8ea0e4bb4e02b` | [44268712248](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44268712248), exact-head docs CI green | [Acceptance](reviews/2026-11-18-mil-re-1-review.md) |
 | 1.5 [ANNOSCENE-ORE-2](tasks/annoscene-ore-2.md) | ACCEPTED bounded research after P2 correction; no engine implementation | `b12d22b39caee90429aef77b52659aa2bfedb38e` | [44273143955](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44273143955), exact-head docs CI green | [Acceptance and preserved finding](reviews/2026-11-18-annoscene-ore-2-review.md) |
 | 1.6 [OQ-562-1](tasks/oq-562-1.md) | ACCEPTED bounded headless causal diagnosis after focused CI correction | `b7046e5e279fa979d83079feb56dc83a660f32ef` | [44282873819](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44282873819), all 12 jobs success at exact head | [Acceptance and preserved failure](reviews/2026-11-18-oq-562-1-review.md) |
-| 1.7 [SIM-LIMITS-1](tasks/sim-limits-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `c4f52d286b6589eb86467d8681c3f03af35a4a43`; code `33871080` | [44294408513](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44294408513), not yet claimed green | [Source, tests and evidence review](reviews/2026-11-18-sim-limits-1-review.md) |
+| 1.7 [SIM-LIMITS-1](tasks/sim-limits-1.md) | LOCAL SOURCE REVIEW APPROVED; focused lint correction required | `c4f52d286b6589eb86467d8681c3f03af35a4a43`; code `33871080` | [44294408513](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44294408513), Linux GCC Debug lint failed | [Source, tests and evidence review](reviews/2026-11-18-sim-limits-1-review.md) |
 | 1.8 [DOCS-SIM-1](tasks/docs-sim-1.md) | PREPARED, NOT RELEASED; dispatch independently reviewed | To use the accepted SIM-LIMITS-1 full head named at release | Not started | Await SIM-LIMITS-1 review and exact-head CI; then direct release authorized |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
@@ -153,3 +153,12 @@ reports both checkpoints to the Mac orchestrator. DOCS-SIM-1's prepared packet h
 independent dispatch review: its finite set includes every Seams member, and mechanical
 declaration/default/mapping checks are explicitly separated from reviewed behavior claims.
 No premature SIM acceptance, source integration or gameplay-policy decision is implied.
+
+
+SIM-LIMITS-1 exact-head CI exposed seven owned constexpr_count lint findings: five wire
+framing definitions and two HarvestState layout counts. Its focused local selection omitted
+lint; this is not an inherited waiver. Narrow reasoned entries using the existing allowlist
+mechanism, canonical lint/self-test and an unrelated-gameplay-cap negative control are
+authorized. No production change or repetition of the 55-case gates is needed if source stays
+identical. Preserve the failed CI artifact; focused re-review and corrected exact-head CI are
+required. DOCS-SIM-1 remains prepared, not released.

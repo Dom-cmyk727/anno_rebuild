@@ -188,7 +188,14 @@ three read paths, not a proof of the entire animal lifecycle's draw count.
 **D — loader (`0x100946c0`-`0x10094873`).** Receiver is island base. Find HIRSCH;
 entry count is payload size >>3. Read eight bytes per entry. If HIRSCH is absent,
 delegate to generic island reader `0x10089130`; no fabricated empty record list
-is substituted. The loader sets a base timestamp from `u16 island[0x9a]/1000`.
+is substituted. The loader sets a base timestamp from `u16 island[0x9a]/500`.
+**D — correction, 2026-11-18 (`0x100946e9`–`0x10094705`).** The
+zero-extended u16 is multiplied by `0x10624dd3`; the high product is shifted
+right by 5, with zero sign correction over this domain. This is exactly
+floor(raw / 500) for all 65,536 inputs, not / 1000. Raw 499, 500, 1000,
+33000 and 65535 yield 0, 1, 2, 66 and 131 respectively. The divided base
+range is 0–131, so its largest jittered value is 162. Physical time units
+remain U. This correction does not change the sweep's separate arithmetic (§1).
 
 | Entry offset | Read meaning | Evidence (D) |
 |---|---|---|
@@ -212,7 +219,7 @@ World slot `+0x10c(-1)` reads mode bit 0 at world `+0x69cc` without changing it
 | 8 bits 3..5 | tile y within chunk | `0x100947b9`-`0x100947d0` |
 | 8 bit 6 | occupied flag, clear at load, set on figure creation | `0x10094819`-`0x10094822`, `0x1009385c` |
 | 8 bit 7 | preserved by these packed-coordinate writes; meaning U | same ranges; OQ-577 |
-| 9 | wrapping timestamp in units of 1000 input ticks | `0x100947f3`-`0x10094816`, `0x10093853`-`0x10093859` |
+| 9 | wrapping timestamp; loader initializes from raw / 500 plus conditional jitter; physical units U, separate sweep arithmetic in §1 | `0x100947f3`-`0x10094816`, `0x10093853`-`0x10093859` |
 | 10 | list-category byte, initialized zero | `0x1009478f`; getter `0x100952b0` |
 | 11 | not initialized or consumed in these paths; meaning U | allocation/read ranges above; OQ-577 |
 | 12..13 | created figure's u16 id; not initialized by loader | `0x10093848`-`0x1009384f` |
@@ -986,10 +993,13 @@ or state identity changes belong to this packet.
   creation outputs stop before manager construction/attach callbacks.
   Replenishment reports successful cells in selection/insertion order; the
   sweep visits prepended records in the reverse order (§1), not that order.
-- **D (existing §3, `0x100946c0`–`0x10094873`), 2026-11-12:** `load.base`
-  is **already divided** `u16 island[0x9a]/1000`, hence0..65. It is not raw
-  ticks and is not divided again. Timestamp addition retains byte wrapping;
-  this loader's documented input range cannot itself overflow255 with jitter31.
+- **D (corrected §3, `0x100946e9`–`0x10094705`), 2026-11-18:** `load.base`
+  is **already divided** `u16 island[0x9a]/500`, hence 0–131. It is not raw
+  stamp input and is not divided again. `load_raw` converts the raw u16 to this
+  base without a draw; `load` retains its existing divided-input contract.
+  Timestamp addition retains byte wrapping; the maximum base plus jitter is
+  131 + 31 = 162. The former / 1000 and 0–65 statements are withdrawn;
+  base 65 + jitter 31 = 96 remains an ordinary valid example.
 - **D/U (existing §7, `0x10051b00`; §10, `0x10053410`), 2026-11-12:**
   completion records take quantity at the next-state decision, **after** the
   action's effects, and a caller-supplied callee `success` outcome. Wolf30's

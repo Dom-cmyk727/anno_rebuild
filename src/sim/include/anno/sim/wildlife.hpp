@@ -65,7 +65,9 @@ struct WildlifeLoad {
     std::uint8_t timestamp;
     GoodsId saved;
 };
-// Base is already u16-time/1000, hence 0..65, never raw ticks.
+// AnnoWelt 0x100946e9–0x10094705: raw u16 island stamp / 500; no draw.
+[[nodiscard]] std::uint32_t wildlife_load_base(std::uint16_t raw_stamp);
+// Base is already divided by 500, hence 0..131; do not divide it again.
 [[nodiscard]] WildlifeResult<WildlifeLoad> wildlife_load(std::uint8_t entry4, std::uint32_t base,
                                                          std::uint8_t mode, GoodsId goods,
                                                          std::span<const std::uint32_t> draws);

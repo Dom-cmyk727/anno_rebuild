@@ -29,8 +29,26 @@ create ordinary cave=0 entrances=0 climate=4 types=100,101,102,103,104,105,106,1
 create cave_wrap cave=1 entrances=2 climate=255 types=100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131 goods=9,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7 saved=9 draws=31,999 => position=-1 index=0 species=100 inspected=2 consumed=1
 # §2 eighteen inspected indices starting31 end16; no matching goods8 still chooses type116, without retry draws.
 create no_goods_match cave=1 entrances=1 climate=0 types=100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131 goods=9,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7 saved=8 draws=31 => position=-1 index=16 species=116 inspected=18 consumed=1
-# §3 base is caller-divided u16 time/1000: 65535/1000=65; clear bit0 adds63&31=31 giving96.
-load maximum_jitter entry4=254 base=65 mode=0 goods=17 draws=63 => timestamp=96 saved=17 consumed=1
+# §3 correction, 0x100946e9–0x10094705: 499 // 500 = 0; no draw.
+load_raw below_boundary raw=499 draws=- => base=0 consumed=0
+# §3: 500 // 500 = 1, distinguishes the rejected /1000 reading; supplied draw unused.
+load_raw first_boundary raw=500 draws=63 => base=1 consumed=0
+# §3: 1000 // 500 = 2; no draw.
+load_raw second_boundary raw=1000 draws=- => base=2 consumed=0
+# §3: 33000 // 500 = 66, first base above the old guard; no draw.
+load_raw above_old_cap raw=33000 draws=- => base=66 consumed=0
+# §3: 65535 // 500 = 131, full raw u16 maximum; no draw.
+load_raw maximum raw=65535 draws=- => base=131 consumed=0
+# §3: entry bit 0 set skips jitter; mode bit 0 substitutes 255; base 66 remains 66.
+load high66_plain entry4=255 base=66 mode=1 goods=17 draws=63 => timestamp=66 saved=255 consumed=0
+# §3: entry bit 0 clear consumes one; 63 & 31 = 31; 66 + 31 = 97; goods preserved.
+load high66_jitter entry4=254 base=66 mode=0 goods=17 draws=63 => timestamp=97 saved=17 consumed=1
+# §3: entry bit 0 set skips jitter at the maximum base 131; goods preserved.
+load high131_plain entry4=1 base=131 mode=0 goods=65535 draws=- => timestamp=131 saved=65535 consumed=0
+# §3: maximum base 131 + jitter 31 = 162; mode bit 0 substitutes 255 after the draw.
+load high131_jitter entry4=0 base=131 mode=3 goods=17 draws=31 => timestamp=162 saved=255 consumed=1
+# §3 corrected loader: base 65 is ordinary, not maximal; clear bit 0 adds 63 & 31 = 31, giving 96.
+load ordinary_base65 entry4=254 base=65 mode=0 goods=17 draws=63 => timestamp=96 saved=17 consumed=1
 # §3 set bit0 suppresses jitter; mode bit0 replaces saved goods by255 even with a trailing draw.
 load no_jitter entry4=255 base=0 mode=1 goods=17 draws=31 => timestamp=0 saved=255 consumed=0
 # §3 other mode bits do not override goods; a zero jitter still consumes a draw.

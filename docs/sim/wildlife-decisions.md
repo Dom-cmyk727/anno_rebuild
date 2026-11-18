@@ -1,10 +1,10 @@
 # WILDLIFE-1a: frozen pure-decision contract
 
-Base b5c0ada209d94a0082bc88d793c917c7222e6a21, 2026-11-18. This packet ports only the ten local integer decisions of [wildlife.md sections 1–11](../re/wildlife.md) and the unchanged `tools/wildlife_ref.py` oracle. It is not a whole-tick, lifecycle, spawning, movement, hunt or transitive-draw implementation. No World, DrawSource, clock, mutable global, initializer, I/O, state field, default, extension or registry change is authorized.
+Base b5c0ada209d94a0082bc88d793c917c7222e6a21, 2026-11-18. This packet ports only the ten local integer decisions of [wildlife.md sections 1–11](../re/wildlife.md) and the `tools/wildlife_ref.py` oracle (load correction below). It is not a whole-tick, lifecycle, spawning, movement, hunt or transitive-draw implementation. No World, DrawSource, clock, mutable global, initializer, I/O, state field, default, extension or registry change is authorized.
 
-Baseline direct checks before implementation: 65 vectors / 0 disagreements; reference contract 31 checks. Counts: density 4, habitat 5, replenish 3, create 3, load 3, animal 13, walk 4, route_old 3, wolf 19, prey 8. The original reference and vectors stay unchanged.
+Baseline direct checks before implementation: 65 vectors / 0 disagreements; reference contract 31 checks. Counts: density 4, habitat 5, replenish 3, create 3, load 3, animal 13, walk 4, route_old 3, wolf 19, prey 8. This is the historical WILDLIFE-1a baseline; the load-only correction below supersedes its load domain and vector count.
 
-All draw inputs are bounded spans of raw u32 world outputs, not seeds. Results report the number consumed; unused trailing values are allowed. Typed errors distinguish invalid input, exhausted supplied draws and the named unsupported OQ cases. Errors retain the count consumed before refusal. Caller buffers are never mutated; no retry can outlive the finite candidate/draw input. Semantic byte/word inputs mirror the original decoded operations, not engine-wide registry or player limits. Quantities are unscaled raw integer words, not converted tons; timestamp base is in the original 1000-input-tick units. Resolved type/goods identities use widened engine ids. No helper calls a runtime PRNG.
+All draw inputs are bounded spans of raw u32 world outputs, not seeds. Results report the number consumed; unused trailing values are allowed. Typed errors distinguish invalid input, exhausted supplied draws and the named unsupported OQ cases. Errors retain the count consumed before refusal. Caller buffers are never mutated; no retry can outlive the finite candidate/draw input. Semantic byte/word inputs mirror the original decoded operations, not engine-wide registry or player limits. Quantities are unscaled raw integer words, not converted tons; load timestamp base is the raw u16 stamp divided by 500; physical time units remain unproved. Resolved type/goods identities use widened engine ids. No helper calls a runtime PRNG.
 
 | Family / evidence in AnnoWelt | Inputs and units | Outputs and direct draws | Hand-derived distinguishing boundary |
 |---|---|---|---|
@@ -12,7 +12,7 @@ All draw inputs are bounded spans of raw u32 world outputs, not seeds. Results r
 | habitat, 0x10093030–0x10093472 | resolved centre and 8 neighbour id/goods/kind facts; property 7 | Boolean; 0 draws | centre score 1 + neighbour matching two predicates 2 totals 3 and fails ordinary threshold 4; property 7 = 5 passes |
 | replenish, 0x100935e0–0x10093725 | ordered unique candidate tokens, at most 16 geometry samples; byte deficit; occupied tokens | chosen and remaining lists in exact swap-pop order; one draw per attempted candidate, including collisions | [10,20,30], occupied 20, draws [1,1] chooses 30 after 2 draws; [10,20,30,40] with [0,0] chooses 10 then 40 |
 | create, 0x10092cfd–0x10092f30 | cave flag/entrance count, caller-resolved climate's 32 type/goods pairs, saved goods | position selector (-1 = first cave entrance), species index/type, inspected count; non-cave position draw then species draw | cave omits position draw; unmatched goods from index 31 inspect 18 entries and stop at 16, not a new draw |
-| load, 0x100947d3–0x10094816 | entry byte 4, already divided timestamp base 0–65, mode byte, saved goods | timestamp byte and discriminator; 1 jitter draw iff bit 0 clear | base 65 + (63 & 31) = 96; do not divide base again; mode bit 0 gives sentinel 255 |
+| load, 0x100947d3–0x10094816 | entry byte 4, already divided timestamp base 0–131, mode byte, saved goods | timestamp byte and discriminator; 1 jitter draw iff bit 0 clear | ordinary base 65 + (63 & 31) = 96; maximum 131 + 31 = 162; do not divide base again; mode bit 0 gives sentinel 255 |
 | animal, 0x100519d0/0x10051b00 | event, state byte, resolved success, post-action quantity/capacity u16, idle variants 1–3 | next state, optional idle variant; exact completion/idle draws, fallback none | quantity 5 > 2*floor(8/3) overrides selected search to walk after consuming draw; equality 4 does not |
 | walk, 0x10051515/0x10058360–0x100583ff | attempt/behavior/facing bytes | three radii in sixteenths, angle-table indices, wrapped attempt byte; radius then angle for each candidate, 6 draws plus conditional behavior-7 draw | facing 2 wraps base 256 to byte 0 before widening; attempt 255 becomes 0; no float coordinates |
 | route_old, 0x1005e2b0–0x1005e37f | post-action quantity u16 | kind 12 if nonzero, no draw; empty: odd to 7/even to 12 with 1 draw | quantity 1 skips supplied draw entirely |
@@ -33,3 +33,22 @@ Creation's climate byte is validated by the vector adapter; the helper receives 
 | State-free dependency | runtime never references helpers; no initializer or saved field | base diff, fixture hashes, partial identity/pins selection | canonical gate and reuse proof | Pending |
 
 OQ-578 transitive callbacks, OQ-582 float/x87 positions, allocation/lifecycle reachability, target resolution and complete actions/ticks remain unproved. Replenish selection order is not the later prepended-record visit order. Creation stops before manager construction and attach. Completion quantities/outcomes are already resolved inputs. This packet closes none of those questions and reserves no tag.
+
+## WILDLIFE-LOAD-FIX-1 — load-only correction, 2026-11-18
+
+AnnoWelt `0x100946e9`–`0x10094705` proves raw u16 stamp / 500, not / 1000
+([primary correction](../re/wildlife.md#3-hirsch-loader-and-thirschobject)).
+`wildlife_load_base(std::uint16_t raw_stamp) -> std::uint32_t` uses clear integer
+division and consumes no draw. `wildlife_load` continues to accept an already
+divided base, now 0–131; 132 refuses before draw consumption. Goods substitution,
+flag semantics and conditional jitter draw are unchanged. No runtime caller is added.
+
+`load_raw` independently records raw 499 → 0, 500 → 1, 1000 → 2, 33000 → 66,
+and 65535 → 131 with consumed 0. Four additional `load` vectors cover bases 66
+and 131 with and without jitter. The old base 65 example still yields 96 and is
+no longer labeled maximum. Current fixture: 74 vectors, load 7 and load_raw 5;
+the other nine families and their 62 vectors are unchanged. Historical intake,
+mutation and gate receipts above remain evidence of their original source pins.
+The original multiply/shift expression is exhaustively checked over 65,536 raw
+inputs separately from the clear production division. This proves arithmetic,
+not physical units, caller order, mode provenance or any fauna initialization.

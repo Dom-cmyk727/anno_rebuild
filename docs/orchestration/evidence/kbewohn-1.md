@@ -149,13 +149,13 @@ COUNTS: selected=50 executed=50 failed=0 empty=0 skipped=0 (required-asset=0 pla
 VERDICT: PASS
 ```
 
-Producer console summaries, verbatim:
+Producer console summaries (path-normalized labels; raw private logs are unchanged):
 
 ```text
 golden re-recorded: scenario_corpus.txt (changed)
 golden re-recorded: loop_checkpoints.txt (changed)
-PINS regen: PASS; 0 pins moved; 2 fixture byte changes; scope=partial; selection=^anno_sim_tests\.(scenario corpus original-data components: every \.sze loads, creates and runs five minutes|economy loop: complete Tutorial production sales upkeep shortage paid recovery and native cuts)$; evidence=/Users/dom/.codex/worktrees/town-start-1/anno1503/cache/kbewohn-1/producers-regen.log
-PINS check: PASS; 0 pins moved; 0 fixture byte changes; scope=partial; selection=^anno_sim_tests\.(scenario corpus original-data components: every \.sze loads, creates and runs five minutes|economy loop: complete Tutorial production sales upkeep shortage paid recovery and native cuts)$; evidence=/Users/dom/.codex/worktrees/town-start-1/anno1503/cache/kbewohn-1/producers-after.log
+PINS regen: PASS; 0 pins moved; 2 fixture byte changes; scope=partial; selection=^anno_sim_tests\.(scenario corpus original-data components: every \.sze loads, creates and runs five minutes|economy loop: complete Tutorial production sales upkeep shortage paid recovery and native cuts)$; evidence=cache/kbewohn-1/producers-regen.log
+PINS check: PASS; 0 pins moved; 0 fixture byte changes; scope=partial; selection=^anno_sim_tests\.(scenario corpus original-data components: every \.sze loads, creates and runs five minutes|economy loop: complete Tutorial production sales upkeep shortage paid recovery and native cuts)$; evidence=cache/kbewohn-1/producers-after.log
 ```
 
 ## Controls, preserved failures and evidence reuse
@@ -201,13 +201,13 @@ ASan types.cpp SHA before the comment move: `eed9ab0ae107972daf221c547eb04f908df
 
 `focused-dev.log` executable identities:
 
-- `/Library/Frameworks/Python.framework/Versions/3.14/bin/python3.14`: `07919b0fbf82742c24420d7dcadbd459f61bc1feb638eca02b81dccab2daf4d5`.
-- `/Users/dom/.codex/worktrees/town-start-1/anno1503/build/dev/src/sim/anno_sim_tests`: `16e8c75ae7cf1399a56f42183d8d18821ba0ef399348c717cc5ba8f6dbcd234b`.
+- `host Python 3.14 executable`: `07919b0fbf82742c24420d7dcadbd459f61bc1feb638eca02b81dccab2daf4d5`.
+- `build/dev/src/sim/anno_sim_tests`: `16e8c75ae7cf1399a56f42183d8d18821ba0ef399348c717cc5ba8f6dbcd234b`.
 
 `focused-asan.log` executable identities:
 
-- `/Users/dom/.codex/worktrees/town-start-1/anno1503/build/asan/src/sim/anno_sim_tests`: `55299f41cb22df5ed78ac0a621208ba2604224233bff215bb9fa8a36302c0f42`.
-- `/Library/Frameworks/Python.framework/Versions/3.14/bin/python3.14`: `07919b0fbf82742c24420d7dcadbd459f61bc1feb638eca02b81dccab2daf4d5`.
+- `build/asan/src/sim/anno_sim_tests`: `55299f41cb22df5ed78ac0a621208ba2604224233bff215bb9fa8a36302c0f42`.
+- `host Python 3.14 executable`: `07919b0fbf82742c24420d7dcadbd459f61bc1feb638eca02b81dccab2daf4d5`.
 
 Host: Apple M5 Max, 18 logical CPUs, 48 GiB (51,539,607,552 bytes), macOS 27.0.1,
 Apple Clang 21.0.0. GCC 15.3 warning control is x86 compilation, not Linux runtime.

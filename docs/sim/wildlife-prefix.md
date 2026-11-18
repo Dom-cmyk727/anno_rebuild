@@ -163,3 +163,14 @@ boundary receipts; none proves complete scene initialization or a global cursor.
 header 49, FRUCHTBAR, before applying that header. HIRSCH 71 remains unreached.
 This is still a supplied-input diagnostic partial; do not infer zero draws or
 unchanged terrain for the new header, or claim original global cursor closure.
+
+## FRUCHTBAR continuation (2026-11-19)
+
+The [fertility header contract](wildlife-fertility.md) extends only ordered local
+header preparation. It merges source low nibbles into effective variation,
+preserves resource high nibbles, retains the last raw payload in owned Terrain,
+and records each completed header. No immediate empty-tile fill is reached.
+Historical frozen boundaries above remain predecessor evidence; current execution
+continues once through header 49 and stops before BERGWERK2 header 50. Global
+post-island callbacks and the previously documented derived-cache integration
+remain outside this transient projection.

@@ -116,7 +116,7 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
              ++setup_end) {
             const auto& header = raw.records[setup_end];
             const auto name = header.name();
-            prepared.headers.push_back({source(setup_end), std::string(name), 0, {}});
+            prepared.headers.push_back({source(setup_end), std::string(name), 0, {}, {}});
             if (name == "INFO") {
                 if (header.payload.size() != 12) {
                     setup_error = PrefixBoundary{source(setup_end), "INFO", "strict INFO length"};
@@ -178,16 +178,25 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
         if (!started)
             return PrefixFailure{"prefix: resource session initialization refused", {}};
         auto& session = started.value();
+        std::optional<std::vector<std::uint8_t>> fertility;
+        const auto finalize_terrain = [&] {
+            // Keep backing alive for Session's borrowed HEIGHT view. Only extraction
+            // copies the other columns; no map-sized copy per source record/header.
+            if (fertility)
+                prepared.terrain = sim::make_terrain(backing.terrain->height, backing.terrain->gfx,
+                                                     std::move(*fertility));
+        };
         prepared.chunk_heads.resize(backing.tiles.chunk_count());
         const auto stop = [&](PrefixBoundary boundary) {
             out.boundary = std::move(boundary);
             prepared.resource = std::move(session).diagnostic();
+            finalize_terrain();
             out.islands.push_back(std::move(prepared));
         };
         for (std::uint64_t h = setup_end; h < raw.records.size(); ++h) {
             const auto& header = raw.records[h];
             const auto name = header.name();
-            prepared.headers.push_back({source(h), std::string(name), 0, {}});
+            prepared.headers.push_back({source(h), std::string(name), 0, {}, {}});
             if (name == "GELAENDE") {
                 const auto block = formats::insel::Block::parse(header.payload);
                 if (!block || block.value().data.size() % 6 != 0) {
@@ -229,6 +238,14 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
                     return PrefixFailure{out.boundary->reason, std::move(out)};
                 }
                 prepared.headers.back().water_mask_updates = closed.value();
+            } else if (name == "FRUCHTBAR") {
+                const auto effect = session.apply_fertility(header.payload);
+                if (!effect) {
+                    stop({source(h), "FRUCHTBAR", "invalid fertility length or poisoned session"});
+                    return PrefixFailure{out.boundary->reason, std::move(out)};
+                }
+                fertility.emplace(header.payload.begin(), header.payload.end());
+                prepared.headers.back().fertility_updates = effect.value();
             } else if (name == "HIRSCH") {
                 const auto records = formats::insel::decode_hirsch(header.payload);
                 if (!records) {
@@ -272,6 +289,7 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
         if (!finished)
             return PrefixFailure{"prefix: poisoned session cannot complete", {}};
         prepared.resource = std::move(finished.value());
+        finalize_terrain();
         prepared.complete_local_records = true;
         out.islands.push_back(std::move(prepared));
     }

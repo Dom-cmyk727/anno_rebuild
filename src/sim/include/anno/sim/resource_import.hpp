@@ -72,6 +72,10 @@ class Session {
           std::span<const TypeFacts>, const ClimateFacts&);
     [[nodiscard]] formats::Result<Effect, Error> apply(const Record&,
                                                        std::span<const std::uint32_t> draws);
+    // FRUCHTBAR, AnnoWelt 0x1008952b..0x10089539: replace low nibble only.
+    // Local row-major full-island bytes; no tile effects or draws. Returns changes.
+    [[nodiscard]] formats::Result<std::uint64_t, Error>
+    apply_fertility(std::span<const std::uint8_t> raw);
     // GELAENDE epilogue island +0x198, 0x10092b40..0x10092c94. Draw-free,
     // clipped OR of the nine walk-mask bits on mean<threshold; all other fields kept.
     [[nodiscard]] formats::Result<std::uint64_t, Error>

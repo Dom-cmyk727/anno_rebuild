@@ -465,6 +465,154 @@ TEST_CASE(
     CHECK((*reused.error().diagnostic).boundary->source.island == 1);
 }
 
+namespace {
+Buffer fertility_island(const Buffer& first, const std::optional<Buffer>& second,
+                        bool occupied = true, bool stop_after = false) {
+    Buffer b;
+    for (const auto v : std::vector<std::uint16_t>{7, 11, 3, 2})
+        fmt::put_u16_le(b, v);
+    fmt::put_u32_le(b, 17);
+    append(b, packed("INFO", Buffer(12, 0)));
+    append(b, packed("HEIGHT", block(0, 0, 3, 2, Buffer(6, occupied ? 48 : 0))));
+    if (occupied)
+        append(b, packed("GELAENDE", block(1, 0, 1, 1, object(104))));
+    append(b, packed("FRUCHTBAR", first));
+    if (second) {
+        if (occupied)
+            append(b, packed("GELAENDE", block(1, 0, 1, 1, object(104, 0x709))));
+        append(b, packed("FRUCHTBAR", *second));
+    }
+    if (occupied)
+        append(b, packed("HIRSCH", fmt::insel::encode_hirsch(std::vector<fmt::insel::HirschRecord>{
+                                       {0, 0, 0x80, 7, 10}})));
+    if (stop_after)
+        append(b, packed("MYSTERY", {}));
+    return packed("INSEL5", b);
+}
+} // namespace
+
+TEST_CASE("wildlife prefix: fertility nibble chronology owns raw terrain and preserves resource "
+          "high bits") {
+    const auto types = registry();
+    Metadata meta;
+    const auto pe = fake_pe();
+    const Buffer f1{0, 17, 2, 255, 128, 15}, f2{255, 7, 128, 16, 254, 18};
+    auto file = scene({fertility_island(f1, f2)});
+    const auto before = file;
+    const auto result = load::prepare_wildlife_prefix(file, meta.entries, pe, *types, inputs(),
+                                                      std::vector<std::uint32_t>{4, 2, 7});
+    REQUIRE(result);
+    CHECK(file == before);
+    file.clear();
+    file.shrink_to_fit();
+    const auto& out = result.value();
+    const auto& is = out.islands[0];
+    REQUIRE(is.headers.size() == 7);
+    CHECK(is.headers[3].fertility_updates == 4);
+    CHECK(is.headers[5].fertility_updates == 6);
+    CHECK_FALSE(is.headers[4].fertility_updates);
+    CHECK(is.headers[3].source.header == 3);
+    CHECK(is.headers[5].source.header == 5);
+    CHECK(is.resource.variation == Buffer{47, 7, 0, 0, 14, 2});
+    CHECK(is.terrain->fertility == f2);
+    const auto expected = sim::make_terrain(Buffer(6, 48), std::vector<std::uint16_t>(6, 0), f2);
+    CHECK(is.terrain->digest == expected->digest);
+    CHECK(sim::terrain_matches(*is.terrain));
+    CHECK(is.terrain->digest !=
+          sim::make_terrain(Buffer(6, 48), std::vector<std::uint16_t>(6, 0), {})->digest);
+    REQUIRE(is.resources.size() == 2);
+    CHECK(is.resources[1].draw_before == 1);
+    CHECK(is.resources[1].effect.variant == 2);
+    CHECK(is.resources[1].effect.height == 48); // Borrowed HEIGHT remains valid after first header.
+    CHECK(is.resource.tiles.object(0) == 104);
+    CHECK(is.resource.tiles.phase(0) == 9);
+    CHECK(is.resource.tiles.item_height(0) == 48);
+    CHECK(is.resource.tiles.foot_anchor(0) == 1);
+    for (std::uint64_t i = 1; i < 6; ++i)
+        CHECK(is.resource.tiles.object(i) == 0);
+    REQUIRE(is.spawns.size() == 1);
+    CHECK(is.spawns[0].draw_before == 2);
+    CHECK(is.spawns[0].timestamp == 8);
+    CHECK(out.consumed == 3);
+    // First payload alone proves a different high nibble and local row-major values.
+    const auto one =
+        load::prepare_wildlife_prefix(scene({fertility_island(f1, {})}), meta.entries, pe, *types,
+                                      inputs(), std::vector<std::uint32_t>{4, 7});
+    REQUIRE(one);
+    CHECK(one.value().islands[0].resource.variation == Buffer{64, 1, 2, 15, 0, 15});
+}
+
+TEST_CASE("wildlife prefix: fertility adapter contract refuses lengths and preserves prior "
+          "diagnostic effects") {
+    const auto types = registry();
+    Metadata meta;
+    const auto pe = fake_pe();
+    const Buffer f1{255, 7, 128, 16, 254, 18};
+    for (const std::size_t n : {0U, 5U, 7U}) {
+        const auto result = load::prepare_wildlife_prefix(
+            scene({fertility_island(f1, Buffer(n, 3))}), meta.entries, pe, *types, inputs(),
+            std::vector<std::uint32_t>{4, 2, 7});
+        REQUIRE_FALSE(result);
+        REQUIRE(result.error().diagnostic);
+        const auto& out = *result.error().diagnostic;
+        REQUIRE(out.boundary);
+        CHECK(out.boundary->tag == "FRUCHTBAR");
+        CHECK(out.boundary->source.header == 5);
+        CHECK_FALSE(out.complete_local_records);
+        const auto& is = out.islands[0];
+        CHECK_FALSE(is.headers.back().fertility_updates);
+        CHECK(is.headers[3].fertility_updates == 4);
+        CHECK(is.resource.variation == Buffer{47, 7, 0, 0, 14, 2});
+        CHECK(is.terrain->fertility == f1);
+        CHECK(sim::terrain_matches(*is.terrain));
+        CHECK(out.consumed == 2);
+        CHECK(is.spawns.empty());
+    }
+    // Existing TileLayer overflow bound is checked before any map-sized allocation.
+    Buffer huge;
+    for (const auto v : std::vector<std::uint16_t>{0, 0, 65535, 65535})
+        fmt::put_u16_le(huge, v);
+    fmt::put_u32_le(huge, 1);
+    append(huge, packed("INFO", Buffer(12, 0)));
+    append(huge, packed("FRUCHTBAR", {}));
+    const auto result = load::prepare_wildlife_prefix(scene({packed("INSEL5", huge)}), meta.entries,
+                                                      pe, *types, inputs(), {});
+    REQUIRE_FALSE(result);
+    CHECK(result.error().reason == "prefix: invalid island geometry");
+}
+
+TEST_CASE("wildlife prefix: fertility empty low terrain has no implicit fill and zero changes "
+          "still complete") {
+    const auto types = registry();
+    Metadata meta;
+    const auto pe = fake_pe();
+    for (const Buffer& raw : {Buffer(6, 0), Buffer{255, 7, 128, 16, 254, 18}}) {
+        const auto result =
+            load::prepare_wildlife_prefix(scene({fertility_island(raw, {}, false, true)}),
+                                          meta.entries, pe, *types, inputs(), {});
+        REQUIRE_FALSE(result);
+        REQUIRE(result.error().diagnostic);
+        const auto& out = *result.error().diagnostic;
+        REQUIRE(out.boundary);
+        CHECK(out.boundary->tag == "MYSTERY");
+        const auto& is = out.islands[0];
+        CHECK(is.headers[2].fertility_updates == (raw[0] == 0 ? 0 : 4));
+        CHECK_FALSE(is.headers.back().fertility_updates);
+        CHECK(is.terrain->fertility == raw);
+        CHECK(sim::terrain_matches(*is.terrain));
+        for (std::uint64_t i = 0; i < 6; ++i) {
+            CHECK(is.resource.tiles.object(i) == 0);
+            CHECK(is.resource.tiles.walk_mask(i) == 0);
+            CHECK(is.resource.tiles.item_height(i) == 0);
+            CHECK(is.resource.tiles.phase(i) == 0);
+            CHECK(is.resource.variation[i] == (raw[i] & 15));
+        }
+        CHECK(out.consumed == 0);
+        CHECK(is.resources.empty());
+        CHECK(is.spawns.empty());
+    }
+}
+
 TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported boundary") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
@@ -497,14 +645,36 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     CHECK_FALSE(out.islands[0].complete_local_records);
     CHECK(out.boundary->source.island == 0);
     CHECK(out.boundary->source.slot == 11);
-    CHECK(out.boundary->source.header == 49);
+    CHECK(out.boundary->source.header == 50);
     CHECK(out.boundary->source.record == 0);
-    CHECK(out.boundary->tag == "FRUCHTBAR");
+    CHECK(out.boundary->tag == "BERGWERK2");
     CHECK(out.boundary->reason.find("unsupported intervening header") != std::string::npos);
+    const auto raw_islands = fmt::insel::islands(bytes);
+    REQUIRE(raw_islands);
+    const auto& raw = raw_islands.value()[0];
+    REQUIRE(raw.records[49].name() == "FRUCHTBAR");
+    const auto fertility = raw.records[49].payload;
+    REQUIRE(fertility.size() == 16384);
+    const auto& is = out.islands[0];
+    CHECK(is.headers[49].fertility_updates == 8160);
+    CHECK_FALSE(is.headers[50].fertility_updates);
+    CHECK(is.terrain->fertility == Buffer(fertility.begin(), fertility.end()));
+    CHECK(sim::terrain_matches(*is.terrain));
+    Buffer high(fertility.size(), 0);
+    for (const auto& r : is.resources)
+        if (r.effect.variant) {
+            const auto i = is.resource.tiles.index_of(r.raw.x, r.raw.y);
+            high[i] = static_cast<std::uint8_t>(*r.effect.variant << 4);
+        }
+    for (std::size_t i = 0; i < fertility.size(); ++i) {
+        CHECK((is.resource.variation[i] & 15U) == (fertility[i] & 15U));
+        CHECK((is.resource.variation[i] & 240U) == high[i]);
+    }
+    std::cout << "FERTILITY_REAL header=49 bytes=16384 changed=8160 next=50/BERGWERK2\n";
     CHECK(out.islands[0].resources.size() == 4760);
     CHECK(out.islands[0].spawns.empty());
     CHECK(out.consumed == 4589);
-    REQUIRE(out.islands[0].headers.size() == 50);
+    REQUIRE(out.islands[0].headers.size() == 51);
     CHECK(out.islands[0].headers[33].records == 0);
     REQUIRE(out.islands[0].headers[33].water_mask_updates);
     REQUIRE(out.islands[0].headers[34].water_mask_updates);

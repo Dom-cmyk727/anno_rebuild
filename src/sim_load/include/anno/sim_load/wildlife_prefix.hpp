@@ -30,6 +30,7 @@ struct PrefixHeader {
     std::string tag;
     std::uint64_t records = 0; // Completed object/spawn items; setup headers have zero.
     std::optional<std::uint64_t> water_mask_updates; // Engaged only after GELAENDE epilogue.
+    std::optional<std::uint64_t> fertility_updates;  // Engaged after FRUCHTBAR, even if unchanged.
 };
 struct PrefixResource {
     PrefixSource source;

@@ -244,6 +244,24 @@ formats::Result<Effect, Error> Session::apply(const Record& record,
     return Effect{Disposition::Accepted, out_.consumed - before, chosen, height};
 }
 
+formats::Result<std::uint64_t, Error> Session::apply_fertility(std::span<const std::uint8_t> raw) {
+    if (failed_)
+        return *failed_;
+    if (raw.size() != out_.variation.size()) {
+        failed_ = Error{ErrorKind::Geometry, static_cast<std::uint64_t>(out_.records.size()),
+                        out_.consumed};
+        return *failed_;
+    }
+    std::uint64_t changed = 0;
+    for (std::size_t i = 0; i < raw.size(); ++i) {
+        const auto before = out_.variation[i];
+        const auto after = static_cast<std::uint8_t>((before & 0xf0U) | (raw[i] & 0x0fU));
+        out_.variation[i] = after;
+        changed += before != after;
+    }
+    return changed;
+}
+
 formats::Result<std::uint64_t, Error> Session::close_import_block(std::int32_t x, std::int32_t y,
                                                                   std::uint32_t w, std::uint32_t h,
                                                                   std::uint8_t threshold) {

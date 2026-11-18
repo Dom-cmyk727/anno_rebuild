@@ -479,6 +479,9 @@ TEST_CASE("resource import: failed session cannot resume or publish completion")
     const auto late_callback = started.value().close_import_block(0, 0, 2, 2);
     REQUIRE_FALSE(late_callback);
     CHECK(late_callback.error().kind == ri::ErrorKind::Exhausted);
+    const auto late_fertility = started.value().apply_fertility(r.plane);
+    REQUIRE_FALSE(late_fertility);
+    CHECK(late_fertility.error().kind == ri::ErrorKind::Exhausted);
     CHECK_FALSE(started.value().finish());
     const auto diagnostic = std::move(started.value()).diagnostic();
     CHECK(diagnostic.tiles.object(0) == 104); // Placement preceded missing draw; diagnostic only.
@@ -965,4 +968,36 @@ TEST_CASE("resource import: rock nonsquare rotations select highest quantized ce
 
 TEST_CASE("resource import: rock partial overlay retains anchors but updates their walk fields") {
     partial_overlay_fields(stone_rig(3, 2, 0x8018));
+}
+
+TEST_CASE("resource import: fertility size refusal is sticky without changing prior variation") {
+    const auto r = rig(fields(first_vector()));
+    auto started = ri::Session::start(r.island.tiles, sim::VertexGrid::of(r.island), r.plane,
+                                      *r.types, r.facts, r.climate);
+    REQUIRE(started);
+    const auto applied = started.value().apply(r.records.front(), r.draws);
+    REQUIRE(applied);
+    const std::vector<std::uint8_t> raw(r.plane.size(), 255);
+    const auto first = started.value().apply_fertility(raw);
+    REQUIRE(first);
+    const auto repeated = started.value().apply_fertility(raw);
+    REQUIRE(repeated);
+    CHECK(repeated.value() == 0);
+    CHECK(started.value().consumed() == 1);
+    const auto invalid = started.value().apply_fertility({});
+    REQUIRE_FALSE(invalid);
+    CHECK(invalid.error().kind == ri::ErrorKind::Geometry);
+    const auto retry = started.value().apply_fertility(raw);
+    REQUIRE_FALSE(retry);
+    CHECK(retry.error().kind == ri::ErrorKind::Geometry);
+    CHECK_FALSE(started.value().close_import_block(0, 0, 1, 1));
+    CHECK_FALSE(started.value().apply(r.records.front(), r.draws));
+    CHECK_FALSE(started.value().finish());
+    const auto out = std::move(started.value()).diagnostic();
+    REQUIRE(applied.value().variant);
+    CHECK(out.variation[0] == static_cast<std::uint8_t>((*applied.value().variant << 4) | 15));
+    for (const auto value : out.variation)
+        CHECK((value & 15U) == 15);
+    CHECK(out.consumed == 1);
+    CHECK(r.plane == rig(fields(first_vector())).plane);
 }

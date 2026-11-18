@@ -50,9 +50,22 @@ picture contract 1/1 and mandatory preflights. No failures, empty, skipped or in
 or sanitizer lines. The independent reviewer re-parsed the logs and reconciled all inventories.
 Python stream goldens, lint and formatting pass; no fixtures or identity moved.
 
-The subsequent minimap-only gate is separate from those receipts. Its reviewed change cannot
-affect the simulation gates. A tiny real CMake/Ninja control executes two deliberately failing
+At clean `d1e5c13a`, the subsequent minimap-owner gates pass 3/3 each in Debug and ASan/UBSan,
+plus required picture contracts 1/1 each, with zero failures/skips/empty/incomplete/sanitizer lines.
+The independent reviewer reconciled their inventories and exact source identity. These receipts
+are separate from the earlier simulation gates; the test-only change cannot affect those paths.
+A tiny real CMake/Ninja control executes two deliberately failing
 independent targets and a successful target, then exits 1 with `-k 0`.
+
+Final narrow receipts under cache/town-ci-close-1/:
+
+| File | SHA256 |
+|---|---|
+| minimap-ci-dev.log | 112f3a9164c48c8c8771ac4d5c70926b68effb012323a14da717ce3117af7d96 |
+| minimap-ci-asan.log | be2d1710c1bfcdb09eeedd3437228de2d464cf5829c0983c7c3ba4fda2da8d85 |
+| minimap-x86-before.log | 0f3587d80bdf47f08380811b11332be8d1456edb1a7c19ce5842f04ef0cf36f0 |
+| minimap-x86-after.log (no diagnostics) | e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 |
+| keep-going-control.log | 9c837ed6e36f07158b98e47d94d01c6d6f88bfe9e7d05849402eac70ab17eafe |
 
 Earlier missing-cmake, missing bench_picture and invalid selector attempts remain failed/setup
 invalid. CI runs 44258255346, 44259414215 and 44261293763 exposed successive compiler failures;

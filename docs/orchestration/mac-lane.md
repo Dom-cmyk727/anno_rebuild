@@ -19,8 +19,9 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | 1.1 prerequisite [TOWN-START-SETUP-1](tasks/town-start-setup-1.md) | ACCEPTED; Windows landing pending | Head `ad360af024543a71e083dc3de714b7f48f354e63`; tested code `e71f2dc0` | [44209875238](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44209875238), all 12 jobs success at exact head | [Acceptance](reviews/2026-11-18-town-start-setup-1-review.md) |
 | 1.1 [TOWN-START-1](tasks/town-start-1.md) | LOCAL REVIEW PASSES; CI BLOCKED, NOT ACCEPTED | Report `156badab35516609e92796e85a4fb0b9314ddac6`; code `c9132c39`; measured `f36c22fa` | Source [44255019025](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44255019025) failed; final [44256560982](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44256560982) pending | [Review and CI disposition](reviews/2026-11-18-town-start-1-review.md) |
 | 1.2 [WILDLIFE-1a](tasks/wildlife-1a.md) | LOCAL REVIEW PASSES; inherited CI closure pending; no World integration | `756e008b8027cf9186b4e79e3ae2e76b1dab4c29`, pure helpers only | [44262049576](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44262049576); not claimed green | [Conditional local review](reviews/2026-11-18-wildlife-1a-review.md) |
-| 1.3 [NET-ADR-1](tasks/net-adr-1.md) | RELEASED 2026-11-18 independently after wildlife local review | Docs only, main base `b5c0ada209d94a0082bc88d793c917c7222e6a21`; preserve wildlife | Pending | Pending; owner decides D-9/D-10, no network implementation |
-| Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | LOCAL REVIEW PASSES; hosted CI still required; wildlife untouched | `task/TOWN-CI-CLOSE-1`, source `d1e5c13a2a81568f0df5ebeb4ae86697c24b6568`, based on town report `156badab` | [44262416790](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44262416790), pending | [Repair review](reviews/2026-11-18-town-ci-close-1-review.md); earlier failed runs retained |
+| 1.3 [NET-ADR-1](tasks/net-adr-1.md) | ACCEPTED documentation; owner decisions remain open | `cf7109fe14fa729cbb0f1c775fd243cd06b34c26` | [44264630010](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44264630010), exact-head docs CI green | [Acceptance](reviews/2026-11-18-net-adr-1-review.md) |
+| 1.4 [MIL-RE-1](tasks/mil-re-1.md) | RELEASED 2026-11-18; bounded military research, no implementation | Main base `b5c0ada209d94a0082bc88d793c917c7222e6a21`; preserve wildlife and NET-ADR | Pending | Pending |
+| Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | LOCAL REVIEW PASSES; hosted CI still required; wildlife untouched | `task/TOWN-CI-CLOSE-1`, source `9edb151c414246d306194a703db71475affbdad4`, based on town report `156badab` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), pending | [Repair review](reviews/2026-11-18-town-ci-close-1-review.md); earlier failed runs retained |
 
 ## Review and reporting contract
 
@@ -71,3 +72,9 @@ WILDLIFE-1a is now frozen and independently locally reviewed without blocking fi
 NET-ADR-1 is released as the next bounded, independent documentation packet; the executor
 preserves wildlife and does not take pending CI repairs or wire World. This is not an inherited
 CI waiver. The Mac orchestrator retains CI closure; network policy remains the owner's decision.
+
+NET-ADR-1 is accepted as documentation at exact green head cf7109fe. Its eight owner answers
+remain blank and network implementation stays gated. MIL-RE-1 is released next, independently
+of pending CI closure. The CI keep-going run exposed seven further test-only compiler failures;
+the reviewed correction compiles all seven under x86 GCC Release warning flags. Focused real-file
+and sanitizer gates plus exact-head CI are running; no green result is assumed.

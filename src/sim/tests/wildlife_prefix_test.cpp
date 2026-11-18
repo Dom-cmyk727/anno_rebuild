@@ -497,14 +497,14 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     CHECK_FALSE(out.islands[0].complete_local_records);
     CHECK(out.boundary->source.island == 0);
     CHECK(out.boundary->source.slot == 11);
-    CHECK(out.boundary->source.header == 35);
-    CHECK(out.boundary->source.record == 22);
+    CHECK(out.boundary->source.header == 37);
+    CHECK(out.boundary->source.record == 1);
     CHECK(out.boundary->tag == "GELAENDE");
-    CHECK(out.boundary->reason.find("type 1558") != std::string::npos);
-    CHECK(out.islands[0].resources.size() == 37);
+    CHECK(out.boundary->reason.find("type 1552") != std::string::npos);
+    CHECK(out.islands[0].resources.size() == 258);
     CHECK(out.islands[0].spawns.empty());
-    CHECK(out.consumed == 37);
-    REQUIRE(out.islands[0].headers.size() == 36);
+    CHECK(out.consumed == 255);
+    REQUIRE(out.islands[0].headers.size() == 38);
     CHECK(out.islands[0].headers[33].records == 0);
     REQUIRE(out.islands[0].headers[33].water_mask_updates);
     REQUIRE(out.islands[0].headers[34].water_mask_updates);
@@ -512,8 +512,38 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     CHECK(*out.islands[0].headers[33].water_mask_updates == 1024);
     CHECK(*out.islands[0].headers[34].water_mask_updates == 977);
     CHECK(out.islands[0].resource.tiles.walk_mask(0) == 511);
-    CHECK_FALSE(
-        out.islands[0].headers[35].water_mask_updates); // Stop inside this header before epilogue.
+    REQUIRE(out.islands[0].headers[35].water_mask_updates);
+    REQUIRE(out.islands[0].headers[36].water_mask_updates);
+    CHECK_FALSE(out.islands[0].headers[37].water_mask_updates); // Next class stops before epilogue.
+    const auto old_boundary =
+        std::find_if(out.islands[0].resources.begin(), out.islands[0].resources.end(),
+                     [](const auto& r) { return r.source.header == 35 && r.source.record == 22; });
+    REQUIRE(old_boundary != out.islands[0].resources.end());
+    CHECK(old_boundary->raw.type == sim::TypeId{1558});
+    CHECK(old_boundary->draw_before == 37);
+    CHECK(old_boundary->effect.disposition == sim::resource_import::Disposition::Accepted);
+    CHECK(old_boundary->effect.height == 48);
+    CHECK(old_boundary->effect.draws == 0);
+    CHECK_FALSE(old_boundary->effect.variant);
+    // Independent raw-order/reference continuation: later ordinary resources
+    // replace the top two stone cells, leaving its bottom row intact.
+    const auto& tiles = out.islands[0].resource.tiles;
+    CHECK(tiles.object(tiles.index_of(88, 72)) == 115);
+    CHECK(tiles.object(tiles.index_of(89, 72)) == 68);
+    for (std::int32_t x = 88; x <= 89; ++x) {
+        const auto i = tiles.index_of(x, 73);
+        CHECK(tiles.object(i) == 1558);
+        CHECK(tiles.phase(i) == 19);
+        CHECK(tiles.item_height(i) == 48);
+        CHECK(tiles.foot_dx(i) == x - 88);
+        CHECK(tiles.foot_dy(i) == 1);
+        CHECK(tiles.foot_rotation(i) == 0);
+        CHECK(tiles.foot_anchor(i) == 0);
+    }
+    std::uint64_t epilogues = 0;
+    for (const auto& h : out.islands[0].headers)
+        epilogues += h.water_mask_updates.has_value();
+    CHECK(epilogues == 4);
 
     std::uint64_t accepted = 0, rejected = 0, resource_class = 0, resource_draws = 0;
     for (const auto& record : out.islands[0].resources) {
@@ -524,16 +554,16 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
         resource_class += original_type->prodtype >= 225 && original_type->prodtype <= 256;
         resource_draws += record.effect.draws;
     }
-    CHECK(accepted == 37);
+    CHECK(accepted == 258);
     CHECK(rejected == 0);
-    CHECK(resource_class == 37);
-    CHECK(resource_draws == 37);
-    const auto* unsupported = types.types->find(sim::TypeId{1558});
+    CHECK(resource_class == 255);
+    CHECK(resource_draws == 255);
+    const auto* unsupported = types.types->find(sim::TypeId{1552});
     REQUIRE(unsupported);
-    CHECK(unsupported->flags_word == 0x3a);
-    CHECK(unsupported->prodtype == 323);
-    CHECK(unsupported->width == 2);
-    CHECK(unsupported->height == 2);
+    CHECK(unsupported->flags_word == 0x12);
+    CHECK(unsupported->prodtype == 322);
+    CHECK(unsupported->width == 3);
+    CHECK(unsupported->height == 3);
     const auto& first = out.islands[0].resources.front();
     CHECK(first.source.header == 34);
     CHECK(first.source.record == 0);
@@ -553,5 +583,6 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
                   << " record=" << out.boundary->source.record << " tag=" << out.boundary->tag
                   << " reason=" << out.boundary->reason;
     std::cout << "\n";
-    // Measured first boundary will be pinned after this bounded investigation, never skipped.
+    // The predecessor 35/22 boundary is preserved in PREFIX evidence; this is
+    // the same unfiltered stream, now stopping at the independently parsed next class.
 }

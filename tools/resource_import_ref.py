@@ -27,7 +27,7 @@ def fields(text):
 
 def evaluate(p):
     required = {'w', 'h', 'heights', 'objects', 'plane', 'types', 'records', 'draws', 'slots', 'map104', 'map201', 'map404'}
-    if set(p) != required:
+    if set(p) not in (required, required | {'anchors'}):
         raise ValueError('keys')
     w, h = int(p['w']), int(p['h'])
     heights, objects, plane = (numbers(p[k]) for k in ('heights', 'objects', 'plane'))
@@ -58,26 +58,39 @@ def evaluate(p):
     if any(v < 0 or v > 0xffffffff for v in draws):
         raise ValueError('draw')
     phase, item_height, status, consumed = [0]*(w*h), [0]*(w*h), [], 0
+    anchors = numbers(p['anchors']) if 'anchors' in p else [0]*(w*h)
+    if len(anchors) != w*h or any(v not in (0, 1) for v in anchors):
+        raise ValueError('anchors')
     vertex = lambda x, y: heights[y*w+x] if 0 <= x < w and 0 <= y < h else 0
-    island = Island(0, 0, w, h, vertex, lambda x, y: objects[y*w+x])
+    island = Island(0, 0, w, h, vertex, lambda x, y: objects[y*w+x], lambda x, y: anchors[y*w+x])
     for row in p['records'].split(';'):
         tid, x, y, rot, state = map(int, row.split(':'))
         if (tid not in reg or rot not in range(4) or not 0 <= state <= 65535
                 or not 0 <= x <= 0x7fffffff or not 0 <= y <= 0x7fffffff):
             raise ValueError('record')
         t = reg[tid]
-        if t.flags not in (9, 41) or x < 0 or y < 0:
+        stone = t.flags == 58 and t.group == 0x141
+        if (not stone and t.flags not in (9, 41)) or x < 0 or y < 0:
             raise ValueError('unsupported')
+        if stone and max(t.w, t.h) > 8:
+            raise ValueError('original coverage/offset domain')
         verdict, reason, height = place(island, reg, tid, x, y, rot, 0)
         if verdict != 'accept':
             if verdict == 'unsupported':
                 raise ValueError(reason)
-            status.append('bounds' if reason == 'BOUNDS' else 'occupied' if reason == 'OCCUPIED' else 'terrain')
+            status.append('bounds' if reason == 'BOUNDS' else 'occupied' if reason == 'OCCUPIED' else 'coverage' if reason == 'COVERAGE' else 'terrain')
             continue
         fw, fh = (t.h, t.w) if rot & 1 else (t.w, t.h)
+        # Original 0x1008213b / 0x10082289: first actual write per world block.
+        written_blocks = set()
         for dy in range(fh):
             for dx in range(fw):
                 i = (y+dy)*w+x+dx
+                if stone and objects[i] and reg[objects[i]].flags & 16 and anchors[i]:
+                    continue
+                block = ((x+dx)//8, (y+dy)//8)
+                anchors[i] = int(block not in written_blocks)
+                written_blocks.add(block)
                 objects[i], phase[i], item_height[i] = tid, state & 63, height
         status.append('accepted')
         if 225 <= t.prodtype <= 256:
@@ -102,7 +115,10 @@ def evaluate(p):
             i = y*w+x
             plane[i] = (plane[i] & 15) | (variant << 4)
     join = lambda a: ','.join(map(str, a))
-    return dict(objects=join(objects), phase=join(phase), height=join(item_height), plane=join(plane), status=','.join(status), consumed=str(consumed))
+    result = dict(objects=join(objects), phase=join(phase), height=join(item_height), plane=join(plane), status=','.join(status), consumed=str(consumed))
+    if 'anchors' in p:
+        result['anchor'] = join(anchors)
+    return result
 
 
 def main():
@@ -121,7 +137,7 @@ def main():
             for key in ('objects', 'phase', 'height', 'plane'):
                 if len(numbers(expected[key])) != int(fields(left)['w'])*int(fields(left)['h']):
                     raise ValueError('expected geometry')
-            if int(expected['consumed']) < 0 or any(s not in {'accepted', 'bounds', 'occupied', 'terrain'} for s in expected['status'].split(',')):
+            if int(expected['consumed']) < 0 or any(s not in {'accepted', 'bounds', 'occupied', 'terrain', 'coverage'} for s in expected['status'].split(',')):
                 raise ValueError('expected disposition/count')
             count += 1
             if actual != expected:

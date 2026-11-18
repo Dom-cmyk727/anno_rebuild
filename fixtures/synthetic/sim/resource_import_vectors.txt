@@ -38,3 +38,21 @@ w=2 h=2 heights=48,48,48,48 objects=0,0,0,0 plane=171,12,13,14 types=104:227:1:1
 w=1 h=1 heights=0 objects=0 plane=171 types=800:321:1:1:9:0:0 records=800:0:0:0:9 draws=- slots=100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115 map104=- map201=- map404=- => objects=800 phase=9 height=0 plane=171 status=accepted consumed=0
 # Kind 256 remains in the resource group; goods 55 does not select the kind-225 decrement branch. Fixed slot 4 still costs one draw.
 w=2 h=2 heights=48,48,48,48 objects=0,0,0,0 plane=171,12,13,14 types=104:256:1:1:41:55:0 records=104:0:0:0:647 draws=0 slots=100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115 map104=- map201=- map404=- => objects=104,0,0,0 phase=7,0,0,0 height=48,0,0,0 plane=75,12,13,14 status=accepted consumed=1
+
+# STONE: Min of quantized quad minima is 32; origin mean 52 and max minimum 48 are wrong. Nonresource: plane unchanged, supplied draw unconsumed.
+w=3 h=3 plane=11,11,11,11,11,11,11,11,11 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=49,50,63,55,57,60,61,62,35 objects=0,0,0,0,0,0,0,0,0 types=700:323:2:2:58:0:0 records=700:0:0:0:197 anchors=0,0,0,0,0,0,0,0,0 => objects=700,700,0,700,700,0,0,0,0 phase=5,5,0,5,5,0,0,0,0 height=32,32,0,32,32,0,0,0,0 anchor=1,0,0,0,0,0,0,0,0 status=accepted plane=11,11,11,11,11,11,11,11,11 consumed=0
+
+# STONE: Another content id/kind in group 321: low 15 quantizes to 0, group bypasses 32. Nonresource: plane unchanged, supplied draw unconsumed.
+w=3 h=3 plane=11,11,11,11,11,11,11,11,11 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=15,15,15,15,15,15,15,15,15 objects=0,0,0,0,0,0,0,0,0 types=701:321:1:1:58:0:0 records=701:1:1:0:9 anchors=0,0,0,0,0,0,0,0,0 => objects=0,0,0,0,701,0,0,0,0 phase=0,0,0,0,9,0,0,0,0 height=0,0,0,0,0,0,0,0,0 anchor=0,0,0,0,1,0,0,0,0 status=accepted plane=11,11,11,11,11,11,11,11,11 consumed=0
+
+# STONE: One kept overlay anchor: others mark the same chunk; next actual write takes new anchor. Nonresource: plane unchanged, supplied draw unconsumed.
+w=3 h=3 plane=11,11,11,11,11,11,11,11,11 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=48,48,48,48,48,48,48,48,48 objects=701,0,0,0,0,0,0,0,0 types=700:323:2:2:58:0:0;701:321:1:1:58:0:0 records=700:0:0:0:197 anchors=1,0,0,0,0,0,0,0,0 => objects=701,700,0,700,700,0,0,0,0 phase=0,5,0,5,5,0,0,0,0 height=0,48,0,48,48,0,0,0,0 anchor=1,1,0,0,0,0,0,0,0 status=accepted plane=11,11,11,11,11,11,11,11,11 consumed=0
+
+# STONE: All four cells kept: no mark for the only touched chunk, reject COVERAGE before writes. Nonresource: plane unchanged, supplied draw unconsumed.
+w=3 h=3 plane=11,11,11,11,11,11,11,11,11 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=48,48,48,48,48,48,48,48,48 objects=701,701,0,701,701,0,0,0,0 types=700:323:2:2:58:0:0;701:321:1:1:58:0:0 records=700:0:0:0:197 anchors=1,1,0,1,1,0,0,0,0 => objects=701,701,0,701,701,0,0,0,0 phase=0,0,0,0,0,0,0,0,0 height=0,0,0,0,0,0,0,0,0 anchor=1,1,0,1,1,0,0,0,0 status=coverage plane=11,11,11,11,11,11,11,11,11 consumed=0
+
+# STONE: Far corner carries incompatible non-0x20/group-1 object: full occupancy rejects. Nonresource: plane unchanged, supplied draw unconsumed.
+w=3 h=3 plane=11,11,11,11,11,11,11,11,11 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=48,48,48,48,48,48,48,48,48 objects=0,0,0,0,702,0,0,0,0 types=700:323:2:2:58:0:0;702:1:1:1:9:0:0 records=700:0:0:0:197 anchors=0,0,0,0,0,0,0,0,0 => objects=0,0,0,0,702,0,0,0,0 phase=0,0,0,0,0,0,0,0,0 height=0,0,0,0,0,0,0,0,0 anchor=0,0,0,0,0,0,0,0,0 status=occupied plane=11,11,11,11,11,11,11,11,11 consumed=0
+
+# STONE: Origin inside but right edge outside: full bounds reject before corner reads. Nonresource: plane unchanged, supplied draw unconsumed.
+w=3 h=3 plane=11,11,11,11,11,11,11,11,11 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=48,48,48,48,48,48,48,48,48 objects=0,0,0,0,0,0,0,0,0 types=700:323:2:2:58:0:0 records=700:2:0:0:197 anchors=0,0,0,0,0,0,0,0,0 => objects=0,0,0,0,0,0,0,0,0 phase=0,0,0,0,0,0,0,0,0 height=0,0,0,0,0,0,0,0,0 anchor=0,0,0,0,0,0,0,0,0 status=bounds plane=11,11,11,11,11,11,11,11,11 consumed=0

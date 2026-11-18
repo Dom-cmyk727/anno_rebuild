@@ -13,6 +13,30 @@ std::uint8_t quad_mean(const VertexGrid& grid, std::int64_t x, std::int64_t y) {
                                       *grid.at(x, y + 1) + *grid.at(x + 1, y + 1)) /
                                      4U);
 }
+// AnnoWelt 0x1007c955..0x1007cb3d: every touched world block needs a
+// non-kept tile. Caller has checked bounds, resolved objects and the original
+// two-column/two-row mark-layout domain. No scratch allocation per record.
+bool overlay_coverage(const TileLayer& tiles, const TypeRegistry& types, std::int64_t x,
+                      std::int64_t y, std::uint32_t w, std::uint32_t h) {
+    const std::int64_t edge = kPlacementBlockEdge;
+    for (auto by = y / edge * edge; by < y + h; by += edge)
+        for (auto bx = x / edge * edge; bx < x + w; bx += edge) {
+            bool marked = false;
+            for (auto py = std::max(by, y); py < std::min(by + edge, y + h); ++py)
+                for (auto px = std::max(bx, x); px < std::min(bx + edge, x + w); ++px) {
+                    const auto i = tiles.index_of(static_cast<std::int32_t>(px),
+                                                  static_cast<std::int32_t>(py));
+                    const auto id = tiles.object(i);
+                    const bool kept = id != 0 &&
+                                      (types.find(TypeId{id})->flags_word & 0x10U) != 0 &&
+                                      tiles.foot_anchor(i) != 0;
+                    marked = marked || !kept;
+                }
+            if (!marked)
+                return false;
+        }
+    return true;
+}
 // Invocation-local, id-ordered copy. No persistent registry/cache or public probe.
 formats::Result<std::vector<TypeFacts>, ErrorKind> prepare(std::span<const TypeFacts> facts,
                                                            const ClimateFacts& climate) {
@@ -136,7 +160,9 @@ formats::Result<Effect, Error> Session::apply(const Record& record,
     // Object id 0 is TileLayer's empty sentinel, not a storable placement.
     if (!type || !record.type.valid() || record.type.v == 0)
         return error(ErrorKind::Facts);
-    if ((type->flags_word != 0x09 && type->flags_word != 0x29) || record.rotation > 3 ||
+    const auto group = ((type->prodtype - 1U) & ~31U) + 1U;
+    const bool stone = type->flags_word == 0x3a && group == 0x141;
+    if ((!stone && type->flags_word != 0x09 && type->flags_word != 0x29) || record.rotation > 3 ||
         type->width == 0 || type->height == 0 || record.x < 0 || record.y < 0 ||
         type->width - 1 > std::numeric_limits<std::uint16_t>::max() ||
         type->height - 1 > std::numeric_limits<std::uint16_t>::max())
@@ -156,11 +182,33 @@ formats::Result<Effect, Error> Session::apply(const Record& record,
         out_.records.push_back(Disposition::Occupied);
         return Effect{Disposition::Occupied, 0, {}, {}};
     }
-    // AnnoGame 0x10008fa1: mode 1 reads only the origin quad.
+    if (stone) {
+        // Original coverage mark storage is two rows with stride two. Refuse
+        // inputs beyond that addressed layout, not an invented engine size cap.
+        const std::int64_t edge = kPlacementBlockEdge;
+        if (w > kPlacementBlockEdge || h > kPlacementBlockEdge ||
+            (std::int64_t{record.x} + w - 1) / edge - record.x / edge >= 2 ||
+            (std::int64_t{record.y} + h - 1) / edge - record.y / edge >= 2)
+            return error(ErrorKind::Unsupported);
+        if (!overlay_coverage(out_.tiles, *types_, record.x, record.y, w, h)) {
+            out_.records.push_back(Disposition::Coverage);
+            return Effect{Disposition::Coverage, 0, {}, {}};
+        }
+    }
+    // AnnoGame 0x10008fa1: mode 1 reads only the origin quad. For the
+    // admitted 0x3a class, mode 2 is min(cell corner minimum & 0xf0),
+    // equivalently the minimum window vertex & 0xf0 (0x10009048..0x10009109).
     const std::int64_t x = record.x, y = record.y;
-    const auto mean = quad_mean(grid_, x, y);
+    auto mean = quad_mean(grid_, x, y);
+    if (stone) {
+        std::uint8_t minimum = 255;
+        for (std::uint64_t dy = 0; dy <= h; ++dy)
+            for (std::uint64_t dx = 0; dx <= w; ++dx)
+                minimum = std::min(minimum, *grid_.at(x + static_cast<std::int64_t>(dx),
+                                                      y + static_cast<std::int64_t>(dy)));
+        mean = static_cast<std::uint8_t>(minimum & 0xf0U);
+    }
     // AnnoWelt 0x1007cbdf: group 0x141 bypasses the final ordinary level gate.
-    const auto group = ((type->prodtype - 1U) & ~31U) + 1U;
     if (mean < 32 && group != 0x141) {
         out_.records.push_back(Disposition::Terrain);
         return Effect{Disposition::Terrain, 0, {}, mean};

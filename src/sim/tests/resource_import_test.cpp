@@ -79,6 +79,12 @@ Rig rig(const Fields& f) {
     REQUIRE(objects.size() == r.island.tiles.tile_count());
     for (std::uint64_t i = 0; i < objects.size(); ++i)
         r.island.tiles.set_object(i, objects[i]);
+    if (f.contains("anchors")) {
+        const auto anchors = numbers<std::uint8_t>(f.at("anchors"));
+        REQUIRE(anchors.size() == objects.size());
+        for (std::uint64_t i = 0; i < anchors.size(); ++i)
+            r.island.tiles.set_foot_anchor(i, anchors[i]);
+    }
     sim::TypeRegistry::Builder builder;
     for (const auto& row : split(f.at("types"), ';')) {
         const auto v = split(row, ':');
@@ -211,6 +217,12 @@ TEST_CASE("resource import: authored ordered prefixes and draw-sensitive selecto
             CHECK(r.island.tiles.object(i) == numbers<std::uint32_t>(input.at("objects"))[i]);
             CHECK(r.island.tiles.phase(i) == 0);
         }
+        if (expected.contains("anchor")) {
+            const auto anchors = numbers<std::uint8_t>(expected.at("anchor"));
+            REQUIRE(anchors.size() == obj.size());
+            for (std::uint64_t i = 0; i < anchors.size(); ++i)
+                CHECK(out.tiles.foot_anchor(i) == anchors[i]);
+        }
         CHECK(out.variation == numbers<std::uint8_t>(expected.at("plane")));
         CHECK(r.plane == numbers<std::uint8_t>(input.at("plane")));
         CHECK(out.consumed == static_cast<std::uint64_t>(number(expected.at("consumed"))));
@@ -229,6 +241,9 @@ TEST_CASE("resource import: authored ordered prefixes and draw-sensitive selecto
             case ri::Disposition::Terrain:
                 status.emplace_back("terrain");
                 break;
+            case ri::Disposition::Coverage:
+                status.emplace_back("coverage");
+                break;
             }
         }
         CHECK(status == split(expected.at("status"), ','));
@@ -244,7 +259,7 @@ TEST_CASE("resource import: authored ordered prefixes and draw-sensitive selecto
         CHECK(out.tiles.ignored_writes() == 0);
         ++count;
     }
-    CHECK(count == 20);
+    CHECK(count == 26);
 }
 
 TEST_CASE("resource import: errors expose no partial success or input mutation") {
@@ -603,4 +618,156 @@ TEST_CASE("resource import: original Tutorial first resource prefix") {
     CHECK(plane[index] == 11);
     std::cout << "RESOURCE_PREFIX headers_before=34 supported=1 unsupported=0 accepted=1 draws=1 "
                  "variant=6 height=48\n";
+}
+
+namespace {
+Rig stone_rig(std::uint32_t w = 3, std::uint32_t h = 2) {
+    Rig r;
+    REQUIRE(r.island.tiles.reset(0, 0, 18, 18, 4));
+    r.island.terrain = sim::make_terrain(std::vector<std::uint8_t>(18 * 18, 48), {}, {});
+    r.plane.assign(18 * 18, 0xab);
+    sim::BuildingType stone;
+    stone.id = sim::TypeId{700};
+    stone.prodtype = 323;
+    stone.flags_word = 0x3a;
+    stone.width = w;
+    stone.height = h;
+    stone.head_raw.assign(56, 0);
+    stone.head_raw[0x2f] = 1;
+    stone.walk_mask.assign(3 * h, (1U << (3 * w)) - 1U);
+    auto sibling = stone;
+    sibling.id = sim::TypeId{701};
+    sibling.prodtype = 321;
+    sim::TypeRegistry::Builder builder;
+    builder.add(stone).add(sibling);
+    const auto built = builder.build();
+    REQUIRE(built);
+    r.types = built.value();
+    r.facts = {{stone.id, 0, 0}, {sibling.id, 0, 0}};
+    r.climate.slots.assign(16, sim::TypeId{1});
+    r.draws = {7};
+    return r;
+}
+} // namespace
+
+TEST_CASE("resource import: stone rotations cover world chunks without resource draws") {
+    for (std::uint8_t rotation = 0; rotation < 4; ++rotation) {
+        auto r = stone_rig();
+        r.records = {{sim::TypeId{701}, 7, 7, rotation, 197}};
+        const auto result = evaluate(r);
+        REQUIRE(result);
+        const auto& out = result.value();
+        CHECK(out.records == std::vector{ri::Disposition::Accepted});
+        CHECK(out.consumed == 0);
+        CHECK(out.variation == r.plane);
+        const auto w = rotation & 1U ? 2 : 3, h = rotation & 1U ? 3 : 2;
+        for (std::int32_t y = 0; y < 18; ++y)
+            for (std::int32_t x = 0; x < 18; ++x) {
+                const auto i = out.tiles.index_of(x, y);
+                const bool inside = x >= 7 && x < 7 + w && y >= 7 && y < 7 + h;
+                CHECK(out.tiles.object(i) == (inside ? 701U : 0U));
+                CHECK(out.tiles.phase(i) == (inside ? 5 : 0));
+                CHECK(out.tiles.item_height(i) == (inside ? 48 : 0));
+                if (inside) {
+                    CHECK(out.tiles.foot_dx(i) == x - 7);
+                    CHECK(out.tiles.foot_dy(i) == y - 7);
+                    CHECK(out.tiles.foot_rotation(i) == rotation);
+                    CHECK(out.tiles.foot_anchor(i) == ((x == 7 || x == 8) && (y == 7 || y == 8)));
+                    CHECK(out.tiles.walk_code(i) == 1);
+                    CHECK(out.tiles.walk_mask(i) == 511);
+                }
+                CHECK(r.island.tiles.object(i) == 0);
+            }
+    }
+}
+
+TEST_CASE("resource import: stone coverage requires every touched chunk not one global mark") {
+    auto r = stone_rig(2, 2);
+    r.records = {{sim::TypeId{700}, 7, 7, 0, 5}};
+    const auto kept = r.island.tiles.index_of(8, 7);
+    r.island.tiles.set_object(kept, 701);
+    r.island.tiles.set_foot_anchor(kept, 1);
+    const auto refused = evaluate(r);
+    REQUIRE(refused);
+    CHECK(refused.value().records == std::vector{ri::Disposition::Coverage});
+    CHECK(refused.value().tiles.object(kept) == 701);
+    CHECK(refused.value().tiles.object(r.island.tiles.index_of(7, 7)) == 0);
+    CHECK(refused.value().variation == r.plane);
+    CHECK(refused.value().consumed == 0);
+    // Same occupied type, only the anchor changes: that chunk is now marked.
+    r.island.tiles.set_foot_anchor(kept, 0);
+    const auto accepted = evaluate(r);
+    REQUIRE(accepted);
+    CHECK(accepted.value().records == std::vector{ri::Disposition::Accepted});
+    CHECK(accepted.value().tiles.object(kept) == 700);
+    // Larger offsets would truncate in the original 3-bit record. Refuse this
+    // unproved layout domain rather than impose an engine footprint cap.
+    auto wide = stone_rig(9, 2);
+    wide.records = {{sim::TypeId{700}, 0, 0, 0, 5}};
+    const auto unsupported = evaluate(wide);
+    REQUIRE_FALSE(unsupported);
+    CHECK(unsupported.error().kind == ri::ErrorKind::Unsupported);
+}
+
+TEST_CASE("resource import: stone partial overlay retains anchors but updates their walk fields") {
+    auto r = stone_rig();
+    auto sparse = *r.types->find(sim::TypeId{700});
+    sparse.walk_mask.assign(6, 0);
+    sparse.walk_mask[0] = 1; // Only the top-left subcell: OR differs from replacement.
+    sim::TypeRegistry::Builder builder;
+    builder.add(sparse).add(*r.types->find(sim::TypeId{701}));
+    const auto built = builder.build();
+    REQUIRE(built);
+    r.types = built.value();
+    r.records = {{sim::TypeId{700}, 6, 6, 0, 197}};
+    for (std::int32_t y = 6; y < 8; ++y)
+        for (std::int32_t x = 6; x < 9; ++x) {
+            const auto i = r.island.tiles.index_of(x, y);
+            r.island.tiles.set_object(i, 701);
+            r.island.tiles.set_phase(i, 13);
+            r.island.tiles.set_item_height(i, 77);
+            r.island.tiles.set_owner(i, 9);
+            r.island.tiles.set_aux(i, r.island.tiles.aux(i) | sim::kTileClaim);
+            r.island.tiles.set_walk_code(i, 2);
+            r.island.tiles.set_walk_mask(i, 0x100);
+            r.island.tiles.set_foot_dx(i, 2);
+            r.island.tiles.set_foot_dy(i, 1);
+            r.island.tiles.set_foot_rotation(i, 2);
+        }
+    const auto kept = r.island.tiles.index_of(6, 6);
+    r.island.tiles.set_foot_anchor(kept, 1);
+    const auto result = evaluate(r);
+    REQUIRE(result);
+    const auto& out = result.value();
+    CHECK(out.records == std::vector{ri::Disposition::Accepted});
+    CHECK(out.consumed == 0);
+    CHECK(out.variation == r.plane);
+    for (std::int32_t y = 0; y < 18; ++y)
+        for (std::int32_t x = 0; x < 18; ++x) {
+            const auto i = out.tiles.index_of(x, y);
+            const bool inside = x >= 6 && x < 9 && y >= 6 && y < 8;
+            if (!inside) {
+                CHECK(out.tiles.object(i) == 0);
+                CHECK(out.tiles.walk_code(i) == r.island.tiles.walk_code(i));
+                CHECK(out.tiles.walk_mask(i) == r.island.tiles.walk_mask(i));
+                continue;
+            }
+            const bool skip = i == kept;
+            CHECK(out.tiles.object(i) == (skip ? 701U : 700U));
+            CHECK(out.tiles.phase(i) == (skip ? 13 : 5));
+            CHECK(out.tiles.item_height(i) == (skip ? 77 : 48));
+            CHECK(out.tiles.foot_dx(i) == (skip ? 2 : x - 6));
+            CHECK(out.tiles.foot_dy(i) == (skip ? 1 : y - 6));
+            CHECK(out.tiles.foot_rotation(i) == (skip ? 2 : 0));
+            CHECK(out.tiles.foot_anchor(i) == (skip || (y == 6 && (x == 7 || x == 8))));
+            CHECK(out.tiles.owner(i) == 9);
+            CHECK(out.tiles.claimed(i));
+            CHECK(out.tiles.walk_code(i) == 1);
+            CHECK(out.tiles.walk_mask(i) == (skip ? 0x101 : 0x100));
+            CHECK(r.island.tiles.object(i) == 701);
+            CHECK(r.island.tiles.phase(i) == 13);
+            CHECK(r.island.tiles.item_height(i) == 77);
+            CHECK(r.island.tiles.walk_code(i) == 2);
+            CHECK(r.island.tiles.walk_mask(i) == 0x100);
+        }
 }

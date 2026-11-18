@@ -34,7 +34,7 @@ struct Record {
     std::uint8_t rotation = 0;
     std::uint16_t raw_state = 0;
 };
-enum class Disposition : std::uint8_t { Accepted, Bounds, Occupied, Terrain };
+enum class Disposition : std::uint8_t { Accepted, Bounds, Occupied, Terrain, Coverage };
 enum class ErrorKind : std::uint8_t { Geometry, Facts, Unsupported, Exhausted };
 struct Error {
     ErrorKind kind = ErrorKind::Facts;
@@ -96,7 +96,8 @@ class Session {
 
 // Copies both planes; an error exposes no partially successful result. Initial
 // objects must have resolved registry facts. Only ordinary flags 0x09/0x29 are
-// supported. Coordinates/offsets must fit the existing lower writer. No RNG-global
+// supported, plus flags 0x3a / kind group 0x141 (wildlife-stone.md). Coordinates/offsets
+// must fit the existing lower writer. No RNG-global
 // access, production registration, saved state, numeric tag or registry mutation.
 [[nodiscard]] formats::Result<Output, Error>
 evaluate(const TileLayer&, const VertexGrid&, std::span<const std::uint8_t> variation,

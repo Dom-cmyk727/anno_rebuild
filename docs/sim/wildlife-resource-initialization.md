@@ -176,3 +176,12 @@ production exposes no counters. Standard sort and binary-search structure bound
 comparison work without a wall-clock threshold. The zero-sentinel regression
 registers both ordinary id 0 and its legal nonzero sibling, so missing-type
 refusal cannot substitute for the explicit zero guard.
+
+## 6. Narrow stone continuation (2026-11-18)
+
+[WILDLIFE-STONE-1](wildlife-stone.md) adds exact flags 0x3a / kind group 0x141
+as a separate evidenced admission arm: mode-2 minimum quantized window height,
+full overlap plus per-world-block coverage, then the existing overlay writer.
+Its nonresource placements draw nothing and leave the variation plane alone.
+The ordinary 0x09/0x29 contract and selector are unchanged. Other classes remain
+explicit unsupported boundaries; this does not extend BuildCmd or World import.

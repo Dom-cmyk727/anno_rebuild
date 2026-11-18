@@ -41,6 +41,7 @@ def main():
         for name, old, new in [
             ('mask', '(plane[i] & 15) | (variant << 4)', '(plane[i] & 240) | variant'),
             ('skip-draw', 'consumed += 1', 'consumed += 0'),
+            ('overwrite-anchor', 'if stone and objects[i] and reg[objects[i]].flags & 16 and anchors[i]:', 'if False:'),
             ('ignore-earlier', 'objects[i], phase[i], item_height[i] = tid, state & 63, height', 'objects[i], phase[i], item_height[i] = 0, state & 63, height'),
         ]:
             if source.count(old) != 1:
@@ -57,7 +58,7 @@ def main():
             else:
                 run(mutant, args.vectors, 1)
             print(f'APPLIED {name}: legal control 0, mutant 1')
-    print('resource import contract: 16 public checks passed')
+    print('resource import contract: 18 public checks passed')
     return 0
 
 

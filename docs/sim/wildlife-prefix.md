@@ -137,3 +137,12 @@ player/actor or post-island handlers. Their effects are outside the supplied
 stream contract and are not assumed zero; complete-local never means complete
 scene/world loading. Geometry is widened and overflow-checked on entry; original
 malformed 16-bit coordinate wrapping is not asserted as engine behavior.
+
+### Stone successor (2026-11-18)
+
+[WILDLIFE-STONE-1](wildlife-stone.md) supersedes only the predecessor's stone
+stopping point: 35/22 is faithfully accepted without a draw, and the same raw
+stream stops at 37/1, type 1552 / flags 0x12. It completes 258 records (255
+resource draws, 3 stones), 4 header epilogues, 0 spawns. This remains a typed
+**diagnostic partial**, with explicit supplied stamp/mode/draws. The original
+PREFIX receipts and its first unsupported boundary remain preserved.

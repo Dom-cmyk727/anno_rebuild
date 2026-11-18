@@ -33,7 +33,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife composition [WILDLIFE-PREFIX-1](tasks/wildlife-prefix-1.md) | LOCAL REVIEW APPROVED; two macOS CI jobs cancelled without runner | `1441183a74be4745415c23c399f80648bf886314` | [44385455810](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44385455810), terminal FAIL:9 success,2 no-runner cancellations, aggregate failure | [Review](reviews/2026-11-18-wildlife-prefix-1-review.md) |
 | Wildlife stone [WILDLIFE-STONE-1](tasks/wildlife-stone-1.md) | ACCEPTED bounded import; Windows landing pending | `18473cf4b1d44cadfa564636f56b889bdcabe146`; source `f3e18bdf` | [44390015763](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44390015763), all12 jobs successful | [Review](reviews/2026-11-18-wildlife-stone-1-review.md) |
 | Wildlife cliff [WILDLIFE-CLIFF-1](tasks/wildlife-cliff-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `11bc3be60acc71a4c9fbf03dff077e908b4c8204`; source `eb3ea560` | [44417567937](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44417567937), in progress | [Review](reviews/2026-11-19-wildlife-cliff-1-review.md) |
-| Wildlife rock [WILDLIFE-ROCK-1](tasks/wildlife-rock-1.md) | RELEASED to EXECUTOR II MAC | Explicit locally reviewed base `11bc3be6` | Not started | Frozen reportback to Mac orchestrator |
+| Wildlife rock [WILDLIFE-ROCK-1](tasks/wildlife-rock-1.md) | CHANGES REQUIRED: one P2 evidence correction; no code defect found | `81e8f03f3bf882afe00272c27a8f1e0989f56283`; source `26899502` | [44420622010](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44420622010), in progress | [Review](reviews/2026-11-19-wildlife-rock-1-review.md) |
+| Wildlife rock correction [WILDLIFE-ROCK-FIX-1](tasks/wildlife-rock-fix-1.md) | RELEASED to EXECUTOR II MAC; prose-only scope | Same task branch, base `81e8f03f` | Frozen-source gates reusable | Focused reportback to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -583,3 +584,27 @@ shared writer/ownership and existing classes; no World/native/tag/default change
 The executor ordinary-pushes its task branch and reports frozen results directly
 to this Mac orchestrator for review and the next release. Windows retains landing
 and cross-lane identity ownership; main remains untouched.
+
+
+## Latest dispatch — ROCK evidence correction, 2026-11-19
+
+ROCK81e8f03f/source26899502 has no identified production defect in its bounded
+projection; tests/evidence reviewer approved, primary review requests one P2
+correction. Original writer extends through82b0a and executes derived chunk-bound
+and dirty-counter callbacks. Fresh wrapper observer bypass does not skip those.
+The transport attribution of empty-tile fill928a0 to slot19c is stale: it is1a0;
+actual19c is84150. These callbacks do not change current tile/variation/draw
+projection, but omitted derived cache effects must be explicit before integration.
+
+49 hashes and276 baseline fixtures verified. Independent raw continuation agrees
+on4760 accepts/4589 resource draws/16 completed epilogues, stopping before
+FRUCHTBAR49. Debug21/21, ASan21/21, three required contracts each and real1/1
+remain valid. No broad rerun or engine change is requested for this correction.
+
+[WILDLIFE-ROCK-FIX-1](tasks/wildlife-rock-fix-1.md) is RELEASED after independent
+scope review. Executor corrects the named documentation and stale concrete slot,
+preserves frozen evidence/runtime bytes, ordinary-pushes its existing task branch
+and reports directly here for focused re-review. Fertility-header implementation
+is not released until the correction closes; its next packet will explicitly
+trace loader effects and callbacks rather than treating metadata as a no-op.
+CLIFF and ROCK exact-head CI remain pending at this review. Main untouched.

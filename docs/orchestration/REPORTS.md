@@ -15892,3 +15892,64 @@ Decisions and reasoning:
 - Correct the finite evidence gap rather than alter a valid projected implementation or silently promote wrapper bypass into full callback suppression.
 - Preserve old receipts as frozen history and explicitly require cache reconstruction before future consumers depend on omitted derived state.
 - Reuse the valid frozen-source gates; no owner policy question or repeated expensive verification is needed. Independent focused re-review pending.
+
+## 2026-11-19 — WILDLIFE-FERTILITY-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-FERTILITY-1` from corrected ROCK `6c6554a2`; dispatch `d5ec33a8` read, not merged.
+- Frozen tested source `12586595861a1b2e71427048bf80d62f1a95d534`, tree `387959757eadeda08df992317871fc5ff6cd9afb`.
+- Publication adds report/evidence only; exact pushed head/tree/CI accompany direct handoff. No extra intake/main merge/rebase.
+- [Prewritten contract](../sim/wildlife-fertility.md); [frozen acceptance/evidence](evidence/wildlife-fertility-1.md) with commands, primary spans and SHA256 receipts.
+- D: AnnoWelt FRUCHTBAR arm `0x100894ca–0x1008957a`; unsigned width/height at island +8/+0xa, local row-major width-byte rows.
+- D: `0x1008952b–0x10089539` merges `(old & 0xf0) | (source & 0x0f)` into island +0x18; not a whole-byte copy.
+- D: resource high-nibble writer `0x1008948c–0x1008949d` uses the SAME plane; all source bytes 0–255 accepted, no inferred 0–10 cap.
+- D: `0x10089565` sets +0xc2 = 1; transient completed-header/raw-column presence records this boundary, no live flag lifecycle claimed.
+- D: concrete +0xdc target `0x100946c0` delegates at `0x10094848`, returns `0x10094873`; only byte bookkeeping after the arm.
+- D: caller `0x100a2fb0–0x100a2fbc` preserves child order. Duplicates merge sequentially; latest raw payload retained, each trace visible.
+- No immediate empty-tile fill (+0x1a0 -> `0x100928a0`), world draw, tile/code write or resource selection is reached here.
+- Post-island callbacks `0x100a2fc8/0x100a2fd7/0x100a2fdf` remain outside scope; no global initialization/draw-cursor claim.
+- Existing writer-derived chunk caches stay omitted under corrected ROCK contract; future consumers need reviewed initialization/rebuild.
+- Session owns effective variation; immutable Terrain owns raw fertility with its recomputed digest, matching existing raw-column convention.
+- Keep backing HEIGHT alive through Session; rebuild prepared terrain once at extraction, no whole-map copies per object/header.
+- Authored 3 × 2 island at (7,11): two fertility headers change 4 then 6 cells; resource–F1–resource–F2–HIRSCH consumes exactly 3 draws.
+- Final authored variation [47,7,0,0,14,2], raw F2 [255,7,128,16,254,18]; low-only, row order, duplicate order and source ownership checked.
+- Empty low terrain remains empty, zero-change headers still complete; malformed 0/5/7 versus 6 bytes preserve prior diagnostic effects.
+- Huge invalid geometry refuses before allocation; failed Session cannot resume via fertility/resource/epilogue/finish; lifetime/error checks under ASan.
+- Actual production-TU whole-byte-copy mutant: legal 69 assertions pass; mutant fails exactly 3 intended assertions / 66 pass, source unchanged.
+- First compile Werror diagnostics and missing-Ninja mutant-harness attempt retained; corrected before freeze. No canonical gate failure.
+- Independent raw parsing: Tutorial island ordinal 0/slot 11, header 49, 16,384 bytes; 8,160 nonzero low nibbles, next BERGWERK2 header 50.
+- C++ original run checks all raw bytes, every merged low nibble and preservation of prior resource high bits; existing tile-field assertions pass.
+- Measured 4,760 completed/accepted, 0 refused; 4,589 resource records/draws; 84 stones / 63 cliffs / 24 rocks; 16 GELAENDE epilogues.
+- One completed fertility header / 0 spawns; next boundary island 0/slot 11/header 50/record 0 BERGWERK2, before effects; HIRSCH 71 unreached.
+
+```text
+# cache/wildlife-fertility-1/debug-final.log (main)
+COUNTS: selected=8 executed=8 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-fertility-1/asan-final.log (main)
+COUNTS: selected=8 executed=8 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# Three separately required contracts per profile; all six exact receipts reproduced in evidence
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-fertility-1/original-final.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- Debug 11 / ASan 11 executed passes including required controls, plus original Debug 1; no skips/refusals/timeouts/incomplete/sanitizer lines.
+- Required: nibble chronology causal case, fertility adapter length contract, existing malformed-prerequisite adapter contract; not double-counted.
+- Four affected/dependent TUs strict O3/Werror Apple Clang 21/GCC 15.3 pass, GCC shadow control rejected; format 23.1.3/lint/diff/links pass.
+- Compiler warnings 0; inherited duplicate-library Apple linker warning retained. Targeted warnings are not a full sweep.
+- All 276 tracked fixtures/pins/recordings byte-identical to base; no World/native/registry/identity/default/tag change or full pins.py claim.
+- Unchanged selector/PE/decoder/HIRSCH/reference algorithms and long lanes reuse reviewed predecessor evidence; no new CLI or rendering input.
+- Host Apple M5 Max / 18 logical / 48 GiB / macOS 27.0.1, jobs 1/threads 2, normal memory admission; awake assertion/coordinator preserved.
+- Exact-head CI read immediately after ordinary push and sent directly; pending CI is not called green and does not delay this packet's submission.
+
+Decisions and reasoning:
+- Trace actual returns/concrete targets before implementing; do not infer a metadata no-op or immediate empty-tile fill.
+- Preserve nibble ownership, ordered replacements and immutable view lifetime; retain raw terrain without changing production consumers.
+- Prove one wrong interpretation causally, run focused gates once and retain first failures rather than repeat unaffected matrices.
+- Stop at BERGWERK2 before effects; derived caches/global callbacks and whole-world state remain explicit future integration boundaries.
+
+NOT_RUN: original/HE runtime, Windows/WSL game-file runs, full suites/pins/warnings, LeakSanitizer, World/cache consumers/fauna/global initialization.
+QUESTIONs: none blocking bounded review. Next finite step: establish the reached BERGWERK2 header 50 and its callbacks before one continuation.

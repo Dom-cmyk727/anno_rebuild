@@ -182,3 +182,10 @@ src/sim/include/anno/sim/command_framing.hpp:^inline constexpr std::uint64_t max
 src/sim/include/anno/sim/command_framing.hpp:^inline constexpr std::uint64_t max_actions =$  # derived from the u16 payload framing after one minimum stop, not a gameplay capacity
 src/sim/include/anno/sim/state_fields.hpp:^inline constexpr std::size_t kHarvestCommonMembers = 7;$  # aggregate serialization obligation: seven existing common HarvestState members
 src/sim/include/anno/sim/state_fields.hpp:^inline constexpr std::size_t kHarvestMasonMembers = 2;$  # aggregate serialization obligation: two existing conditional mason members in fields(Figure)
+
+
+# --- wildlife pure decisions (WILDLIFE-1a)
+# These are transient span cursors/results, not serialized simulation fields.
+# If later persisted, introduce explicit fixed-width fields and revisit these entries.
+src/sim/include/anno/sim/wildlife.hpp:^std::size_t consumed = 0;$  # WildlifeError/WildlifeDecision carry a transient supplied-span count only, never state/hash/save/wire; native span width avoids narrowing (docs/sim/wildlife-decisions.md)
+src/sim/src/wildlife.cpp:^std::size_t consumed = 0;$  # Draws is an automatic cursor over one const input span, like ReadArchive::pos_; it never escapes into persistent state or serialization

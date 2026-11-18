@@ -29,7 +29,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife import [WILDLIFE-LOAD-1](tasks/wildlife-load-1.md) | LOCAL REVIEW APPROVED; macOS C++ CI never obtained runner | `f1e245d2769306451d4c2079aadf6a64be93defd` | [44344197686](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44344197686), FAIL: 10 successful jobs, 1 cancelled runner, failed aggregate gate | [Independent review](reviews/2026-11-18-wildlife-load-1-review.md) |
 | Wildlife correction [WILDLIFE-LOAD-FIX-1](tasks/wildlife-load-fix-1.md) | LOCAL REVIEW APPROVED; CI blocked by no hosted macOS runner | `533ee3fc96a560f1c3189f3a4d32ce113abff65a` | [44354548420](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44354548420), 10 success, build-macos cancelled, aggregate failed | [Review](reviews/2026-11-18-wildlife-load-fix-1-review.md) |
 | Wildlife initialization [WILDLIFE-INIT-1](tasks/wildlife-init-1.md) | ACCEPTED bounded research/reference; landing pending | `97d893af9d78e6662dd8859acc3a905f71c80402` | [44359989371](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44359989371), all12 successful | [Review](reviews/2026-11-18-wildlife-init-1-review.md) |
-| Wildlife resource [WILDLIFE-RESOURCE-1](tasks/wildlife-resource-1.md) | CHANGES REQUIRED; focused FIX-1 released | `3aab2a93680a9edf97ab4c5b0ac932eaae130513` | [44368707576](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44368707576), pending at handoff | [Review](reviews/2026-11-18-wildlife-resource-1-review.md) |
+| Wildlife resource [WILDLIFE-RESOURCE-1](tasks/wildlife-resource-1.md) | LOCAL REVIEW APPROVED after FIX-1; exact-head CI pending | `0627532f330dc898b80941ea31d9dafe87980aa4` | [44372186862](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44372186862), pending | [Review and closed findings](reviews/2026-11-18-wildlife-resource-1-review.md) |
+| Wildlife composition [WILDLIFE-PREFIX-1](tasks/wildlife-prefix-1.md) | RELEASED to EXECUTOR II MAC | Explicit local dependency stack from `0627532f`; decoder/helper intake pinned in packet | Not started | Direct frozen reportback required |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -464,3 +465,26 @@ mutation. Focused Debug/ASan plus one real-prefix Debug verification only. No
 broad repeat, World/persistence work or default change. Executor pushes its own
 branch and reports exact frozen results directly to the Mac orchestrator for
 focused re-review. The next ordered raw-input adapter is not released yet.
+
+## Latest dispatch — RESOURCE corrections approved; PREFIX released
+
+Independent focused re-review closes bothRESOURCE findings at0627532f/source
+754ef6a0. Sorted metadata is prepared once; registered-zero control/mutant reaches
+the intended guard.25 receipts and120 unchanged parent fixtures verified; Debug
+6/6 plus1/1 andASan5/5 plus1/1 pass. Exact-head CI44372186862 remains pending.
+No new original-rule or long-gate campaign was run.
+
+[WILDLIFE-PREFIX-1](tasks/wildlife-prefix-1.md) is RELEASED after independent
+dispatch review. The task explicitly authorizes a locally reviewed dependency
+stack, preserving original branches and their pending/no-runner CI dispositions.
+It adapts actual raw metadata and ordered records into the existing resource and
+HIRSCH helpers, with an owned transient result and explicit supplied stamp/mode/
+draws. Unknown effects stop at an exact source boundary. No new duplicate helper,
+World publication, persistence/tag/default change or claim of full-map alignment.
+The executor pushes only its task branch and sends the frozen result directly
+to this Mac orchestrator for independent review.
+
+Cross-lane coordination request for the Windows board owner: before later native
+integration, coordinate ownership/tags for wildlife enable/mode, resource variation
+plane, effective spawn records and their distinct load draw sites. No numeric tag
+is allocated or claimed by this dispatch; current transient work does not need one.

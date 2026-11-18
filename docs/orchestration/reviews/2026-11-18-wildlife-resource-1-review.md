@@ -73,3 +73,44 @@ metadata and ordered-prefix adapter: retain raw order/duplicates and explicit
 UNUSED, then compose resource and HIRSCH processing up to the first unsupported
 record/callback. Do not skip that boundary or claim the4589 candidates all draw.
 Storage/tag coordination precedes any production World cursor or persistence change.
+
+## Focused correction re-review — 2026-11-18
+
+**APPROVED locally; exact-head CI acceptance pending.** Both R-F1 and R-F2 are
+closed at `0627532f330dc898b80941ea31d9dafe87980aa4`, tree
+`365703dd42cb46db3a306465c81a459599f5d336`, tested correction source
+`754ef6a01fb6ed416cc4468513625d3a2486d2f1`. Final delta is report/evidence only.
+CI: [44372186862](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44372186862).
+
+Same independent reviewers inspected the frozen correction and its actual tests/
+raw evidence; no remaining blocking findings. There was no repeated primary-
+research or broad-gate campaign.
+
+- R-F1: one invocation-local sorted copy, adjacent duplicate validation and
+  lower_bound lookup; evaluate calls only the validated internal selector.
+  Standalone select validates its own invocation. Work is O(F log F + R log F).
+  Missing current/following facts still fail after the accepted draw; malformed
+  metadata fails before it. Input order is preserved in the caller's storage.
+- The unsorted2 required plus4096 unrelated facts case executes16 resources and
+  observes one32768-byte index payload. Allocation proves copy ownership/count,
+  not comparison complexity; the documented complexity comes from code structure.
+  Duplicate and missing-following controls execute with the expected consumed prefix.
+- R-F2: both ordinary0/800 registry entries are explicitly found. Legal800 succeeds
+  first;0 refuses through its sentinel guard. The actual relinked C++ doctest
+  mutant removes only that guard and fails REQUIRE_FALSE(zero), with zero accepted
+  and the legal sibling still passing. No earlier setup rejection kills it.
+- All25 fix receipt hashes, identities and120 parent fixture blobs were checked.
+  Canonical Debug6/6 plus required1/1 and ASan5/5 plus required1/1 are clean-source
+  correction gates, with no skips, empty/incomplete cases or sanitizer reports.
+  Debug reruns the actual bounded prefix once on the new index path. The first
+  rig failure remains preserved; the corrected setup copies before vector assign.
+
+The original resource review's bounded semantic approval now stands with these
+corrections. This does not prove full-map scheduling, original runtime, production
+World integration, persistence or defaults. Exact corrected-head CI must turn
+green before landing acceptance.
+
+Next local dependency integration may compose these reviewed helpers with the
+reviewed raw decoder/load helper on a separately named task branch. Preserve
+pending CI dispositions and intake identities; no candidate becomes accepted by
+being cherry-picked into that stack.

@@ -355,7 +355,7 @@ TEST_CASE("minimap owners: a city the viewer knows shows its owner's colour slot
     CHECK(app::minimap_city_owner(cfg, {1, 0, {0, 2}}, rule) == 2); // known to the human: red
     // An owner without a colour slot: 0xff is stored as 0 (0x1002f437); one beyond the table too.
     app::MinimapOwnerRule no_slot = rule;
-    no_slot.colour_of_player[2].reset();
+    no_slot.colour_of_player.at(2).reset();
     CHECK(app::minimap_city_owner(cfg, {0, 2, {2}}, no_slot) == 0);
     CHECK(app::minimap_city_owner(cfg, {0, 7, {2}}, rule) == 0);
     // World property 5 = 0: every city shows (the mask is all ones, 0x100a3f0d).

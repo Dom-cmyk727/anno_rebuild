@@ -14906,8 +14906,10 @@ READY FOR REVIEW.
 READY FOR REVIEW.
 
 
-## ANNOSCENE-ORE-2 — READY FOR REVIEW (Mac, 2026-11-18)
+## ANNOSCENE-ORE-2 — initial handoff (Mac, 2026-11-18; superseded by P2 below)
 
+- **Superseded evidence:** 9fecc2f0 was not accepted. Its reserve-zero quantity projection
+  and global-flag mutant are incorrect; the focused P2 correction below replaces them.
 - Baseline `b5c0ada209d94a0082bc88d793c917c7222e6a21`, task/ANNOSCENE-ORE-2; dispatch
   `1a5beb89` read with git show, no merge/source intake. MIL/NET/wildlife refs preserved.
 - [Focused note](../re/annoscene-ore-2.md); only it and this report changed.
@@ -14980,5 +14982,43 @@ READY FOR REVIEW.
   complete reached draw closure and its timeline contract. No generated ore implementation here.
 
 **QUESTIONs:** none requiring owner policy for this read. Remaining edges are explicit in the note.
+
+READY FOR REVIEW.
+
+### ANNOSCENE-ORE-2 P2 correction — READY FOR REVIEW (2026-11-18)
+
+- Initial head 9fecc2f0 was withheld for one P2; no other actionable finding was reported.
+  Its corpus-02, old audit source and old global-flag mutant remain preserved as failed evidence.
+- Cause: I generalized the flag test at Welt 0x1006367a across the early R==0 jump at
+  0x10063678. Setter +0x74(1,0) clears R, selecting 0x100636b8, which never tests that flag.
+  The carried take flag 1 is real but irrelevant in this branch. World flags 2 drain Q;
+  world flags 0 preserve it. The R!=0 flag guard still matters and is separately pinned.
+- Re-read the complete take body; `P2_CONTROL_FLOW: checked=7 failed=0; R0 skips flag guard, R1 reaches flag guard`
+  in cache/annoscene-ore-2/P2-flow-check-01.log, including the quantity store at 0x100636dc.
+- Before: `P2_BEFORE: expected=(0, 0) actual=(512000, 0); failed=1 legal_world_flags0=PASS`
+  in P2-before-01.log; contract captures the old projection's actual exit 1.
+- After: full 8-case reserve/take-flag/world-flag matrix plus 5 request boundaries;
+  `ORE2_AUDIT_CONTRACT: checked=41 failed=0` in contract-05-P2.log.
+  `ASSERTION_MUTANT_VERDICT: PASS; mutants=4` in mutant-assertions-02-P2.log; each replacement
+  applied once, the correct assertion fails, and a legal control passes. Both the false
+  global guard and removal of the real branch-local guard are rejected.
+- Corrected corpus-03-P2: 429 evaluated, 0 unsupported, 0 mismatches; all 1,590 unassigned
+  markers become Q=0/R0 with world flags 2; all remain Q=512000/R0 with world flags 0.
+  `P2_CORPUS_DIFF: changed_templates=356 affected_markers=1590 changed_field=unassigned_flags2_raw other_fields_identical=1`
+  and `P2_CORPUS_VERDICT: PASS; old corpus-02 remains failed evidence for reserve-zero/world2`
+  in P2-corpus-diff-01.log. All input hashes, marker counts and treasure outcomes are unchanged.
+- The aggregate `AUDIT_VERDICT: PASS` is insufficient to detect this error: the old and new
+  aggregate logs match. Use the new per-template JSON and the causal diff/matrix above.
+- New raw JSON SHA256 `7d8c5fe8e2ecf1e6f18cc7f2d3b1e14df74f5fd39408164683df75705e4a77b2`;
+  audit.py `9b574b9d8d64ed8c4c7ac7a4ce1387a6e755f6d30722908522bc7b0cd30be1e6`;
+  contract-05-P2.log `1d91b8b47d798bb0b5477128000d43e38d8fda63d5c0de840e521be38ee73f80`.
+- docs/re/annoscene-ore-2.md now gives the branch matrix and corrected current counts;
+  initial report above is explicitly superseded. Only the same two documentation paths change.
+- Exact-head hosted docs CI and cheap document checks are supplied in the frozen handoff.
+- NOT_RUN and unread ordering/native/spatial-query edges unchanged; no new research campaign,
+  engine code, identity, default, map, main merge or CI-repair intake.
+- **Decisions and reasoning:** bind each predicate to its dominating branch; test both paths
+  and world settings; preserve failed evidence rather than convert an aggregate PASS into proof.
+- **QUESTIONs:** none. Return only this correction for targeted re-review; stop here.
 
 READY FOR REVIEW.

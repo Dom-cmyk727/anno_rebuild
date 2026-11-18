@@ -69,17 +69,37 @@ Game type-kind getter `0x10010a40` returns 0xd00; occurrence then stores that po
 A later eight-byte load record may overwrite constructor/attach quantity; scene retyping
 occurs after that load and applies the special reset again.
 
-**D — unassigned, including the decisive call ABI.** `0x1000879f–0x100087df` does not
-delete or retype unused markers. It clears R through +0x74(1,0), then pushes two values 1
-before +0x88. Getter `0x10063650–0x1006366c` returns Q and ends with **ret 4**: it consumes
-one argument, leaving the other 1 on the stack. Scene pushes the returned Q and calls
-+0x8c; its effective arguments are **request Q, flag 1**, not flag 0. Welt
-`0x1006367a–0x100636e8` returns the request without modifying Q whenever that flag's bit 0
-is set. Therefore this path clears reserve but **leaves quantity unchanged**, regardless
-of world property 14 bit value 2. Dropping the still-pushed argument yields the plausible
-but wrong conclusion that the marker drains to zero. With flag 0 instead, depletion would
-depend on that world setting; that is a different accessor input, not this scene call.
-A quantity alone cannot justify calling an unassigned marker absent or exhausted.
+**D — unassigned, corrected after independent review (P2, 2026-11-18).**
+`0x1000879f–0x100087df` does not delete or retype unused markers. It clears R through
++0x74(1,0), then pushes two values 1 before +0x88. Getter `0x10063650–0x1006366c` ends with
+ret 4, leaving the other 1 as the take flag when Scene pushes Q and calls +0x8c. That ABI
+reading is correct, but **the flag test is branch-local**: Welt `0x10063678` jumps directly
+to `0x100636b8` when R == 0, bypassing the flag test at `0x1006367a`. This is the path the
+setter has selected. World property 14 bit value 2 then controls depletion: set, subtract
+min(request,Q); clear, return the request without changing Q (`0x100636b8–0x100636e8`).
+Thus take(Q,1) after clearing reserve leaves Q = **0 with world flags 2**, Q unchanged with
+world flags 0. The earlier interpretation incorrectly lifted the R != 0 flag guard across
+that jump; its corpus-02 and corresponding negative control are superseded failed evidence.
+
+For R != 0, flag bit 0 set returns the request without depletion. With that flag clear,
+world bit value 2 clear still preserves Q; set, the unsigned comparison at `0x100636a1`
+protects the 409,600 reserve on the supported requests used below. These are different paths,
+not one global flag rule. World property 14 reads +0x69dc via Welt `0x100a344e`.
+
+**D-derived/C — branch matrix**, initial Q = request = 512,000 raw. Each cell is
+`remaining Q / returned amount`; R = 1 represents the nonzero branch.
+
+| R | World flags | Take flag 0 | Take flag 1 |
+|---:|---:|---:|---:|
+| 0 | 0 | 512,000 / 512,000 | 512,000 / 512,000 |
+| 0 | 2 | 0 / 512,000 | 0 / 512,000 |
+| 1 | 0 | 512,000 / 512,000 | 512,000 / 512,000 |
+| 1 | 2 | 409,600 / 102,400 | 512,000 / 512,000 |
+
+Additional hand boundaries in the R = 1 / flag 0 / world 2 branch: requests 102,399,
+102,400 and 102,401 leave Q 409,601, 409,600 and 409,600 respectively, returning 102,399,
+102,400 and 102,400. The R = 0 branch also pins an oversized request and an empty source.
+No new general rule for out-of-domain reserved-source requests is claimed.
 
 **D — stored versus extractable.** With R != 0 and getter flag bit 0 clear, +0x88 returns
 Q − 409,600; otherwise Q. At Q = 512,000/R = 1, shallow availability is 400 tons while
@@ -111,7 +131,7 @@ Overlaps rebuild a bitwise union; quantities are not added, and the old mask is 
 
 **Hand discriminators (D-derived/C).** Normal file amount 400/R1 loads to 2,000 tons;
 file 1,600/R1 stays 1,600. Retype the first to 1661 → 400/R0; retype to salt → 2,000/R1.
-Unassign it with world flags 2 or 0 → 2,000/R0; the carried take flag 1 suppresses depletion. Two nearby goods 1/3 give
+Unassign it with world flags 2 → 0/R0, or world flags 0 → 2,000/R0; the cleared reserve bypasses the carried take-flag test. Two nearby goods 1/3 give
 mask 0x15 after reset; two goods-1 sources give 0x11, not an arithmetic sum. At an isolated
 anchor with rotation 0, source offset (−7,−2) contributes, (−7,−3) does not. These checks
 separate the plausible capacity/accumulation/mask rules without executing the original.
@@ -171,7 +191,7 @@ They do not assert player reachability or actual original runtime parity.
 **P/C.** Every input is accounted once: 465 = 429 evaluated + 36 excluded; unsupported 0,
 marker/INFO mismatches 0. File amounts: 1,585 markers at 400 tons, 5 at 2,000; all 1,590
 normal markers derive loaded Q = 512,000/R1. Explicit **all-unassigned** audit scenarios:
-world flags 2 and 0 both leave all 1,590 at 512,000/R0, because the caller passes take flag 1. A separate
+world flags 2 leave all 1,590 at 0/R0; flags 0 leave them at 512,000/R0. The flag argument does not guard the R = 0 branch. A separate
 **retype-to-1661 accessor scenario** yields 102,400/R0 for each. These are labelled inputs,
 not an intrinsic generated ore total per island or a reconstruction of arbitrary ERZE draws.
 
@@ -181,11 +201,16 @@ no-transition exceptions occurred on this installed corpus; synthetic controls c
 absence and the latter bound. Complete per-template/no-site diagnostics and the input-hash
 manifest remain private. No reachable/free-building interpretation is attached to a site.
 
-Audit controls: 26 assertions/exits, including legal/restored synthetic corpus, missing,
-zero-candidate, malformed, wrong expected result, and three applied wrong-rule mutations (including the dropped take flag).
-Three direct original-offset samples and all 256 height-boundary projections also agree.
+Corrected audit controls: 41 assertions/exits, including legal/restored synthetic corpus, missing,
+zero-candidate, malformed, wrong expected result, and four applied wrong-rule mutations (including a global take-flag guard and removal of its
+actual branch-local guard).
+The full 8-case R/take-flag/world-flag matrix and 5 request boundaries are included.
+Three direct original-offset samples and all 256 height-boundary projections remain unchanged.
 These are private audit checks, not CTest/gameplay coverage. Reproduction commands and exact
-hashes are frozen in the report/handoff; no audit scripts are installed in tools/.
+hashes are frozen in the report/handoff; no audit scripts are installed in tools/. Corrected
+corpus-03-P2 changes only unassigned_flags2_raw on 356 templates containing 1,590 markers;
+all other per-template fields, inputs and treasure results match corpus-02. The old projection
+fails the corrected world-2 assertion while its world-0 legal control still passes.
 
 **U / next boundary.** Exact marker-container enumeration for RNG index identity (container table `0x100caf34`: +0x14
 `0x10095770`, +0x10 `0x10095ad0`), spatial-query transitive effects (+8 `0x10095480`), arbitrary

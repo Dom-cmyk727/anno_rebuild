@@ -1,4 +1,4 @@
-# DOCS-SIM-1 — local review approved; exact-head CI pending
+# DOCS-SIM-1 — local review approved; CI portability correction required
 
 Mac orchestrator, 2026-11-18. Frozen head
 `9d4a0e15c01c6f2afe708fa95f6a6c90e648f6b8`, tree
@@ -55,3 +55,17 @@ surface, not arbitrary C++ expressions, callee behavior or prose truth. Semantic
 columns were independently reviewed against current callers. No new gameplay,
 live-window test, balanced economy, original-runtime parity or full local
 sanitizer campaign is claimed.
+
+## Hosted follow-up — not accepted yet
+
+Exact-head CI44307300031 completed. Four C++ lanes passed, but Windows reports
+2647 selected,2195 executed,1 failed,451 classified skips; failed/empty/incomplete/
+sanitizer are1/0/0/0. Its only failed case is sim_capabilities_contract, where the
+real inventory omission replacement finds0 matches after two legal controls.
+This is an owned contract portability defect requiring correction and re-review.
+The source must not be accepted merely because the Mac controls passed.
+
+Separately, build-macos job134812165786 has no runner and no executed step.
+GitHub annotations name unavailable hosted runners and macOS arm64 capacity.
+That cancellation remains preserved, not a code-failure claim or a pass.
+The normal corrected-source push will require a fresh exact-head verdict.

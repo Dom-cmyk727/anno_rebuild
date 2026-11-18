@@ -1,7 +1,8 @@
 # KBEWOHN-1 — complete imported figure identities before animal gameplay
 
 Wave 2.6, selected after DOCS-SIM-1 as the next bounded gameplay dependency.
-PREPARED, independently reviewed; release waits for DOCS-SIM-1 exact-head CI.
+PREPARED, independently reviewed; release follows the focused DOCS-SIM-1
+portability correction review, independently of its pending hosted CI.
 EXECUTOR II MAC, one packet of about 3–4 hours. The orchestrator reviews; do not
 start reviewer subagents. Ordinary-push the owned task branch at checkpoints.
 
@@ -14,9 +15,10 @@ later wildlife, hunting and other unit work can classify actual content. This
 packet does not create animals, wire their ticks, implement combat, or claim
 that recognizing a type implements its behavior.
 
-Create task/KBEWOHN-1 from DOCS-SIM-1 head
-`9d4a0e15c01c6f2afe708fa95f6a6c90e648f6b8` only after mac-lane.md records its
-acceptance and releases this packet. Preserve every prior branch and evidence. Do not merge
+Create task/KBEWOHN-1 from accepted SIM-LIMITS-1 head
+`2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e` after mac-lane.md releases this
+packet. This independent base passed exact-head CI44298551123. The pending
+DOCS-SIM candidate is not a source dependency and is not silently accepted. Preserve every prior branch and evidence. Do not merge
 moving main or the board, rebase, force-push or touch another executor's branch.
 No intake of WILDLIFE-1a is needed. Wildlife lifecycle, extension-tag allocation,
 original load-jitter ordering and remaining movement uncertainties stay separate.
@@ -38,7 +40,9 @@ mac-lane.md, testing/evidence-contract.md and testing/README.md, then:
 - types_test.cpp, figure_facts_test.cpp, existing registry/corpus checks,
   tools/figure_facts_ref.py if present, tools/pins.py and the current pin manifest,
   docs/sim/state.md sections 9.7–9.8 and ADR 0006;
-- the new docs/sim/capabilities.md and its checker where this change reaches them.
+- the DOCS-SIM inventory via git show at its corrected pinned ref named in the
+  release message. It is reference material only on this base; do not merge its
+  pending tools or attempt to run files absent from the accepted source.
 
 The lane handover references docs/UNITS.md, but it was absent from both the
 source and origin/orch/board-next at preparation. Do not search the whole home,

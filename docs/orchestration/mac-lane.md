@@ -24,8 +24,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | 1.5 [ANNOSCENE-ORE-2](tasks/annoscene-ore-2.md) | ACCEPTED bounded research after P2 correction; no engine implementation | `b12d22b39caee90429aef77b52659aa2bfedb38e` | [44273143955](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44273143955), exact-head docs CI green | [Acceptance and preserved finding](reviews/2026-11-18-annoscene-ore-2-review.md) |
 | 1.6 [OQ-562-1](tasks/oq-562-1.md) | ACCEPTED bounded headless causal diagnosis after focused CI correction | `b7046e5e279fa979d83079feb56dc83a660f32ef` | [44282873819](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44282873819), all 12 jobs success at exact head | [Acceptance and preserved failure](reviews/2026-11-18-oq-562-1-review.md) |
 | 1.7 [SIM-LIMITS-1](tasks/sim-limits-1.md) | ACCEPTED compatibility maintenance; behavior and bytes unchanged | `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e`; code `33871080` | [44298551123](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44298551123), all 12 jobs success at exact head | [Acceptance](reviews/2026-11-18-sim-limits-1-review.md) |
-| 1.8 [DOCS-SIM-1](tasks/docs-sim-1.md) | LOCAL REVIEW APPROVED after focused correction; exact-head CI pending | `9d4a0e15c01c6f2afe708fa95f6a6c90e648f6b8` | [44307300031](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44307300031), queued at review | [Independent review](reviews/2026-11-18-docs-sim-1-review.md) |
-| 2.6 [KBEWOHN-1](tasks/kbewohn-1.md) | PREPARED, independently reviewed; release after DOCS-SIM acceptance | Proposed base `9d4a0e15c01c6f2afe708fa95f6a6c90e648f6b8` | Not started | Next gameplay dependency; report directly to Mac orchestrator |
+| 1.8 [DOCS-SIM-1](tasks/docs-sim-1.md) | LOCAL REVIEW APPROVED; Windows contract portability correction required | `9d4a0e15c01c6f2afe708fa95f6a6c90e648f6b8` | [44307300031](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44307300031), Windows contract FAIL; Mac app runner unavailable | [Independent review](reviews/2026-11-18-docs-sim-1-review.md) |
+| 2.6 [KBEWOHN-1](tasks/kbewohn-1.md) | PREPARED, independently reviewed; release after focused correction review, independently of DOCS CI | Accepted base `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e` | Not started | Next gameplay dependency; report directly to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -204,3 +204,22 @@ The earlier WILDLIFE-1a remains locally reviewed on its preserved branch with
 inherited CI closure pending. Its later state/load ordering and materialization
 contract still need a separate packet. KBEWOHN-1 neither silently takes that
 candidate nor blocks on it. No main/STATUS/TASKS changes by this lane.
+
+## Focused Windows correction and independent gameplay intake
+
+CI44307300031 finished with one owned test failure: sim_capabilities_contract
+could not apply its real-row omission on Windows (replacement count0). The
+MSVC build passed; counts2647 selected,2195 executed,1 failed,451 classified
+skips. The other four C++ lanes passed. build-macos was separately cancelled
+before any runner/step because GitHub reported macOS arm64 capacity constraints.
+Neither condition is an accepted pass. The verified Windows artifact14430724547
+ZIP SHA256 is f9e530b3b7d4512924429c79198cbd944bfe71fe48a6d8b583f8dfda49140e18.
+
+The executor receives only the test portability correction with LF/CRLF controls
+and an affected checker/contract gate, then focused re-review. No engine or
+unaffected local campaign. DOCS-SIM acceptance still requires corrected exact-head
+CI. To keep independent gameplay moving after that local correction review,
+KBEWOHN starts from already accepted SIM-LIMITS2f9e4c0b, not the pending DOCS
+candidate. This scheduling change is not a CI waiver: the inventory can be read
+from its pinned ref; none of its pending tools enters gameplay source. Preserve
+both branches. Next task is still PREPARED until explicit direct release.

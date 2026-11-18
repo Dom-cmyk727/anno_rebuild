@@ -15688,3 +15688,65 @@ Decisions and reasoning:
 
 NOT_RUN: Windows/HE/original-runtime, full-world publication/global PRNG alignment, fauna lifecycle/sweep, full pins/warnings/long corpus and LeakSanitizer.
 QUESTIONs: none blocking bounded review; establish the type 1558 / flags 0x3a placement contract before resuming the real prefix. Stop before World/native integration.
+
+
+## 2026-11-18 — WILDLIFE-STONE-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-STONE-1` from reviewed PREFIX `1441183a`; no further intake/main merge/rebase.
+- Runtime `086a910aec424f58c6b626f361fe76c5f4a8a5d4`; final tested source `f3e18bdf75e19e4ae44daa6470a1e450285c6945`.
+- Source tree `f0af0a89f0d5772530fa24ba9ef8dccbb891b9e7`; publication adds report/evidence only, exact pushed head/tree/CI in handoff.
+- Read release/review from orch/mac-lane 111fee39. [Contract](../sim/wildlife-stone.md) acceptance rows precede code; [evidence](evidence/wildlife-stone-1.md) retains primary spans, controls, hashes and failures.
+- D: AnnoGame 0x10008fe2–0x10009109: mode 2 = minimum quantized quad minimum; bit 4 clear avoids flatness test.
+- Hand nonflat vertices give 32, versus wrong origin mean 52 / maximum minimum 48 / raw minimum 35; authored low 15 -> 0 accepts.
+- D: AnnoWelt 0x1007c955–0x1007cb3d: each touched world 8 × 8 chunk needs a non-kept tile; group 0x141 bypasses final 32 at 0x1007cbdf.
+- D: 0x10082215 and 0x1008244a use the same object word. Existing TileLayer suffices; no separate base-object plane invented.
+- Reuse unchanged lower writer: kept overlay anchors skip object fields, first actual write per block anchors, all footprint walk fields update/OR.
+- Narrow new arm: exact flags 0x3a / parsed kind group 0x141, not id 1558. Authored companion kind 321/type 701 and real type 1549 share it.
+- Original 3-bit offset / 2 × 2 coverage-layout domain explicitly bounded; wider cases refuse, no World/content cap or approximation.
+- Three direct C++ controls: nonsquare/all rotations/chunk anchors, each-chunk coverage versus one global mark, exact partial/sparse-OR fields.
+- Six hand-derived vectors appended to same reference: nonflat, low companion, partial, coverage, far-corner occupancy and bounds.
+- All 20 predecessor rows byte-identical. Python reference uses original place(), public contract 19 checks including applied wrong-overlay control.
+- Actual private C++ production-TU mutation changes only writer overlay policy after legal admission: legal exit 0 / mutant exit 1, 13 intended failures.
+- Same unfiltered Tutorial stream, explicit stamp 500/mode 0/draw 7; first witness stays variant 6 / height 48 / draw 1.
+- Former 35/22/type 1558 now accepts at (107,43), height 48, 4 writes, 0 draws; all four final object/phase/height/offset/anchor fields asserted.
+- Next boundary: island ordinal 0/slot 11, GELAENDE 37/1, type 1552, KLIPPE kind 322, flags 0x12, 3 × 3, world (54,61).
+- Completed 258 / accepted 258 / rejected 0 / resource-class 255 / resource draws 255 / 3 stones / 0 spawns.
+- Four header epilogues 33–36 finish; 37 does not. Header 33/34 mask counts 1,024/977 retained. HIRSCH 71 not reached.
+- Typed result remains diagnostic partial, not ordinary complete success or original global PRNG alignment.
+- Preserved initial continuation failure against old boundary expectations, then canonical failure of only the new real-cell assertions.
+- Cause: private independent script used HbbH instead of documented HHbb layout; corrected script agrees, engine source unchanged.
+- Wrong-layout script/output and diagnostic probe retained; initial real low-height/coordinate claims explicitly superseded in contract.
+- Only failed real case and changed reference lane rerun; 15 unaffected Debug passes reused. No whole gate repeated.
+
+```text
+# cache/wildlife-stone-1/debug-final.log — preserved first main outcome
+COUNTS: selected=16 executed=15 failed=1 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+# cache/wildlife-stone-1/debug-correction.log — affected main outcome
+COUNTS: selected=2 executed=2 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-stone-1/asan-final.log — main outcome
+COUNTS: selected=15 executed=15 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# Separate required-contract receipts (three in first Debug/ASan, one corrected Debug; all exact lines in evidence)
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- Required contracts: partial-overlay C++ case, public adapter case, Python reference contract; original file executes in corrected Debug.
+- No memory refusal, timeout, empty, incomplete, skip or sanitizer report. 15 unaffected passes plus corrected real pass cover original 16 main cases.
+- Strict four-TU O3/Werror Apple Clang 21 + GCC 15.3 clean; only corrected test TU rechecked afterward; GCC shadow control rejected.
+- Dev/ASan compiler warnings 0; inherited Apple duplicate-library linker warning retained. Format 23.1.3/lint/diff check pass.
+- 276 synthetic fixtures audited: only six authored rows appended; pins/recordings unchanged. No full pins.py claim.
+- Unchanged PREFIX picture/PE/HIRSCH/helper gates reused; no new parser or render inputs reach them. Source/binary/log hashes frozen in evidence.
+- Host Apple M5 Max / 18 logical / 48 GiB / macOS 27.0.1; jobs 1 / threads 2, admission on. Existing awake assertion preserved.
+- PREFIX CI 44385455810 still pending; RESOURCE 0627532f separately accepted after green 12-job CI. Exact pushed STONE CI read at handoff.
+
+Decisions and reasoning:
+- Add only the evidenced parsed-fact admission arm; reuse the existing partial writer, selector and once-owned Session.
+- Preserve skipped object fields while updating their walk fields, and keep nonresource draw/variation behavior separate.
+- Retain mistakes as evidence, correct expectations from documented raw layout, and rerun affected scope only.
+- Stop at flags 0x12 without class expansion, World/default/native/registry/tag/pin changes or further packet work.
+
+NOT_RUN: original/HE runtime, new Unicorn emulation (unavailable), Windows/WSL/full/long suites, full pins/warnings, LeakSanitizer, World/native integration.
+QUESTIONs: none blocking bounded review; next release needs the exact type-1552 / flags-0x12 class contract. Independent orchestrator review pending.

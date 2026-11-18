@@ -175,6 +175,29 @@ TEST_CASE("resource import: authored ordered prefixes and draw-sensitive selecto
         const auto result = evaluate(r);
         REQUIRE(result);
         const auto& out = result.value();
+        auto started = ri::Session::start(r.island.tiles, sim::VertexGrid::of(r.island), r.plane,
+                                          *r.types, r.facts, r.climate);
+        REQUIRE(started);
+        std::uint64_t session_used = 0;
+        for (const auto& record : r.records) {
+            const auto applied = started.value().apply(
+                record, std::span(r.draws).subspan(static_cast<std::size_t>(session_used)));
+            REQUIRE(applied);
+            session_used += applied.value().draws;
+        }
+        const auto incremental = started.value().finish();
+        REQUIRE(incremental);
+        CHECK(incremental.value().variation == out.variation);
+        CHECK(incremental.value().records == out.records);
+        CHECK(incremental.value().consumed == out.consumed);
+        for (std::uint64_t i = 0; i < out.tiles.tile_count(); ++i) {
+            CHECK(incremental.value().tiles.object(i) == out.tiles.object(i));
+            CHECK(incremental.value().tiles.phase(i) == out.tiles.phase(i));
+            CHECK(incremental.value().tiles.aux(i) == out.tiles.aux(i));
+            CHECK(incremental.value().tiles.walk_code(i) == out.tiles.walk_code(i));
+            CHECK(incremental.value().tiles.walk_mask(i) == out.tiles.walk_mask(i));
+        }
+        CHECK_FALSE(started.value().finish());
         const auto obj = numbers<std::uint32_t>(expected.at("objects"));
         const auto phase = numbers<std::uint8_t>(expected.at("phase"));
         const auto height = numbers<std::uint8_t>(expected.at("height"));
@@ -424,6 +447,66 @@ TEST_CASE("resource import: registered zero sentinel differs from legal sibling"
     CHECK(r.island.tiles.object(0) == 0);
     CHECK(r.island.tiles.phase(0) == 0);
     CHECK(r.plane == std::vector<std::uint8_t>{171, 12, 13, 14});
+}
+
+TEST_CASE("resource import: failed session cannot resume or publish completion") {
+    const auto r = rig(fields(first_vector()));
+    auto started = ri::Session::start(r.island.tiles, sim::VertexGrid::of(r.island), r.plane,
+                                      *r.types, r.facts, r.climate);
+    REQUIRE(started);
+    const auto failed = started.value().apply(r.records.front(), {});
+    REQUIRE_FALSE(failed);
+    CHECK(failed.error().kind == ri::ErrorKind::Exhausted);
+    const auto retry = started.value().apply(r.records.front(), r.draws);
+    REQUIRE_FALSE(retry);
+    CHECK(retry.error().kind == ri::ErrorKind::Exhausted);
+    CHECK(retry.error().consumed == 0);
+    const auto late_callback = started.value().close_import_block(0, 0, 2, 2);
+    REQUIRE_FALSE(late_callback);
+    CHECK(late_callback.error().kind == ri::ErrorKind::Exhausted);
+    CHECK_FALSE(started.value().finish());
+    const auto diagnostic = std::move(started.value()).diagnostic();
+    CHECK(diagnostic.tiles.object(0) == 104); // Placement preceded missing draw; diagnostic only.
+    CHECK(diagnostic.variation == r.plane);
+    CHECK(diagnostic.records.empty());
+    CHECK(r.island.tiles.object(0) == 0);
+}
+
+TEST_CASE("resource import: header mask closure clips preserves fields and repeats without draws") {
+    for (const auto sample : {std::uint8_t{127}, std::uint8_t{128}}) {
+        auto r = rig(fields(first_vector()));
+        REQUIRE(r.island.tiles.reset(10, 10, 2, 2, 4));
+        r.island.terrain = sim::make_terrain(std::vector<std::uint8_t>(4, sample), {}, {});
+        r.island.tiles.set_walk_mask(3, 0x101);
+        r.island.tiles.set_walk_code(3, 4);
+        r.island.tiles.set_aux(3, sim::kTileClaim | 77U);
+        r.island.tiles.set_phase(3, 13);
+        auto started = ri::Session::start(r.island.tiles, sim::VertexGrid::of(r.island), r.plane,
+                                          *r.types, r.facts, r.climate);
+        REQUIRE(started);
+        // Last cell has sample/4 from the zero border: 127 ->31,128 ->32.
+        const auto changed = started.value().close_import_block(9, 9, 4, 4);
+        REQUIRE(changed);
+        CHECK(changed.value() == (sample == 127 ? 1 : 0));
+        const auto repeat = started.value().close_import_block(10, 10, 2, 2);
+        REQUIRE(repeat);
+        CHECK(repeat.value() == 0);
+        const auto outside = started.value().close_import_block(20, 20, 3, 3);
+        REQUIRE(outside);
+        CHECK(outside.value() == 0);
+        const auto out = started.value().finish();
+        REQUIRE(out);
+        CHECK(out.value().tiles.walk_mask(3) == (sample == 127 ? 0x1ff : 0x101));
+        CHECK(out.value().tiles.walk_mask(0) == 0);
+        CHECK(out.value().tiles.walk_code(3) == 4);
+        CHECK(out.value().tiles.aux(3) == (sim::kTileClaim | 77U));
+        CHECK(out.value().tiles.phase(3) == 13);
+        CHECK(out.value().tiles.object(3) == 0);
+        CHECK(out.value().variation == r.plane);
+        CHECK(out.value().consumed == 0);
+        CHECK(r.island.tiles.walk_mask(3) == 0x101);
+        CHECK(r.island.tiles.aux(3) == (sim::kTileClaim | 77U));
+    }
 }
 
 TEST_CASE("resource import: original Tutorial first resource prefix") {

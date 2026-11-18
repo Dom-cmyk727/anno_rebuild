@@ -91,6 +91,17 @@ struct PlacedObject {
     auto operator<=>(const PlacedObject&) const = default;
 };
 
+// Original GELAENDE import interpretation, distinct from legacy PlacedObject.
+// Addresses: docs/sim/wildlife-prefix.md. Overflow refuses before narrowing.
+struct ImportObject {
+    std::uint32_t type = 0;
+    std::uint8_t rotation = 0;
+    std::uint16_t state = 0;
+    std::int32_t x = 0, y = 0;
+};
+Result<ImportObject, std::string>
+decode_import_object(Bytes item, const Block& block, std::int32_t island_x, std::int32_t island_y);
+
 /// One raw 8-byte HIRSCH entry (AnnoWelt.dll 0x100946c0–0x10094873).
 /// These are spawn records, not figures. No species, live id or jitter is decoded.
 struct HirschRecord {

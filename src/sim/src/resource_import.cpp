@@ -7,6 +7,12 @@
 
 namespace anno::sim::resource_import {
 namespace {
+std::uint8_t quad_mean(const VertexGrid& grid, std::int64_t x, std::int64_t y) {
+    // Both callers first prove the origin quad lies on the readable grid.
+    return static_cast<std::uint8_t>((std::uint32_t{*grid.at(x, y)} + *grid.at(x + 1, y) +
+                                      *grid.at(x, y + 1) + *grid.at(x + 1, y + 1)) /
+                                     4U);
+}
 // Invocation-local, id-ordered copy. No persistent registry/cache or public probe.
 formats::Result<std::vector<TypeFacts>, ErrorKind> prepare(std::span<const TypeFacts> facts,
                                                            const ClimateFacts& climate) {
@@ -94,81 +100,148 @@ formats::Result<std::uint8_t, ErrorKind> select(const TypeRegistry& types,
     return select_prepared(types, prepared.value(), climate, id, draw);
 }
 
-formats::Result<Output, Error>
-evaluate(const TileLayer& input, const VertexGrid& grid, std::span<const std::uint8_t> variation,
-         const TypeRegistry& types, std::span<const TypeFacts> facts, const ClimateFacts& climate,
-         std::span<const Record> records, std::span<const std::uint32_t> draws) {
+formats::Result<Session, Error> Session::start(const TileLayer& input, const VertexGrid& grid,
+                                               std::span<const std::uint8_t> variation,
+                                               const TypeRegistry& types,
+                                               std::span<const TypeFacts> facts,
+                                               const ClimateFacts& climate) {
     if (!grid.ok() || grid.x0() != input.x0() || grid.y0() != input.y0() ||
         grid.tiles_x() != input.width() || grid.tiles_y() != input.height() ||
         variation.size() != input.tile_count() || input.width() == 0 || input.height() == 0 ||
         std::int64_t{input.x0()} + input.width() - 1 > std::numeric_limits<std::int32_t>::max() ||
         std::int64_t{input.y0()} + input.height() - 1 > std::numeric_limits<std::int32_t>::max())
         return Error{ErrorKind::Geometry, 0, 0};
-    const auto prepared = prepare(facts, climate);
+    auto prepared = prepare(facts, climate);
     if (!prepared)
         return Error{prepared.error(), 0, 0};
     // Do not allow an unknown existing object to hide behind another rejection.
     for (std::uint64_t i = 0; i < input.tile_count(); ++i)
         if (input.object(i) != 0 && !types.find(TypeId{input.object(i)}))
             return Error{ErrorKind::Facts, 0, 0};
-    Output out{input, {variation.begin(), variation.end()}, {}, 0};
-    for (const auto& record : records) {
-        const auto index = static_cast<std::uint64_t>(out.records.size());
-        const auto error = [&](ErrorKind kind) { return Error{kind, index, out.consumed}; };
-        const auto* type = types.find(record.type);
-        // Object id 0 is TileLayer's empty sentinel, not a storable placement.
-        if (!type || !record.type.valid() || record.type.v == 0)
-            return error(ErrorKind::Facts);
-        if ((type->flags_word != 0x09 && type->flags_word != 0x29) || record.rotation > 3 ||
-            type->width == 0 || type->height == 0 || record.x < 0 || record.y < 0 ||
-            type->width - 1 > std::numeric_limits<std::uint16_t>::max() ||
-            type->height - 1 > std::numeric_limits<std::uint16_t>::max())
-            return error(ErrorKind::Unsupported);
-        const bool odd = (record.rotation & 1U) != 0;
-        const auto w = odd ? type->height : type->width;
-        const auto h = odd ? type->width : type->height;
-        const site::Origin origin{record.x, record.y};
-        if (!site::footprint_inside(out.tiles, origin, w, h)) {
-            out.records.push_back(Disposition::Bounds);
-            continue;
-        }
-        const auto occupancy = site::footprint_occupancy(out.tiles, types, *type, origin, w, h);
-        if (occupancy == site::Compat::Unsupported)
-            return error(ErrorKind::Facts);
-        if (occupancy == site::Compat::Incompatible) {
-            out.records.push_back(Disposition::Occupied);
-            continue;
-        }
-        // AnnoGame 0x10008fa1: mode 1 reads only the origin quad.
-        const std::int64_t x = record.x, y = record.y;
-        const auto mean =
-            static_cast<std::uint8_t>((std::uint32_t{*grid.at(x, y)} + *grid.at(x + 1, y) +
-                                       *grid.at(x, y + 1) + *grid.at(x + 1, y + 1)) /
-                                      4U);
-        // AnnoWelt 0x1007cbdf: group 0x141 bypasses the final ordinary level gate.
-        const auto group = ((type->prodtype - 1U) & ~31U) + 1U;
-        if (mean < 32 && group != 0x141) {
-            out.records.push_back(Disposition::Terrain);
-            continue;
-        }
-        // AnnoWelt 0x10089417: commit before the resource draw and selector.
-        place_object_record(out.tiles, types, *type, record.x, record.y, record.rotation,
-                            static_cast<std::uint8_t>(record.raw_state & 63U), mean);
-        if (type->prodtype >= 225 && type->prodtype <= 256) {
-            if (out.consumed == draws.size())
-                return error(ErrorKind::Exhausted);
-            const auto draw = draws[out.consumed++];
-            const auto variant =
-                select_prepared(types, prepared.value(), climate, record.type, draw);
-            if (!variant)
-                return error(variant.error());
-            const auto i = out.tiles.index_of(record.x, record.y);
-            // Separate island +0x18 plane; do not alias phase or aux.
-            out.variation[i] = static_cast<std::uint8_t>((out.variation[i] & 15U) |
-                                                         (std::uint32_t{variant.value()} << 4U));
-        }
-        out.records.push_back(Disposition::Accepted);
+    return Session{Output{input, {variation.begin(), variation.end()}, {}, 0}, grid, types,
+                   std::move(prepared.value()), climate};
+}
+
+formats::Result<Effect, Error> Session::apply(const Record& record,
+                                              std::span<const std::uint32_t> draws) {
+    if (failed_)
+        return *failed_;
+    const auto before = out_.consumed;
+    const auto index = static_cast<std::uint64_t>(out_.records.size());
+    const auto error = [&](ErrorKind kind) {
+        failed_ = Error{kind, index, out_.consumed};
+        return *failed_;
+    };
+    const auto* type = types_->find(record.type);
+    // Object id 0 is TileLayer's empty sentinel, not a storable placement.
+    if (!type || !record.type.valid() || record.type.v == 0)
+        return error(ErrorKind::Facts);
+    if ((type->flags_word != 0x09 && type->flags_word != 0x29) || record.rotation > 3 ||
+        type->width == 0 || type->height == 0 || record.x < 0 || record.y < 0 ||
+        type->width - 1 > std::numeric_limits<std::uint16_t>::max() ||
+        type->height - 1 > std::numeric_limits<std::uint16_t>::max())
+        return error(ErrorKind::Unsupported);
+    const bool odd = (record.rotation & 1U) != 0;
+    const auto w = odd ? type->height : type->width;
+    const auto h = odd ? type->width : type->height;
+    const site::Origin origin{record.x, record.y};
+    if (!site::footprint_inside(out_.tiles, origin, w, h)) {
+        out_.records.push_back(Disposition::Bounds);
+        return Effect{Disposition::Bounds, 0, {}, {}};
     }
-    return out;
+    const auto occupancy = site::footprint_occupancy(out_.tiles, *types_, *type, origin, w, h);
+    if (occupancy == site::Compat::Unsupported)
+        return error(ErrorKind::Facts);
+    if (occupancy == site::Compat::Incompatible) {
+        out_.records.push_back(Disposition::Occupied);
+        return Effect{Disposition::Occupied, 0, {}, {}};
+    }
+    // AnnoGame 0x10008fa1: mode 1 reads only the origin quad.
+    const std::int64_t x = record.x, y = record.y;
+    const auto mean = quad_mean(grid_, x, y);
+    // AnnoWelt 0x1007cbdf: group 0x141 bypasses the final ordinary level gate.
+    const auto group = ((type->prodtype - 1U) & ~31U) + 1U;
+    if (mean < 32 && group != 0x141) {
+        out_.records.push_back(Disposition::Terrain);
+        return Effect{Disposition::Terrain, 0, {}, mean};
+    }
+    // AnnoWelt 0x10089417: commit before the resource draw and selector.
+    place_object_record(out_.tiles, *types_, *type, record.x, record.y, record.rotation,
+                        static_cast<std::uint8_t>(record.raw_state & 63U), mean);
+    std::optional<std::uint8_t> chosen;
+    if (type->prodtype >= 225 && type->prodtype <= 256) {
+        if (draws.empty())
+            return error(ErrorKind::Exhausted);
+        const auto draw = draws.front();
+        ++out_.consumed;
+        const auto variant = select_prepared(*types_, facts_, climate_, record.type, draw);
+        if (!variant)
+            return error(variant.error());
+        chosen = variant.value();
+        const auto i = out_.tiles.index_of(record.x, record.y);
+        // Separate island +0x18 plane; do not alias phase or aux.
+        out_.variation[i] = static_cast<std::uint8_t>((out_.variation[i] & 15U) |
+                                                      (std::uint32_t{variant.value()} << 4U));
+    }
+    out_.records.push_back(Disposition::Accepted);
+    return Effect{Disposition::Accepted, out_.consumed - before, chosen, mean};
+}
+
+formats::Result<std::uint64_t, Error> Session::close_import_block(std::int32_t x, std::int32_t y,
+                                                                  std::uint32_t w, std::uint32_t h,
+                                                                  std::uint8_t threshold) {
+    if (failed_)
+        return *failed_;
+    const auto left = std::max(std::int64_t{x}, std::int64_t{out_.tiles.x0()});
+    const auto top = std::max(std::int64_t{y}, std::int64_t{out_.tiles.y0()});
+    const auto right =
+        std::min(std::int64_t{x} + w, std::int64_t{out_.tiles.x0()} + out_.tiles.width());
+    const auto bottom =
+        std::min(std::int64_t{y} + h, std::int64_t{out_.tiles.y0()} + out_.tiles.height());
+    std::uint64_t changed = 0;
+    for (auto py = top; py < bottom; ++py)
+        for (auto px = left; px < right; ++px) {
+            if (quad_mean(grid_, px, py) >= threshold)
+                continue;
+            const auto i =
+                out_.tiles.index_of(static_cast<std::int32_t>(px), static_cast<std::int32_t>(py));
+            const auto before = out_.tiles.walk_mask(i);
+            const auto after = static_cast<std::uint16_t>(before | 0x1ffU);
+            out_.tiles.set_walk_mask(i, after);
+            changed += before != after;
+        }
+    return changed;
+}
+
+formats::Result<Output, Error> Session::finish() {
+    if (failed_)
+        return *failed_;
+    failed_ =
+        Error{ErrorKind::Facts, static_cast<std::uint64_t>(out_.records.size()), out_.consumed};
+    return std::move(out_);
+}
+Output Session::diagnostic() && {
+    if (!failed_)
+        failed_ =
+            Error{ErrorKind::Facts, static_cast<std::uint64_t>(out_.records.size()), out_.consumed};
+    return std::move(out_);
+}
+
+formats::Result<Output, Error>
+evaluate(const TileLayer& input, const VertexGrid& grid, std::span<const std::uint8_t> variation,
+         const TypeRegistry& types, std::span<const TypeFacts> facts, const ClimateFacts& climate,
+         std::span<const Record> records, std::span<const std::uint32_t> draws) {
+    auto started = Session::start(input, grid, variation, types, facts, climate);
+    if (!started)
+        return started.error();
+    auto& session = started.value();
+    std::uint64_t used = 0;
+    for (const auto& record : records) {
+        const auto result = session.apply(record, draws.subspan(static_cast<std::size_t>(used)));
+        if (!result)
+            return result.error();
+        used += result.value().draws;
+    }
+    return session.finish();
 }
 } // namespace anno::sim::resource_import

@@ -1,6 +1,7 @@
 # anno_formats: readers and writers for the original file formats.
 # Specs: docs/formats/. Standard library only.
 add_library(anno_formats
+  src/annogame.cpp
   src/anlagen.cpp
   src/annowelt.cpp
   src/bigbrother.cpp

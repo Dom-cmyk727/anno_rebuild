@@ -2,48 +2,9 @@
 
 #include <anno/formats/annowelt.hpp>
 
+#include "pe_table_view.hpp"
+
 namespace anno::formats::annowelt {
-
-namespace {
-
-constexpr std::uint16_t kPe32Magic = 0x10b;
-constexpr std::size_t kDosELfanew = 0x3c;
-constexpr std::size_t kCoffSize = 20;
-constexpr std::size_t kSectionHeaderSize = 40;
-constexpr std::size_t kOptImageBase = 0x1c;
-constexpr std::size_t kOptSizeOfImage = 0x38;
-constexpr std::size_t kMinOptionalHeader = kOptSizeOfImage + 4;
-
-struct Section {
-    std::uint32_t va = 0;
-    std::uint32_t raw_size = 0;
-    std::uint32_t raw_ptr = 0;
-};
-
-bool starts_pe(Bytes dll, std::size_t at) {
-    return at + 4 <= dll.size() && dll[at] == 'P' && dll[at + 1] == 'E' && dll[at + 2] == 0 &&
-           dll[at + 3] == 0;
-}
-
-Result<std::size_t, WalkTablesError> file_offset(Bytes dll, const std::vector<Section>& secs,
-                                                 std::uint32_t rva, std::size_t n) {
-    for (const Section& s : secs) {
-        if (rva < s.va) {
-            continue;
-        }
-        const std::uint32_t rel = rva - s.va;
-        if (rel > s.raw_size || s.raw_size - rel < n) {
-            continue;
-        }
-        if (s.raw_ptr > dll.size() || dll.size() - s.raw_ptr < static_cast<std::size_t>(rel) + n) {
-            return WalkTablesError::ShortFile;
-        }
-        return static_cast<std::size_t>(s.raw_ptr) + rel;
-    }
-    return WalkTablesError::RvaOutsideSection;
-}
-
-} // namespace
 
 const char* error_message(WalkTablesError e) {
     switch (e) {
@@ -60,60 +21,25 @@ const char* error_message(WalkTablesError e) {
 }
 
 Result<WalkTables, WalkTablesError> read_walk_tables(Bytes dll) {
-    if (dll.size() < kDosELfanew + 4 || dll[0] != 'M' || dll[1] != 'Z') {
-        return WalkTablesError::NotPe;
-    }
-    const std::uint32_t e_lfanew = u32_le(dll, kDosELfanew);
-    if (!starts_pe(dll, e_lfanew) || dll.size() - e_lfanew < 4 + kCoffSize) {
-        return WalkTablesError::NotPe;
-    }
-    const std::uint16_t nsec = u16_le(dll, e_lfanew + 6);
-    const std::uint32_t stamp = u32_le(dll, e_lfanew + 8);
-    const std::uint16_t opt_size = u16_le(dll, e_lfanew + 0x14);
-    if (opt_size < kMinOptionalHeader) {
-        return WalkTablesError::NotPe;
-    }
-    const std::size_t opt = static_cast<std::size_t>(e_lfanew) + 4 + kCoffSize;
-    if (opt > dll.size() || dll.size() - opt < opt_size) {
-        return WalkTablesError::NotPe;
-    }
-    if (u16_le(dll, opt) != kPe32Magic) {
-        return WalkTablesError::NotPe;
-    }
-    // ImageBase at optional +0x1c is part of the PE walk (spec); RVA lookup
-    // does not add it.
-    (void)u32_le(dll, opt + kOptImageBase);
-    const std::uint32_t size_of_image = u32_le(dll, opt + kOptSizeOfImage);
-    if (stamp != kGogTimeDateStamp || size_of_image != kGogSizeOfImage) {
+    const auto parsed = pe_tables_detail::read(dll, kGogTimeDateStamp, kGogSizeOfImage);
+    if (!parsed)
+        return parsed.error();
+    const auto& image = parsed.value();
+    if (image.stamp != kGogTimeDateStamp || image.size != kGogSizeOfImage)
         return WalkTablesError::WrongBuild;
-    }
-    const std::size_t sec0 = opt + opt_size;
-    if (nsec > 0 && (sec0 > dll.size() || (dll.size() - sec0) / kSectionHeaderSize < nsec)) {
-        return WalkTablesError::NotPe;
-    }
-    std::vector<Section> secs;
-    secs.reserve(nsec);
-    for (std::uint16_t i = 0; i < nsec; ++i) {
-        const std::size_t off = sec0 + static_cast<std::size_t>(i) * kSectionHeaderSize;
-        Section s;
-        s.va = u32_le(dll, off + 0x0c);
-        s.raw_size = u32_le(dll, off + 0x10);
-        s.raw_ptr = u32_le(dll, off + 0x14);
-        secs.push_back(s);
-    }
 
-    auto map_off = file_offset(dll, secs, kRvaMapper, kMapperCount * 2);
+    auto map_off = image.offset(kRvaMapper, kMapperCount * 2);
     if (!map_off) {
         return map_off.error();
     }
-    auto goal_off = file_offset(dll, secs, kRvaGoalOrder, kGoalOrderRows * kGoalOrderWidth * 4);
+    auto goal_off = image.offset(kRvaGoalOrder, kGoalOrderRows * kGoalOrderWidth * 4);
     if (!goal_off) {
         return goal_off.error();
     }
 
     WalkTables out;
-    out.time_date_stamp = stamp;
-    out.size_of_image = size_of_image;
+    out.time_date_stamp = image.stamp;
+    out.size_of_image = image.size;
     out.mapper.reserve(kMapperCount);
     // Mapper: 512 × u16 at RVA 0xc1af8, indexed by 0x1008ff70 at 0x1009005f.
     for (std::size_t i = 0; i < kMapperCount; ++i) {
@@ -123,7 +49,7 @@ Result<WalkTables, WalkTablesError> read_walk_tables(Bytes dll) {
     for (std::size_t L = 0; L < kLayerCount; ++L) {
         const std::uint32_t rva =
             kRvaLayers + static_cast<std::uint32_t>(L) * static_cast<std::uint32_t>(kLayerSize);
-        auto layer_off = file_offset(dll, secs, rva, kLayerSize);
+        auto layer_off = image.offset(rva, kLayerSize);
         if (!layer_off) {
             return layer_off.error();
         }

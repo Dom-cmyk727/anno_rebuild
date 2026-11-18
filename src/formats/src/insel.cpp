@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <limits>
 
 #include <anno/formats/insel.hpp>
 
@@ -77,16 +78,43 @@ std::pair<std::size_t, std::size_t> GroundCell::texel(std::size_t s, std::size_t
     return {px(u, a), px(v, b)};
 }
 
+namespace {
+struct ItemFields {
+    std::uint16_t packed, state;
+    std::uint8_t dx, dy;
+};
+// Both callers preserve their own interpretation. Legacy callers supply six bytes.
+ItemFields item_fields(Bytes item) {
+    return {u16_le(item, 0), u16_le(item, 2), item[4], item[5]};
+}
+} // namespace
 PlacedObject PlacedObject::parse(Bytes item, const Block& block) {
-    const std::uint16_t id = u16_le(item, 0);
+    const auto f = item_fields(item);
     PlacedObject o;
-    o.anlage = id & 0x0FFF;
-    o.rotation = static_cast<std::uint8_t>(id >> 14);
-    o.reserved = static_cast<std::uint8_t>((id >> 12) & 3);
-    o.state = u16_le(item, 2);
-    o.x = static_cast<std::uint16_t>(block.x + item[4]);
-    o.y = static_cast<std::uint16_t>(block.y + item[5]);
+    o.anlage = f.packed & 0x0FFF;
+    o.rotation = static_cast<std::uint8_t>(f.packed >> 14);
+    o.reserved = static_cast<std::uint8_t>((f.packed >> 12) & 3);
+    o.state = f.state;
+    o.x = static_cast<std::uint16_t>(block.x + f.dx);
+    o.y = static_cast<std::uint16_t>(block.y + f.dy);
     return o;
+}
+Result<ImportObject, std::string>
+decode_import_object(Bytes item, const Block& block, std::int32_t island_x, std::int32_t island_y) {
+    if (item.size() != kItemLen)
+        return std::string("import object: expected six bytes");
+    const auto f = item_fields(item);
+    const auto signed_byte = [](std::uint8_t v) { return v < 128 ? int(v) : int(v) - 256; };
+    const std::int64_t x = std::int64_t{island_x} + block.x + signed_byte(f.dx);
+    const std::int64_t y = std::int64_t{island_y} + block.y + signed_byte(f.dy);
+    if (x < std::numeric_limits<std::int32_t>::min() ||
+        x > std::numeric_limits<std::int32_t>::max() ||
+        y < std::numeric_limits<std::int32_t>::min() ||
+        y > std::numeric_limits<std::int32_t>::max())
+        return std::string("import object: coordinate overflow");
+    return ImportObject{static_cast<std::uint32_t>(f.packed & 0x3fffU),
+                        static_cast<std::uint8_t>(f.packed >> 14), f.state,
+                        static_cast<std::int32_t>(x), static_cast<std::int32_t>(y)};
 }
 
 Result<Island, std::string> Island::from_insel5(Bytes payload) {

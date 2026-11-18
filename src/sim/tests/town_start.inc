@@ -1,4 +1,6 @@
 // TOWN-START-1: a measured player opening, not an automatic gameplay policy.
+// Keep helpers internal, like the Origin and public-command helpers they compose.
+namespace {
 namespace town_start_test {
 constexpr std::uint64_t budget_ticks = 900000; // Owner's 30 game minutes at 500 ticks/second.
 constexpr std::uint64_t sample_ticks = 15000;  // Owner's 30 game-second checkpoints.
@@ -657,3 +659,5 @@ TEST_CASE(
     std::cout << summary.str() << std::flush;
     REQUIRE(std::cout.good());
 }
+
+} // namespace

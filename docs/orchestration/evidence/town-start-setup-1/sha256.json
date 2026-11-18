@@ -1,0 +1,74 @@
+{
+  "cache/town-start-setup-1/focused-initial.log": {
+    "sha256": "fc959f14c78e7fc6a01002bec58e8527ffb0fe31b1a565dc95591dc353a710b5",
+    "bytes": 298
+  },
+  "cache/town-start-setup-1/mutant-load-probe.log": {
+    "sha256": "049afc45988c18fe0200cfa15f4742b8d54c232e9a8d6988642822c72f46217e",
+    "bytes": 936
+  },
+  "cache/town-start-setup-1/mutant-install-probe.log": {
+    "sha256": "f6746b17f9b03624586e26d76055606efcb6a379c9e16fc60c02e0bce0696b73",
+    "bytes": 931
+  },
+  "cache/town-start-setup-1/mutant-load-build.log": {
+    "sha256": "c053d01900a66692503839abaeea66b8cea9ade167516533c422a6579d174046",
+    "bytes": 314
+  },
+  "cache/town-start-setup-1/mutant-install-build.log": {
+    "sha256": "c053d01900a66692503839abaeea66b8cea9ade167516533c422a6579d174046",
+    "bytes": 314
+  },
+  "cache/town-start-setup-1/restored-build-dev.log": {
+    "sha256": "48032223df294fd5f5b6336ff961e8fd13665a66143fc3853b751b1ec8d31160",
+    "bytes": 1049
+  },
+  "cache/town-start-setup-1/dev-focused-01.log": {
+    "sha256": "2d14c292e1cbb61bceb8ce85b159d8e6cc0e7f06c0dd094511aaeaaa51cb2834",
+    "bytes": 40136
+  },
+  "cache/town-start-setup-1/dev-focused-01.log.inventory.json": {
+    "sha256": "05493342a5282faa96662834aad5d8cd6d0bce79cf3661fe91baf81f6398132a",
+    "bytes": 15691
+  },
+  "cache/town-start-setup-1/build-asan.out": {
+    "sha256": "083625e8df7ed350c0706e77df00b93a40c905e5b5b3fef0b69d0d5711ab573f",
+    "bytes": 27977
+  },
+  "cache/town-start-setup-1/asan-focused-01.log": {
+    "sha256": "bbaddb39f56480c22a907b407741d9de08cb261d2ff497a2607f5b3dcd91f1cb",
+    "bytes": 42665
+  },
+  "cache/town-start-setup-1/asan-focused-01.log.inventory.json": {
+    "sha256": "4369ba55c9a8b9e33104d80eda5e807d292f78ded71dfdd75f64b89bee0689f2",
+    "bytes": 20251
+  },
+  "cache/town-start-setup-1/pins-check-01.log": {
+    "sha256": "42ab73687756317ac159757eab3b6c153acdcfa0e7b82b2a596dd82eaf1db113",
+    "bytes": 2151129
+  },
+  "cache/town-start-setup-1/pins-check-01.log.inventory.json": {
+    "sha256": "2d4925396b1108343b7ed61c352e16da8ab3a05ff30625104f09fc6a151d4188",
+    "bytes": 887177
+  },
+  "cache/town-start-setup-1/pins-check-01.out": {
+    "sha256": "b57c59b862cecac9e6bc5a61983486166a0251cb312662bfcb1379563ededa7b",
+    "bytes": 2167
+  },
+  "cache/town-start-setup-1/warnings-01.out": {
+    "sha256": "d1d3a14215565b7cb795ad416326c62a2ac283ccf24da6986af2897dcfb28050",
+    "bytes": 814
+  },
+  "cache/town-start-setup-1/mutations.json": {
+    "sha256": "dff48950cc3b2dfdaeadc41ead368a1df8fc75c8f50bee0f4ebe3b7af4b7fcee",
+    "bytes": 1038
+  },
+  "cache/town-start-setup-1/identities.json": {
+    "sha256": "486f2989def5bf506c80b701cdb41cc0ce189f4a3711a03b720b4f5911ec6e0a",
+    "bytes": 1029
+  },
+  "cache/town-start-setup-1/gate-runner.json": {
+    "sha256": "0e9545be7b944f1053a4b7ea35abb04c9c4f52369a27f36c8a86a781b12297f7",
+    "bytes": 3634
+  }
+}

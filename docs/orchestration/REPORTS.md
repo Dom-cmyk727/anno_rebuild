@@ -14904,3 +14904,53 @@ READY FOR REVIEW.
   text even while its page is hidden.
 
 READY FOR REVIEW.
+
+## 2026-11-18 — TOWN-START-SETUP-1 — READY FOR REVIEW
+
+- Base b5c0ada209d94a0082bc88d793c917c7222e6a21; branch task/TOWN-START-SETUP-1. Unstarted task/TOWN-START-1 preserved at its base.
+- Frozen native-test code head e71f2dc0294d1c578e044bc0310972d83144af9b; final closeout changes docs only. No tracked edit or commit during gates.
+- Final optional const sim::ExtensionContext& = {} forwarded install → load → World::create. Reuse existing validation; preserve argument order/defaults and caller choices.
+- No world patch, new state/tag/version, PRNG timeline, production option, manifest, default, pin or fixture changes.
+- Four original candidate-A tests: omitted/empty load/install byte/hash equality; enabled load and install; both native reloads; invalid enabled=2 refusal; failed-install target unchanged. Initial 4/4 cases, 48/48 assertions.
+- Both specific forwarding mutants applied once, each produced one enabled/reload failure plus a passing default control (exit 1). Load assertions 25 pass/2 fail; install 27 pass/2 fail. Filter exclusions are not skips. Source restored/rebuilt; fresh ASan build.
+- Whitespace-only private reader correction preserved the first load-mutant execution; no native rerun.
+- [Evidence and commands](evidence/town-start-setup-1/summary.md), [raw SHA256 index](evidence/town-start-setup-1/sha256.json). Logs stay in cache/town-start-setup-1/.
+
+dev-focused-01.log: required contract separately, then main:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=30 executed=30 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+asan-focused-01.log: required contract separately, then main:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=30 executed=30 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+pins-check-01.log: required contract separately, then main:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1709 executed=1691 failed=0 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+```text
+PINS check: PASS; 0 pins moved; 0 fixture byte changes; scope=full; selection=^(anno_sim_tests\.|anno_sim_replay_|population_oracles_agree$|integration_stream_reference_|highmap_digest_reference_agrees$); evidence=cache/town-start-setup-1/pins-check-01.log
+```
+
+- All gates PASS; no refused, bad_alloc, empty/incomplete or sanitizer outcomes. Full-selection skips: opt-in 18; all other classes 0.
+- Normal pins wall 5,184.520 s; no regen. Existing Venice per-turn canary 2,152.87 s, human 236.88 s, closed-site 633.48 s, all PASS; this prescribed full Debug pins check dominates elapsed time.
+- Fresh ASan build 131.144 s; focused gate 39.010 s. M5 Max/18 logical/48 GiB/macOS 27.0.1/Apple Clang 21. Jobs 4/internal 4; admission enabled.
+- Warning script once exit 0, 213.277 s; 1,006 project compiles plus two caught shadow controls. Actual Apple Clang 21 for both labels, GCC 13/Clang 18 NOT_RUN. Bash 3/xargs/CMake suppression launch adaptations documented.
+- clang-format 23.1.3 and diff checks pass. Source compiles clean; duplicate-library link warnings disclosed. Exact-head hosted CI is supplied in chat after ordinary push.
+
+Decisions and reasoning:
+- Keep setup separately reviewed before the town measurement; no WorldTestAccess workaround or town harness in this packet.
+- Use an optional generic context, leaving existing callers unchanged and creation as the only validity boundary.
+- Exercise both forwarding edges and their specific mutants; default equality and advanced-target atomicity are independent controls.
+- Reuse unrelated native lanes because no scheduler, field, feature implementation or default changed; retain the prescribed full pins gate once.
+
+NOT_RUN: native Windows/Linux with game files, original/HE, unsupported LeakSanitizer, town measurement and UI activation. QUESTIONs: none remaining for this prerequisite. Orchestrator handover review pending; TOWN awaits acceptance.

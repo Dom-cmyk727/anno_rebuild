@@ -171,3 +171,10 @@ src/sim/include/anno/sim/fisher.hpp:kFisherWaterThreshold = 32;  # original heig
 
 # FISHER-1b permanent header tag 1, owner-reserved on the board; a wire discriminant, not a limit.
 src/sim/include/anno/sim/extension_context.hpp:static constexpr std::uint16_t tag = 1;  # state.md §9.8 permanent fisher_rules tag
+
+
+# --- wildlife pure decisions (WILDLIFE-1a)
+# These are transient span cursors/results, not serialized simulation fields.
+# If later persisted, introduce explicit fixed-width fields and revisit these entries.
+src/sim/include/anno/sim/wildlife.hpp:^std::size_t consumed = 0;$  # WildlifeError/WildlifeDecision carry a transient supplied-span count only, never state/hash/save/wire; native span width avoids narrowing (docs/sim/wildlife-decisions.md)
+src/sim/src/wildlife.cpp:^std::size_t consumed = 0;$  # Draws is an automatic cursor over one const input span, like ReadArchive::pos_; it never escapes into persistent state or serialization

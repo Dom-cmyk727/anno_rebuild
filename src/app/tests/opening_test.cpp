@@ -1303,7 +1303,15 @@ TEST_CASE("opening, real files: recipe caller schedules explain sailing booking 
     sim::BuildingId source_warehouse{}, forest{};
     std::optional<sim::CityRef> source_city;
     std::uint64_t exported = 0;
-    auto money = [&] { return world.players().find(sim::PlayerId{0})->money; };
+    const auto read_money = [](const sim::World& current) -> std::int64_t {
+        const auto* player = current.players().find(sim::PlayerId{0});
+        if (player == nullptr) {
+            REQUIRE(player != nullptr);
+            return 0;
+        }
+        return player->money;
+    };
+    auto money = [&] { return read_money(world); };
     auto events = [&] {
         for (const auto& e : world.drain_events()) {
             if (e.kind == sim::SimEventKind::ShipArrived) {
@@ -1324,7 +1332,16 @@ TEST_CASE("opening, real files: recipe caller schedules explain sailing booking 
     auto ledger = [&] {
         if (!source_city || !forest.valid())
             return;
-        const auto& farm = std::get<sim::Farm>(world.find_building(forest)->payload);
+        const auto* building = world.find_building(forest);
+        if (building == nullptr) {
+            REQUIRE(building != nullptr);
+            return;
+        }
+        const auto* farm = std::get_if<sim::Farm>(&building->payload);
+        if (farm == nullptr) {
+            REQUIRE(farm != nullptr);
+            return;
+        }
         std::uint64_t harvest = 0, cart = 0;
         for (const auto& f : world.figures().list.slots) {
             if (!f || f->expiry_stamp)
@@ -1342,21 +1359,30 @@ TEST_CASE("opening, real files: recipe caller schedules explain sailing booking 
         const auto it = stats.forestry.farms.find(forest);
         const auto made = it == stats.forestry.farms.end() ? 0 : it->second.made_88;
         const auto consumed = it == stats.forestry.farms.end() ? 0 : it->second.consumed_88;
-        const auto stock =
-            world.islands().at(source_city->island.v)->city(source_city->city)->stock.stock.at(42);
+        const auto& island = world.islands().at(source_city->island.v);
+        if (!island) {
+            REQUIRE(island.has_value());
+            return;
+        }
+        const auto* city = island->city(source_city->city);
+        if (city == nullptr) {
+            REQUIRE(city != nullptr);
+            return;
+        }
+        const auto stock = city->stock.stock.at(42);
         const auto loaded_wood = value(stats.loaded_from, forest);
         const auto offered = value(stats.unload_offered, sim::GoodsId{42});
         CHECK(stats.forestry.raw_credited_88 == harvest + stats.forestry.raw_delivered_88);
-        CHECK(stats.forestry.raw_delivered_88 == consumed + farm.raw);
-        CHECK(made == farm.out + loaded_wood);
+        CHECK(stats.forestry.raw_delivered_88 == consumed + farm->raw);
+        CHECK(made == farm->out + loaded_wood);
         CHECK(loaded_wood == cart + offered);
         CHECK(offered == stock + exported);
         CHECK(stats.forestry.raw_lost_88 == 0);
         CHECK(value(stats.cart_lost, sim::GoodsId{42}) == 0);
         std::cout << "OQ562 wood tick=" << world.clock().tick() << " cut=" << stats.forestry.cuts
                   << " harvest=" << harvest << " raw_delivered=" << stats.forestry.raw_delivered_88
-                  << " raw=" << farm.raw << " consumed=" << consumed << " made=" << made
-                  << " out=" << farm.out << " cart=" << cart << " offered=" << offered
+                  << " raw=" << farm->raw << " consumed=" << consumed << " made=" << made
+                  << " out=" << farm->out << " cart=" << cart << " offered=" << offered
                   << " stock=" << stock << " exported=" << exported << '\n';
     };
     // Starting state (manual-expansion.md "Starting state").
@@ -1403,7 +1429,7 @@ TEST_CASE("opening, real files: recipe caller schedules explain sailing booking 
         auto transaction = world;
         transaction.set_transport_stats(nullptr);
         const auto isolated = transaction.apply(cmd);
-        const auto debit = before_money - transaction.players().find(sim::PlayerId{0})->money;
+        const auto debit = before_money - read_money(transaction);
         command_debits += static_cast<std::uint64_t>(debit);
         sim::ApplyResult result;
         if (historical) {
@@ -1725,9 +1751,18 @@ TEST_CASE("opening, real files: recipe caller schedules explain sailing booking 
     CHECK(stock_of(city_dst, 42) == 512);
     CHECK(money() == (historical ? 28853 : 28863));
     CHECK(booking_total == (historical ? 147 : 137));
-    const auto& farm_end = std::get<sim::Farm>(world.find_building(forest)->payload);
+    const auto* forest_end = world.find_building(forest);
+    if (forest_end == nullptr) {
+        REQUIRE(forest_end != nullptr);
+        return;
+    }
+    const auto* farm_end = std::get_if<sim::Farm>(&forest_end->payload);
+    if (farm_end == nullptr) {
+        REQUIRE(farm_end != nullptr);
+        return;
+    }
     CHECK(stats.forestry.farms.at(forest).made_88 == (historical ? 3584 : 3360));
-    CHECK(farm_end.out == (historical ? 448 : 224));
+    CHECK(farm_end->out == (historical ? 448 : 224));
     CHECK(ship_end->holds[0].amount_88 == 6656);
     CHECK(ship_end->holds[1].amount_88 == 2560);
     CHECK(ship_end->holds[2].amount_88 == 9472);

@@ -15263,3 +15263,32 @@ Decisions and reasoning:
 - Keep state 134 receipts pinned; current full ledgers prove conservation without rebaselining internal output.
 - Run only affected Debug/ASan plus one bounded two-schedule real recipe; preserve initial and negative evidence.
 - QUESTIONs: none blocking; independent review and landing remain with the orchestrator.
+
+### OQ-562-1 — focused CI correction, READY FOR REVIEW
+
+- Preserve predecessor `1ea32f5ca0b634f91b0472394e8148bb8eb72208` and CI 44279553218 as red.
+- GCC Release reports eight null-dereference diagnostics, three new lookup sites in opening_test.cpp.
+- Explicit failure-recording player/island/city/forest/payload preconditions; no assertion removed.
+- Entire TU reproduces before under x86 GCC 15.2; after passes GCC 15.2/15.3 -O3/-Werror.
+- Initial missing-dependency-path setup exited 125, retained separately; subsequent reproduction is valid.
+- Only affected D6 rerun; 750 trace rows byte-identical in both builds. Prior cheap/mutant evidence reused.
+- [Corrective source/binary/log hashes and first diagnostics](evidence/oq-562-1.md#focused-gcc-release-correction).
+
+```text
+ci-fix-dev.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+ci-fix-asan.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+Decisions and reasoning:
+- Make fixture preconditions explicit; missing data fails before return, never skips or silently passes.
+- Check all collected Release diagnostics together; no warning suppression or production change.
+- Keep old failures/source evidence intact; corrected exact-head CI remains mandatory.
+- NOT_RUN/reuse boundaries remain those of the parent entry; no new QUESTION or SIM-LIMITS work.

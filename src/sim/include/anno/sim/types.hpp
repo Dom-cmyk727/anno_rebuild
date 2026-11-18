@@ -215,8 +215,9 @@ struct FigureType {
     /// 0x100101f4-0x10010211, type +0x30) at the wait rate 0.01 (0x10035260) and the
     /// time scale 0.2: round(500 · v) (OQ-162).
     std::uint32_t load_ticks = 0;
-    /// MAP-2 (stream 120): the BEWOHNTYPE record (type slot +0x50); 0 = none (97..128 are the
-    /// queried classes of the founding veto, 113 the ship class).
+    /// BEWOHNTYPE semantic number (type slot +0x50). WUESTE is a known zero;
+    /// the adapter also preserves zero for absent/unknown names. The founding veto
+    /// queries 97..128; 113 is the ship class (docs/re/annogame.md).
     std::uint32_t bewohntype = 0;
     /// LOGIC[0x25] * 0.125 in 1/256 tile, 7 tiles when the byte is 0 (type slot 0x68(4),
     /// AnnoGame 0x1000fd04, constant 0x40e00000 at 0x10021d04): the hostile veto's range.
@@ -244,6 +245,11 @@ struct FigureType {
     /// (tagged).
     std::string ware = {};
 };
+
+/// The 57 named BEWOHNTYPE entries of the original sparse table, including WUESTE = 0.
+/// Exact spelling; absent/empty/UNUSED/unknown are not names. The figure adapter
+/// keeps its existing zero fallback for those cases. Asset ids remain independent.
+[[nodiscard]] std::optional<std::uint32_t> bewohntype_by_name(std::string_view name);
 
 /// The ROUTETYPE number of a route name (AnnoGame 0x10024fb8, the loader's name lookup); 0 for an
 /// empty name or UNUSED, nullopt for a name the original's table does not hold.

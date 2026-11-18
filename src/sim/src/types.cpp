@@ -90,6 +90,31 @@ constexpr std::array kProdtypeNames = {
     Named{324, "ROHSTSPEZ"}, Named{325, "TIERHOEHLE"},    Named{353, "FLUSS"},
     Named{354, "MEER"},      Named{355, "WASSERFALL"},    Named{385, "RUINE"}};
 
+/// BEWOHNTYPE semantic numbers (P: AnnoGame.dll 0x10024cb8..<0x10024fb8;
+/// docs/re/annogame.md). Sparse indices are explicit; WUESTE is a named zero.
+/// This vocabulary is not a limit on figure asset ids or the number of figures.
+constexpr std::array kBewohntypeNames = {
+    Named{0, "WUESTE"},         Named{1, "MAEHER"},       Named{2, "WEIDETIER"},
+    Named{3, "JAEGER"},         Named{4, "FISCHER"},      Named{5, "STEINMETZ"},
+    Named{6, "MAEHERSPEZ"},     Named{7, "SCHIFFWARE"},   Named{17, "TRAEGER"},
+    Named{18, "MARKTLER"},      Named{19, "DIEB"},        Named{33, "ZIVILIST"},
+    Named{49, "HIRSCH"},        Named{50, "RAUBTIER"},    Named{51, "HASE"},
+    Named{52, "KROKODIL"},      Named{53, "ESEL"},        Named{54, "WAL"},
+    Named{65, "FISCH"},         Named{66, "DELPHIN"},     Named{81, "VOGEL"},
+    Named{82, "PELIKAN"},       Named{97, "ERKUNDER"},    Named{98, "TRAGTIER"},
+    Named{99, "SCHWERT"},       Named{100, "BOGEN"},      Named{101, "ARMBRUST"},
+    Named{102, "LANZE"},        Named{103, "MUSKETIER"},  Named{104, "KAVALARIE"},
+    Named{105, "GEWEHR"},       Named{106, "MEDICUS"},    Named{107, "BEDIENUNG"},
+    Named{108, "KANONIER"},     Named{109, "MOERSER"},    Named{110, "BELAGERTURM"},
+    Named{111, "KATAPULT"},     Named{113, "SHIP"},       Named{129, "VERKAEUFER"},
+    Named{130, "TAENZER"},      Named{145, "ERZSYMBOL"},  Named{146, "SCHATZ"},
+    Named{147, "WALSYMBOL"},    Named{148, "PRODSYMBOL"}, Named{149, "SEUCHE"},
+    Named{150, "FLAGGE"},       Named{151, "FIRE"},       Named{152, "VULKAN"},
+    Named{153, "VULKANSYMBOL"}, Named{154, "SOUND"},      Named{155, "JOKE"},
+    Named{161, "PFEIL"},        Named{162, "EXPLOSION"},  Named{163, "BLINK"},
+    Named{164, "WASSERSTRAHL"}, Named{177, "EISSCHOLLE"}, Named{178, "WALFAENGER"},
+};
+
 /// ROUTETYPE names (D: AnnoGame.dll the table of 80 string pointers at 0x10024fb8, matched by the
 /// FigurenHeader loader 0x1000fe00 through game slot +0x48 kind 0x3b = 0x10013b40; the index is the
 /// figure type's +0xc, slot +0x54). Read from AnnoGame.dll sha256 ac721220...7bc for MAP-ECON-1 E2:
@@ -608,25 +633,10 @@ formats::Result<FigureType, std::string> figure_type_from_entry(const fig::Entry
         return who + "LOGIC load wait is not a duration";
     }
     t.load_ticks = static_cast<std::uint32_t>(std::llround(ticks));
-    // MAP-2 (stream 120): the founding veto's per-type facts. BEWOHNTYPE is a name; the numbers of
-    // the names the veto classifies come from the table at AnnoGame 0x10024cb8 (docs/re/
-    // annogame.md; 53 ESEL, 97..113, 150 FLAGGE). A name outside this list gets 0: the table
-    // places the other names below 97 or above 128, where no rule of the veto looks.
+    // Preserve the source's semantic number, not its asset id. Missing/unknown names keep
+    // the adapter's existing zero fallback; WUESTE is independently a known named zero.
     if (const auto name = e.record_str("BEWOHNTYPE")) {
-        static constexpr std::array<std::pair<std::string_view, std::uint32_t>, 21> kBewohn{{
-            {"ESEL", 53},      {"ERKUNDER", 97},   {"TRAGTIER", 98},
-            {"SCHWERT", 99},   {"BOGEN", 100},     {"ARMBRUST", 101},
-            {"LANZE", 102},    {"MUSKETIER", 103}, {"KAVALARIE", 104},
-            {"GEWEHR", 105},   {"MEDICUS", 106},   {"BEDIENUNG", 107},
-            {"KANONIER", 108}, {"MOERSER", 109},   {"BELAGERTURM", 110},
-            {"KATAPULT", 111}, {"SHIP", 113},      {"ERZSYMBOL", 145},
-            {"SCHATZ", 146},   {"FLAGGE", 150},    {"", 0},
-        }};
-        for (const auto& [n, number] : kBewohn) {
-            if (!n.empty() && *name == n) {
-                t.bewohntype = number;
-            }
-        }
+        t.bewohntype = bewohntype_by_name(*name).value_or(0);
     }
     // Stream 135: the ware of an ore symbol (the deposit's goods).
     if (t.bewohntype == 145) {
@@ -884,6 +894,17 @@ struct Sealed : TypeRegistry {
 
 std::optional<std::uint32_t> prodtype_by_name(std::string_view name) {
     return number_of(kProdtypeNames, name);
+}
+
+std::optional<std::uint32_t> bewohntype_by_name(std::string_view name) {
+    // Unlike number_of's PRODTYPE/ROUTETYPE policy, empty and UNUSED are not named
+    // BEWOHNTYPE entries. Keep them distinct from the evidenced WUESTE = 0.
+    for (const Named& n : kBewohntypeNames) {
+        if (n.name == name) {
+            return n.number;
+        }
+    }
+    return std::nullopt;
 }
 
 std::optional<std::uint32_t> routetype_by_name(std::string_view name) {

@@ -15288,3 +15288,75 @@ NOT_RUN: corrected-head hosted CI (awaiting focused review before ordinary push)
 QUESTIONs: none. Independent focused correction review requested from the orchestrator before push.
 
 Focused pre-push correction review: orchestrator independently approved the seven-entry allowlist correction with no P1/P2; canonical 2/2 and unrelated-cap control verified. Corrected-head hosted CI remains pending.
+
+
+## 2026-11-18 — KBEWOHN-1 — READY FOR REVIEW
+
+- Accepted independent base `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e`; no main/board/DOCS/wildlife intake.
+- [Acceptance table, addressed facts, controls, manifest and SHA256 receipts](evidence/kbewohn-1.md).
+- Primary AnnoGame.dll table `0x10024cb8`–exclusive `0x10024fb8`: 192 slots, 57 names, 135 nulls.
+- The previous map had 20 real names + ignored empty sentinel; 37 semantic names added, including WUESTE 0.
+- Numeric accessor `0x10013a20` returns UNUSED for 0; physical table zero and accessor behavior stay distinct.
+- Existing absent/empty/UNUSED/unknown import fallback stays 0; optional lookup distinguishes a known zero.
+- Four new cases: all 57 exact parser values, spelling/fallback, real corpus, native/replay identity refusals.
+- Authored asset id 4000000000 uses the same rule; no figure-count cap or generic registry redesign.
+- Installed corpus: 368 inspected / known, 50 names, 0 legitimate-zero / absent / unknown entries.
+- Per-figure audit: 272 corrected bewohntype values, 96 unchanged; every other field/nav fact equal.
+- No added name enters 97–128 or equals 53/145/146/150; existing ship/scout/donkey/ore/script predicates equal.
+- Original registry digest `5560dbe117c8900b` → `da762f6991f0f832`; legal old save/replay refuse specifically under new content.
+- No field, version, PRNG, wire, section, default or migration changes; no live wildlife claim.
+- Three counted production overlays fail at intended value assertions; legal SHIP/ESEL/WUESTE controls remain.
+- Initial 5 test compile errors and identity-rig failure retained; fixed tests, not production validation.
+- Sandbox corpus body never ran: Budget admission socket EPERM, natural CTest timeout 1800.02 s retained.
+- Economy peer ran: 62,616 passing assertions / 7 expected checkpoint hash failures; no physical/accounting change.
+- Host retry only corpus: 6,501 passing assertions / 50 expected create_hash failures; stripped rows otherwise equal.
+- Authorized exact two-producer regen: 50 scenario create_hash + 7 Tutorial checkpoint hashes, and nothing else.
+- Of 120 baseline fixture files, 118 unchanged; pins.txt unchanged; all historical and independent oracle bytes retained.
+- Subsequent scoped pins check: 0 pins moved, 0 fixture writes; scope partial, not the unrelated full campaign.
+
+Canonical final receipts (`cache/kbewohn-1/`; exact command/inventory/hash in evidence):
+
+```text
+producers-regen.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=2 executed=2 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+producers-after.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=2 executed=2 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+focused-dev.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=54 executed=54 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+focused-asan.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=50 executed=50 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- Required pins_contract, figure_digest_reference_agrees and picture_matrix_contract each pass in their gate.
+- Debug includes four additional read-only population/integration/highmap oracle comparisons.
+- No final empty, skipped, incomplete or sanitizer outcome; memory admission enabled, originals required.
+- ASan reuse: later source change only moves ROUTETYPE comment; executable statements and all tests identical.
+- GCC 15.3 x86 Release strict -Werror: both changed TUs clean; first wrong include mount NOT_RUN retained.
+- clang-format 23.1.3 and diff check pass; 0 compiler warnings, inherited duplicate-library linker warnings disclosed.
+- Exact-head hosted CI and full commit/tree are supplied in the direct frozen handoff; no acceptance claimed.
+
+Decisions and reasoning:
+- Explicit original sparse numbers preserve semantic identity without treating asset ids as classes.
+- Exact-value tests catch omitted/wrong-nonzero/sparse-shift errors; a nonzero-only test would miss them.
+- Keep named zero separate from fallback without inventing original unknown-name rejection policy.
+- Existing registry identity is the compatibility boundary; regenerate only measured affected producers.
+- Reuse successful sanitizer evidence after a proved comment-only edit; no unrelated repair/full-gate campaign.
+- NOT_RUN: original/HE/native Windows/WSL runtime, live animals/combat, full renderer/sailing/town, LeakSanitizer.
+- Independent review is pending with the orchestrator; no reviewer agents or main/force push.
+- QUESTIONs: none blocking; stop here for review.

@@ -6,13 +6,17 @@
 // an infinity, or a value beyond the bound leaves the hull ABSENT and the veto refuses when it
 // needs it. Other classes have no hull. Expected values are derived by hand.
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
+#include <iterator>
 #include <limits>
+#include <map>
 #include <span>
 #include <sstream>
 #include <string>
@@ -25,8 +29,11 @@
 #include <anno/sim/field_count.hpp>
 #include <anno/sim/figure_veto.hpp>
 #include <anno/sim/island.hpp>
+#include <anno/sim/replay.hpp>
+#include <anno/sim/scenario.hpp>
 #include <anno/sim/state_fields.hpp>
 #include <anno/sim/types.hpp>
+#include <anno/test/game_dir.hpp>
 
 namespace sim = anno::sim;
 namespace fmt = anno::formats;
@@ -366,3 +373,182 @@ TEST_CASE("ore objects: the discovery-set wire bytes, derived by hand") {
 static_assert(sim::field_count<sim::FigureType>() == 11,
               "a FigureType member needs a line in digest_registry, figure_digest_ref.py and the "
               "vectors");
+
+namespace {
+struct BewohnExpectation {
+    const char* name;
+    std::uint32_t number;
+};
+// Independently transcribed from AnnoGame.dll 0x10024cb8..<0x10024fb8, SHA256
+// ac721220afd27ebca5fd2ece6a8ff452289b9d7458c4e091c68adea2012db7bc.
+// Numeric indices include sparse holes; these are not compact vector ordinals.
+constexpr BewohnExpectation expected_bewohn[] = {
+    {"WUESTE", 0},         {"MAEHER", 1},      {"WEIDETIER", 2},      {"JAEGER", 3},
+    {"FISCHER", 4},        {"STEINMETZ", 5},   {"MAEHERSPEZ", 6},     {"SCHIFFWARE", 7},
+    {"TRAEGER", 17},       {"MARKTLER", 18},   {"DIEB", 19},          {"ZIVILIST", 33},
+    {"HIRSCH", 49},        {"RAUBTIER", 50},   {"HASE", 51},          {"KROKODIL", 52},
+    {"ESEL", 53},          {"WAL", 54},        {"FISCH", 65},         {"DELPHIN", 66},
+    {"VOGEL", 81},         {"PELIKAN", 82},    {"ERKUNDER", 97},      {"TRAGTIER", 98},
+    {"SCHWERT", 99},       {"BOGEN", 100},     {"ARMBRUST", 101},     {"LANZE", 102},
+    {"MUSKETIER", 103},    {"KAVALARIE", 104}, {"GEWEHR", 105},       {"MEDICUS", 106},
+    {"BEDIENUNG", 107},    {"KANONIER", 108},  {"MOERSER", 109},      {"BELAGERTURM", 110},
+    {"KATAPULT", 111},     {"SHIP", 113},      {"VERKAEUFER", 129},   {"TAENZER", 130},
+    {"ERZSYMBOL", 145},    {"SCHATZ", 146},    {"WALSYMBOL", 147},    {"PRODSYMBOL", 148},
+    {"SEUCHE", 149},       {"FLAGGE", 150},    {"FIRE", 151},         {"VULKAN", 152},
+    {"VULKANSYMBOL", 153}, {"SOUND", 154},     {"JOKE", 155},         {"PFEIL", 161},
+    {"EXPLOSION", 162},    {"BLINK", 163},     {"WASSERSTRAHL", 164}, {"EISSCHOLLE", 177},
+    {"WALFAENGER", 178},
+};
+
+std::shared_ptr<const sim::TypeRegistry> authored_bewohn(const char* name,
+                                                         std::uint32_t id = 4000000000U) {
+    std::vector<std::uint8_t> payload;
+    auto u32 = [&](std::uint32_t v) {
+        for (unsigned n = 0; n < 4; ++n)
+            payload.push_back(static_cast<std::uint8_t>(v >> (8 * n)));
+    };
+    u32(0);
+    u32(id); // ENTRY flag and asset id: original file layout, not class number.
+    auto tagged = [&](const char* tag, const std::vector<std::uint8_t>& bytes) {
+        const std::string key(tag);
+        payload.insert(payload.end(), key.begin(), key.end());
+        payload.resize(payload.size() + 12 - key.size(), 0);
+        u32(static_cast<std::uint32_t>(bytes.size()));
+        payload.insert(payload.end(), bytes.begin(), bytes.end());
+    };
+    tagged("HEAD", std::vector<std::uint8_t>(8));
+    tagged("LOGIC", std::vector<std::uint8_t>(44));
+    if (name != nullptr)
+        tagged("BEWOHNTYPE", {name, name + std::strlen(name) + 1});
+    auto parsed = fmt::figuren::Entry::parse(record("ENTRY", payload));
+    REQUIRE_MESSAGE(parsed.ok(), (parsed ? std::string{} : parsed.error()));
+    auto built =
+        sim::TypeRegistry::build({}, sim::original_goods(), {}, std::span(&parsed.value(), 1));
+    REQUIRE_MESSAGE(built.ok(), (built ? std::string{} : built.error()));
+    return built.value();
+}
+
+const BewohnExpectation* expected_named(std::string_view name) {
+    for (const auto& e : expected_bewohn)
+        if (name == e.name)
+            return &e;
+    return nullptr;
+}
+} // namespace
+
+TEST_CASE("figure identities: all 57 sparse names retain exact numbers through the public parser") {
+    CHECK(std::size(expected_bewohn) == 57);
+    for (const auto& e : expected_bewohn) {
+        INFO("BEWOHNTYPE " << e.name);
+        CHECK(sim::bewohntype_by_name(e.name) == std::optional<std::uint32_t>(e.number));
+        const auto r = authored_bewohn(e.name);
+        REQUIRE(r->find_figure_type(4000000000U) != nullptr);
+        CHECK(r->find_figure_type(4000000000U)->bewohntype == e.number);
+    }
+    // Named zero is an engaged optional; unknown/empty/UNUSED are not that name.
+    CHECK(sim::bewohntype_by_name("WUESTE").has_value());
+    CHECK(sim::bewohntype_by_name("WUESTE").value() == 0);
+    CHECK(sim::bewohntype_by_name("SCHIFFWARE") == std::optional<std::uint32_t>(7));
+    CHECK(sim::bewohntype_by_name("TRAEGER") == std::optional<std::uint32_t>(17)); // gap 8..16
+}
+
+TEST_CASE(
+    "figure identities: absent unknown empty and UNUSED preserve zero without becoming WUESTE") {
+    for (const char* name : std::array<const char*, 6>{nullptr, "", "UNUSED", "UNKNOWN_CLASS",
+                                                       "hirsch", "HIRSCH_EXTRA"}) {
+        INFO("spelling " << (name == nullptr ? "<absent>" : name));
+        if (name != nullptr)
+            CHECK_FALSE(sim::bewohntype_by_name(name).has_value());
+        const auto r = authored_bewohn(name);
+        REQUIRE(r->find_figure_type(4000000000U) != nullptr);
+        CHECK(r->find_figure_type(4000000000U)->bewohntype == 0);
+    }
+}
+
+TEST_CASE("figure identities corpus: every original header entry agrees with the independent "
+          "sparse table") {
+    const auto game = anno::test::game_dir();
+    if (!game) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    std::ifstream in(*game / "FigurenHeader.dat", std::ios::binary);
+    REQUIRE(in.good());
+    const std::vector<std::uint8_t> data(std::istreambuf_iterator<char>(in), {});
+    const auto parsed = fmt::figuren::FigurenHeader::parse(data);
+    REQUIRE_MESSAGE(parsed.ok(), (parsed ? std::string{} : parsed.error()));
+    auto built = sim::TypeRegistry::build({}, sim::original_goods(), {}, parsed.value().entries);
+    REQUIRE_MESSAGE(built.ok(), (built ? std::string{} : built.error()));
+    std::size_t known = 0, zero = 0, absent = 0, unknown = 0;
+    std::map<std::string, std::size_t> names;
+    for (const auto& e : parsed.value().entries) {
+        const auto source = e.record_str("BEWOHNTYPE");
+        if (!source) {
+            ++absent;
+            continue;
+        }
+        ++names[std::string(*source)];
+        const auto* want = expected_named(*source);
+        if (want == nullptr) {
+            ++unknown;
+            continue;
+        }
+        ++known;
+        zero += want->number == 0 ? 1U : 0U;
+        const auto* f = built.value()->find_figure_type(e.id);
+        REQUIRE(f != nullptr);
+        CHECK_MESSAGE(f->bewohntype == want->number, "figure " << e.id << " " << *source);
+    }
+    std::cout << "figure identities corpus: inspected=" << parsed.value().entries.size()
+              << " known=" << known << " legitimate-zero=" << zero << " absent=" << absent
+              << " unknown=" << unknown << " distinct=" << names.size() << '\n';
+    CHECK(parsed.value().entries.size() == 368);
+    CHECK(known == 368);
+    CHECK(zero == 0);
+    CHECK(absent == 0);
+    CHECK(unknown == 0);
+    CHECK(names.size() == 50);
+}
+
+TEST_CASE("figure identities: changed content refuses old native and replay registry identities") {
+    const auto parsed = authored_bewohn("HIRSCH");
+    const auto* real = parsed->find_figure_type(4000000000U);
+    REQUIRE(real != nullptr);
+    REQUIRE(real->bewohntype == 49);
+    // Use the same registry construction path for both identities, including walking defaults.
+    sim::TypeRegistry::Builder current_builder;
+    current_builder.figure_type(*real);
+    auto current = current_builder.build();
+    REQUIRE(current.ok());
+    const auto now = current.value();
+    auto previous = *real;
+    previous.bewohntype = 0; // the evidenced pre-correction fallback
+    sim::TypeRegistry::Builder builder;
+    builder.figure_type(previous);
+    auto old = builder.build();
+    REQUIRE(old.ok());
+    CHECK(old.value()->digest() != now->digest());
+    auto made = sim::World::create(sim::ScenarioSpec{}, old.value());
+    REQUIRE(made.ok());
+    auto before = std::move(made).value();
+    const auto bytes = before.save();
+    REQUIRE(sim::World::load(bytes, old.value()).ok()); // legal control before counterexample
+    auto native = sim::World::load(bytes, now);
+    REQUIRE_FALSE(native.ok());
+    CHECK_MESSAGE(native.error().find("registry") != std::string::npos, native.error());
+    auto recorder = sim::Recorder::start(before);
+    REQUIRE(recorder.ok());
+    recorder.value().checkpoint();
+    auto log = sim::write_log(recorder.value().log());
+    REQUIRE(log.ok());
+    auto decoded = sim::read_log(log.value());
+    REQUIRE(decoded.ok());
+    auto same = sim::World::create(sim::ScenarioSpec{}, old.value());
+    REQUIRE(same.ok());
+    REQUIRE(sim::replay(same.value(), decoded.value()).ok());
+    auto fresh = sim::World::create(sim::ScenarioSpec{}, now);
+    REQUIRE(fresh.ok());
+    auto replay = sim::replay(fresh.value(), decoded.value());
+    REQUIRE_FALSE(replay.ok());
+    CHECK(replay.error() == "replay refused: type registry digest differs from the log's");
+}

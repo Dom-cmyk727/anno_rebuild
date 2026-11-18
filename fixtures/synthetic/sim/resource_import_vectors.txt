@@ -83,3 +83,30 @@ w=3 h=3 plane=171,171,171,171,171,171,171,171,171 draws=4 slots=0,1,2,3,4,5,6,7,
 
 # CLIFF: A 3 by 3 cliff at x 1 exceeds a 3-wide island even though its origin lies inside: bounds reject before reads.
 w=3 h=3 plane=171,171,171,171,171,171,171,171,171 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=48,48,48,48,48,48,48,48,48 objects=0,0,0,0,0,0,0,0,0 types=710:322:3:3:18:0:0 records=710:1:0:0:5 anchors=0,0,0,0,0,0,0,0,0 => objects=0,0,0,0,0,0,0,0,0 phase=0,0,0,0,0,0,0,0,0 height=0,0,0,0,0,0,0,0,0 anchor=0,0,0,0,0,0,0,0,0 status=bounds consumed=0 plane=171,171,171,171,171,171,171,171,171
+
+# ROCK: Two cells min 35/55 -> 32/48; mode 0 picks 48, mode 2 gives 32, mean 50, max vertex quantum 64. Raw height 207 ignored; phase 59.
+w=3 h=3 plane=171,171,171,171,171,171,171,171,171 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=35,63,79,47,55,65,67,71,95 objects=0,0,0,0,0,0,0,0,0 types=730:321:2:1:32792:0:0 records=730:0:0:0:53051 anchors=0,0,0,0,0,0,0,0,0 => objects=730,730,0,0,0,0,0,0,0 phase=59,59,0,0,0,0,0,0,0 height=48,48,0,0,0,0,0,0,0 anchor=1,0,0,0,0,0,0,0,0 status=accepted consumed=0 plane=171,171,171,171,171,171,171,171,171
+
+# ROCK: Distinct kind 324/type 731 and unrotated 1 by 2; rotation 1 swaps to same two-cell window and height 48.
+w=3 h=3 plane=171,171,171,171,171,171,171,171,171 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=35,63,79,47,55,65,67,71,95 objects=0,0,0,0,0,0,0,0,0 types=731:324:1:2:32792:0:0 records=731:0:0:1:53051 anchors=0,0,0,0,0,0,0,0,0 => objects=731,731,0,0,0,0,0,0,0 phase=59,59,0,0,0,0,0,0,0 height=48,48,0,0,0,0,0,0,0 anchor=1,0,0,0,0,0,0,0,0 status=accepted consumed=0 plane=171,171,171,171,171,171,171,171,171
+
+# ROCK: One cell: modes 0 and 2 coincide. Height 15 -> 0 accepts through group 321 level bypass.
+w=3 h=3 plane=171,171,171,171,171,171,171,171,171 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=15,15,15,15,15,15,15,15,15 objects=0,0,0,0,0,0,0,0,0 types=730:321:1:1:32792:0:0 records=730:1:1:0:9 anchors=0,0,0,0,0,0,0,0,0 => objects=0,0,0,0,730,0,0,0,0 phase=0,0,0,0,9,0,0,0,0 height=0,0,0,0,0,0,0,0,0 anchor=0,0,0,0,1,0,0,0,0 status=accepted consumed=0 plane=171,171,171,171,171,171,171,171,171
+
+# ROCK: Install rock then resource: original existing flags 32792 lack bit 32, so refuse with no draw/variation.
+w=3 h=3 plane=171,171,171,171,171,171,171,171,171 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=48,48,48,48,48,48,48,48,48 objects=0,0,0,0,0,0,0,0,0 types=730:321:1:1:32792:0:0;720:225:1:1:41:0:0 records=730:1:1:0:5;720:1:1:0:7 anchors=0,0,0,0,0,0,0,0,0 => objects=0,0,0,0,730,0,0,0,0 phase=0,0,0,0,5,0,0,0,0 height=0,0,0,0,48,0,0,0,0 anchor=0,0,0,0,1,0,0,0,0 status=accepted,occupied consumed=0 plane=171,171,171,171,171,171,171,171,171
+
+# ROCK: Reverse: resource is replaceable, consumes 1 draw first; rock then accepts, variation byte 11 remains.
+w=3 h=3 plane=171,171,171,171,171,171,171,171,171 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=48,48,48,48,48,48,48,48,48 objects=0,0,0,0,0,0,0,0,0 types=730:321:1:1:32792:0:0;720:225:1:1:41:0:0 records=720:1:1:0:7;730:1:1:0:5 anchors=0,0,0,0,0,0,0,0,0 => objects=0,0,0,0,730,0,0,0,0 phase=0,0,0,0,5,0,0,0,0 height=0,0,0,0,48,0,0,0,0 anchor=0,0,0,0,1,0,0,0,0 status=accepted,accepted consumed=1 plane=171,171,171,171,11,171,171,171,171
+
+# ROCK: Cliff then same-group rock: coverage has writable cell; keep cliff anchor, write rock on second cell and anchor it.
+w=3 h=3 plane=171,171,171,171,171,171,171,171,171 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=48,48,48,48,48,48,48,48,48 objects=0,0,0,0,0,0,0,0,0 types=730:321:2:1:32792:0:0;710:322:2:1:18:0:0 records=710:0:0:0:5;730:0:0:0:9 anchors=0,0,0,0,0,0,0,0,0 => objects=710,730,0,0,0,0,0,0,0 phase=5,9,0,0,0,0,0,0,0 height=48,48,0,0,0,0,0,0,0 anchor=1,1,0,0,0,0,0,0,0 status=accepted,accepted consumed=0 plane=171,171,171,171,171,171,171,171,171
+
+# ROCK: Four retained rock anchors: compatibility alone cannot bypass missing chunk mark, so COVERAGE before writes.
+w=3 h=3 plane=171,171,171,171,171,171,171,171,171 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=48,48,48,48,48,48,48,48,48 objects=731,731,0,731,731,0,0,0,0 types=730:321:2:2:32792:0:0;731:324:1:1:32792:0:0 records=730:0:0:0:5 anchors=1,1,0,1,1,0,0,0,0 => objects=731,731,0,731,731,0,0,0,0 phase=0,0,0,0,0,0,0,0,0 height=0,0,0,0,0,0,0,0,0 anchor=1,1,0,1,1,0,0,0,0 status=coverage consumed=0 plane=171,171,171,171,171,171,171,171,171
+
+# ROCK: Origin inside but rotated footprint exceeds right edge: full bounds refuse.
+w=3 h=3 plane=171,171,171,171,171,171,171,171,171 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=48,48,48,48,48,48,48,48,48 objects=0,0,0,0,0,0,0,0,0 types=730:321:2:1:32792:0:0 records=730:2:0:0:5 anchors=0,0,0,0,0,0,0,0,0 => objects=0,0,0,0,0,0,0,0,0 phase=0,0,0,0,0,0,0,0,0 height=0,0,0,0,0,0,0,0,0 anchor=0,0,0,0,0,0,0,0,0 status=bounds consumed=0 plane=171,171,171,171,171,171,171,171,171
+
+# ROCK: Far cell contains nonreplaceable group 1 ordinary object: incoming group 321 cannot overlap it.
+w=3 h=3 plane=171,171,171,171,171,171,171,171,171 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=48,48,48,48,48,48,48,48,48 objects=0,702,0,0,0,0,0,0,0 types=730:321:2:1:32792:0:0;702:1:1:1:9:0:0 records=730:0:0:0:5 anchors=0,0,0,0,0,0,0,0,0 => objects=0,702,0,0,0,0,0,0,0 phase=0,0,0,0,0,0,0,0,0 height=0,0,0,0,0,0,0,0,0 anchor=0,0,0,0,0,0,0,0,0 status=occupied consumed=0 plane=171,171,171,171,171,171,171,171,171

@@ -154,3 +154,12 @@ this same supplied-input diagnostic to GELAENDE 42/39, type 1512 / flags 0x8018.
 It completes 2,387 accepted records / 2,333 resource draws / 29 stones / 25 cliffs /
 9 header epilogues / 0 spawns. HIRSCH 71 is still unreached. Preserve both earlier
 boundary receipts; none proves complete scene initialization or a global cursor.
+
+### Rock successor (2026-11-19)
+
+[WILDLIFE-ROCK-1](wildlife-rock.md) processes former 42/39 and completes all
+16 local GELAENDE headers: 4,760 accepted records / 4,589 resource draws /
+84 stones / 63 cliffs / 24 rocks / 16 epilogues / 0 spawns. It stops at unknown
+header 49, FRUCHTBAR, before applying that header. HIRSCH 71 remains unreached.
+This is still a supplied-input diagnostic partial; do not infer zero draws or
+unchanged terrain for the new header, or claim original global cursor closure.

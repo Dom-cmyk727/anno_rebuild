@@ -69,10 +69,10 @@ def evaluate(p):
                 or not 0 <= x <= 0x7fffffff or not 0 <= y <= 0x7fffffff):
             raise ValueError('record')
         t = reg[tid]
-        mode2_overlay = t.flags in (58, 18) and t.group == 0x141
-        if (not mode2_overlay and t.flags not in (9, 41)) or x < 0 or y < 0:
+        overlay_scenery = t.flags in (58, 18, 32792) and t.group == 0x141
+        if (not overlay_scenery and t.flags not in (9, 41)) or x < 0 or y < 0:
             raise ValueError('unsupported')
-        if mode2_overlay and max(t.w, t.h) > 8:
+        if overlay_scenery and max(t.w, t.h) > 8:
             raise ValueError('original coverage/offset domain')
         verdict, reason, height = place(island, reg, tid, x, y, rot, 0)
         if verdict != 'accept':
@@ -86,7 +86,7 @@ def evaluate(p):
         for dy in range(fh):
             for dx in range(fw):
                 i = (y+dy)*w+x+dx
-                if mode2_overlay and objects[i] and reg[objects[i]].flags & 16 and anchors[i]:
+                if overlay_scenery and objects[i] and reg[objects[i]].flags & 16 and anchors[i]:
                     continue
                 block = ((x+dx)//8, (y+dy)//8)
                 anchors[i] = int(block not in written_blocks)

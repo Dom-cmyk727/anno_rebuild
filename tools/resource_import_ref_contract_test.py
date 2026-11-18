@@ -43,7 +43,7 @@ def main():
         for name, old, new in [
             ('mask', '(plane[i] & 15) | (variant << 4)', '(plane[i] & 240) | variant'),
             ('skip-draw', 'consumed += 1', 'consumed += 0'),
-            ('overwrite-anchor', 'if mode2_overlay and objects[i] and reg[objects[i]].flags & 16 and anchors[i]:', 'if False:'),
+            ('overwrite-anchor', 'if overlay_scenery and objects[i] and reg[objects[i]].flags & 16 and anchors[i]:', 'if False:'),
             ('ignore-earlier', 'objects[i], phase[i], item_height[i] = tid, state & 63, height', 'objects[i], phase[i], item_height[i] = 0, state & 63, height'),
         ]:
             if source.count(old) != 1:
@@ -72,7 +72,16 @@ def main():
         (root/'placement_ref.py').write_text(placement.replace(old, 'if e.flags & 0x30:'))
         run(control, args.vectors, 1)
         print('APPLIED cliff-replaceability: legal control 0, mutant 1')
-    print('resource import contract: 21 public checks passed')
+        # Restore the private imported module before the next legal control.
+        old = '0: max(cellmin)'
+        if placement.count(old) != 1:
+            raise AssertionError('rock-mode: replacement did not apply once')
+        (root/'placement_ref.py').write_text(placement)
+        run(control, args.vectors, 0)
+        (root/'placement_ref.py').write_text(placement.replace(old, '0: min(cellmin)'))
+        run(control, args.vectors, 1)
+        print('APPLIED rock-mode: legal control 0, mutant 1')
+    print('resource import contract: 23 public checks passed')
     return 0
 
 

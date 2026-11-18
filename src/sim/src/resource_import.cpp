@@ -163,9 +163,10 @@ formats::Result<Effect, Error> Session::apply(const Record& record,
     const auto group = ((type->prodtype - 1U) & ~31U) + 1U;
     // AnnoGame 0x10008931 reads EXISTING bit 0x20 in compatibility;
     // do not normalize either class's registry flags merely to share admission.
-    const bool mode2_overlay =
-        (type->flags_word == 0x3a || type->flags_word == 0x12) && group == 0x141;
-    if ((!mode2_overlay && type->flags_word != 0x09 && type->flags_word != 0x29) ||
+    const bool overlay_scenery =
+        (type->flags_word == 0x3a || type->flags_word == 0x12 || type->flags_word == 0x8018) &&
+        group == 0x141;
+    if ((!overlay_scenery && type->flags_word != 0x09 && type->flags_word != 0x29) ||
         record.rotation > 3 || type->width == 0 || type->height == 0 || record.x < 0 ||
         record.y < 0 || type->width - 1 > std::numeric_limits<std::uint16_t>::max() ||
         type->height - 1 > std::numeric_limits<std::uint16_t>::max())
@@ -185,7 +186,7 @@ formats::Result<Effect, Error> Session::apply(const Record& record,
         out_.records.push_back(Disposition::Occupied);
         return Effect{Disposition::Occupied, 0, {}, {}};
     }
-    if (mode2_overlay) {
+    if (overlay_scenery) {
         // Original coverage mark storage is two rows with stride two. Refuse
         // inputs beyond that addressed layout, not an invented engine size cap.
         const std::int64_t edge = kPlacementBlockEdge;
@@ -198,27 +199,32 @@ formats::Result<Effect, Error> Session::apply(const Record& record,
             return Effect{Disposition::Coverage, 0, {}, {}};
         }
     }
-    // AnnoGame 0x10008fa1: mode 1 reads only the origin quad. For the
-    // admitted 0x3a/0x12 classes, mode 2 is min(cell corner minimum & 0xf0),
-    // equivalently the minimum window vertex & 0xf0 (0x10009048..0x10009109).
+    // AnnoGame 0x10008fa1: ordinary mode 1 reads only the origin quad.
+    // Overlay modes share quantized cell minima: mode 0 selects their high,
+    // mode 2 their low (0x10009048..0x10009109). No raw file height is used.
     const std::int64_t x = record.x, y = record.y;
-    auto mean = quad_mean(grid_, x, y);
-    if (mode2_overlay) {
-        std::uint8_t minimum = 255;
-        for (std::uint64_t dy = 0; dy <= h; ++dy)
-            for (std::uint64_t dx = 0; dx <= w; ++dx)
-                minimum = std::min(minimum, *grid_.at(x + static_cast<std::int64_t>(dx),
-                                                      y + static_cast<std::int64_t>(dy)));
-        mean = static_cast<std::uint8_t>(minimum & 0xf0U);
+    auto height = quad_mean(grid_, x, y);
+    if (overlay_scenery) {
+        std::uint8_t lo = 255, hi = 0;
+        for (std::uint32_t dy = 0; dy < h; ++dy)
+            for (std::uint32_t dx = 0; dx < w; ++dx) {
+                const auto px = x + dx, py = y + dy;
+                const auto minimum = std::min({*grid_.at(px, py), *grid_.at(px + 1, py),
+                                               *grid_.at(px, py + 1), *grid_.at(px + 1, py + 1)});
+                const auto quantized = static_cast<std::uint8_t>(minimum & 0xf0U);
+                lo = std::min(lo, quantized);
+                hi = std::max(hi, quantized);
+            }
+        height = (type->flags_word & 3U) == 0 ? hi : lo;
     }
     // AnnoWelt 0x1007cbdf: group 0x141 bypasses the final ordinary level gate.
-    if (mean < 32 && group != 0x141) {
+    if (height < 32 && group != 0x141) {
         out_.records.push_back(Disposition::Terrain);
-        return Effect{Disposition::Terrain, 0, {}, mean};
+        return Effect{Disposition::Terrain, 0, {}, height};
     }
     // AnnoWelt 0x10089417: commit before the resource draw and selector.
     place_object_record(out_.tiles, *types_, *type, record.x, record.y, record.rotation,
-                        static_cast<std::uint8_t>(record.raw_state & 63U), mean);
+                        static_cast<std::uint8_t>(record.raw_state & 63U), height);
     std::optional<std::uint8_t> chosen;
     if (type->prodtype >= 225 && type->prodtype <= 256) {
         if (draws.empty())
@@ -235,7 +241,7 @@ formats::Result<Effect, Error> Session::apply(const Record& record,
                                                       (std::uint32_t{variant.value()} << 4U));
     }
     out_.records.push_back(Disposition::Accepted);
-    return Effect{Disposition::Accepted, out_.consumed - before, chosen, mean};
+    return Effect{Disposition::Accepted, out_.consumed - before, chosen, height};
 }
 
 formats::Result<std::uint64_t, Error> Session::close_import_block(std::int32_t x, std::int32_t y,

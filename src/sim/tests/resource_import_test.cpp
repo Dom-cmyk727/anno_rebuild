@@ -259,7 +259,7 @@ TEST_CASE("resource import: authored ordered prefixes and draw-sensitive selecto
         CHECK(out.tiles.ignored_writes() == 0);
         ++count;
     }
-    CHECK(count == 35);
+    CHECK(count == 44);
 }
 
 TEST_CASE("resource import: errors expose no partial success or input mutation") {
@@ -628,7 +628,7 @@ Rig stone_rig(std::uint32_t w = 3, std::uint32_t h = 2, std::uint32_t flags = 0x
     r.plane.assign(18 * 18, 0xab);
     sim::BuildingType stone;
     stone.id = sim::TypeId{700};
-    stone.prodtype = flags == 0x12 ? 322 : 323;
+    stone.prodtype = flags == 0x12 ? 322 : flags == 0x8018 ? 321 : 323;
     stone.flags_word = flags;
     stone.width = w;
     stone.height = h;
@@ -823,7 +823,7 @@ TEST_CASE("resource import: cliff square and nonsquare rotations retain mode2 he
 
 TEST_CASE(
     "resource import: installed cliff replaceability controls ordinary resource in both orders") {
-    for (const std::uint32_t flags : {0x3aU, 0x12U}) {
+    for (const std::uint32_t flags : {0x3aU, 0x12U, 0x8018U}) {
         auto r = stone_rig(1, 1, flags);
         sim::BuildingType resource;
         resource.id = sim::TypeId{720};
@@ -853,15 +853,15 @@ TEST_CASE(
         const auto later = evaluate(r);
         REQUIRE(later);
         REQUIRE(later.value().records.size() == 2);
-        const bool cliff = flags == 0x12;
+        const bool nonreplaceable = (flags & 0x20U) == 0;
         CHECK(later.value().records[0] == ri::Disposition::Accepted);
         CHECK(later.value().records[1] ==
-              (cliff ? ri::Disposition::Occupied : ri::Disposition::Accepted));
-        CHECK(later.value().tiles.object(tile) == (cliff ? 700U : 720U));
-        CHECK(later.value().tiles.phase(tile) == (cliff ? 5 : 7));
+              (nonreplaceable ? ri::Disposition::Occupied : ri::Disposition::Accepted));
+        CHECK(later.value().tiles.object(tile) == (nonreplaceable ? 700U : 720U));
+        CHECK(later.value().tiles.phase(tile) == (nonreplaceable ? 5 : 7));
         CHECK(later.value().tiles.item_height(tile) == 48);
-        CHECK(later.value().consumed == (cliff ? 0 : 1));
-        CHECK(later.value().variation[tile] == (cliff ? 0xab : 0x0b));
+        CHECK(later.value().consumed == (nonreplaceable ? 0 : 1));
+        CHECK(later.value().variation[tile] == (nonreplaceable ? 0xab : 0x0b));
         CHECK(r.types->find(sim::TypeId{700})->flags_word == flags);
         // Reverse order: resource is replaceable, so either overlay accepts over it;
         // its one selector draw precedes the draw-free overlay and plane stays 0x0b.
@@ -878,4 +878,91 @@ TEST_CASE(
         CHECK(r.island.tiles.object(tile) == 0);
         CHECK(r.plane[tile] == 0xab);
     }
+}
+
+TEST_CASE("resource import: rock mode0 distinguishes cell minimum range from mean and raw height") {
+    for (const std::uint32_t flags : {0x09U, 0x3aU, 0x12U, 0x8018U}) {
+        auto r = stone_rig(2, 1, flags);
+        std::vector<std::uint8_t> heights(18 * 18, 48);
+        // Two quad minima are 35/55 -> 32/48. Origin mean is 50.
+        heights[6 * 18 + 6] = 35;
+        heights[6 * 18 + 7] = 63;
+        heights[6 * 18 + 8] = 79;
+        heights[7 * 18 + 6] = 47;
+        heights[7 * 18 + 7] = 55;
+        heights[7 * 18 + 8] = 65;
+        r.island.terrain = sim::make_terrain(std::move(heights), {}, {});
+        r.records = {{sim::TypeId{700}, 6, 6, 0, 53051}}; // Raw height 207, phase 59.
+        const std::uint8_t expected = flags == 0x09 ? 50 : flags == 0x8018 ? 48 : 32;
+        auto session = ri::Session::start(r.island.tiles, sim::VertexGrid::of(r.island), r.plane,
+                                          *r.types, r.facts, r.climate);
+        REQUIRE(session);
+        const auto effect = session.value().apply(r.records[0], r.draws);
+        REQUIRE(effect);
+        CHECK(effect.value().disposition == ri::Disposition::Accepted);
+        CHECK(effect.value().height == expected);
+        CHECK(effect.value().draws == 0);
+        CHECK_FALSE(effect.value().variant);
+        const auto result = session.value().finish();
+        REQUIRE(result);
+        const auto& out = result.value();
+        for (std::int32_t x = 6; x <= 7; ++x) {
+            const auto i = out.tiles.index_of(x, 6);
+            CHECK(out.tiles.object(i) == 700);
+            CHECK(out.tiles.item_height(i) == expected);
+            CHECK(out.tiles.phase(i) == 59);
+            CHECK(r.island.tiles.object(i) == 0);
+        }
+        CHECK(out.consumed == 0);
+        CHECK(out.variation == r.plane);
+        CHECK(r.types->find(sim::TypeId{700})->flags_word == flags);
+    }
+}
+
+TEST_CASE("resource import: rock nonsquare rotations select highest quantized cell minimum") {
+    for (const auto shape : {std::pair{2U, 1U}, std::pair{3U, 2U}})
+        for (std::uint8_t rotation = 0; rotation < 4; ++rotation) {
+            auto r = stone_rig(shape.first, shape.second, 0x8018);
+            const auto w = rotation & 1U ? shape.second : shape.first;
+            const auto h = rotation & 1U ? shape.first : shape.second;
+            std::vector<std::uint8_t> heights(18 * 18, 16);
+            // Only the far rotated quad has minimum 55 -> 48; others have 16.
+            heights[(6 + h) * 18 + 6 + w] = 55;
+            heights[(6 + h) * 18 + 7 + w] = 63;
+            heights[(7 + h) * 18 + 6 + w] = 59;
+            heights[(7 + h) * 18 + 7 + w] = 65;
+            r.island.terrain = sim::make_terrain(std::move(heights), {}, {});
+            const auto id = shape.first == 2 ? sim::TypeId{700} : sim::TypeId{701};
+            r.records = {{id, 7, 7, rotation, 53051}};
+            const auto result = evaluate(r);
+            REQUIRE(result);
+            const auto& out = result.value();
+            CHECK(out.records == std::vector{ri::Disposition::Accepted});
+            CHECK(out.consumed == 0);
+            CHECK(out.variation == r.plane);
+            CHECK(r.types->find(id)->flags_word == 0x8018);
+            for (std::int32_t y = 0; y < 18; ++y)
+                for (std::int32_t x = 0; x < 18; ++x) {
+                    const auto i = out.tiles.index_of(x, y);
+                    const bool inside =
+                        x >= 7 && std::int64_t{x} < 7 + w && y >= 7 && std::int64_t{y} < 7 + h;
+                    CHECK(out.tiles.object(i) == (inside ? id.v : 0U));
+                    CHECK(out.tiles.phase(i) == (inside ? 59 : 0));
+                    CHECK(out.tiles.item_height(i) == (inside ? 48 : 0));
+                    if (inside) {
+                        CHECK(out.tiles.foot_dx(i) == x - 7);
+                        CHECK(out.tiles.foot_dy(i) == y - 7);
+                        CHECK(out.tiles.foot_rotation(i) == rotation);
+                        CHECK(out.tiles.foot_anchor(i) ==
+                              ((x == 7 || x == 8) && (y == 7 || y == 8)));
+                        CHECK(out.tiles.walk_code(i) == 1);
+                        CHECK(out.tiles.walk_mask(i) == 511);
+                    }
+                    CHECK(r.island.tiles.object(i) == 0);
+                }
+        }
+}
+
+TEST_CASE("resource import: rock partial overlay retains anchors but updates their walk fields") {
+    partial_overlay_fields(stone_rig(3, 2, 0x8018));
 }

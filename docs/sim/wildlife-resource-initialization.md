@@ -193,3 +193,11 @@ to the same mode-2 coverage/overlay arm. Original flags remain intact: a cliff's
 missing existing-object bit 0x20 makes later ordinary resources incompatible,
 while same-group overlays may pass. No compatibility predicate, selector,
 variation, header callback, ordinary/stone path or World wiring is changed.
+
+## 8. Narrow rock continuation (2026-11-19)
+
+[WILDLIFE-ROCK-1](wildlife-rock.md) adds exact flags 0x8018 / kind group 0x141
+using original mode 0, the highest quantized cell minimum. A single window-range
+loop supplies both new mode 0/high and predecessor mode 2/low, preserving old
+results. Original flags and shared compatibility/writer remain intact; no upper
+bit is normalized or granted a new callback. Rocks are draw-free nonresources.

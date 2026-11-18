@@ -1,6 +1,8 @@
 # WILDLIFE-RESOURCE-1 — independent review, 2026-11-18
 
-**CHANGES REQUIRED: two bounded P2 corrections.**
+**Current disposition: ACCEPTED at0627532f after correction review and exact-head CI.**
+
+Initial review at3aab2a93: CHANGES REQUIRED, two bounded P2 corrections, preserved below.
 
 - Reviewed head: `3aab2a93680a9edf97ab4c5b0ac932eaae130513`.
 - Tree: `95326782e8a61ad6efd53b8f27727f697f585b9d`.
@@ -114,3 +116,14 @@ Next local dependency integration may compose these reviewed helpers with the
 reviewed raw decoder/load helper on a separately named task branch. Preserve
 pending CI dispositions and intake identities; no candidate becomes accepted by
 being cherry-picked into that stack.
+
+## RESOURCE acceptance receipt — 2026-11-18
+
+Exact corrected head0627532f330dc898b80941ea31d9dafe87980aa4 has terminal
+SUCCESS in CI44372186862. Root independently checked the public-API run identity
+and all12 completed successful jobs. Run receipt SHA256
+2c9a0c4659d0412846b3af345ff08a2eb7571ad466b20a43e84802a649db808e;
+complete job inventory SHA256
+7d5054765ea18f9e29a4d5c520a2ebb8cf7a5edeb3c2665ebec9ff92ba61e248.
+With the focused independent correction review, the bounded RESOURCE candidate is
+ACCEPTED for normal Windows-owned stacking/landing. No landing performed here.

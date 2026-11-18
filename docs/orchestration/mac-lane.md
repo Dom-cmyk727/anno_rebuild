@@ -29,8 +29,9 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife import [WILDLIFE-LOAD-1](tasks/wildlife-load-1.md) | LOCAL REVIEW APPROVED; macOS C++ CI never obtained runner | `f1e245d2769306451d4c2079aadf6a64be93defd` | [44344197686](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44344197686), FAIL: 10 successful jobs, 1 cancelled runner, failed aggregate gate | [Independent review](reviews/2026-11-18-wildlife-load-1-review.md) |
 | Wildlife correction [WILDLIFE-LOAD-FIX-1](tasks/wildlife-load-fix-1.md) | LOCAL REVIEW APPROVED; CI blocked by no hosted macOS runner | `533ee3fc96a560f1c3189f3a4d32ce113abff65a` | [44354548420](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44354548420), 10 success, build-macos cancelled, aggregate failed | [Review](reviews/2026-11-18-wildlife-load-fix-1-review.md) |
 | Wildlife initialization [WILDLIFE-INIT-1](tasks/wildlife-init-1.md) | ACCEPTED bounded research/reference; landing pending | `97d893af9d78e6662dd8859acc3a905f71c80402` | [44359989371](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44359989371), all12 successful | [Review](reviews/2026-11-18-wildlife-init-1-review.md) |
-| Wildlife resource [WILDLIFE-RESOURCE-1](tasks/wildlife-resource-1.md) | LOCAL REVIEW APPROVED after FIX-1; exact-head CI pending | `0627532f330dc898b80941ea31d9dafe87980aa4` | [44372186862](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44372186862), pending | [Review and closed findings](reviews/2026-11-18-wildlife-resource-1-review.md) |
-| Wildlife composition [WILDLIFE-PREFIX-1](tasks/wildlife-prefix-1.md) | RELEASED to EXECUTOR II MAC | Explicit local dependency stack from `0627532f`; decoder/helper intake pinned in packet | Not started | Direct frozen reportback required |
+| Wildlife resource [WILDLIFE-RESOURCE-1](tasks/wildlife-resource-1.md) | ACCEPTED after FIX-1; landing pending | `0627532f330dc898b80941ea31d9dafe87980aa4` | [44372186862](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44372186862), all12 successful | [Review](reviews/2026-11-18-wildlife-resource-1-review.md) |
+| Wildlife composition [WILDLIFE-PREFIX-1](tasks/wildlife-prefix-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `1441183a74be4745415c23c399f80648bf886314` | [44385455810](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44385455810), in progress at handoff | [Review](reviews/2026-11-18-wildlife-prefix-1-review.md) |
+| Wildlife stone [WILDLIFE-STONE-1](tasks/wildlife-stone-1.md) | RELEASED to EXECUTOR II MAC | Explicit local dependency base `1441183a` | Not started | Frozen reportback to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -499,3 +500,25 @@ incremental-session clarification is recorded in the packet; it avoids repeated
 map copies while preserving interleaved resource/HIRSCH draws. The next task's
 exact scope will follow the frozen result and first unsupported boundary, not
 an assumption that the entire original load schedule has already been closed.
+
+## Latest dispatch — PREFIX reviewed; STONE released
+
+PREFIX1441183a/source1e061493 is independently locally APPROVED, no blocking
+findings. Primary callback/decoder semantics and exact original boundary were
+re-derived;43 receipt hashes,11 intake blobs and276 fixture identities checked.
+Debug32/32 andASan30/30, each plus four required1/1 contracts, match retained logs.
+The actual result is diagnostic partial:37 accepted resource records/draws,0spawns,
+stopping before header35/record22/type1558. Full scene/global cursor remains
+unestablished; exact-head CI44385455810 is pending at this review.
+
+[WILDLIFE-STONE-1](tasks/wildlife-stone-1.md) is RELEASED after independent dispatch
+review. Establish the flags0x3a height/coverage/overlay contract, implement only
+that evidenced import class, and continue the same raw prefix to its next boundary.
+No type-id hack, skipped effects, arbitrary class expansion, World/native/tag or
+default changes. Executor pushes its task branch and sends frozen results directly
+here for review and the next release.
+
+RESOURCE0627532f is now ACCEPTED: exact CI44372186862 and all12 jobs verified green.
+Its [review](reviews/2026-11-18-wildlife-resource-1-review.md) records both closed
+findings and terminal receipt hashes. Ready for Windows-owned stacking/landing;
+main remains untouched. Decoder/helper original no-runner failures remain separate.

@@ -24,8 +24,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | 1.5 [ANNOSCENE-ORE-2](tasks/annoscene-ore-2.md) | ACCEPTED bounded research after P2 correction; no engine implementation | `b12d22b39caee90429aef77b52659aa2bfedb38e` | [44273143955](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44273143955), exact-head docs CI green | [Acceptance and preserved finding](reviews/2026-11-18-annoscene-ore-2-review.md) |
 | 1.6 [OQ-562-1](tasks/oq-562-1.md) | ACCEPTED bounded headless causal diagnosis after focused CI correction | `b7046e5e279fa979d83079feb56dc83a660f32ef` | [44282873819](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44282873819), all 12 jobs success at exact head | [Acceptance and preserved failure](reviews/2026-11-18-oq-562-1-review.md) |
 | 1.7 [SIM-LIMITS-1](tasks/sim-limits-1.md) | ACCEPTED compatibility maintenance; behavior and bytes unchanged | `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e`; code `33871080` | [44298551123](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44298551123), all 12 jobs success at exact head | [Acceptance](reviews/2026-11-18-sim-limits-1-review.md) |
-| 1.8 [DOCS-SIM-1](tasks/docs-sim-1.md) | LOCAL REVIEW APPROVED including Windows portability fix; corrected CI pending | `1fab3ca9ec80cb69a119ea7201e4a7332bd1ddf0` | [44321152729](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44321152729), in progress; first failure preserved | [Independent review](reviews/2026-11-18-docs-sim-1-review.md) |
-| 2.6 [KBEWOHN-1](tasks/kbewohn-1.md) | RELEASED directly to EXECUTOR II MAC; independent of pending DOCS CI | Accepted base `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e` | Not started | Next gameplay dependency; report directly to Mac orchestrator |
+| 1.8 [DOCS-SIM-1](tasks/docs-sim-1.md) | ACCEPTED bounded inventory/tools scope after focused corrections | `1fab3ca9ec80cb69a119ea7201e4a7332bd1ddf0` | [44321152729](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44321152729), all 12 jobs success; first failure preserved | [Independent review](reviews/2026-11-18-docs-sim-1-review.md) |
+| 2.6 [KBEWOHN-1](tasks/kbewohn-1.md) | IN PROGRESS in EXECUTOR II MAC; independent accepted base | Accepted base `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e` | Not started | Next gameplay dependency; report directly to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -240,3 +240,17 @@ capability document via the named ref only; do not merge its pending tools.
 The combined inventory check belongs to eventual stacking. EXECUTOR II MAC
 reports its frozen candidate and any essential questions directly here. No
 main push, policy/default change or pending-candidate acceptance is implied.
+
+## Current acceptance — DOCS-SIM-1 closed; gameplay continues
+
+DOCS-SIM-1 is accepted at1fab3ca9ec80cb69a119ea7201e4a7332bd1ddf0 after
+independent re-review and exact-head CI44321152729, all12 jobs green. Five
+hash-verified C++ artifacts were re-parsed with their inventories; the corrected
+contract executes on Windows as well as Unix. Full counts and preserved first
+failures are in [the acceptance review](reviews/2026-11-18-docs-sim-1-review.md).
+No main push or landing is claimed.
+
+KBEWOHN-1 is already executing from accepted2f9e4c0b under dispatch39a04206;
+its active work and gates are not interrupted by this acceptance. The executor
+reports directly here for independent review. The factual classification audit
+is underway; this is progress, not acceptance of that new implementation.

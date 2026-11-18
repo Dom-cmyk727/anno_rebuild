@@ -1,12 +1,13 @@
-# DOCS-SIM-1 — corrected local review approved; exact-head CI pending
+# DOCS-SIM-1 — accepted after independent correction review and exact-head CI
 
 Mac orchestrator, 2026-11-18. Corrected frozen head
 `1fab3ca9ec80cb69a119ea7201e4a7332bd1ddf0`, tree
 `30fc22789c65f6f855a83715d87b4f0a9624f557`, on `task/DOCS-SIM-1` from
 accepted `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e`.
 Independent read-only reviewer: `/root/review_town_ci_close`.
-**Local review APPROVED with no remaining P1/P2. Acceptance waits for exact-head
-[CI 44321152729](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44321152729).**
+**ACCEPTED for the bounded inventory/tools scope. Independent review has no
+remaining P1/P2; exact-head [CI 44321152729](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44321152729)
+passed all 12 jobs, attempt 1.**
 No main landing is implied.
 
 ## Reviewed scope and correction
@@ -93,3 +94,44 @@ Local re-review has no blocking findings. Corrected exact-head CI44321152729
 remains required for acceptance. KBEWOHN-1 is separately released from already
 accepted SIM-LIMITS2f9e4c0b, so the executor can advance gameplay without importing
 a pending candidate or calling the earlier failed CI green.
+
+## Final acceptance — exact-head CI green
+
+CI44321152729 completed successfully on1fab3ca9ec80cb69a119ea7201e4a7332bd1ddf0,
+all12 jobs successful, attempt1. The orchestrator fetched the run/job records,
+verified all five C++ artifact ZIPs against GitHub's SHA256 digests, and re-read
+the raw test logs with the canonical verdict reader and their exact inventories.
+Each lane actually executes both sim_capabilities entries and the corrected
+36-subcase contract, including native Windows. No earlier failed result is
+converted into a pass.
+
+| C++ lane | Selected | Executed passes | Skipped |
+|---|---:|---:|---:|
+| Windows MSVC | 2647 | 2196 | 451 |
+| Linux GCC Debug | 2780 | 2298 | 482 |
+| Linux GCC Release | 2780 | 2298 | 482 |
+| Linux Clang ASan/UBSan | 2781 | 2299 | 482 |
+| macOS Clang | 2786 | 2302 | 484 |
+
+Every lane has0 failed,0 empty,0 incomplete and0 sanitizer reports. Each Unix
+lane separately passes the required picture contract1/1. Skips are declared
+missing original assets, platform cases and opt-ins; no GPU or unknown skips.
+These no-assets CI runs are not original-corpus or gameplay-completeness proof.
+
+Verified public artifact identities (run44321152729):
+
+| Lane | Artifact ID | ZIP SHA256 |
+|---|---:|---|
+| windows-msvc | 14437496774 | `3a72754cf4088665db7712ba00e4fb2655a3de8b2370bfbb4f2de69ec3cf7688` |
+| linux-clang-asan | 14437321686 | `97104fee63c19e4d4c73c4f7936c56fecdf1544bde35007b73bd853385581559` |
+| linux-gcc-release | 14437155388 | `c2e17815dceb77152ced2bb2c81a4694b75d7daaccb0d17e9b2ab6dcb373a3f4` |
+| macos-clang | 14435837582 | `1f732272bc049ecf655a3798cd514ca898eea7fb0e391930e4f2ee1a28e0f85b` |
+| linux-gcc | 14435752588 | `355223a8ab765884d45fb3a3aef54a7aa0b0c15f5ee341607e4f0d0b72f8f867` |
+
+The private receipt manifest SHA256 is
+426d8a4d34691a884358d6df40635c06e423d89c7ebfc21520c28cd33048ab48.
+The first Windows CRLF test failure and Mac runner-capacity cancellation remain
+recorded above. No source changes after the reviewed1fab3ca9 candidate were
+needed. Landing/stacking belongs to the Windows orchestrator; main was untouched.
+KBEWOHN-1 is already active on its separately accepted SIM-LIMITS base and
+continues without rebase or intake.

@@ -2,7 +2,8 @@
 
 Wave 2.6, selected after DOCS-SIM-1 as the next bounded gameplay dependency.
 RELEASED 2026-11-18 to EXECUTOR II MAC after independent DOCS-SIM-1
-portability correction review; DOCS hosted CI remains separately pending.
+portability correction review; the separate DOCS acceptance does not change
+this packet’s fixed starting pin.
 EXECUTOR II MAC, one packet of about 3–4 hours. The orchestrator reviews; do not
 start reviewer subagents. Ordinary-push the owned task branch at checkpoints.
 
@@ -17,8 +18,8 @@ that recognizing a type implements its behavior.
 
 Create task/KBEWOHN-1 from accepted SIM-LIMITS-1 head
 `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e` as released by mac-lane.md in this
-commit. This independent base passed exact-head CI44298551123. The pending
-DOCS-SIM candidate is not a source dependency and is not silently accepted. Preserve every prior branch and evidence. Do not merge
+commit. This independent base passed exact-head CI44298551123. The separately reviewed
+DOCS-SIM candidate is not a source dependency and is not silently integrated. Preserve every prior branch and evidence. Do not merge
 moving main or the board, rebase, force-push or touch another executor's branch.
 No intake of WILDLIFE-1a is needed. Wildlife lifecycle, extension-tag allocation,
 original load-jitter ordering and remaining movement uncertainties stay separate.
@@ -42,7 +43,7 @@ mac-lane.md, testing/evidence-contract.md and testing/README.md, then:
   docs/sim/state.md sections 9.7–9.8 and ADR 0006;
 - the DOCS-SIM inventory via git show at corrected pinned ref
   `1fab3ca9ec80cb69a119ea7201e4a7332bd1ddf0`. It is reference material only on this base; do not merge its
-  pending tools or attempt to run files absent from the accepted source.
+  tools or attempt to run files absent from this accepted source.
 
 The lane handover references docs/UNITS.md, but it was absent from both the
 source and origin/orch/board-next at preparation. Do not search the whole home,

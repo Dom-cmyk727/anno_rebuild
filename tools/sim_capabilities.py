@@ -184,9 +184,12 @@ def extract(root):
             if len(m) != 1:
                 raise Invalid(f'{value}: missing/duplicate referenced constant')
             out[f'constant:{value}'] = [norm(m[0][0]), norm(m[0][1])]
-    for enum in ['SlotPolicy','SpatialOrder','PrngMode','IslandCandidateOrder']:
-        for index, (name, value) in enumerate(enumerators(cfg, enum)):
-            out[f'enum:{enum}.{name}'] = [f'position {index}; initializer {value}', 'declaration only; validation is reviewed']
+    for source, names in [(cfg, ['SlotPolicy', 'SpatialOrder', 'PrngMode', 'IslandCandidateOrder']),
+                          (types, ['RuntimeClass', 'PayloadTag', 'TickKind'])]:
+        for enum in names:
+            for index, (name, value) in enumerate(enumerators(source, enum)):
+                out[f'enum:{enum}.{name}'] = [f'position {index}; initializer {value}',
+                                            'declaration only; validation is reviewed']
     bodies = variants(cmd, 'Body')
     wires = dict(enumerators(cmd, 'WireType'))
     visitor = block(codec, r'\bstd::uint16_t\s+wire_type\([^)]*\)\s*\{', 'wire_type')
@@ -235,7 +238,7 @@ def extract(root):
     for i, (cls, tick, payload, gate) in enumerate(rows):
         if tick not in ticks or payload not in payloads:
             raise Invalid(f'{cls}: missing tick/payload mapping')
-        out[f'class:{cls}'] = [str(i), f'{tick} / {payload} / {gate}']
+        out[f'class:{cls}'] = [f'declaration position {i}', f'{tick} / {payload} / {gate}']
     # This short actual override is an explicit review trigger, not behavior inference.
     override = block(building, r'\bPayloadTag\s+payload_tag_of\([^)]*\)\s*\{', 'payload_tag_of')
     out['override:payload_tag_of'] = ['source expression', norm(override)]

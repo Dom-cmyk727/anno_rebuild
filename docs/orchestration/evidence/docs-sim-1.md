@@ -17,7 +17,7 @@ at this publication checkpoint. No new gameplay or default decision is included.
 | CI integration | both CTest entries discovered and executed | public contract checks actual exit/diagnostic; no internal-helper-only proof | pending |
 | Human descriptions | capability rows cite production callers and deeper proof contracts | mechanical columns explicitly do not certify reachability/gating semantics | independent source review required |
 
-Four positive public-command cases (relocated explicit/default root, comment-only
+Pre-review controls: four positive public-command cases (relocated explicit/default root, comment-only
 nondeclaration, restored tree) and 22 intended refusals execute in the final
 26-case contract. Each mutation proves its replacement applied exactly once;
 changes stay in private copies and the real source/document inputs are verified
@@ -28,7 +28,7 @@ The first dispatch-bypass control exposed a real extractor blind spot: replacing
 wire_type's final visit with a constant still agreed. Its retained pre-fix contract
 fails with wanted exit 1 / got 0. The corrected bounded extractor requires the
 actual visitor dispatch shape, its supported method declarations, and the class
-initializer plus its unmodified return shape. The final contract catches that
+initializer plus its unmodified return shape. The pre-review 26-case contract catches that
 bypass and a class-table mutation outside the initializer for the intended reason.
 No engine defect or engine correction follows from this tools finding.
 
@@ -46,7 +46,8 @@ existing field_count guards give NavRules 16, NavClassCost 4, CargoRules 2,
 FreightRules 3. Seams' independent seam_names list reconciles all 15 members.
 Body has 14 alternatives; original_class_table has all 25 RuntimeClass entries in
 order. A total of 151 mechanical rows includes 8 enum choices, 2 constants and
-1 payload override; it does not claim 151 implemented gameplay capabilities.
+1 payload override at that checkpoint; it does not claim 151 implemented gameplay capabilities.
+The independently reviewed correction below adds explicit identities for all runtime enums.
 
 The checker supports only its named current C++ blocks; it does not preprocess,
 evaluate arbitrary expressions, infer callee behavior or prove arbitrary control
@@ -74,7 +75,7 @@ inventory receipts are superseded by the final pair below after a proof-link,
 first-seen-order and bounded dispatch-guard refinement. The six unchanged lint/
 reference receipts and same-build picture contract are reused, not rerun.
 
-Final `cache/docs-sim-1/guarded-capabilities-final.log`, using the public contract
+Pre-review `cache/docs-sim-1/guarded-capabilities-final.log`, using the public contract
 as --require-test and the checker as the main selection; picture contract reused
 with --skip-auto-contract:
 
@@ -110,3 +111,53 @@ will be read at the pushed exact head and reported directly for review overlap.
 - `cache/docs-sim-1/frozen-final.json`: `3415a5caf59fe6a4dbdf2474b3e70017af53fc9e162de605984b7fb53a9cbf85`.
 - `cache/docs-sim-1/fixture-identity.json`: `f5c1b2120cb360b6dcc10165e9bd8526d5c4b8fce660b96804edebb6cc2be7bc`.
 - `cache/docs-sim-1/format.log`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`.
+
+## Independent-review correction — current frozen checkpoint
+
+Review of predecessor `c5341f5b8bf5a10e23c715a16a70846a4576a5fe` found P2:
+RuntimeClass numeric initializers and PayloadTag encoded tags were discarded.
+The private public-CLI reproductions change Plain to Plain = 1 and Workshop's
+payload tag from 1 to 21 independently; both formerly returned agreement/exit 0.
+Those observations remain in enum-review-before-fix.log, with exactly-once
+replacement checks. This was a checker defect, not an engine change.
+
+The correction inventories declaration position plus raw initializer identity
+for RuntimeClass, PayloadTag and TickKind as well as the four Rules enum types.
+It evaluates no arbitrary expression. Class row positions are now explicitly
+lexical, not resolved enum numbers. There are 54 enum rows and 197 total mechanical
+rows; the four core categories retain 58 / 14 / 25 / 15 identities, plus 28 call tokens.
+The corrected public contract has 30 cases: 6 legal/restored controls and 24
+intended refusals. Both enum faults now produce their exact drift diagnostics,
+with an additional legal restored run after each.
+
+Two reviewed prose corrections are also applied: enforce_research is the extra
+check_record research_id test at apply.cpp:435, independent of construction_eligibility
+permissions; house_updates_problem at create/load requires save_billed_goods,
+as city_booking does in Rules validation. No supported unsaved live-house mode
+is implied.
+
+The latest authoritative checker/contract receipt is
+`cache/docs-sim-1/enum-prose-correction-final.log`; earlier similarly named logs
+are preserved predecessor measurements, not this correction's inputs. The
+pre-gate SHA256 manifest frozen-enum-prose-before-gate.json matches all 8 current
+source/doc/comment inputs after the final run. The committed blobs will be
+reconciled to this manifest before push.
+
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+Only the affected checker/contract was rerun. The unchanged six lint/reference
+checks and same-build picture receipt from focused-dev.log remain reused.
+No engine token, fixture, pin or identity change. Initial CI 44306787614 on the
+predecessor is retained uncancelled; corrected exact-head CI remains pending.
+
+- `cache/docs-sim-1/enum-review-before-fix.log`: `317a2c2a8c7a8884ccf82711b983804e3ed0a75f3e58df414fdc6d286f1a04b0`.
+- `cache/docs-sim-1/enum-review-controls.py`: `c97c9e841aa2a0a1a1c7ba841ef87825356f6b19c0797bed578409202f5e2d33`.
+- `cache/docs-sim-1/contract-corrected-30.log`: `fba60d6baad690e5922a95a1481ff1a06e79c406bd2078b9196939bc6dbb1bed`.
+- `cache/docs-sim-1/enum-prose-correction-final.log`: `65780e52b0083fb2c62a777d36cfd6ef5357376ca8beefc3f279bf9715d53bc3`.
+- `cache/docs-sim-1/frozen-enum-prose-before-gate.json`: `538dd971f31343f563ba92cf4fda3b60dc0bed762d32692e48a792101b89e7a2`.
+- `cache/docs-sim-1/source-inventory-corrected.json`: `24cde650552ca61a63b618dfd71fbe0cc8a65be5a131663ed8720c500185d54f`.

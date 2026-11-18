@@ -84,6 +84,12 @@ def main():
         changed('class mutation outside initializer', FILES[5], table_body,
                 table_body.replace('return t;', 't.clear(); return t;'),
                 'class table: unsupported statement outside initializer')
+        changed('RuntimeClass numeric initializer', FILES[2], '    Plain,', '    Plain = 1,',
+                'drift enum:RuntimeClass.Plain:')
+        run('RuntimeClass initializer restored', 0, 'agreement')
+        changed('PayloadTag encoded initializer', FILES[2], '    Workshop = 1,', '    Workshop = 21,',
+                'drift enum:PayloadTag.Workshop:')
+        run('PayloadTag initializer restored', 0, 'agreement')
         changed('changed class tick', FILES[5], '{C::Workshop, T::Workshop, P::Workshop, 500}', '{C::Workshop, T::None, P::Workshop, 500}', 'drift class:Workshop:')
         changed('changed class payload', FILES[5], '{C::Workshop, T::Workshop, P::Workshop, 500}', '{C::Workshop, T::Workshop, P::Inert, 500}', 'drift class:Workshop:')
         hook = next(line+'\n' for line in originals[DOC].decode().splitlines() if line.startswith('| `hook:on_placed`'))

@@ -15303,12 +15303,16 @@ Focused pre-push correction review: orchestrator independently approved the seve
 - `tools/sim_capabilities.py`: read-only source/document reconciliation; normalized first three table columns, not prose certification.
 - Unsupported/missing/empty/duplicate inputs and incomplete mappings refuse; --dump emits JSON without writing.
 - `sim_capabilities_agree` and `sim_capabilities_contract` are registered/discovered in canonical CTest/CI.
-- Final public contract: 26 subcases, 0 failures; 4 legal controls and 22 intended refusals, replacements checked.
+- Final public contract: 30 subcases, 0 failures; 6 legal/restored controls and 24 intended refusals, replacements checked.
 - Controls include real row omission, extra/duplicate rows, new Rules field, default/constant/enum order drift, command/wire/class/hook/phase drift.
 - Missing/empty input, unsupported declarations and comments-as-nondeclarations are covered on relocated copies.
 - Retained failure: initial dispatch-bypass mutant wrongly agreed; added exact bounded visitor-use guard and trailing class-table guard.
 - Final bypass and trailing-mutation controls fail for their intended diagnostic; real inputs remain unchanged.
 - Independent count cross-checks use archive field lists/guards and seam_names, not only generated rows.
+- Review P2 fixed: RuntimeClass/PayloadTag/TickKind positions and initializer identities now checked; 54 enum rows, 197 total mechanical rows.
+- Retained both formerly green enum faults (Plain = 1, payload Workshop = 21); each now refuses with exact drift and has a restored legal control.
+- Corrected reviewed enforce_research reader/independent permission checks and persisted-bills prerequisite for live houses.
+- Final pre-gate 8-input manifest matches after the run; predecessor logs/CI remain intact, with no engine or broad rerun.
 
 Initial focused tools gate `cache/docs-sim-1/focused-dev.log` (picture, then 8 selected tools):
 
@@ -15319,7 +15323,7 @@ COUNTS: selected=8 executed=8 failed=0 empty=0 skipped=0 (required-asset=0 platf
 VERDICT: PASS
 ```
 
-Final checker/required contract `cache/docs-sim-1/guarded-capabilities-final.log`:
+Final corrected checker/required contract `cache/docs-sim-1/enum-prose-correction-final.log`:
 
 ```text
 COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0

@@ -1,12 +1,12 @@
-# DOCS-SIM-1 — local review approved; CI portability correction required
+# DOCS-SIM-1 — corrected local review approved; exact-head CI pending
 
-Mac orchestrator, 2026-11-18. Frozen head
-`9d4a0e15c01c6f2afe708fa95f6a6c90e648f6b8`, tree
-`3454405185904a423c13c718d9eee5ff3fdc81b8`, on `task/DOCS-SIM-1` from
+Mac orchestrator, 2026-11-18. Corrected frozen head
+`1fab3ca9ec80cb69a119ea7201e4a7332bd1ddf0`, tree
+`30fc22789c65f6f855a83715d87b4f0a9624f557`, on `task/DOCS-SIM-1` from
 accepted `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e`.
 Independent read-only reviewer: `/root/review_town_ci_close`.
 **Local review APPROVED with no remaining P1/P2. Acceptance waits for exact-head
-[CI 44307300031](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44307300031).**
+[CI 44321152729](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44321152729).**
 No main landing is implied.
 
 ## Reviewed scope and correction
@@ -69,3 +69,27 @@ Separately, build-macos job134812165786 has no runner and no executed step.
 GitHub annotations name unavailable hosted runners and macOS arm64 capacity.
 That cancellation remains preserved, not a code-failure claim or a pass.
 The normal corrected-source push will require a fresh exact-head verdict.
+
+## Portability correction — independently approved at 1fab3ca9
+
+The original row needle discarded its line ending and appended LF; CRLF source
+therefore matched zero times. The correction preserves actual row endings and
+writes mutation bytes directly, avoiding Windows text-mode double translation.
+Exactly-once replacement and intended missing-row diagnostics remain strict.
+The reviewer independently ran the full public contract on private LF and CRLF
+copies:36/36 subcases each, with exact byte restoration and unchanged real inputs.
+These are10 legal/restored plus26 intended refusal subcases, not36 CTest passes.
+
+Reviewed contract SHA256
+cd402f75a70ef5d1c5d47315bd03a6a13e9175c09ebbe8bf1b7bbf5d11e18a39.
+The authoritative current local receipt is newline-correction-final.log, SHA256
+8252127b206a49e157c98eae75852272031247d647679b787a347b1025cb07e1:
+required contract1/1 and checker1/1, zero failures/empty/skips/incomplete/sanitizer.
+All eight frozen input hashes agree with committed1fab3ca9. Only the contract
+and report/evidence addenda changed from9d4a0e15; earlier semantic review and
+unaffected lint/reference/picture evidence stand. No engine campaign repeated.
+
+Local re-review has no blocking findings. Corrected exact-head CI44321152729
+remains required for acceptance. KBEWOHN-1 is separately released from already
+accepted SIM-LIMITS2f9e4c0b, so the executor can advance gameplay without importing
+a pending candidate or calling the earlier failed CI green.

@@ -770,8 +770,12 @@ template <class A, Same<Mine> S> void fields(A& a, S& s) {
     // The deposit is an index into Island::deposits: a presence byte, then a u64 (the
     // optional<size_t> is widened at the archive boundary).
     bool has = s.deposit.has_value();
+    std::uint64_t deposit = 0;
+    if constexpr (!A::kReading) {
+        deposit = has ? static_cast<std::uint64_t>(*s.deposit) : 0;
+    }
+    // Reading the presence byte does not engage the destination optional.
     a.boolean(has);
-    std::uint64_t deposit = has ? static_cast<std::uint64_t>(*s.deposit) : 0;
     if (has) {
         a.u64(deposit);
     }

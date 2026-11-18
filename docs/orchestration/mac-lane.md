@@ -19,6 +19,7 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | 1.1 prerequisite [TOWN-START-SETUP-1](tasks/town-start-setup-1.md) | ACCEPTED; Windows landing pending | Head `ad360af024543a71e083dc3de714b7f48f354e63`; tested code `e71f2dc0` | [44209875238](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44209875238), all 12 jobs success at exact head | [Acceptance](reviews/2026-11-18-town-start-setup-1-review.md) |
 | 1.1 [TOWN-START-1](tasks/town-start-1.md) | LOCAL REVIEW PASSES; CI BLOCKED, NOT ACCEPTED | Report `156badab35516609e92796e85a4fb0b9314ddac6`; code `c9132c39`; measured `f36c22fa` | Source [44255019025](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44255019025) failed; final [44256560982](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44256560982) pending | [Review and CI disposition](reviews/2026-11-18-town-start-1-review.md) |
 | 1.2 [WILDLIFE-1a](tasks/wildlife-1a.md) | RELEASED 2026-11-18 independently after town local review | Pure helpers only; main base `b5c0ada209d94a0082bc88d793c917c7222e6a21` | Pending; inherited base CI failures remain explicit | Pending |
+| Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | IN PROGRESS; owner authorized the Mac orchestrator to repair CI separately, without interrupting wildlife | `task/TOWN-CI-CLOSE-1`, source `8e502b323aea55da4a155ce64c22f138f5d3700d`, based on town report `156badab` | [44258255346](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44258255346), pending | Independent source review has no blocking findings; validation pending |
 
 ## Review and reporting contract
 
@@ -51,3 +52,10 @@ town landing: it is independent and starts from the named main pin. No owner rel
 This is a scheduling decision, not a CI waiver or acceptance. The landing orchestrator must receive
 the freight/GCC Release and ciso646/Clang-ASan failures for separate triage. Never fold an unrelated
 repair into wildlife or silently convert a red job into a pass.
+
+Owner instruction, 2026-11-18: take care of those CI blockers in a separate package without
+interrupting wildlife. The Mac orchestrator owns TOWN-CI-CLOSE-1 in a separate managed worktree;
+the executor continues WILDLIFE-1a. Scope is the reproduced GCC vector-copy warning and the
+upstream doctest C++20 header fix, plus validation and independent review. No main push, gameplay
+change or automatic intake by wildlife. Town's own linkage correction now passes the final-head
+GCC Debug build; its original failure remains preserved.

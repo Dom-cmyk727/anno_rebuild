@@ -21,7 +21,7 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | 1.2 [WILDLIFE-1a](tasks/wildlife-1a.md) | LOCAL REVIEW PASSES; inherited CI closure pending; no World integration | `756e008b8027cf9186b4e79e3ae2e76b1dab4c29`, pure helpers only | [44262049576](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44262049576); not claimed green | [Conditional local review](reviews/2026-11-18-wildlife-1a-review.md) |
 | 1.3 [NET-ADR-1](tasks/net-adr-1.md) | ACCEPTED documentation; owner decisions remain open | `cf7109fe14fa729cbb0f1c775fd243cd06b34c26` | [44264630010](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44264630010), exact-head docs CI green | [Acceptance](reviews/2026-11-18-net-adr-1-review.md) |
 | 1.4 [MIL-RE-1](tasks/mil-re-1.md) | ACCEPTED bounded static research; no combat implementation | `20edc775e12a4e8cd73d703d80b8ea0e4bb4e02b` | [44268712248](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44268712248), exact-head docs CI green | [Acceptance](reviews/2026-11-18-mil-re-1-review.md) |
-| 1.5 [ANNOSCENE-ORE-2](tasks/annoscene-ore-2.md) | RELEASED 2026-11-18; quantities/no-ore/treasure read and corpus audit | Main base `b5c0ada209d94a0082bc88d793c917c7222e6a21`; predecessor ea023e18 read-only | Pending | Pending |
+| 1.5 [ANNOSCENE-ORE-2](tasks/annoscene-ore-2.md) | CHANGES REQUESTED: unassigned quantity branch projection; focused correction released | `9fecc2f09a13028514813f794380fe4939363ed3`; not accepted | Reported docs CI 44271754490; no acceptance from CI alone | Independent review found R==0 bypasses the flag check; correction sent directly |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -94,3 +94,8 @@ Wildlife remains locally reviewed with inherited-base CI pending, preserved and 
 NET-ADR-1 and MIL-RE-1 are accepted documentation packets. ANNOSCENE-ORE-2 has reported a
 frozen docs candidate and is under independent review; its row is updated when review completes.
 The owner's keep-awake process remains active. No owner policies or defaults were changed.
+
+ANNOSCENE-ORE-2 review found a P2 in the unassigned-marker quantity projection: after R is
+cleared, the original jumps past the take-flag check and uses world property14 bit2. The current
+audit wrongly preserves quantity for both settings. A focused read/projection/corpus/docs fix
+is released directly; preserve its failed evidence. No next implementation or OQ-562 release yet.

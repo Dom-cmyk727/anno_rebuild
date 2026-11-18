@@ -17,8 +17,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | 0.1 [GATE-RUN ui-info-2d-buildcat](tasks/gate-run-ui-info-2d-buildcat.md) | CLOSED with FAIL: two no-frame cases; warning check passed; candidate NOT ACCEPTED | Candidate `95897a55bc939a185766b7207e69d098997cdb1d`; tree `d65099256a598f7ce82d37ea303b81ff87088542` | Exact-head lookup: no run found | [Final failure review](reviews/2026-11-17-gate-ui-info-2d-buildcat-review.md); eight extra GPU skips also need policy reconciliation |
 | 0.2 [MAC-HEAVY-1b](tasks/mac-heavy-1b.md) | ACCEPTED: publication correction only; Windows landing pending | `8c7155080fbe3e4544f4d4908518859b8e80c4fe` | [44193521811](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44193521811), exact-head docs gate green | [Acceptance](reviews/2026-11-17-mac-heavy-1b-review.md) |
 | 1.1 prerequisite [TOWN-START-SETUP-1](tasks/town-start-setup-1.md) | ACCEPTED; Windows landing pending | Head `ad360af024543a71e083dc3de714b7f48f354e63`; tested code `e71f2dc0` | [44209875238](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44209875238), all 12 jobs success at exact head | [Acceptance](reviews/2026-11-18-town-start-setup-1-review.md) |
-| 1.1 [TOWN-START-1](tasks/town-start-1.md) | IN PROGRESS, 2026-11-18; single corrective opening frozen and running | Test source `f36c22fa50cff7d1ade22b804d9216ef5feb8060`, on accepted setup `ad360af0` | Pending final head | Initial three-house opening retained; no acceptance yet. Reuse setup full pins for unchanged production/fixtures |
-| 1.2 [WILDLIFE-1a](tasks/wildlife-1a.md) | WRITTEN; queued after 1.1 review; explicit release required | Pure helpers only; to cut from fetched main | Pending | Pending |
+| 1.1 [TOWN-START-1](tasks/town-start-1.md) | LOCAL REVIEW PASSES; CI BLOCKED, NOT ACCEPTED | Report `156badab35516609e92796e85a4fb0b9314ddac6`; code `c9132c39`; measured `f36c22fa` | Source [44255019025](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44255019025) failed; final [44256560982](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44256560982) pending | [Review and CI disposition](reviews/2026-11-18-town-start-1-review.md) |
+| 1.2 [WILDLIFE-1a](tasks/wildlife-1a.md) | RELEASED 2026-11-18 independently after town local review | Pure helpers only; main base `b5c0ada209d94a0082bc88d793c917c7222e6a21` | Pending; inherited base CI failures remain explicit | Pending |
 
 ## Review and reporting contract
 
@@ -38,14 +38,16 @@ Deleting or rewriting the old public MAC-HEAVY-1 branch is also an owner decisio
 
 ## Current execution order
 
-Wave 0 and the setup prerequisite are closed as recorded above. Finish TOWN-START-1's single
-corrective opening, its focused checks and frozen report. The initial opening reached only three
-Pioneer houses; the revised recipe derives a 16-house target from the chapel's 125-resident stage
-requirement and eight residents per Pioneer house. This is an experiment in progress, not proof of
-growth or a global gameplay blocker. No third opening or production repair is authorized here.
+Wave 0 and the setup prerequisite are closed as recorded above. Town's bounded local measurement
+is reviewed: 16 capped Pioneer houses / 128 residents, no Settler; exact duplicate traces and a
+distinguishing food omission. CI acceptance remains blocked, including two unchanged base build
+paths. The town-owned helper linkage correction awaits final-head GCC confirmation. Preserve that
+branch and its evidence; no third opening or production repair is authorized in the town packet.
 
 The historical ui-tabs-b PASS receipt is already closed; receiving it again does not interrupt or
 replace the town task. Do not rerun either old gate. A newly assigned GATE-RUN still has priority.
-Results go directly to this orchestrator for review. After town acceptance, release WILDLIFE-1a
-directly; do not wait for an owner relay. An unrelated gate failure is preserved/escalated, never
-silently converted into a pass or repaired here.
+Results go directly to this orchestrator for review. WILDLIFE-1a is released without waiting for
+town landing: it is independent and starts from the named main pin. No owner relay is required.
+This is a scheduling decision, not a CI waiver or acceptance. The landing orchestrator must receive
+the freight/GCC Release and ciso646/Clang-ASan failures for separate triage. Never fold an unrelated
+repair into wildlife or silently convert a red job into a pass.

@@ -1,8 +1,12 @@
 # WILDLIFE-1a — pure wildlife decisions, before any world integration
 
-**Wave 1.2; WRITTEN, not yet released.** EXECUTOR II MAC, after the TOWN-START-1 review
-and an explicit Mac-orchestrator release. About 3–4 hours; one concern. Branch
-`task/WILDLIFE-1a` from freshly fetched main at release, with its base recorded.
+**Wave 1.2; RELEASED 2026-11-18 to EXECUTOR II MAC** after the
+[town local review](../reviews/2026-11-18-town-start-1-review.md).
+Town landing is not a dependency: this packet does not consume its loader or measurement changes.
+About 3–4 hours; one concern. Branch `task/WILDLIFE-1a` from the verified main pin
+`b5c0ada209d94a0082bc88d793c917c7222e6a21`. Fetch for visibility, but do not silently substitute a
+moving base. Preserve the frozen town branch and evidence. Reuse an owned clean worktree if suitable;
+use distinct build directories so town's retained binaries and logs remain available for review.
 No reviewer subagents; the orchestrator reviews the frozen result.
 
 ## Read first
@@ -43,8 +47,15 @@ decision oracle, not an animal lifecycle or a full-tick oracle.
    Do not broaden this into another mutation framework or repeat unchanged research campaigns.
 5. **Focused verification and handoff.** Register the helper tests and required reference checks,
    run canonical Debug and ASan/UBSan selections, format changed C++, and perform the available
-   warning checks. Run `tools/pins.py check` normally (no regen): zero moved pins and no fixture
-   identity/layout/PRNG/default change. Record unavailable target platforms as NOT_RUN.
+   warning checks. Run `tools/pins.py check` with an explicit affected/quick identity selection
+   (no regen), including its required `pins_contract`; label that result **partial**, with the
+   selected names. Check the base-to-head diff and fixture hashes: zero moved pins and no fixture,
+   identity/layout/PRNG/default change. Do not repeat the unchanged long corpus campaign merely
+   because new, unwired functions were added. The reuse argument must show that existing runtime
+   code never calls the helpers, no global initializer was added, and existing state/serialization,
+   registry, scheduling and random-draw paths are unchanged. If that is false, stop before widening
+   scope and request an appropriate verification selection. Record target platforms as NOT_RUN
+   where unavailable and distinguish reused full-campaign evidence from the new partial check.
    Ordinary-push the task branch and inspect hosted CI at the exact reported head.
 
 ## Boundaries that must survive the port
@@ -64,3 +75,18 @@ with Decisions and reasoning, preserved failures, counts, head and compact evide
 Raw logs remain in cache; no absolute host paths, original tables or disassembly in git.
 Stop before wiring a single helper into World. Do not start WILDLIFE-1b, change defaults,
 force-push, push main or alter another lane. Past six hours, report a clean bounded checkpoint.
+
+## Inherited CI failure, recorded 2026-11-18
+
+Town source `f36c22fa` hit GCC Release `-Werror=null-dereference` at
+`src/sim/include/anno/sim/freight_state.hpp:33`, while compiling `freight.cpp`, in CI
+[44255019025](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44255019025).
+Those files, the sim CMake file and CI workflow were unchanged from the accepted setup source.
+Clang ASan also failed in unchanged test-support compilation on libstdc++ 15's `ciso646`
+C++20-header diagnostic. Town's separate helper-linkage error was corrected in its own branch;
+it is not part of this main base. The root causes of the base failures are not established.
+This is not permission to suppress warnings, call CI green,
+retry until green, or add a freight repair to wildlife. If the failure remains at your base/head,
+preserve it and return READY FOR REVIEW / CI BLOCKED after the scoped work. Exact-head green CI
+remains required for acceptance and landing. Independent gameplay development need not wait for
+that separate build issue to be resolved.

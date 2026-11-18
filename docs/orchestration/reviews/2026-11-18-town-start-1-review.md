@@ -1,7 +1,9 @@
-# TOWN-START-1 — local measurement reviewed; CI acceptance blocked
+# TOWN-START-1 — accepted on the repaired CI-green stack
 
 Reviewer: Mac orchestrator, direct independent read-only review, 2026-11-18.
-**Verdict: local measurement review passes; NOT ACCEPTED for landing. CI closure is required.**
+**Final verdict: ACCEPTED on repaired stack 9edb151c, CI 44266114323 green.**
+The initial conditional review and failed source history below remain preserved; the final
+acceptance section supersedes their pending status.
 No outstanding behavioral or evidence finding was found in this bounded measurement.
 This is not proof of a sustainable or balanced economy, a Settler upgrade, or an irreducible
 engine blocker. No map selection or default-on decision follows from it.
@@ -70,3 +72,18 @@ It consumes neither the town measurement nor the setup delta, and does not land 
 This sequencing keeps gameplay development moving while CI closure remains explicit. The executor
 preserves the town branch/evidence, reports the final CI disposition directly, and starts the pure
 helpers only. World integration, owner policies and acceptance remain outside that release.
+
+## Final acceptance after separate CI closure
+
+Accepted at `9edb151c414246d306194a703db71475affbdad4` on `task/TOWN-CI-CLOSE-1`, a
+reviewed descendant of the frozen town report. All twelve exact-head CI jobs pass in
+[44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323).
+See [the independent repair/evidence review](2026-11-18-town-ci-close-1-review.md)
+for the fixes, counts, retained failures and explicit town-measurement reuse argument.
+The original town ref is not relabelled green. Candidate stacking/landing remains with Windows.
+
+The measured town still reaches 16 Pioneer houses / 128 residents and no Settler. This accepts
+an honest measured stopping point, not the full settlement goal, a sustainable economy, native
+save/replay coverage, a selected production map or living defaults. No 900,000-tick rerun was
+needed: the repaired runtime paths are unreachable in that experiment and its hash writer is
+unchanged. Wildlife continued independently throughout the separate CI repair.

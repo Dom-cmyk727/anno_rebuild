@@ -1,7 +1,7 @@
 # TOWN-CI-CLOSE-1 — source and local evidence approved; CI pending
 
 Mac orchestrator, 2026-11-18. Independent read-only source/evidence reviewer:
-`/root/review_town_ci_close`. **Not accepted for landing until the exact-head hosted gate passes.**
+`/root/review_town_ci_close`. **ACCEPTED at exact green source 9edb151c; Windows stacking and landing pending.**
 
 Branch `task/TOWN-CI-CLOSE-1` starts at town report
 `156badab35516609e92796e85a4fb0b9314ddac6`. Current source is
@@ -131,3 +131,45 @@ island test is now covered, without restarting the completed freight run.
 Final independent source/evidence review is approved conditionally on exact-head hosted CI.
 No known local blocker remains. Earlier gates retain their original pins and are reused by
 explicit dependency; this is not a new full game-file or target-GPU campaign.
+
+## Final hosted acceptance — supersedes the pending checkpoints above
+
+Exact head `9edb151c414246d306194a703db71475affbdad4`, tree
+`6dd647aac8dbe9e1335acd0659daa9c287ee99c1`, completed CI
+[44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323)
+with all twelve jobs successful, including the aggregate gate and all five C++ lanes.
+This is the reviewed source; no documentation-only head substitutes for its CI result.
+
+| C++ lane | Selected | Executed passes | Skips: assets / platform / opt-in | Failed / empty / incomplete / sanitizer lines |
+|---|---:|---:|---|---|
+| Linux GCC Debug | 2774 | 2292 | 449 / 7 / 26 | 0 / 0 / 0 / 0 |
+| Linux GCC Release | 2774 | 2292 | 449 / 7 / 26 | 0 / 0 / 0 / 0 |
+| Linux Clang ASan/UBSan | 2775 | 2293 | 449 / 7 / 26 | 0 / 0 / 0 / 0 |
+| macOS Clang | 2780 | 2296 | 449 / 9 / 26 | 0 / 0 / 0 / 0 |
+| Windows MSVC | 2641 | 2190 | 423 / 7 / 21 | 0 / 0 / 0 / 0 |
+
+CI explicitly has no original assets; these skips are not corpus execution. GPU/other skips
+are zero in these inventories, which is not proof of hardware GPU coverage. The four Unix
+logs also retain the separate required picture contract 1/1. Local real-file receipts remain
+at their stated pins. No new full original-file suite, target-GPU or multiplayer-scale claim.
+
+The downloaded evidence ZIPs match GitHub's artifact API SHA256 values:
+
+| Artifact | SHA256 |
+|---|---|
+| test-evidence-linux-gcc | aa8302ffe24c67ff45d3085c41a47c6854c6903396e0915ec56336e6ff3bbef8 |
+| test-evidence-linux-gcc-release | 1e1f4bd19817c29d4ad3516cfdd43af05a1c15656a9aa2c8464f9b2a4709d773 |
+| test-evidence-linux-clang-asan | 09876e21646ea7d29b9feb019be44820d36bc3a535bb1ed4ce4b419f0df1f9a9 |
+| test-evidence-macos-clang | 49731f18bfc68433f053b7e63b18a69726a30978939a7671913d89465a3efc70 |
+| test-evidence-windows-msvc | 4906bde6f4ab5f0f9bbddd9e05ccf0c736b22d437de8aed1b53f00d1cc713858 |
+
+TOWN-CI-CLOSE-1 closes. TOWN-START-1 is accepted on this repaired stack with its unchanged
+bounded measurement and limitations. The original red town head stays red in the history.
+For another lane, the repair delta is `156badab..9edb151c`; the landing orchestrator must integrate
+it deliberately with that lane's dependencies and verify the combined candidate. No automatic
+rebase/merge or main push occurred. Wildlife's frozen candidate was not edited or interrupted.
+
+The independent reviewer also verified the final run/head and all twelve job conclusions,
+hash-checked all five ZIPs, matched their extracted logs and re-parsed each with the canonical
+verdict reader plus retained inventory. All five reconcile as PASS with the counts above.
+The earlier conditional approval is therefore final; no new test campaign was run for review.

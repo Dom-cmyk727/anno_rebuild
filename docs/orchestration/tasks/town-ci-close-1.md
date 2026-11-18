@@ -44,3 +44,10 @@ Original failed CI and local attempts remain preserved. The final changed-test g
 9edb151c; earlier production and minimap gates retain their original pins and dependency reuse.
 The exact-head hosted CI run remains the final acceptance condition. No other worktree takes
 these changes automatically; the landing orchestrator handles integration into the accepted stack.
+
+## Completion
+
+ACCEPTED at 9edb151c414246d306194a703db71475affbdad4, exact-head CI 44266114323:
+all twelve jobs pass. Every acceptance-table row above is satisfied within the final review's
+stated scope. Historical pending rows are superseded by that review. Stop repair work here;
+Windows owns stacking/landing and other lanes preserve their current checkpoints.

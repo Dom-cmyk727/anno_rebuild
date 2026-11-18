@@ -17,12 +17,12 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | 0.1 [GATE-RUN ui-info-2d-buildcat](tasks/gate-run-ui-info-2d-buildcat.md) | CLOSED with FAIL: two no-frame cases; warning check passed; candidate NOT ACCEPTED | Candidate `95897a55bc939a185766b7207e69d098997cdb1d`; tree `d65099256a598f7ce82d37ea303b81ff87088542` | Exact-head lookup: no run found | [Final failure review](reviews/2026-11-17-gate-ui-info-2d-buildcat-review.md); eight extra GPU skips also need policy reconciliation |
 | 0.2 [MAC-HEAVY-1b](tasks/mac-heavy-1b.md) | ACCEPTED: publication correction only; Windows landing pending | `8c7155080fbe3e4544f4d4908518859b8e80c4fe` | [44193521811](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44193521811), exact-head docs gate green | [Acceptance](reviews/2026-11-17-mac-heavy-1b-review.md) |
 | 1.1 prerequisite [TOWN-START-SETUP-1](tasks/town-start-setup-1.md) | ACCEPTED; Windows landing pending | Head `ad360af024543a71e083dc3de714b7f48f354e63`; tested code `e71f2dc0` | [44209875238](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44209875238), all 12 jobs success at exact head | [Acceptance](reviews/2026-11-18-town-start-setup-1-review.md) |
-| 1.1 [TOWN-START-1](tasks/town-start-1.md) | LOCAL REVIEW PASSES; CI BLOCKED, NOT ACCEPTED | Report `156badab35516609e92796e85a4fb0b9314ddac6`; code `c9132c39`; measured `f36c22fa` | Source [44255019025](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44255019025) failed; final [44256560982](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44256560982) pending | [Review and CI disposition](reviews/2026-11-18-town-start-1-review.md) |
+| 1.1 [TOWN-START-1](tasks/town-start-1.md) | ACCEPTED bounded measurement on repaired stack; landing pending | Accepted `9edb151c414246d306194a703db71475affbdad4`; preserved report `156badab`, measured `f36c22fa` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Acceptance and preserved failures](reviews/2026-11-18-town-start-1-review.md) |
 | 1.2 [WILDLIFE-1a](tasks/wildlife-1a.md) | LOCAL REVIEW PASSES; inherited CI closure pending; no World integration | `756e008b8027cf9186b4e79e3ae2e76b1dab4c29`, pure helpers only | [44262049576](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44262049576); not claimed green | [Conditional local review](reviews/2026-11-18-wildlife-1a-review.md) |
 | 1.3 [NET-ADR-1](tasks/net-adr-1.md) | ACCEPTED documentation; owner decisions remain open | `cf7109fe14fa729cbb0f1c775fd243cd06b34c26` | [44264630010](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44264630010), exact-head docs CI green | [Acceptance](reviews/2026-11-18-net-adr-1-review.md) |
 | 1.4 [MIL-RE-1](tasks/mil-re-1.md) | ACCEPTED bounded static research; no combat implementation | `20edc775e12a4e8cd73d703d80b8ea0e4bb4e02b` | [44268712248](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44268712248), exact-head docs CI green | [Acceptance](reviews/2026-11-18-mil-re-1-review.md) |
 | 1.5 [ANNOSCENE-ORE-2](tasks/annoscene-ore-2.md) | RELEASED 2026-11-18; quantities/no-ore/treasure read and corpus audit | Main base `b5c0ada209d94a0082bc88d793c917c7222e6a21`; predecessor ea023e18 read-only | Pending | Pending |
-| Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | LOCAL REVIEW PASSES; hosted CI still required; wildlife untouched | `task/TOWN-CI-CLOSE-1`, source `9edb151c414246d306194a703db71475affbdad4`, based on town report `156badab` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), pending | [Repair review](reviews/2026-11-18-town-ci-close-1-review.md); earlier failed runs retained |
+| Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
 
@@ -40,7 +40,7 @@ D-1 map choice and D-2 living defaults remain with the owner. TOWN-START-1 measu
 with explicit test rules only. Any new policy question stops the dependent step and is sent to the owner.
 Deleting or rewriting the old public MAC-HEAVY-1 branch is also an owner decision; this dispatch does neither.
 
-## Current execution order
+## Dispatch history (pending CI statements below are historical)
 
 Wave 0 and the setup prerequisite are closed as recorded above. Town's bounded local measurement
 is reviewed: 16 capped Pioneer houses / 128 residents, no Settler; exact duplicate traces and a
@@ -84,3 +84,13 @@ MIL-RE-1 is accepted at 20edc775, bounded static research only. ANNOSCENE-ORE-2 
 next under wave 1.5, with the accepted predecessor read from its pinned ref rather than merged.
 TOWN-CI-CLOSE-1 now has all focused local receipts and independent review; GCC Debug/Release
 and macOS hosted lanes pass. Windows and Clang-ASan remain running, not accepted early.
+
+## Current closeout — 2026-11-18
+
+TOWN-CI-CLOSE-1 and the bounded TOWN-START-1 measurement are ACCEPTED on exact green stack
+9edb151c (CI 44266114323, all 12 jobs success). Earlier pending/failure entries above remain
+history, not current blockers. No main push; Windows owns stacking and combined-candidate gates.
+Wildlife remains locally reviewed with inherited-base CI pending, preserved and untouched.
+NET-ADR-1 and MIL-RE-1 are accepted documentation packets. ANNOSCENE-ORE-2 has reported a
+frozen docs candidate and is under independent review; its row is updated when review completes.
+The owner's keep-awake process remains active. No owner policies or defaults were changed.

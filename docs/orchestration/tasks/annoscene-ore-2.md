@@ -17,7 +17,9 @@ the checkpoint; never merge/rebase other work, push main or force. No executor r
   read its annoscene.md section 5.1, `tools/annoscene_ore_ref.py`, its public-command contract
   tests and report using `git show <pin>:<path>`. It was stacked by merge ac02d4a2; do not
   merge that candidate or overwrite baseline files with its versions. Extract reference tools
-  to private cache only if needed, recording their exact blobs.
+  to private cache only if needed, recording their exact blobs. Setup correction: the named
+  b5c0ada2 baseline already contains the same three documentation/tool blobs as ea023e18;
+  use them directly. The dispatch chat's claim that they were absent was incorrect.
 - `docs/re/mine-deposit-followups.md`, `docs/sim/salt-extraction.md`, existing island/OCCUR/
   BERGWERK parsers and original registry facts where newly relied on. Read selectively; this
   packet concerns scenario placement, not another mining-production rewrite.
@@ -70,8 +72,8 @@ engine coverage. No long C++ campaign is needed for this documentation-only pack
 
 ## O4 — report and stop before implementation
 
-Write a focused new `docs/re/annoscene-ore-2.md` linked to the pinned predecessor, so no absent
-predecessor section is accidentally overwritten. Append the bottom REPORTS entry with verified
+Write a focused new `docs/re/annoscene-ore-2.md` linked to the pinned predecessor, preserving
+the predecessor section and its evidence. Append the bottom REPORTS entry with verified
 rules, addresses, corpus accounting, hashes, decisions/reasons, unread edges and NOT_RUN. At most
 add a necessary narrow index link. Private audit scripts are not installed in the project.
 Do not edit src/, state versions, goldens, data/maps, game/, workflow/coordinator, TASKS.md,

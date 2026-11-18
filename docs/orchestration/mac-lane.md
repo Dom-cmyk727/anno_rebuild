@@ -27,8 +27,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | 1.8 [DOCS-SIM-1](tasks/docs-sim-1.md) | ACCEPTED bounded inventory/tools scope after focused corrections | `1fab3ca9ec80cb69a119ea7201e4a7332bd1ddf0` | [44321152729](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44321152729), all 12 jobs success; first failure preserved | [Independent review](reviews/2026-11-18-docs-sim-1-review.md) |
 | 2.6 [KBEWOHN-1](tasks/kbewohn-1.md) | LOCAL REVIEW APPROVED; final CI macOS runner unavailable, retry pending | `6fb7dbb359288289c70ac10161579b5f7666ae11`; tested source `3c20430b` | [44336688872](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44336688872), terminal FAIL (no macOS runner); source44335070081 PASS | [Independent review](reviews/2026-11-18-kbewohn-1-review.md) |
 | Wildlife import [WILDLIFE-LOAD-1](tasks/wildlife-load-1.md) | LOCAL REVIEW APPROVED; macOS C++ CI never obtained runner | `f1e245d2769306451d4c2079aadf6a64be93defd` | [44344197686](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44344197686), FAIL: 10 successful jobs, 1 cancelled runner, failed aggregate gate | [Independent review](reviews/2026-11-18-wildlife-load-1-review.md) |
-| Wildlife correction [WILDLIFE-LOAD-FIX-1](tasks/wildlife-load-fix-1.md) | IN PROGRESS; reproduced boundary failure, correction and distinguishing controls underway | Accepted base `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e`; authorized intake `5705678c` | Not started | Frozen report goes directly to Mac orchestrator |
-| Wildlife initialization [WILDLIFE-INIT-1](tasks/wildlife-init-1.md) | PREPARED, independently dispatch-reviewed; release after LOAD-FIX local review | Independent accepted base `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e` | Not started | Bounded fresh-load contract/reference, no World or tag allocation |
+| Wildlife correction [WILDLIFE-LOAD-FIX-1](tasks/wildlife-load-fix-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `533ee3fc96a560f1c3189f3a4d32ce113abff65a`; source `73edb244` | [44354548420](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44354548420), pending | [Independent review](reviews/2026-11-18-wildlife-load-fix-1-review.md) |
+| Wildlife initialization [WILDLIFE-INIT-1](tasks/wildlife-init-1.md) | RELEASED directly to EXECUTOR II MAC after LOAD-FIX local review | Independent accepted base `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e` | Not started | Bounded fresh-load contract/reference, no World or tag allocation |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -351,3 +351,20 @@ The original annotation says no hosted runner acquired the job; capacity/interna
 server notices accompany it. This is infrastructure NOT_RUN, not a decoder defect.
 A signed-in operator must retry the cancelled lane and dependent gate; successful
 lanes and local corpus evidence remain retained. Main remains untouched.
+
+## Latest dispatch — load correction reviewed; initialization released
+
+WILDLIFE-LOAD-FIX-1 passes independent local review at533ee3fc, tested source
+73edb244. The exact intake, original arithmetic, failing-before boundary, three
+distinguishing mutants, Debug/ASan receipts, partial pins and unchanged-family
+evidence were checked with no actionable findings. The historical load-domain
+finding is closed for this candidate. Exact-head CI44354548420 remains pending;
+local approval is not acceptance for landing.
+
+WILDLIFE-INIT-1 is now released under the owner's 2026-11-18 instruction. It uses
+the independently accepted2f9e4c0b base and reads corrected helper/decoder notes
+by exact ref. It must establish one evidenced fresh-load profile and executable
+ordering model before persistent implementation, or return a precise owner choice
+if omitted original draws make that profile impossible. No silent adaptation,
+World integration, tag allocation or defaults change. The executor reports its
+frozen pushed result and CI directly to this orchestrator; Windows owns landing.

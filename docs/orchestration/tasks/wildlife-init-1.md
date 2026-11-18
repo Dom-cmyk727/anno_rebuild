@@ -1,7 +1,7 @@
 # WILDLIFE-INIT-1 — prove the first wildlife initialization profile
 
-**PREPARED, not released.** The Mac orchestrator releases this packet after
-WILDLIFE-LOAD-FIX-1's frozen result passes independent local review. Exact-head
+**RELEASED 2026-11-18** after independent local review of WILDLIFE-LOAD-FIX-1
+at `533ee3fc96a560f1c3189f3a4d32ce113abff65a`. Exact-head
 CI and acceptance remain separately recorded; this research/reference unit does
 not consume a pending implementation. About 2–4 hours, EXECUTOR II MAC, direct
 reportback. The goal is a sufficiently precise contract for the next packet to
@@ -12,8 +12,8 @@ implement actual default-off wildlife import and native persistence.
 Use new branch `task/WILDLIFE-INIT-1` from the independently accepted
 `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e`, preserving all active branches and
 private evidence. Read the decoder boundary at exact
-`f1e245d2769306451d4c2079aadf6a64be93defd` by ref. Read the correction's frozen
-reviewed head supplied in the release message by ref too; no source intake,
+`f1e245d2769306451d4c2079aadf6a64be93defd` by ref. Read correction head `533ee3fc96a560f1c3189f3a4d32ce113abff65a`
+by ref too; no source intake,
 merge or rebase is needed for this packet. Ordinary-push only your task branch.
 
 Read CLAUDE, PLAN0.1–0.3, TASKS owner rules/section1, testing/evidence-contract.md

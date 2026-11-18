@@ -53,11 +53,13 @@ endif()
 
 if(ANNO_BUILD_TESTS)
   enable_testing()
-  # doctest 2.4.12, pinned. With libc++ 22 its implementation needs <cfloat>
+  # doctest 2.4.12 plus upstream PR #901: prefer <version> over removed <ciso646>.
+  # The pinned commit changes only that header detection, not test/discovery behavior.
+  # With libc++ 22 its implementation needs <cfloat>
   # included first: see src/*/tests/main.cpp.
   FetchContent_Declare(doctest
-    URL https://github.com/doctest/doctest/archive/refs/tags/v2.4.12.tar.gz
-    URL_HASH SHA256=73381c7aa4dee704bd935609668cf41880ea7f19fa0504a200e13b74999c2d70
+    URL https://github.com/doctest/doctest/archive/5eb20178ba43d7b3fd6dbf97b4d2a0907b59a42a.tar.gz
+    URL_HASH SHA256=41cf9b1c1408a7e24f4005f5accd9d6dae75e684255c7c7b28b223acfa8d4e8e
     # Header only: do not run doctest's own CMakeLists (it predates CMake 4).
     SOURCE_SUBDIR no-cmake)
   FetchContent_MakeAvailable(doctest)

@@ -121,7 +121,9 @@ ApplyResult FreightRoutes::assign(World& w, const Command& command,
     if (checked->freight_generation == UINT64_MAX)
         return refuse(Reject::SerialExhausted);
     FreightState next;
-    next.stops = cmd.stops;
+    // Copy-construct before moving into the empty state: GCC 15 warns about the
+    // unused destination-capacity branch of vector copy assignment at -O3.
+    next.stops = std::vector<FreightStop>(cmd.stops);
     normalize(next.stops);
     next.last_tick = w.clock_.tick();
     // All validation and allocation precede the first authoritative write.

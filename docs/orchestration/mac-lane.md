@@ -26,7 +26,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | 1.7 [SIM-LIMITS-1](tasks/sim-limits-1.md) | ACCEPTED compatibility maintenance; behavior and bytes unchanged | `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e`; code `33871080` | [44298551123](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44298551123), all 12 jobs success at exact head | [Acceptance](reviews/2026-11-18-sim-limits-1-review.md) |
 | 1.8 [DOCS-SIM-1](tasks/docs-sim-1.md) | ACCEPTED bounded inventory/tools scope after focused corrections | `1fab3ca9ec80cb69a119ea7201e4a7332bd1ddf0` | [44321152729](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44321152729), all 12 jobs success; first failure preserved | [Independent review](reviews/2026-11-18-docs-sim-1-review.md) |
 | 2.6 [KBEWOHN-1](tasks/kbewohn-1.md) | LOCAL REVIEW APPROVED; final CI macOS runner unavailable, retry pending | `6fb7dbb359288289c70ac10161579b5f7666ae11`; tested source `3c20430b` | [44336688872](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44336688872), terminal FAIL (no macOS runner); source44335070081 PASS | [Independent review](reviews/2026-11-18-kbewohn-1-review.md) |
-| Wildlife import [WILDLIFE-LOAD-1](tasks/wildlife-load-1.md) | RELEASED directly to EXECUTOR II MAC; independent formats prerequisite | Accepted base `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e` | Not started | Dispatch independently approved by `/root/review_docs_sim_dispatch`; report directly here |
+| Wildlife import [WILDLIFE-LOAD-1](tasks/wildlife-load-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `f1e245d2769306451d4c2079aadf6a64be93defd` | [44344197686](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44344197686), pending | [Independent review](reviews/2026-11-18-wildlife-load-1-review.md) |
+| Wildlife correction [WILDLIFE-LOAD-FIX-1](tasks/wildlife-load-fix-1.md) | RELEASED to EXECUTOR II MAC; exact five-commit helper intake and load-domain correction | Accepted base `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e` | Not started | Dispatch independently approved; direct reportback required |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -311,3 +312,18 @@ receipt does not invent twelve individual job verdicts or executed test counts.
 Local review remains approved; exact-final-head acceptance remains blocked.
 An authenticated operator can retry the cancelled job and dependent gate without
 repeating successful jobs. WILDLIFE-LOAD handoff preparation continues.
+
+## Latest dispatch — raw wildlife decoding reviewed; helper correction released
+
+WILDLIFE-LOAD-1 is locally approved without findings atf1e245d2. Independent primary
+bytes, corpus recount/digest, parser/reference tests, mutants, raw gates and focused
+GCC-test recovery were checked. Exact-head CI44344197686 remains pending, so no
+final acceptance is claimed. Executor reports its terminal receipt directly here.
+
+WILDLIFE-LOAD-FIX-1 is released from accepted2f9e4c0b after independent dispatch
+review. The packet explicitly authorizes five preserved helper commits on a new
+task branch, resolves only mechanical intake conflicts, and repairs the confirmed
+load-divisor/domain error with an executable raw-stamp boundary. No pending decoder
+or KBEWOHN implementation is consumed. No World wiring, tags, gameplay defaults,
+main push or owner-policy choice is authorized. Frozen results go directly to this
+orchestrator for review before persistence work.

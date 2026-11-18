@@ -1,0 +1,314 @@
+{
+  "base": "b5c0ada209d94a0082bc88d793c917c7222e6a21",
+  "tested_code": "56762e421914851e669e3de0345b7311e10af51c",
+  "files": {
+    "cache/wildlife-1a/asan-focused-01-audit.json": {
+      "bytes": 2484,
+      "sha256": "f7cac40da07310f27cf19a413c43b55de3aa0be21c496588cadbbeeadb33f6fe"
+    },
+    "cache/wildlife-1a/asan-focused-01.log": {
+      "bytes": 17697,
+      "sha256": "8dccf693bb11b7ecf64d32ff6e389d9573901b1da9eb3c9482869743b1b76260"
+    },
+    "cache/wildlife-1a/asan-focused-01.log.inventory.json": {
+      "bytes": 2895,
+      "sha256": "51d7a974ff75307bb50ad51e33723aa95a9e0d324c8161a98ce2e07e05228a00"
+    },
+    "cache/wildlife-1a/asan-focused-01.out": {
+      "bytes": 253,
+      "sha256": "fa5935fec8fdf6754bc8221c1e438d9697488a041306c7ffd0202e3d668c460a"
+    },
+    "cache/wildlife-1a/bash-env.sh": {
+      "bytes": 364,
+      "sha256": "bc9231ee25e29f0e79b6726176a9783c70e8ad21600bef930295198920888115"
+    },
+    "cache/wildlife-1a/build-asan-01.out": {
+      "bytes": 28152,
+      "sha256": "4315638eeee6d3db1fbe318ecf1f3ea195dff298b1f7abe525b93c228c1a3257"
+    },
+    "cache/wildlife-1a/build-dev-01.out": {
+      "bytes": 14905,
+      "sha256": "530d5b4ea060c9bc6258ae81b660c6581c615fbb551ace969fd914def0892828"
+    },
+    "cache/wildlife-1a/build-dev-02.out": {
+      "bytes": 22012,
+      "sha256": "772f91f134823a423f1ddcf71f1a932241c202beb6b3232cd97cc592c46a762f"
+    },
+    "cache/wildlife-1a/ci-134646929460-annotations.json": {
+      "bytes": 7260,
+      "sha256": "46b443ca581a75c1bff820451a4014719d62e03805e3bb5880451470fb8e0937"
+    },
+    "cache/wildlife-1a/ci-134646929463-annotations.json": {
+      "bytes": 2922,
+      "sha256": "26c695a01b1a450daeef2569defb9674c57be90571be5f6f59d0ce7ed1c65ccb"
+    },
+    "cache/wildlife-1a/ci-checkpoint-jobs-at-report.json": {
+      "bytes": 43190,
+      "sha256": "2296d971532219242c61d73fd60458d21ae93243f8736de11ef53873035c0038"
+    },
+    "cache/wildlife-1a/ci-checkpoint-jobs-final.json": {
+      "bytes": 43734,
+      "sha256": "4881a2cc2e5c7053be72513c11260d19471fe9a8bbb66fa92838a49380708b6e"
+    },
+    "cache/wildlife-1a/ci-checkpoint-jobs.json": {
+      "bytes": 42560,
+      "sha256": "cee34ff749def7bb4d5061896e03b5c023d0e6f4c8ef1aa2187631033eef9252"
+    },
+    "cache/wildlife-1a/ci-checkpoint-runs.json": {
+      "bytes": 14895,
+      "sha256": "2c555b04d9ebb4e929007f7bc1143ba2c071e8ff53df0457802b1959766567ee"
+    },
+    "cache/wildlife-1a/configure-asan-01.out": {
+      "bytes": 19427,
+      "sha256": "8088d6b2cf615d474baa8bde36bed247ad7d61a818a9d37b3649f2cbd40bedfc"
+    },
+    "cache/wildlife-1a/configure-dev-01.out": {
+      "bytes": 19372,
+      "sha256": "016ca2729e451849db35b44de797933ec25a8bbf38a835d7fb9642517e3c6406"
+    },
+    "cache/wildlife-1a/controls-baseline-01.log": {
+      "bytes": 11492,
+      "sha256": "977c3d4c7f53bc8be6dfeed2020bdf455b187eaaabfd516e08fb3fb2bbfa42a4"
+    },
+    "cache/wildlife-1a/controls-baseline-01.log.inventory.json": {
+      "bytes": 1211,
+      "sha256": "b360d0679a1d5051bab8a3504c629e50331b33718483baf26bcf4bb74ad87a67"
+    },
+    "cache/wildlife-1a/controls-baseline-01.out": {
+      "bytes": 258,
+      "sha256": "bc99508ef0bfbfd4fd5807431d7d91dc370f2bb9329b6ad46ead39bc3eee7cf0"
+    },
+    "cache/wildlife-1a/dev-focused-01-audit.json": {
+      "bytes": 2155,
+      "sha256": "d91b4a3646363724f01aae9c95a37f3824f43becbaf4dd4c534f56d93a7405c4"
+    },
+    "cache/wildlife-1a/dev-focused-01.log": {
+      "bytes": 12762,
+      "sha256": "44370bb340c8a4c43b95745c2f744fc17b100a7332dac6a7ea5f4eac40f34b84"
+    },
+    "cache/wildlife-1a/dev-focused-01.log.inventory.json": {
+      "bytes": 2287,
+      "sha256": "f88810fa9b497665861129cb5ac8a95ffe22c13596cd3461d65fe95d4f1e2ffc"
+    },
+    "cache/wildlife-1a/dev-focused-01.out": {
+      "bytes": 252,
+      "sha256": "f5555a75724c54bc0ab40d1e5415845edd6b18656e72ec3d1aa1798a54bc15b7"
+    },
+    "cache/wildlife-1a/fixtures-before.json": {
+      "bytes": 14990,
+      "sha256": "37451f2dea0f3854205ba4bc4498930beff2be10f0eb7c71f233b357ca7d47a4"
+    },
+    "cache/wildlife-1a/followup-134646929487-annotations.json": {
+      "bytes": 4123,
+      "sha256": "5970f08a2b4a32014dd6b2e720f8e9acf36fd42f6893f272875ddcdeb1396723"
+    },
+    "cache/wildlife-1a/host.json": {
+      "bytes": 2204,
+      "sha256": "2ca2845073eba6eb94c7f725ea235a168476a25f909e1b901bb7ab87ee290908"
+    },
+    "cache/wildlife-1a/identities.json": {
+      "bytes": 1330,
+      "sha256": "77743c03ce81330ce30c9cd602d4a2f5bb0f83acd985066707f09823524a40c9"
+    },
+    "cache/wildlife-1a/mutant-attempt_wrap-build.out": {
+      "bytes": 292,
+      "sha256": "12dab06462fd3e30d40b50b6f9550660749295ba7df056b2982152cebd995c75"
+    },
+    "cache/wildlife-1a/mutant-attempt_wrap.log": {
+      "bytes": 8113,
+      "sha256": "4d34c8d54374f62da078cc3b9051759932ffabefc6163230887be38b7b03ed4f"
+    },
+    "cache/wildlife-1a/mutant-attempt_wrap.log.inventory.json": {
+      "bytes": 1211,
+      "sha256": "b360d0679a1d5051bab8a3504c629e50331b33718483baf26bcf4bb74ad87a67"
+    },
+    "cache/wildlife-1a/mutant-attempt_wrap.out": {
+      "bytes": 378,
+      "sha256": "ca0aaaff3a62e71187071a6a9ed26a4dd8c9756a5c1d136e4eaf865ac3bba209"
+    },
+    "cache/wildlife-1a/mutant-collision_draw-build.out": {
+      "bytes": 292,
+      "sha256": "12dab06462fd3e30d40b50b6f9550660749295ba7df056b2982152cebd995c75"
+    },
+    "cache/wildlife-1a/mutant-collision_draw.log": {
+      "bytes": 8122,
+      "sha256": "1693002a3906b147e414f6e8a91b58042282694357907d921cbf47559fdbcb48"
+    },
+    "cache/wildlife-1a/mutant-collision_draw.log.inventory.json": {
+      "bytes": 1211,
+      "sha256": "b360d0679a1d5051bab8a3504c629e50331b33718483baf26bcf4bb74ad87a67"
+    },
+    "cache/wildlife-1a/mutant-collision_draw.out": {
+      "bytes": 380,
+      "sha256": "e58cf7c8525f70485349ce5fe0bcb080355e4de93f65b3ddb443b85dd65dc539"
+    },
+    "cache/wildlife-1a/mutant-density_14-build.out": {
+      "bytes": 292,
+      "sha256": "12dab06462fd3e30d40b50b6f9550660749295ba7df056b2982152cebd995c75"
+    },
+    "cache/wildlife-1a/mutant-density_14.log": {
+      "bytes": 8100,
+      "sha256": "dfb7ec23325e2ee71a16bce77be9273a35740e52fb238625aff4b4e082fda3e5"
+    },
+    "cache/wildlife-1a/mutant-density_14.log.inventory.json": {
+      "bytes": 1211,
+      "sha256": "b360d0679a1d5051bab8a3504c629e50331b33718483baf26bcf4bb74ad87a67"
+    },
+    "cache/wildlife-1a/mutant-density_14.out": {
+      "bytes": 376,
+      "sha256": "4d143c42c59867c04aadeb3e1d0e92985f8c041bbad0f41ef1d41c832036d21f"
+    },
+    "cache/wildlife-1a/mutant-facing_wrap-build.out": {
+      "bytes": 292,
+      "sha256": "12dab06462fd3e30d40b50b6f9550660749295ba7df056b2982152cebd995c75"
+    },
+    "cache/wildlife-1a/mutant-facing_wrap.log": {
+      "bytes": 8104,
+      "sha256": "5fdce6cf42a830396dbb99439b6d7e1c9cdb39f7d48f274992cafed593207960"
+    },
+    "cache/wildlife-1a/mutant-facing_wrap.log.inventory.json": {
+      "bytes": 1211,
+      "sha256": "b360d0679a1d5051bab8a3504c629e50331b33718483baf26bcf4bb74ad87a67"
+    },
+    "cache/wildlife-1a/mutant-facing_wrap.out": {
+      "bytes": 377,
+      "sha256": "6574749f84b8b5484d158a729555cfddc0f6ff586ee9e9d46979c91645a942bd"
+    },
+    "cache/wildlife-1a/mutant-idle_one_draw-build.out": {
+      "bytes": 292,
+      "sha256": "12dab06462fd3e30d40b50b6f9550660749295ba7df056b2982152cebd995c75"
+    },
+    "cache/wildlife-1a/mutant-idle_one_draw.log": {
+      "bytes": 8376,
+      "sha256": "0f60835de2159c0fe83c230fc06fb5affb23457aee91cd8cb0158635e97bf8ca"
+    },
+    "cache/wildlife-1a/mutant-idle_one_draw.log.inventory.json": {
+      "bytes": 1211,
+      "sha256": "b360d0679a1d5051bab8a3504c629e50331b33718483baf26bcf4bb74ad87a67"
+    },
+    "cache/wildlife-1a/mutant-idle_one_draw.out": {
+      "bytes": 379,
+      "sha256": "abeaacf11cd547bf351c83642a16430f56494d988d3fa5f1c4baf39d8ba316d0"
+    },
+    "cache/wildlife-1a/mutant-predator_503_extended-build.out": {
+      "bytes": 292,
+      "sha256": "12dab06462fd3e30d40b50b6f9550660749295ba7df056b2982152cebd995c75"
+    },
+    "cache/wildlife-1a/mutant-predator_503_extended.log": {
+      "bytes": 8172,
+      "sha256": "fd3b4f9fa65c20fa648bd3e1d3c00e81041718c9df6e40b18253cc52c743432f"
+    },
+    "cache/wildlife-1a/mutant-predator_503_extended.log.inventory.json": {
+      "bytes": 1211,
+      "sha256": "b360d0679a1d5051bab8a3504c629e50331b33718483baf26bcf4bb74ad87a67"
+    },
+    "cache/wildlife-1a/mutant-predator_503_extended.out": {
+      "bytes": 387,
+      "sha256": "6bcfe811d5aaa7f79fb56bc2ac70425c03b18f5e507cd93ca83074e42dc9ec21"
+    },
+    "cache/wildlife-1a/mutant-quantity_before_draw-build.out": {
+      "bytes": 292,
+      "sha256": "12dab06462fd3e30d40b50b6f9550660749295ba7df056b2982152cebd995c75"
+    },
+    "cache/wildlife-1a/mutant-quantity_before_draw.log": {
+      "bytes": 8424,
+      "sha256": "34f1f7688797413315dc11de8259777e5bc3bf06f9b11450c9157fd8456fee19"
+    },
+    "cache/wildlife-1a/mutant-quantity_before_draw.log.inventory.json": {
+      "bytes": 1211,
+      "sha256": "b360d0679a1d5051bab8a3504c629e50331b33718483baf26bcf4bb74ad87a67"
+    },
+    "cache/wildlife-1a/mutant-quantity_before_draw.out": {
+      "bytes": 386,
+      "sha256": "6c9da6b60d5a145fa27a8ea4496b7df221138032d55b5a432faec84ba8e8f70e"
+    },
+    "cache/wildlife-1a/mutant-swap_pop-build.out": {
+      "bytes": 292,
+      "sha256": "12dab06462fd3e30d40b50b6f9550660749295ba7df056b2982152cebd995c75"
+    },
+    "cache/wildlife-1a/mutant-swap_pop.log": {
+      "bytes": 8353,
+      "sha256": "a6a2178979ef7b0a3c4a86be019b8e4502e267af2cbc8115643c69d06b35db66"
+    },
+    "cache/wildlife-1a/mutant-swap_pop.log.inventory.json": {
+      "bytes": 1211,
+      "sha256": "b360d0679a1d5051bab8a3504c629e50331b33718483baf26bcf4bb74ad87a67"
+    },
+    "cache/wildlife-1a/mutant-swap_pop.out": {
+      "bytes": 374,
+      "sha256": "57ec8e98fdb2364f63a73dd0dbc190541f6e14ee5f6ef4c78bb4f8565140993d"
+    },
+    "cache/wildlife-1a/mutations.json": {
+      "bytes": 4914,
+      "sha256": "1ca2467b322d559a7fcad9a2b6c18eb5310249d313b9ff5f35ab17246b2e1003"
+    },
+    "cache/wildlife-1a/mutations.out": {
+      "bytes": 575,
+      "sha256": "81182a9884f0aad8440a41161454c70a4a2ac7aaf3a1030e159a4d69b456cdcd"
+    },
+    "cache/wildlife-1a/mutations.py": {
+      "bytes": 3900,
+      "sha256": "e4ee44cfa8bdb2daebe33943afb20ceb306b672807c6d0dd7ff35f2df253a84e"
+    },
+    "cache/wildlife-1a/pins-partial-01.log": {
+      "bytes": 13129,
+      "sha256": "674fa497e27d8187374db8ec984881f6c8ce00f2fd0027f563e59c22f86bf671"
+    },
+    "cache/wildlife-1a/pins-partial-01.log.inventory.json": {
+      "bytes": 3241,
+      "sha256": "fae9957ab31ff1f3a2f25c1745462eca268b2715b9389f44bf9610f3b64be416"
+    },
+    "cache/wildlife-1a/pins-partial-01.out": {
+      "bytes": 505,
+      "sha256": "256a0ced0d6238a6d68d5e2110efe2e4c0f27e9d46c70635df965477450961a5"
+    },
+    "cache/wildlife-1a/pins-partial-02.log": {
+      "bytes": 9790,
+      "sha256": "836cee16ae95ed23889cc73e9f9c8a97c94a3ad82a3ec5bfee9334e31b8658a2"
+    },
+    "cache/wildlife-1a/pins-partial-02.log.inventory.json": {
+      "bytes": 1592,
+      "sha256": "ce55d18aa5a8dbb4fa7ad3b5061f2278e4f741e22805a0168b792b2242484e64"
+    },
+    "cache/wildlife-1a/pins-partial-02.out": {
+      "bytes": 536,
+      "sha256": "c2a8c43a9895dc3d3c5a69f473406fdc973248120e21a3b94a0c7846976d1fcd"
+    },
+    "cache/wildlife-1a/reference-baseline.out": {
+      "bytes": 28,
+      "sha256": "1ed1a6c1bb4aa7203b723f11dd6e663426c2b066113f348f960e6588590492be"
+    },
+    "cache/wildlife-1a/reference-contract-baseline.out": {
+      "bytes": 168,
+      "sha256": "dfabbe107b98e8c93de1150c7199b647691c5ed32b313de8554c7eec987052ae"
+    },
+    "cache/wildlife-1a/restored-build.out": {
+      "bytes": 292,
+      "sha256": "12dab06462fd3e30d40b50b6f9550660749295ba7df056b2982152cebd995c75"
+    },
+    "cache/wildlife-1a/reuse-proof.json": {
+      "bytes": 1493,
+      "sha256": "53e7e59c321ee9b534a1b494016f26e7bad0a865ff378b6b1b746d289fc13161"
+    },
+    "cache/wildlife-1a/warning-audit.json": {
+      "bytes": 130,
+      "sha256": "be1f642b6a3b53467432b7e00052327e60477a4851181485a74e79d5cf5d6dce"
+    },
+    "cache/wildlife-1a/warning-invocations.txt": {
+      "bytes": 83568,
+      "sha256": "5580120277313a08ef33ae196d326a35177ac9dc41a552a8c29285263377994a"
+    },
+    "cache/wildlife-1a/warning-metadata.json": {
+      "bytes": 429,
+      "sha256": "d1780a980f956ba998e1452e21e505a9fd68eb0fafba2d7f4e3a87b68157a808"
+    },
+    "cache/wildlife-1a/warnings-01.out": {
+      "bytes": 800,
+      "sha256": "1cd5f14e62a7f8caf5bcbb15a7d5c7a4c1a498c912a56e4b27caa44c3e3ff10d"
+    },
+    "docs/orchestration/evidence/wildlife-1a/negative-controls.tsv": {
+      "bytes": 880,
+      "sha256": "e2c0cb2587f7831a5f9c4f86b452a86c00401c84a7886c69db5283074f1a9c0f"
+    }
+  }
+}

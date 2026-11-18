@@ -15288,3 +15288,67 @@ NOT_RUN: corrected-head hosted CI (awaiting focused review before ordinary push)
 QUESTIONs: none. Independent focused correction review requested from the orchestrator before push.
 
 Focused pre-push correction review: orchestrator independently approved the seven-entry allowlist correction with no P1/P2; canonical 2/2 and unrelated-cap control verified. Corrected-head hosted CI remains pending.
+
+
+## 2026-11-18 — WILDLIFE-1a — READY FOR REVIEW / CI BLOCKED
+
+- Branch `task/WILDLIFE-1a`, exact main base `b5c0ada209d94a0082bc88d793c917c7222e6a21`; contract 75525fcc, tested code `56762e421914851e669e3de0345b7311e10af51c`.
+- Town/setup/orchestration changes are excluded. Reused clean owned checkout; town branch/evidence and binaries preserved; wildlife builds are separate.
+- [Contract and addressed boundaries](../sim/wildlife-decisions.md); [acceptance evidence](evidence/wildlife-1a/README.md); [all exact receipts](evidence/wildlife-1a/gate-receipts.md); [SHA256 index](evidence/wildlife-1a/sha256.json).
+- Ten typed pure helpers: density, habitat, replenish, create, load, animal, walk, route_old, wolf, prey. WildlifeResult returns typed values/errors and exact consumed count; bounded raw-u32 spans, no World/clock/PRNG/I/O/global initializer.
+- Unchanged Python baseline: 65 vectors agree; contract 31 checks. C++ executes all 65 and compares every specified output, including ordered lists and consumed draws. Unknown/missing/empty records refuse.
+- Executed counts by kind: animal 13, create 3, density 4, habitat 5, load 3, prey 8, replenish 3, route_old 3, walk 4, wolf 19. These are vectors, not separate CTest passes.
+- Hand-derived distinguishing boundaries for every family are frozen in the contract, with original addresses; no fresh RE or History Edition parity claim.
+- Typed refusals preserve OQ-572 candidate exhaustion, OQ-574 missing cave entrance, OQ-585 zero-HP prey, invalid domains and exhausted input with consumed-prefix counts.
+- Species/prey mapping is caller data with widened ids; original local sample/index geometry is explained, not a registry/player/world cap. Completion receives post-action quantities/outcomes; load base is already divided.
+- Eight isolated mutants: density 13/14, collision draw, swap-pop order, facing byte wrap, attempt wrap, idle modulus-one draw, draw before quantity override, predator-503 short membership.
+- Every replacement applied exactly once, compiled, failed the intended vector assertion, and retained one legal-control pass; no crash/build failure counted as a kill. [Control index](evidence/wildlife-1a/negative-controls.tsv); private exact definitions/receipts in cache/wildlife-1a/mutations.json.
+- Each mutant gate: selected 2 / executed 1 / failed 1 / skipped 0, VERDICT FAIL failed tests, exit 1 (deliberate); all eight originals retained. Source restored byte-for-byte and rebuilt before final gates.
+- First pre-checkpoint compile had a logical-expression-parentheses warning under -Werror; corrected before 56762e42. Both logs retained, not a passed gate or mutant kill; failed uncommitted preimage was not separately hashed.
+
+Restored Debug `cache/wildlife-1a/dev-focused-01.log`: two required reference rows, then main, verbatim:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=4 executed=4 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+ASan/UBSan `cache/wildlife-1a/asan-focused-01.log`: picture + two required references, then main, verbatim:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=4 executed=4 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+- Initial canonical controls: picture 1/1 then vectors/legal 2/2; same picture binary/contract reused by restored Debug and mutants. No missing/empty/skipped/incomplete acceptance case, memory refusal/retry or sanitizer diagnostic.
+- Partial pins 01 (helpers/replay): required pins_contract 1/1, main 6/6; partial pins 02 (disjoint stored core/G0/layout identities): contract 1/1, main 3/3. Main receipts and summaries verbatim:
+```text
+COUNTS: selected=6 executed=6 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+PINS check: PASS; 0 pins moved; 0 fixture byte changes; scope=partial; selection=^anno_sim_tests\.(wildlife |recorder replay reproduces checkpoints$|write_log matches the documented frame byte for byte$); evidence=cache/wildlife-1a/pins-partial-01.log
+COUNTS: selected=3 executed=3 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+PINS check: PASS; 0 pins moved; 0 fixture byte changes; scope=partial; selection=^anno_sim_tests\.(core_hash equals the v1 golden$|golden G0 empty world seed 1234 advance 10 ms x 1000$|world core stream layout round trip and rejects$); evidence=cache/wildlife-1a/pins-partial-02.log
+```
+- These checks are PARTIAL, not full pins/corpus runs. 119 sim fixture hashes unchanged; no regeneration, pin/layout/version/default/tag/PRNG/registry change.
+- Reuse: atlas-layers full game-file gate at 4dfdd9b7 had 2,718 passes / 43 skips / 0 failed, picture 1/1. Sim/sim_load/formats/test_support/sim fixtures are byte-identical from that source to the exact b5c0ada2 base.
+- Own delta adds only unwired helper/header/tests and CMake registrations: runtime references absent, helper module initializer absent, no helper symbol in bench_picture/sim_replay. This justifies unaffected sim-campaign reuse, not later UI or new-helper coverage. Log hash/dependency proof retained in cache/wildlife-1a/reuse-proof.json.
+- Final dev and ASan targets compile without compiler warnings; existing duplicate-library linker warnings retained. clang-format 23.1.3 and git diff --check pass.
+- Warning script once: exit 0, 231.838 s, 1,010 project compiles / 2 rejected shadow controls / four clean passes, cache/wildlife-1a/warnings-01.out. Both historical labels actually use Apple Clang 21; native GCC 13/Clang 18 NOT_RUN.
+- Host Apple M5 Max / 18 logical / 48 GiB / macOS 27.0.1, CMake 3.31.10/Ninja 1.13.2. Jobs 1, ANNO_TEST_THREADS 4, admission enabled; ASan -O1 -g with detect_leaks=0, UBSan halt/stacktrace. LeakSanitizer NOT_RUN.
+- [Checkpoint CI 44258806734](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44258806734), read immediately after push, repeats unchanged freight_state.hpp:33 GCC Release null-dereference and Clang/libstdc++ 15 ciso646 C++20-header build failures. macOS C++ test step also fails (exit 1); public annotation lacks the actual first assertion, so diagnosis is pending, not guessed. Remaining C++ jobs active; final-head status/link supplied in chat.
+- Orchestrator owns a separate CI-blocker package. No fix pin imported; no suppression, blind retry or freight/toolchain repair. Green exact-head CI remains required for acceptance/landing.
+
+Decisions and reasoning:
+- Keep content mappings in caller-supplied tables and use resolved outcomes; implement only the accepted integer decision slices, not guessed actions or lifecycle totals.
+- Use one strict C++ vector adapter plus small typed refusal tests; preserve the independent Python oracle/fixtures unchanged and prove wrong readings fail before sanitizer gates.
+- Use two disjoint quick pins slices for affected helper/replay behavior and actual named oracle pins; reuse unchanged runtime campaigns with source/symbol/initializer proof instead of repeating long gates.
+- Preserve all initial/mutant/CI failures and actual compiler identities; no reviewer subagents, production integration or extra feature work.
+
+NOT_RUN: Windows game-file/HE/original-runtime validation, native Linux warnings, LSan, World sweeps/spawning/scheduling/movement/hunting, transitive draws OQ-578 and float paths OQ-582. OQ-572/574/585 remain explicit unsupported boundaries. QUESTION: separate base CI triage is pending; no new gameplay decision. READY FOR REVIEW / CI BLOCKED.

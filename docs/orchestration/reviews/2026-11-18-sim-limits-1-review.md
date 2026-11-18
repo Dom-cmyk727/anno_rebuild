@@ -1,11 +1,13 @@
-# SIM-LIMITS-1 — source review approved; focused lint correction required
+# SIM-LIMITS-1 — corrected review approved; exact-head CI pending
 
 Mac orchestrator, 2026-11-18. **LOCAL REVIEW APPROVED, NOT YET ACCEPTED.**
-Final head `c4f52d286b6589eb86467d8681c3f03af35a4a43`, tree
-`1d404c29e3ce591cd98ca0f0bea08df21577b59b`; code/spec/tests
-`3387108059ed05562555d90145275580c150cd7e`. The later commit changes two documentation
-files only. Exact-head [CI 44294408513](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44294408513)
-exposed an owned lint failure described below. Acceptance remains withheld.
+Final corrected head `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e`, tree
+`13e75fe49859ceca795fd6f3813e48b4da094310`; code/spec/tests remain
+`3387108059ed05562555d90145275580c150cd7e`. The first documentation checkpoint was
+`c4f52d286b6589eb86467d8681c3f03af35a4a43`; its failed lint run is retained below.
+The correction changes only the narrow allowlist and evidence/report addenda.
+Exact-head [CI 44298551123](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44298551123)
+is now the sole acceptance condition; no green result is presumed.
 
 ## Reviewed scope
 
@@ -82,3 +84,18 @@ Use the existing exact-entry/reason allowlist mechanism, verify canonical lint a
 self-test, and prove an unrelated fixed gameplay cap is still caught. Do not weaken the
 checker or broadly allow a file. Independent focused review and a new exact-head CI success
 are required. Unchanged production/test local receipts remain reusable; no broad rerun.
+
+
+## Focused correction approved at the committed head
+
+Independent review approves the seven exact path/declaration allowlist entries. The checker
+implementation is unchanged. Canonical lint and self-test pass 2/2 with zero failed, empty,
+skipped, incomplete or sanitizer outcomes. A private source copy passes, rejects one unrelated
+fixed gameplay cap with the intended constexpr_count finding, then passes after restoration.
+No broad exemption or source-level evasion was introduced.
+
+The committed allowlist SHA256 is
+abc5b3221e922f011d2c7dc7614e3f4387d343b9862e7d8dd6d045fa7eb8aae4, matching the reviewed
+file and lint-gate provenance. All eleven prior frozen inputs and all runtime receipts remain
+unchanged. The reviewer reconciled the committed correction and documentation; no P1/P2 or
+further local campaign remains. Corrected exact-head CI alone gates acceptance and dispatch.

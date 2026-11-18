@@ -99,3 +99,11 @@ the Windows orchestrator owns target-host intake and landing. Stop READY FOR REV
 
 The test's own lane with and without the switch; `anno_sim_tests` as far as the change touches it; clang-format
 23.1.3; the warning script (now green after UNIX-WARN-1, once landed). A test refused for memory is rerun alone.
+
+**Evidence reuse, 2026-11-18:** the setup prerequisite's normal full pins check already ran once
+at `e71f2dc0` (1,691 passes, 18 opt-in skips, zero moved pins/fixture bytes). For a town delta confined
+to measurement tests, their registration and docs, reuse that result after verifying production,
+rules, fixtures and pins remain byte-identical to the accepted prerequisite. Run the new and affected
+tests and required contracts; do not repeat the unchanged 86-minute full pins campaign. Report the
+reused source and dependency argument, not a new full-check claim. If production/identity changes
+become necessary, stop for a separately scoped decision and appropriate gate selection.

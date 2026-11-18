@@ -38,7 +38,9 @@
 #include <anno/sim/city_booking.hpp>
 #include <anno/sim/command.hpp>
 #include <anno/sim/figure.hpp>
+#include <anno/sim/fisher.hpp>
 #include <anno/sim/harvest.hpp>
+#include <anno/sim/house_transition.hpp>
 #include <anno/sim/placement.hpp>
 #include <anno/sim/replay.hpp>
 #include <anno/sim/route.hpp>
@@ -5404,3 +5406,4 @@ TEST_CASE("progression gaps N: ship-start settlement for 300 game seconds (opt-i
 }
 
 #include "freight_original.inc"
+#include "town_start.inc"

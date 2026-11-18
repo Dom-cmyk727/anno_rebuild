@@ -8,7 +8,7 @@ import sys
 import tempfile
 
 
-TYPES = {'density', 'habitat', 'replenish', 'create', 'load', 'animal', 'walk',
+TYPES = {'density', 'habitat', 'replenish', 'create', 'load_raw', 'load', 'animal', 'walk',
          'route_old', 'wolf', 'prey'}
 
 
@@ -83,6 +83,16 @@ def contract(ref, vectors, root):
     case('bad_table', create.replace('types=100,101,', 'types=') + '\n', 2, '32 u16')
     case('zero_hp', 'prey zero_hp predator=116 prey=130 kind=49 draws=- => admitted=1 consumed=0\n',
          2, 'OQ-585')
+    case('load_132', 'load invalid entry4=1 base=132 mode=0 goods=17 draws=- '
+         '=> timestamp=132 saved=17 consumed=0\n', 2, 'out of range')
+    case('raw_overflow', 'load_raw invalid raw=65536 draws=- => base=131 consumed=0\n',
+         2, 'out of range')
+    case('raw_wrong_expected', 'load_raw boundary raw=500 draws=- => base=0 consumed=0\n',
+         1, 'base: expected 0, got 1')
+    for base in (66, 131):
+        case(f'load_exhausted_{base}',
+             f'load exhausted entry4=0 base={base} mode=0 goods=17 draws=- '
+             f'=> timestamp={base} saved=17 consumed=1\n', 2, 'draw stream exhausted')
     case('idle_zero_variants',
          'animal bad event=idle state=28 success=1 quantity=0 capacity=9 variants=0 draws=0 '
          '=> next=28 consumed=1\n', 2, 'variants=1..3')

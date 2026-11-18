@@ -164,11 +164,16 @@ WildlifeResult<WildlifeCreation> wildlife_create(bool cave, std::size_t entrance
     return WildlifeDecision<WildlifeCreation>{{position, index, species[index].type, inspected},
                                               d.consumed};
 }
+std::uint32_t wildlife_load_base(std::uint16_t raw_stamp) {
+    // 0x100946e9–0x10094705; physical time units remain unproved.
+    return static_cast<std::uint32_t>(raw_stamp) / 500U;
+}
 WildlifeResult<WildlifeLoad> wildlife_load(std::uint8_t entry4, std::uint32_t base,
                                            std::uint8_t mode, GoodsId goods,
                                            std::span<const std::uint32_t> draws) {
     // 0x100947d3–0x10094816: caller-divided base, byte addition and mode bit zero.
-    if (base > 65)
+    // The decoded u16 stamp divided by 500 admits at most 131, not a world limit.
+    if (base > 131)
         return WildlifeError{WildlifeFault::InvalidInput};
     Draws d{draws};
     std::uint32_t jitter = 0;

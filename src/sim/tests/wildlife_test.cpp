@@ -85,6 +85,7 @@ std::optional<Values> evaluate(const std::string& kind, const Fields& f) {
         {"habitat", {"center", "goods", "kind", "neighbors", "property7", "draws"}},
         {"replenish", {"candidates", "deficit", "occupied", "draws"}},
         {"create", {"cave", "entrances", "climate", "types", "goods", "saved", "draws"}},
+        {"load_raw", {"raw", "draws"}},
         {"load", {"entry4", "base", "mode", "goods", "draws"}},
         {"animal", {"event", "state", "success", "quantity", "capacity", "variants", "draws"}},
         {"walk", {"attempt", "behavior", "facing", "draws"}},
@@ -176,9 +177,14 @@ std::optional<Values> evaluate(const std::string& kind, const Fields& f) {
         out["index"] = {v.index};
         out["species"] = {v.species.v};
         out["inspected"] = {v.inspected};
+    } else if (kind == "load_raw") {
+        out["base"] = {sim::wildlife_load_base(word("raw"))};
+        if (!valid)
+            return {};
+        out["consumed"] = {0};
     } else if (kind == "load") {
         const auto r =
-            sim::wildlife_load(b("entry4"), n("base", 65), b("mode"), word("goods"), draws);
+            sim::wildlife_load(b("entry4"), n("base", 131), b("mode"), word("goods"), draws);
         if (!consumed(r))
             return {};
         out["timestamp"] = {r.value().value.timestamp};
@@ -274,7 +280,8 @@ std::optional<std::vector<Record>> read_vectors(std::istream& in) {
 }
 } // namespace
 
-TEST_CASE("wildlife vectors: all ten decision families agree with every reference output") {
+TEST_CASE("wildlife vectors: all decision families and raw load conversion agree with every "
+          "reference output") {
     std::ifstream in(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim/wildlife_vectors.txt");
     REQUIRE(in);
     const auto records = read_vectors(in);
@@ -289,10 +296,11 @@ TEST_CASE("wildlife vectors: all ten decision families agree with every referenc
         }
     }
     const std::map<std::string, std::size_t> expected{
-        {"density", 4}, {"habitat", 5}, {"replenish", 3}, {"create", 3}, {"load", 3},
-        {"animal", 13}, {"walk", 4},    {"route_old", 3}, {"wolf", 19},  {"prey", 8}};
+        {"density", 4},   {"habitat", 5},  {"replenish", 3}, {"create", 3},
+        {"load", 7},      {"load_raw", 5}, {"animal", 13},   {"walk", 4},
+        {"route_old", 3}, {"wolf", 19},    {"prey", 8}};
     CHECK(counts == expected);
-    CHECK(records->size() == 65);
+    CHECK(records->size() == 74);
     std::cout << "WILDLIFE_VECTORS executed=" << records->size();
     for (const auto& [kind, count] : counts)
         std::cout << ' ' << kind << '=' << count;
@@ -337,7 +345,7 @@ TEST_CASE("wildlife refusals: explicit OQs, invalid domains and exact exhausted 
     fault(sim::wildlife_create(false, 0, table, 255, one), F::DrawsExhausted, 1);
     fault(sim::wildlife_create(false, 0, {}, 255, {}), F::InvalidInput);
     fault(sim::wildlife_load(0, 65, 0, 17, {}), F::DrawsExhausted);
-    fault(sim::wildlife_load(1, 66, 0, 17, {}), F::InvalidInput);
+    fault(sim::wildlife_load(1, 132, 0, 17, {}), F::InvalidInput);
     for (std::size_t used = 0; used < 6; ++used) {
         const std::vector<std::uint32_t> draws(used, 0);
         fault(sim::wildlife_walk(0, 0, 0, draws), F::DrawsExhausted, used);
@@ -379,4 +387,53 @@ TEST_CASE("wildlife vectors: malformed unknown missing and empty input is refuse
     const auto changed = parse("density bad n=13 draws=- => desired=5 consumed=0\n");
     REQUIRE(changed);
     CHECK(changed->front().actual.at("desired") != changed->front().expected.at("desired"));
+}
+
+TEST_CASE("wildlife load bounds: legal 66 and 131 refuse 132") {
+    const std::array<std::uint32_t, 1> draws{63};
+    const auto ordinary = sim::wildlife_load(0, 65, 0, 17, draws);
+    REQUIRE(ordinary);
+    CHECK(ordinary.value().value.timestamp == 96);
+    CHECK(ordinary.value().consumed == 1);
+    for (const std::uint32_t base : {66U, 131U}) {
+        INFO("divided base " << base);
+        const auto plain = sim::wildlife_load(255, base, 1, 17, draws);
+        CHECK_MESSAGE(plain.ok(), "legal no-jitter base " << base);
+        if (plain) {
+            CHECK(plain.value().value.timestamp == base);
+            CHECK(plain.value().value.saved == 255);
+            CHECK(plain.value().consumed == 0);
+        }
+        const auto jitter = sim::wildlife_load(254, base, 0, 17, draws);
+        CHECK_MESSAGE(jitter.ok(), "legal jitter base " << base);
+        if (jitter) {
+            CHECK(jitter.value().value.timestamp == base + 31);
+            CHECK(jitter.value().value.saved == 17);
+            CHECK(jitter.value().consumed == 1);
+        }
+        const auto exhausted = sim::wildlife_load(0, base, 0, 17, {});
+        REQUIRE_FALSE(exhausted.ok());
+        CHECK(exhausted.error().fault == sim::WildlifeFault::DrawsExhausted);
+        CHECK(exhausted.error().consumed == 0);
+    }
+    const auto invalid = sim::wildlife_load(1, 132, 0, 17, {});
+    REQUIRE_FALSE(invalid.ok());
+    CHECK(invalid.error().fault == sim::WildlifeFault::InvalidInput);
+    CHECK(invalid.error().consumed == 0);
+}
+
+TEST_CASE("wildlife raw load stamp: division agrees across the original u16 domain") {
+    const std::array<std::pair<std::uint16_t, std::uint32_t>, 5> boundaries{
+        {{499, 0}, {500, 1}, {1000, 2}, {33000, 66}, {65535, 131}}};
+    for (const auto& [raw, base] : boundaries) {
+        INFO("raw stamp ", raw);
+        CHECK(sim::wildlife_load_base(raw) == base);
+    }
+    // AnnoWelt 0x100946e9–0x10094705: zero-extended u16, high product >> 5.
+    // The signed correction is zero over this entire nonnegative input domain.
+    for (std::uint32_t raw = 0; raw <= UINT16_MAX; ++raw) {
+        const auto original = (std::uint64_t{raw} * 0x10624dd3U) >> 37;
+        INFO("raw stamp ", raw);
+        CHECK(sim::wildlife_load_base(static_cast<std::uint16_t>(raw)) == original);
+    }
 }

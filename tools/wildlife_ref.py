@@ -97,7 +97,8 @@ SCHEMAS = {
     'replenish': dict(candidates=numbers, deficit=byte, occupied=numbers),
     'create': dict(cave=boolean, entrances=word, climate=byte, types=numbers,
                    goods=numbers, saved=word),
-    'load': dict(entry4=byte, base=lambda x: integer(x, 65), mode=byte, goods=word),
+    'load_raw': dict(raw=word),
+    'load': dict(entry4=byte, base=lambda x: integer(x, 131), mode=byte, goods=word),
     'animal': dict(event=choice('complete', 'fallback', 'idle'), state=byte,
                    success=boolean, quantity=word, capacity=word, variants=byte),
     'walk': dict(attempt=byte, behavior=byte, facing=byte),
@@ -204,6 +205,9 @@ def evaluate(kind, fields):
                 index = (index + 1) & 31
                 inspected += 1
         return r.result(position=position, index=index, species=types[index], inspected=inspected)
+    if kind == 'load_raw':
+        # §3 correction: AnnoWelt 0x100946e9–0x10094705, full u16 domain.
+        return r.result(base=r['raw'] // 500)
     if kind == 'load':
         # §3: AnnoWelt 0x100947d3–0x10094816; base was divided by the caller.
         timestamp = (r['base'] + (0 if r['entry4'] & 1 else r.draw() & 31)) & 255

@@ -152,3 +152,20 @@ binary/log identities, actual first unsupported boundary or complete scoped-pref
 proof, Decisions and reasoning, NOT_RUN and next-code checklist. No self-approval
 or executor reviewer agents. Stop before World/native integration. The orchestrator
 reviews and releases the next unit; do not pause independent closeout waiting for CI.
+
+## In-flight clarification — owned incremental session
+
+The orchestrator authorizes a small incremental owned session around the existing
+resource evaluator, because batching across HIRSCH changes draw assignment and
+calling evaluate per record repeats full tile copies/index preparation. Prepare
+facts and own scratch once. Keep one admission/placement/selector implementation;
+legacy evaluate remains its atomic copy-in wrapper with existing failure timing.
+Session failure cannot resume as an ordinary successful completion; a diagnostic
+prefix is distinct from a completed prepared island. Retain explicit input lifetimes.
+No generic callback/interpreter framework or World API is authorized.
+
+Focused proof: existing vector equivalence between session and legacy wrapper,
+resource–HIRSCH–resource interleaving with independent draw assignments, and a
+control distinguishing resources-first batching. Reuse the one-index/ownership
+check rather than starting another benchmark campaign. Code remains subject to
+frozen independent review.

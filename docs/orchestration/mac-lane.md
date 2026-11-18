@@ -488,3 +488,14 @@ Cross-lane coordination request for the Windows board owner: before later native
 integration, coordinate ownership/tags for wildlife enable/mode, resource variation
 plane, effective spawn records and their distinct load draw sites. No numeric tag
 is allocated or claimed by this dispatch; current transient work does not need one.
+
+### PREFIX checkpoint and next handoff instruction
+
+Owner reaffirmed on2026-11-18: review PREFIX when ready and directly release the
+next gameplay packet, updating this board and keeping executor reportback here.
+PREFIX is active; its dependency intake reached7366c8fa with only mechanical
+report/CMake conflicts. No ready-for-review or acceptance claim yet. The owned
+incremental-session clarification is recorded in the packet; it avoids repeated
+map copies while preserving interleaved resource/HIRSCH draws. The next task's
+exact scope will follow the frozen result and first unsupported boundary, not
+an assumption that the entire original load schedule has already been closed.

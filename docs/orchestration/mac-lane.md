@@ -22,8 +22,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | 1.3 [NET-ADR-1](tasks/net-adr-1.md) | ACCEPTED documentation; owner decisions remain open | `cf7109fe14fa729cbb0f1c775fd243cd06b34c26` | [44264630010](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44264630010), exact-head docs CI green | [Acceptance](reviews/2026-11-18-net-adr-1-review.md) |
 | 1.4 [MIL-RE-1](tasks/mil-re-1.md) | ACCEPTED bounded static research; no combat implementation | `20edc775e12a4e8cd73d703d80b8ea0e4bb4e02b` | [44268712248](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44268712248), exact-head docs CI green | [Acceptance](reviews/2026-11-18-mil-re-1-review.md) |
 | 1.5 [ANNOSCENE-ORE-2](tasks/annoscene-ore-2.md) | ACCEPTED bounded research after P2 correction; no engine implementation | `b12d22b39caee90429aef77b52659aa2bfedb38e` | [44273143955](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44273143955), exact-head docs CI green | [Acceptance and preserved finding](reviews/2026-11-18-annoscene-ore-2-review.md) |
-| 1.6 [OQ-562-1](tasks/oq-562-1.md) | LOCAL REVIEW PASSES; own GCC Release test-build correction in progress | `1ea32f5ca0b634f91b0472394e8148bb8eb72208` | [44279553218](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44279553218), GCC Release build failed | [Conditional local review and correction](reviews/2026-11-18-oq-562-1-review.md) |
-| 1.7 [SIM-LIMITS-1](tasks/sim-limits-1.md) | QUEUED, NOT RELEASED; refreshed Mac/state139 packet | Independent accepted base `9edb151c414246d306194a703db71475affbdad4` | Not started | Await OQ-562 review and explicit release |
+| 1.6 [OQ-562-1](tasks/oq-562-1.md) | ACCEPTED bounded headless causal diagnosis after focused CI correction | `b7046e5e279fa979d83079feb56dc83a660f32ef` | [44282873819](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44282873819), all 12 jobs success at exact head | [Acceptance and preserved failure](reviews/2026-11-18-oq-562-1-review.md) |
+| 1.7 [SIM-LIMITS-1](tasks/sim-limits-1.md) | RELEASED to EXECUTOR II MAC, 2026-11-18 | Independent accepted base `9edb151c414246d306194a703db71475affbdad4` | Await executor source checkpoint | Report directly to Mac orchestrator for independent review |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -129,3 +129,16 @@ OQ-562 local causal review passes at1ea32f5c, but own GCC Release warnings in th
 block acceptance. A narrow lookup/access correction is authorized, with affected D6-only
 Debug/ASan reruns and focused re-review. Preserve all assertions and the failed source run.
 SIM-LIMITS remains queued; no blanket gate repeat or unrelated repair is released.
+
+## Latest dispatch — OQ-562-1 accepted, SIM-LIMITS-1 released
+
+OQ-562-1 is ACCEPTED at `b7046e5e279fa979d83079feb56dc83a660f32ef`, exact-head CI
+44282873819 with all 12 jobs successful. The independent focused re-review confirms the
+lookup correction preserves all causal assertions and all 750 trace rows. The old GCC
+Release failure remains recorded; earlier pending statuses above are historical.
+
+SIM-LIMITS-1 is released directly to EXECUTOR II MAC on its independent accepted 9edb151c
+base. Preserve all OQ/wildlife/ore branches and evidence. Centralize the four compatibility
+bounds with unchanged bytes/identities and focused consumer checks, then ordinary-push the
+task branch and send READY FOR REVIEW directly to this orchestrator with full head, exact-head
+CI and evidence. No main merge/push, owner policy change or DOCS-SIM-1 start is authorized.

@@ -1,7 +1,8 @@
 # SIM-LIMITS-1 — one definition for freight compatibility bounds
 
-Wave 1.7. QUEUED, NOT RELEASED: starts only after the orchestrator reviews OQ-562-1 and
-sends the explicit release. This replaces the parked 2026-11-12 Windows/state138 wording.
+Wave 1.7. RELEASED, 2026-11-18, directly to EXECUTOR II MAC after OQ-562-1 acceptance
+at b7046e5e (exact-head CI44282873819, all12 jobs passed). This replaces the parked
+2026-11-12 Windows/state138 wording.
 Owner's Mac-lane handover assigns this bounded packet to EXECUTOR II MAC. About 2–3 hours.
 
 Create task/SIM-LIMITS-1 from accepted source 9edb151c414246d306194a703db71475affbdad4,
@@ -94,7 +95,9 @@ identity/fixture checks and Windows-consumer delta. No unrelated cleanup, workfl
 assets/maps, wildlife, OQ repair, UI or network work. Do not edit TASKS.md, STATUS.md or mac-lane.md.
 Raw logs stay private cache/sim-limits-1; no host paths or original material in git.
 
-Send READY FOR REVIEW directly with full head, CI, acceptance table, retained failures, exact
+Send READY FOR REVIEW directly to the Mac orchestrator in the Orchestrator II Mac chat
+(owner-authorized reporting) with full head, CI,
+acceptance table, retained failures, exact
 counts and remaining limits. Stop there. Completion requires unchanged supported behavior and
 bytes plus a demonstrated guard against the next stale bound; a helper-only green test is not
 proof. DOCS-SIM-1 remains queued for a later explicit dispatch.

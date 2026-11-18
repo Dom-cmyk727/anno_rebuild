@@ -14904,3 +14904,74 @@ READY FOR REVIEW.
   text even while its page is hidden.
 
 READY FOR REVIEW.
+
+
+## MIL-RE-1 — READY FOR REVIEW (Mac, 2026-11-18)
+
+- Source baseline `b5c0ada209d94a0082bc88d793c917c7222e6a21`, branch `task/MIL-RE-1`.
+  Dispatch `435c3a7a` read with git show; no merge, repair intake or gameplay implementation.
+- Deliverable: [first military read](../re/military.md); only that note and this bottom entry.
+  Preserved NET-ADR-1 and WILDLIFE-1a; their acceptance/CI scope is not changed here.
+- Method: Python 3.14.6, Capstone 5.0.7, pefile 2024.8.26; existing tools/disasm.py
+  plus private PE/vtable/caller probes. All original listings remain ignored in cache/mil-re-1.
+- Original AnnoWelt.dll SHA256:
+  `f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`.
+- Original AnnoFrame.dll SHA256:
+  `dd3f36ff564d2685d10795272c4ed3c0b2da32a946c2883fb1158ff439249b91`.
+- Original AnnoGame.dll SHA256:
+  `ac721220afd27ebca5fd2ece6a8ff452289b9d7458c4e091c68adea2012db7bc`.
+- FigurenHeader.dat SHA256:
+  `29fa1f0528fb337d9a61e8b73169281fd05bb27efa6df65638580a4c36c468a8`.
+- Primary class proof: Welt 0x10049c30 calls ground constructor and installs 0x100c561c;
+  factory code 99 allocates 0x98. Game name table confirms code 99 SCHWERT.
+- Rechecked subclass constructor tables 0x100c59e8/5804/5bd8 and selected update/order slots.
+  Medic/thief/tower consumers remain unread; HE class labels are structural leads only.
+- New correction to reference lead: artillery code 108 calls the base soldier constructor
+  but replaces the final table with 0x100cb66c at Welt 0x1009a2f7. No artillery parity claim.
+- Parsed all 368 figures: 56 selected land-army/thief entries, all ROUTETYPE UNUSED;
+  this does not imply no runtime route object. No original data table committed.
+- Order chain: Frame client +0x80 -> 0x1005d410 -> connection sink 0x10060710;
+  turn command 0x6c -> 0x1005d380 -> base 0x100591f0 -> soldier 0x100489b0.
+- Decoder body is actor u16, target-kind u8, tail; kind 2 counts u16 targets from length.
+  Absent actor returns. Actor id is not an issuer proof; UI/sender ownership remains U.
+- Base calls +0xdc reset before +0xe4 new admission; refusal need not preserve the old order.
+- World +0x194 classifier 0x100a6c80 first checks actor mask 0x200e, target presence/flags 6,
+  then owners/relationships/special-target predicates. All callback meanings are not settled.
+- Kind 2 / classifier 3 installs requested state 10 and target u16 at +0x78.
+  Command 0x6c is contextual, not an unconditional attack opcode.
+- Tick +0x74 = Welt 0x10049200: u16 elapsed, f32 nominal scale 0.2, surplus time carried.
+  Segment-end hook precedes next node, order update or idle; zero speed/time skips the body.
+- Order 10 dispatch/poll: 0x10046430 -> 0x10046220/0x10045fa0 -> 0x100328e0/0x10032810.
+  Target missing, flag value 2, or signed HP <= 0 finishes; initial flags-6 test is distinct.
+- Planning reaches world +0x124 mode 3 and 0x100a9490 commit. tRouteFight/job identity,
+  exact movement-to-impact transition, geometry closure, damage/death and transitive draws U.
+- HEAD writer/reader 0x100499d0/0x100498e0 prove HP/metadata fields, not whole-save task lifetime.
+  No direct draw in bounded order/tick bodies is not a claim of zero draws for combat.
+- Private checks: `MIL_RE_BOUNDARY_CHECKS: checked=10 failed=0`
+  (`cache/mil-re-1/boundary-checks-01.log`); hand-derived integer projections, not runtime.
+- Function checks: `MIL_RE_FUNCTION_ENDS: checked=10 failed=0`
+  (`cache/mil-re-1/function-boundary-checks-02.log`); excludes following jump tables/constructors.
+  Initial isolated Python probe lacked user-site pefile; retained, then used existing interpreter.
+- Document/scope checks: cache/mil-re-1/document-checks-final.log:
+  `MIL_RE_DOC_LINKS: checked=6 failed=0`; `DIFF_CHECK: PASS`; `DOCUMENT_VERDICT: PASS`.
+  No source/tools/fixture/identity changes or original material/host paths in tracked additions.
+- Hosted CI: exact pushed-head docs gate and full head are supplied with the frozen handoff.
+- Acceptance table: positive proof = addressed call/slot reads and 10 derived boundaries;
+  counterexamples = mask 2 vs 6, signed HP, wrapped elapsed, count/header and classifier/state;
+  evidence = private logs above plus note; independent orchestrator disposition pending.
+- OQ-753: narrowed for one contextual order and ordinary soldier update only; not closed.
+  The reference pin's question register was read, never copied into this older baseline.
+- NOT_RUN: original runtime, History Edition, C++/game-file suites, x87 emulation, full
+  network framing, AI/group orders, all subclass behaviors, whole-save continuation/draw closure.
+
+**Decisions and reasoning:**
+- Verify original table/constructor bytes, not the later reference candidate's failed render gate.
+- Keep initial admission and live-target completion separate; their masks demonstrably differ.
+- Recommend next 2–3 h read on geometry/route/first impact, then impact/save/draw closure.
+  A future single-actor decoder contract needs entitlement and malformed-input policy first;
+  this evidence does not authorize executable combat or a guessed damage/time adaptation.
+
+**QUESTIONs:** no owner policy needed for this bounded read. Unread edges are enumerated in
+section 4 of the note, with prerequisites and estimates; do not expand OQ-753 here.
+
+READY FOR REVIEW.

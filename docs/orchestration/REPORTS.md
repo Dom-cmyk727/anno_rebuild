@@ -15548,3 +15548,80 @@ COUNTS: selected=6 executed=6 failed=0 empty=0 skipped=0 (required-asset=0 platf
 VERDICT: PASS
 ```
 - Helper/executable/fixture hashes unchanged: retain earlier ASan, mutant, warning and partial-pins evidence, with no new full campaign. Corrected publication CI is supplied in chat; base build failures stay separate and blocked. READY FOR REVIEW / CI BLOCKED.
+
+## 2026-11-18 — WILDLIFE-LOAD-FIX-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-LOAD-FIX-1`; accepted base `2f9e4c0b`; corrected source `73edb24426e2477f6700755cced9c2ba18cadc4c`.
+- Source tree `7e5879ce387b39e4568c1106674704f5fce758d2`; final report head and exact hosted CI supplied in the direct handoff.
+- Five authorized preserved commits cherry-picked in order; intake `5705678c`; no other source intake.
+- Only REPORTS/lint append conflicts; accepted and incoming bytes retained exactly; helper source/test/contract matched 756e008b before edits.
+- D: AnnoWelt `0x100946e9`–`0x10094705`, matching module SHA in [evidence](evidence/wildlife-load-fix-1.md), proves raw u16 / 500.
+- All 65,536 raw values match the original multiply/shift expression; physical time units remain U.
+- Raw boundaries: 499 → 0, 500 → 1, 1000 → 2, 33000 → 66, 65535 → 131; 500 distinguishes the wrong divisor.
+- New pure `wildlife_load_base(std::uint16_t) -> std::uint32_t`; clear division, no draw or World dependency.
+- Existing load API still takes a divided base; legal 66/131 now admitted, 132 refused before draws.
+- Base 65 + jitter 31 = 96 remains ordinary; corrected maximum 131 + 31 = 162.
+- Preserved F0 red: one failed case, 6 intended assertion failures / 10 passes; no crash or compile failure.
+- Actual-production overlays: old cap 65, divisor 1000, admission of 132 compile at exit 0 and fail intended assertions at exit 1.
+- Each overlay's separate legal control passes; clean control 3 cases / 65,580 assertions; prior eight unrelated mutants reused.
+- Reference: 74 vectors, 0 disagreements; contract 36 checks. load 7 / load_raw 5; other nine families / 62 rows unchanged.
+- Canonical Debug and ASan/UBSan: 6 helper + 2 lint cases; three required checks in each profile.
+- All selected tests execute; no prerequisite skips, timeouts, memory refusals, incomplete results or sanitizer diagnostics.
+
+Verbatim receipts; repeated selected=1 lines in focused logs are the reference, reference contract and picture contract, each separately:
+
+```text
+# cache/wildlife-load-fix-1/before-fix-red.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=0 failed=1 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+# cache/wildlife-load-fix-1/debug-focused.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=8 executed=8 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-load-fix-1/asan-focused.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=8 executed=8 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-load-fix-1/pins-partial-01.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=8 executed=8 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-load-fix-1/pins-partial-02.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=3 executed=3 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- Pins checks are scope=partial, 0 pins moved / 0 fixture byte changes each; no full check or regeneration is claimed.
+- 119 tracked sim fixtures audited: only the intended wildlife_vectors.txt changed; recordings and pins unchanged.
+- No World/initializer, external callers, runtime consumer symbols, registry, serialization, scheduler, defaults or draw-site changes.
+- State 139 and all section versions 1 unchanged; CMake only registers the helper/test supplied by authorized intake.
+- GCC 15.3 and Apple Clang 21: both changed C++ translation units strict Release -Werror clean; shadow control rejected.
+- clang-format 23.1.3, lint/self-test, file links and diff check pass; inherited duplicate-library linker warning retained.
+- Host: Apple M5 Max / 18 logical / 48 GiB / macOS 27.0.1; normal memory admission, jobs 1 / test threads 2.
+- Exact source/executable/fixture/log SHA256s, intake mappings and all commands are retained in the linked evidence and private cache.
+- Hosted CI: inspect the exact pushed report head; terminal run/result accompanies the direct handoff. No queued run is counted green.
+
+Decisions and reasoning:
+- Keep raw conversion separate from the divided-input API; do not reinterpret existing callers or the sweep's separate arithmetic.
+- Ground / 500 in the matching original span and independent manual expectations; preserve the before-fix failure.
+- Reuse unrelated helpers/mutants and accepted-base evidence; no unaffected broad matrix or long sailing/render/corpus rerun.
+- Preserve all old branches/receipts; no KBEWOHN/DOCS/decoder intake, merge, rebase, force push or main push.
+- Stop before tags, ScenarioSpec, World import, fauna materialization or hunting; next work waits for orchestrator review/release.
+
+NOT_RUN: original/HE runtime, native Windows/WSL game-file suites, full warning sweep, full lifecycle/transitive draws, World integration and LeakSanitizer.
+QUESTIONs: none blocking this correction; global load order/mode provenance, physical units and OQ-578/582 remain outside this slice.

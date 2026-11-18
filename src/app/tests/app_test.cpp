@@ -621,7 +621,7 @@ TEST_CASE("zoom_target_after: already at the closest-zoom limit, any number of f
           "wheel events landing before a single frame draws would - leaves the target exactly "
           "at the limit, never briefly past it (ZOOM-BOUNCE-2's own lead 1)") {
     using namespace anno::app;
-    const auto levels = anno::render::ZoomLevels::original();
+    const auto& levels = anno::render::ZoomLevels::original();
     const double limit = levels.tile_w(0) * kZoomEndFactor;
     double target = limit;
     for (int notches = 1; notches <= 20; ++notches) {

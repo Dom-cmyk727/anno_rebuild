@@ -15625,3 +15625,66 @@ Decisions and reasoning:
 
 NOT_RUN: original/HE runtime, native Windows/WSL game-file suites, full warning sweep, full lifecycle/transitive draws, World integration and LeakSanitizer.
 QUESTIONs: none blocking this correction; global load order/mode provenance, physical units and OQ-578/582 remain outside this slice.
+
+
+## 2026-11-18 — WILDLIFE-PREFIX-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-PREFIX-1`; approved-local base `0627532f330dc898b80941ea31d9dafe87980aa4`.
+- Frozen implementation `1e061493cdfa479b9725a16339f0497aba27d880`, tree `41141a030d28af1f7cbd9dca3a67c83048b69e2c`.
+- Publication adds report/evidence only; exact pushed head/tree and CI accompany the direct orchestrator handoff.
+- [Evidence](evidence/wildlife-prefix-1.md) contains acceptance rows, eight old/new intake mappings and 11 upstream-equal input receipts.
+- Only mechanical REPORTS append / CMake source-list conflicts; both sides retained, no semantic conflict or extra intake.
+- Decoder/helper no-runner CI failures remain separate; they are not relabelled accepted. RESOURCE-FIX exact CI also remains separate.
+- [Contract](../sim/wildlife-prefix.md) was written before implementation; independent orchestrator review pending.
+- New checked raw decoder keeps 14-bit id and signed byte offsets, with wide overflow checks; old decoder outputs preserved.
+- Checked shared PE table mapper reads runtime AnnoGame climate/remap rows; no original arrays compiled or committed.
+- Explicit WARE/HEAD facts distinguish present UNUSED from missing/unknown/truncated data, resolved once by ordered indexes.
+- `prepare_wildlife_prefix` preserves source island/header/record order, duplicates, empty/repeated HIRSCH and chunk prepend.
+- Caller supplies sampled u16 stamp, mode bit, provenance and bounded draws; MAIN supplies neither runtime stamp nor mode.
+- One owned Session reuses the existing resource evaluator; 20-vector legacy/session equivalence and sticky-error controls pass.
+- Typed failed-prefix diagnostic is distinct from complete Result success; no retry/resume or apparent completion on failure.
+- R-H-R draws 4,7,2,31 give variants 4/2 and jitter base+7/base+31; stamps 499/500/65535 and both modes covered.
+- Single applied private omitted-resource-cursor mutant: legal exit 0; mutant exit 1, consumed 2 versus 4 / timestamp 5 versus 8.
+- Necessary GELAENDE epilogue: 0x1008935f/0x100894b2 -> island +0x198 -> 0x10092b40–0x10092c94.
+- It clips the rectangle and ORs water walk-mask bits below mean 32; sole callee 0x100b5f90–0x100b5fb6 is pure truncation.
+- Mean 31/32, OR/packed-field preservation, clipping/repetition, empty headers and input immutability tested, with zero draws.
+- Real Tutorial/01Discover01: empty header 33 updates 1,024 cells; header 34 updates 977; partial header 35 has no epilogue.
+- Earlier real-first.log lacked this mask effect and is retained as superseded mask-incomplete investigation.
+- Actual first boundary: island ordinal 0 / slot 11 / GELAENDE header 35 / record 22 / type 1558.
+- Parsed STEIN kind 323, flags 0x3a, footprint 2 × 2 lies outside admitted 0x09/0x29 domain before write/draw.
+- This is evaluator unsupported behavior, not the original game's rejection. No stone admission expansion or skipped record.
+- Completed prefix: 37 records / accepted 37 / rejected 0 / resource-class 37 / resource draws 37 / combined draws 37 / spawns 0.
+- First witness retained: header 34 record 0 / type 70 / variant 6 / computed height 48 / one supplied draw.
+- Real inputs stamp 500, mode 0, draw 7 are supplied; HIRSCH header 71 not reached, and 4,589 candidates are not draws.
+- Final clean-source Debug and ASan logs run four required contracts separately, each 1 selected / 1 executed / no other outcome.
+
+```text
+# cache/wildlife-prefix-1/debug-combined-final.log (main selection)
+COUNTS: selected=32 executed=32 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-prefix-1/asan-combined-final.log (main selection)
+COUNTS: selected=30 executed=30 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# Each required contract, in each profile (four separate receipts; all printed in evidence):
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- Required contracts: public adapter, resource_import_reference_contract, wildlife_reference_contract, wildlife_load_reference_contract.
+- Main Debug includes original adapter and AnnoWelt PE case; ASan covers synthetic parsing/composition/bounds; no refusal/timeout rerun needed.
+- Strict target warnings: seven TUs, Apple Clang 21 and GCC 15.3 clean; GCC shadow control rejected; format 23.1.3/lint/diff check pass.
+- Dev/ASan builds retain inherited Apple duplicate-library linker warning; compiler warnings 0. No full warning sweep claimed.
+- All 276 tracked synthetic fixtures byte-equal post-intake 7366c8fa: pins/goldens/recordings unchanged; no full pins.py claim.
+- Build/source/binary/input/log SHA256s and commands frozen in evidence; original compile/mutant/initial-investigation failures preserved.
+- Host Apple M5 Max / 18 logical / 48 GiB / macOS 27.0.1; jobs 1 / test threads 2; memory admission enabled, no parallel campaign.
+- No World/default/native/registry identity/scheduler/tag/pin changes; complete-local excludes SCENE/player/actor/post-island effects.
+
+Decisions and reasoning:
+- Compose reviewed helpers in one owned session so raw order controls draw assignment without repeated whole-map copies.
+- Require explicit runtime inputs rather than infer a generator cursor, and poison incomplete sessions instead of publishing success.
+- Implement the finite no-draw header effect; keep the old incomplete proof visibly superseded and stop at the next real boundary.
+- Propose semantic ownership only: enable/mode in header rules, variation/spawns in island, draw-site order in loader; no numeric tags.
+- Reuse unaffected parent picture evidence and avoid unrelated long matrices; push once frozen and request orchestrator review directly.
+
+NOT_RUN: Windows/HE/original-runtime, full-world publication/global PRNG alignment, fauna lifecycle/sweep, full pins/warnings/long corpus and LeakSanitizer.
+QUESTIONs: none blocking bounded review; establish the type 1558 / flags 0x3a placement contract before resuming the real prefix. Stop before World/native integration.

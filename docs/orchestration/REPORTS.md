@@ -15527,7 +15527,7 @@ PINS check: PASS; 0 pins moved; 0 fixture byte changes; scope=partial; selection
 - Final dev and ASan targets compile without compiler warnings; existing duplicate-library linker warnings retained. clang-format 23.1.3 and git diff --check pass.
 - Warning script once: exit 0, 231.838 s, 1,010 project compiles / 2 rejected shadow controls / four clean passes, cache/wildlife-1a/warnings-01.out. Both historical labels actually use Apple Clang 21; native GCC 13/Clang 18 NOT_RUN.
 - Host Apple M5 Max / 18 logical / 48 GiB / macOS 27.0.1, CMake 3.31.10/Ninja 1.13.2. Jobs 1, ANNO_TEST_THREADS 4, admission enabled; ASan -O1 -g with detect_leaks=0, UBSan halt/stacktrace. LeakSanitizer NOT_RUN.
-- [Checkpoint CI 44258806734](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44258806734), read immediately after push, repeats unchanged freight_state.hpp:33 GCC Release null-dereference and Clang/libstdc++ 15 ciso646 C++20-header build failures. macOS C++ test step also fails (exit 1); public annotation lacks the actual first assertion, so diagnosis is pending, not guessed. Remaining C++ jobs active; final-head status/link supplied in chat.
+- [Checkpoint CI 44258806734](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44258806734), read immediately after push, repeats unchanged freight_state.hpp:33 GCC Release null-dereference and Clang/libstdc++ 15 ciso646 C++20-header build failures. macOS full artifact identifies our own lint_sim failure (3 size_t consumed findings), not an inherited failure: 2,299 executed / 1 failed / 479 classified skips / 0 incomplete. All four C++ wildlife tests and both references passed; original failure preserved.
 - Orchestrator owns a separate CI-blocker package. No fix pin imported; no suppression, blind retry or freight/toolchain repair. Green exact-head CI remains required for acceptance/landing.
 
 Decisions and reasoning:
@@ -15537,3 +15537,14 @@ Decisions and reasoning:
 - Preserve all initial/mutant/CI failures and actual compiler identities; no reviewer subagents, production integration or extra feature work.
 
 NOT_RUN: Windows game-file/HE/original-runtime validation, native Linux warnings, LSan, World sweeps/spawning/scheduling/movement/hunting, transitive draws OQ-578 and float paths OQ-582. OQ-572/574/585 remain explicit unsupported boundaries. QUESTION: separate base CI triage is pending; no new gameplay decision. READY FOR REVIEW / CI BLOCKED.
+
+
+WILDLIFE-1a narrow lint follow-up (same report, 2026-11-18):
+- Correction `054fd196871526be41355bddca94c512b5046576`: two exact anchored path/member allowances under existing policy, for transient supplied-span cursor/results only, never serialized/hash/World/wire state. No helper type/body or arithmetic change, no hidden narrowing, no scanner/global lint-rule weakening.
+- This packet's initial focused selector missed mechanical lint. Full original CI artifact retained; all new helper/reference tests passed, lint alone failed. A renamed field and the same declaration in another file still refuse under the allowance probe.
+- Direct lint OK; lint self-test 70 cases / 0 failures. Canonical `cache/wildlife-1a/lint-correction-01.log` (all four helpers + lint + self-test), unchanged required picture contract reused:
+```text
+COUNTS: selected=6 executed=6 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+- Helper/executable/fixture hashes unchanged: retain earlier ASan, mutant, warning and partial-pins evidence, with no new full campaign. Corrected publication CI is supplied in chat; base build failures stay separate and blocked. READY FOR REVIEW / CI BLOCKED.

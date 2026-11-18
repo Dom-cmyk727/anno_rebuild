@@ -322,6 +322,57 @@ TEST_CASE("run_turn applies commands before steps") {
     CHECK(fs[1].kind == sim::ReplayEntry::Kind::Advance);
 }
 
+// OQ-562: the recipe mistook a per-visit interval for a whole turn and a
+// command-only boundary for a zero-time subsystem visit. These are different APIs.
+TEST_CASE("run_turn interval is per visit and zero steps isolate commands (OQ-562)") {
+    const bt::Kit k = bt::make_kit();
+    for (const std::uint32_t ms : {0U, 1U, 1000U}) {
+        CAPTURE(ms);
+        auto turn_world = bt::all_classes_world(k);
+        auto direct = turn_world;
+        auto rec = recorder(turn_world);
+        sim::Turn turn;
+        turn.step_ms = ms;
+        turn.commands = {host_speed(200)};
+        REQUIRE(sim::run_turn(turn_world, &rec, turn, 10).empty());
+        REQUIRE(direct.apply(turn.commands.front()).ok());
+        for (int i = 0; i < 10; ++i)
+            direct.advance(ms);
+        CHECK(turn_world.clock().ms == std::uint64_t{ms} * 10);
+        CHECK(turn_world.clock().tick() == std::uint64_t{ms} * 5);
+        CHECK(turn_world.state_hash() == direct.state_hash());
+        REQUIRE(rec.log().entries.size() == 11);
+        for (std::size_t i = 1; i < rec.log().entries.size(); ++i)
+            CHECK(rec.log().entries[i].kind == sim::ReplayEntry::Kind::Advance);
+    }
+    auto isolated = bt::all_classes_world(k);
+    auto direct = isolated;
+    auto rec = recorder(isolated);
+    sim::Turn command_only;
+    command_only.step_ms = 1000; // No visit means this interval is never used.
+    command_only.commands = {host_speed(200)};
+    REQUIRE(sim::run_turn(isolated, &rec, command_only, 0).empty());
+    REQUIRE(direct.apply(command_only.commands.front()).ok());
+    CHECK(isolated.state_hash() == direct.state_hash());
+    REQUIRE(rec.log().entries.size() == 1);
+    CHECK(rec.log().entries.front().kind == sim::ReplayEntry::Kind::Commands);
+    // Only the clock's integer accumulation is partition invariant. Subsystem visit
+    // counts/booking are intentionally not assumed invariant under arbitrary partitions.
+    auto split = bt::all_classes_world(k);
+    auto whole = split;
+    split.advance(0);
+    split.advance(1);
+    CHECK(split.clock().ms == 1);
+    CHECK(split.clock().tick() == 0);
+    split.advance(1);
+    whole.advance(2);
+    CHECK(split.clock().ms == whole.clock().ms);
+    CHECK(split.clock().tick() == 1);
+    // A deliberately different interval must be detected, not called nondeterminism.
+    whole.advance(2);
+    CHECK(split.state_hash() != whole.state_hash());
+}
+
 TEST_CASE("run_turn reports one result per command in stream order and changes nothing else") {
     // Round ee, A2: the host's command feedback comes from the turn's own loop. An accepted
     // command, a refused one, one without a wire form (skipped, never applied) and a legacy

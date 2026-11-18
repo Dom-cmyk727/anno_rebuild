@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <map>
 #include <memory>
 #include <string>
@@ -40,8 +41,10 @@
 #include <anno/sim/ship_step.hpp>
 #include <anno/sim/site_checks.hpp>
 #include <anno/sim/terrain_view.hpp>
+#include <anno/sim/transport.hpp>
 #include <anno/sim_load/original_registry.hpp>
 #include <anno/sim_load/scenario_load.hpp>
+#include <anno/sim_load/ship_start.hpp>
 #include <anno/test/game_dir.hpp>
 
 #include "../../sim/tests/original_component.hpp"
@@ -1251,28 +1254,115 @@ TEST_CASE(
     CHECK(as_stored == seen);
 }
 
-// W4-EXPAND-LIVE-1 D6: the manual-expansion.md two-island freight recipe (docs/testing/
-// manual-expansion.md), replayed through the app's own command path (sim::World::apply, the same
-// entry point the Load/Unload/Build/Found commands this app layer already wires use) rather than
-// the original MAP-EXPAND-1 harness. Every tick, position, cost and stock value below is the
-// card's own documented result, checked, not assumed: a mismatch here means the app's command
-// path diverges from the already-accepted sim behaviour, not a typo in this test.
-TEST_CASE("opening, real files: the manual-expansion two-island freight recipe reproduces the "
-          "card's ledger through the app's command path (W4-EXPAND-LIVE-1 D6)") {
+// OQ-562: this headless opening load compares two explicitly different drivers, not a
+// PlayRunner queue or a live window. The card uses direct commands and single 1000 ms
+// advances. Historical D6 instead advanced ten times per poll and after every command.
+TEST_CASE("opening, real files: recipe caller schedules explain sailing booking and wood "
+          "(W4-EXPAND-LIVE-1 D6 OQ-562)") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
+    bool historical = false;
+    SUBCASE("card single advances and isolated commands") {}
+    SUBCASE("historical D6 ten advances and zero-time command turns") {
+        historical = true;
+    }
     auto loaded = app::load_opening(*dir, manifest_path(), 0, std::nullopt, /*city_booking=*/true);
     REQUIRE(loaded.ok());
     sim::World world = std::move(loaded.value().play.world);
+    std::optional<sim::World> matched;
+    if (!historical) {
+        // Reconstruct the expansion loader's input independently of OpeningLoad.
+        auto manifest = anno::formats::ship_manifest::parse(loaded.value().manifest_bytes);
+        REQUIRE(manifest.ok());
+        auto names = anno::sim_load::load_city_names(*dir);
+        REQUIRE(names.ok());
+        sim::Rules rules;
+        rules.city_names = names.value();
+        rules.city_booking = true;
+        rules.save_billed_goods = true;
+        auto direct_load = anno::sim_load::load_ship_start(manifest.value(), *dir,
+                                                           loaded.value().play.registry, {}, rules);
+        REQUIRE(direct_load.ok());
+        matched = std::move(direct_load).value();
+        REQUIRE(matched->state_hash() == world.state_hash());
+        REQUIRE(matched->types().digest() == world.types().digest());
+        REQUIRE(matched->rules().digest() == world.rules().digest());
+    }
+    sim::TransportStats stats;
+    world.set_transport_stats(&stats);
     const sim::Timing timing;
-
+    std::cout << "OQ562 initial historical=" << historical << " hash=" << world.state_hash()
+              << " registry=" << world.types().digest() << " rules=" << world.rules().digest()
+              << " manifest=" << loaded.value().identity.manifest_hash << '\n';
+    std::uint64_t booking_total = 0, command_debits = 0, arrivals = 0;
+    std::vector<std::uint64_t> arrival_ticks;
+    std::uint64_t first_found_driver_debit = 0;
+    sim::BuildingId source_warehouse{}, forest{};
+    std::optional<sim::CityRef> source_city;
+    std::uint64_t exported = 0;
+    auto money = [&] { return world.players().find(sim::PlayerId{0})->money; };
+    auto events = [&] {
+        for (const auto& e : world.drain_events()) {
+            if (e.kind == sim::SimEventKind::ShipArrived) {
+                ++arrivals;
+                arrival_ticks.push_back(e.tick);
+                std::cout << "OQ562 arrival order=" << e.order_id << " event_tick=" << e.tick
+                          << " observed_tick=" << world.clock().tick() << '\n';
+            }
+            if (e.booking && e.booking->owner == sim::PlayerId{0}) {
+                REQUIRE(e.booking->income == 0);
+                booking_total += e.booking->upkeep;
+                std::cout << "OQ562 booking tick=" << e.tick
+                          << " island=" << e.booking->city.island.v
+                          << " debit=" << e.booking->upkeep << '\n';
+            }
+        }
+    };
+    auto ledger = [&] {
+        if (!source_city || !forest.valid())
+            return;
+        const auto& farm = std::get<sim::Farm>(world.find_building(forest)->payload);
+        std::uint64_t harvest = 0, cart = 0;
+        for (const auto& f : world.figures().list.slots) {
+            if (!f || f->expiry_stamp)
+                continue;
+            if (f->home == forest && f->harvest)
+                harvest += f->cargo_88;
+            if (f->home == source_warehouse && f->job == sim::kJobMarketCart &&
+                f->cargo_goods == 42 && f->transport.step != sim::TransportStep::Done)
+                cart += f->cargo_88;
+        }
+        const auto value = [](const auto& map, auto key) -> std::uint64_t {
+            const auto it = map.find(key);
+            return it == map.end() ? 0 : it->second;
+        };
+        const auto it = stats.forestry.farms.find(forest);
+        const auto made = it == stats.forestry.farms.end() ? 0 : it->second.made_88;
+        const auto consumed = it == stats.forestry.farms.end() ? 0 : it->second.consumed_88;
+        const auto stock =
+            world.islands().at(source_city->island.v)->city(source_city->city)->stock.stock.at(42);
+        const auto loaded_wood = value(stats.loaded_from, forest);
+        const auto offered = value(stats.unload_offered, sim::GoodsId{42});
+        CHECK(stats.forestry.raw_credited_88 == harvest + stats.forestry.raw_delivered_88);
+        CHECK(stats.forestry.raw_delivered_88 == consumed + farm.raw);
+        CHECK(made == farm.out + loaded_wood);
+        CHECK(loaded_wood == cart + offered);
+        CHECK(offered == stock + exported);
+        CHECK(stats.forestry.raw_lost_88 == 0);
+        CHECK(value(stats.cart_lost, sim::GoodsId{42}) == 0);
+        std::cout << "OQ562 wood tick=" << world.clock().tick() << " cut=" << stats.forestry.cuts
+                  << " harvest=" << harvest << " raw_delivered=" << stats.forestry.raw_delivered_88
+                  << " raw=" << farm.raw << " consumed=" << consumed << " made=" << made
+                  << " out=" << farm.out << " cart=" << cart << " offered=" << offered
+                  << " stock=" << stock << " exported=" << exported << '\n';
+    };
     // Starting state (manual-expansion.md "Starting state").
     const sim::Player* p0 = world.players().find(sim::PlayerId{0});
     REQUIRE(p0 != nullptr);
-    CHECK(p0->money == 30000);
+    CHECK(money() == 30000);
     const sim::Figure* ship = sim::find_figure(world.figures(), sim::FigureId{1});
     REQUIRE(ship != nullptr);
     REQUIRE(ship->holds.size() == 4);
@@ -1281,14 +1371,25 @@ TEST_CASE("opening, real files: the manual-expansion two-island freight recipe r
     CHECK(ship->holds[2].amount_88 == 50 * 256); // tools
     CHECK(ship->holds[3].amount_88 == 30 * 256); // tools
 
-    // Advance in the card's own 1000 ms steps until `pred` holds, or fail at `max_steps` (600 s of
-    // game time: generous headroom over the card's longest leg, 47 s). Returns the tick reached.
+    // A step_ms is per subdivision, not a total turn duration. Historical D6 polls
+    // after ten complete visits; it therefore cannot observe every arrival tick.
     auto advance_until = [&](auto pred, int max_steps = 600) -> std::uint64_t {
         for (int i = 0; i < max_steps; ++i) {
             sim::Turn idle;
             idle.step_ms = 1000;
-            sim::run_turn(world, nullptr, idle, timing.mp_steps_per_turn);
+            if (historical) {
+                REQUIRE(sim::run_turn(world, nullptr, idle, timing.mp_steps_per_turn).empty());
+            } else {
+                world.advance(1000);
+                REQUIRE(sim::run_turn(*matched, nullptr, idle, 1).empty());
+                REQUIRE(world.clock().tick() == matched->clock().tick());
+            }
+            REQUIRE_FALSE(world.faulted());
+            events();
+            ledger();
             if (pred()) {
+                if (matched)
+                    CHECK(world.state_hash() == matched->state_hash());
                 return world.clock().tick();
             }
         }
@@ -1296,13 +1397,51 @@ TEST_CASE("opening, real files: the manual-expansion two-island freight recipe r
         return world.clock().tick();
     };
     auto post = [&](sim::Command cmd) -> sim::ApplyResult {
-        sim::Turn turn;
-        turn.step_ms = 0;
-        turn.commands.push_back(std::move(cmd));
-        std::vector<sim::ApplyResult> results;
-        sim::run_turn(world, nullptr, turn, timing.mp_steps_per_turn, &results);
-        REQUIRE(results.size() == 1);
-        return results.front();
+        const auto before_tick = world.clock().tick();
+        const auto before_money = money();
+        // Isolate the actual transaction from the driver's subsequent subsystem visits.
+        auto transaction = world;
+        transaction.set_transport_stats(nullptr);
+        const auto isolated = transaction.apply(cmd);
+        const auto debit = before_money - transaction.players().find(sim::PlayerId{0})->money;
+        command_debits += static_cast<std::uint64_t>(debit);
+        sim::ApplyResult result;
+        if (historical) {
+            sim::Turn turn;
+            turn.step_ms = 0;
+            turn.commands.push_back(cmd);
+            std::vector<sim::ApplyResult> results;
+            REQUIRE(
+                sim::run_turn(world, nullptr, turn, timing.mp_steps_per_turn, &results).empty());
+            REQUIRE(results.size() == 1);
+            result = results.front();
+        } else {
+            result = world.apply(cmd);
+            sim::Turn turn;
+            turn.commands.push_back(cmd);
+            std::vector<sim::ApplyResult> results;
+            REQUIRE(sim::run_turn(*matched, nullptr, turn, 0, &results).empty());
+            REQUIRE(results.size() == 1);
+            CHECK(results.front().status == result.status);
+            CHECK(world.state_hash() == matched->state_hash());
+        }
+        CHECK(result.status == isolated.status);
+        CHECK(world.clock().tick() == before_tick);
+        if (std::holds_alternative<sim::FoundCmd>(cmd.body) && result.ok()) {
+            CHECK(debit == 350);
+            if (!source_city)
+                first_found_driver_debit = static_cast<std::uint64_t>(before_money - money());
+        }
+        if (const auto* load = std::get_if<sim::LoadCmd>(&cmd.body);
+            load && load->warehouse == source_warehouse && load->goods == 42 && result.ok())
+            exported += result.records.at(0).transferred_88;
+        std::cout << "OQ562 command kind=" << cmd.body.index() << " tick=" << before_tick
+                  << " after_tick=" << world.clock().tick() << " isolated_debit=" << debit
+                  << " driver_debit=" << before_money - money() << '\n';
+        events();
+        ledger();
+        CHECK(money() == 30000 - static_cast<std::int64_t>(command_debits + booking_total));
+        return result;
     };
     auto city_of = [&](sim::BuildingId b) -> sim::CityRef {
         return sim::CityRef{sim::island_of(b), sim::CityNo{0}};
@@ -1321,16 +1460,13 @@ TEST_CASE("opening, real files: the manual-expansion two-island freight recipe r
             sim::PlayerId{0}, sim::MoveCmd{sim::FigureId{1}, 257 * 256 + 128, 134 * 256 + 128}});
         REQUIRE_MESSAGE(r.ok(), sim::reject_name(r.status));
     }
-    // The card's own absolute tick (86000) assumes the sim-level harness's exact sail duration;
-    // this app-path run's actual arrival tick is used from here on instead of asserted against
-    // that number, since a ship's real arrival tick is a pathfinding/speed runtime outcome, not a
-    // value this test can independently derive. Recorded as a QUESTION in the report, not fudged.
+    // Position polling and arrival events are distinct observations; both are traced.
     const std::uint64_t arrive1 = advance_until([&] {
         const sim::Figure* s = sim::find_figure(world.figures(), sim::FigureId{1});
         return s != nullptr && s->pos.x / 256 == 257 && s->pos.y / 256 == 134;
     });
     MESSAGE("leg 1 arrival at tick " << arrive1 << " (card: 86000)");
-    const std::int64_t money_before_found1 = p0->money;
+    const std::int64_t money_before_found1 = money();
 
     // Tick 86000: FoundCmd, type 1302, click (255,138), origin (254,137).
     const sim::TypeId kWarehouseType{1302};
@@ -1350,17 +1486,14 @@ TEST_CASE("opening, real files: the manual-expansion two-island freight recipe r
     const sim::ApplyResult founded_src = post(sim::Command{sim::PlayerId{0}, found_src});
     REQUIRE_MESSAGE(founded_src.ok(), sim::reject_name(founded_src.status));
     const sim::BuildingId wh_src = founded_src.records.at(0).building;
+    source_warehouse = wh_src;
     REQUIRE(wh_src.valid());
     const sim::CityRef city_src = city_of(wh_src);
+    source_city = city_src;
     CHECK(city_src.island.v == 0); // "Source island 0"
-    // OQ (see the report): this run's first founding cost 351 gold, not the card's documented 350
-    // -- confirmed as specific to this one founding, not a general rule, because the second
-    // founding's own delta (below) matches the card's 350 exactly. money_after_found1 (not the
-    // card's assumed money_before_found1 - 350) is used as the baseline for every following
-    // same-tick delta below, so the build/road costs are still checked against their own real
-    // deltas, independent of this one open discrepancy.
-    MESSAGE("founding 1 cost " << (money_before_found1 - p0->money) << " gold (card: 350)");
-    const std::int64_t money_after_found1 = p0->money;
+    // This is the total driver debit; post separately checks the transaction's 350 gold.
+    MESSAGE("founding 1 cost " << (money_before_found1 - money()) << " gold (card: 350)");
+    const std::int64_t money_after_found1 = money();
     CHECK(stock_of(city_src, 42) == 0); // wood: the warehouse starts with zero
 
     // Tick 86000: UnloadCmd hold 2 (tools, 41) 2 t; BuildCmd 801 at (238,128).
@@ -1382,8 +1515,9 @@ TEST_CASE("opening, real files: the manual-expansion two-island freight recipe r
         b.placements.push_back(w);
         sim::ApplyResult r = post(sim::Command{sim::PlayerId{0}, b});
         REQUIRE_MESSAGE(r.ok(), sim::reject_name(r.status));
+        forest = r.records.at(0).building;
     }
-    CHECK(p0->money == money_after_found1 - 150);
+    CHECK(money() == money_after_found1 - 150);
     CHECK(stock_of(city_src, 41) == 0); // tools: zero after the 2 t unload + building's 2 t cost
     CHECK(stock_of(city_src, 42) == 0); // wood: still zero
 
@@ -1411,19 +1545,17 @@ TEST_CASE("opening, real files: the manual-expansion two-island freight recipe r
         sim::ApplyResult r = post(sim::Command{sim::PlayerId{0}, roads});
         REQUIRE_MESSAGE(r.ok(), sim::reject_name(r.status));
     }
-    CHECK(p0->money == money_after_found1 - 150 - 100);
+    CHECK(money() == money_after_found1 - 150 - 100);
     CHECK(stock_of(city_src, 41) == 0);
     CHECK(stock_of(city_src, 42) == 0);
 
-    // Card tick 123500 is 37500 ticks after founding (86000); advance by that same relative delta
-    // from this run's actual founding tick, not the card's absolute tick (arrival timing differs,
-    // see above), and check the card's own documented production result at that relative point:
-    // real harvesting/delivery must have supplied 448 raw by then (debit 256, credit 256, retain
-    // 192 -- the card's own wording).
+    // Historical polling overshoots the requested 37500-tick interval to 40000.
+    // This observation must not be labelled an exact relative checkpoint.
     const std::uint64_t t_found1 = arrive1; // founding was posted at the same tick as arrival
     const std::uint64_t at_load1 =
         advance_until([&] { return world.clock().tick() >= t_found1 + 37500; });
-    MESSAGE("relative +37500 checkpoint at tick " << at_load1);
+    CHECK(at_load1 == (historical ? 130000 : 123500));
+    CHECK(at_load1 - t_found1 == (historical ? 40000 : 37500));
     CHECK(stock_of(city_src, 42) == 448);
     {
         sim::ApplyResult r =
@@ -1452,7 +1584,7 @@ TEST_CASE("opening, real files: the manual-expansion two-island freight recipe r
     // founding's own 350-gold delta, not a cumulative total assuming no upkeep yet -- the only
     // absolute money figure this test asserts before the very end is the starting 30000 and the
     // card's own closed-form final total.
-    const std::int64_t money_before_found2 = p0->money;
+    const std::int64_t money_before_found2 = money();
     sim::FoundCmd found_dst;
     found_dst.ship = sim::FigureId{1};
     found_dst.placement.type = kWarehouseType;
@@ -1469,7 +1601,7 @@ TEST_CASE("opening, real files: the manual-expansion two-island freight recipe r
     REQUIRE(wh_dst.valid());
     const sim::CityRef city_dst = city_of(wh_dst);
     CHECK(city_dst.island != city_src.island); // "Distinct island 1 and city"
-    CHECK(p0->money == money_before_found2 - 350);
+    CHECK(money() == money_before_found2 - 350);
 
     // Tick 171000: UnloadCmd, destination, hold 2, tools, 1 t.
     {
@@ -1486,7 +1618,7 @@ TEST_CASE("opening, real files: the manual-expansion two-island freight recipe r
     // command touches it" meant "the value is frozen"; it is not.
 
     // Tick 171000: BuildCmd 1310 at (450,355), before unloading wood: CannotAfford.
-    const std::int64_t money_before_refusal = p0->money;
+    const std::int64_t money_before_refusal = money();
     const std::uint32_t wood_dst_before_refusal = stock_of(city_dst, 42);
     {
         sim::BuildCmd b;
@@ -1500,7 +1632,7 @@ TEST_CASE("opening, real files: the manual-expansion two-island freight recipe r
         sim::ApplyResult r = post(sim::Command{sim::PlayerId{0}, b});
         CHECK(r.status == sim::Reject::CannotAfford);
     }
-    CHECK(p0->money == money_before_refusal); // unchanged by the refusal
+    CHECK(money() == money_before_refusal); // unchanged by the refusal
     CHECK(stock_of(city_dst, 42) == wood_dst_before_refusal);
 
     // Tick 171000: UnloadCmd, destination, hold 0, wood, 1 t; repeat the same build: succeeds.
@@ -1523,7 +1655,7 @@ TEST_CASE("opening, real files: the manual-expansion two-island freight recipe r
         sim::ApplyResult r = post(sim::Command{sim::PlayerId{0}, b});
         REQUIRE_MESSAGE(r.ok(), sim::reject_name(r.status));
     }
-    CHECK(p0->money == money_before_refusal - 50);
+    CHECK(money() == money_before_refusal - 50);
 
     // Tick 171000 -> 218000: MoveCmd back to the source dock, actual return.
     {
@@ -1535,12 +1667,8 @@ TEST_CASE("opening, real files: the manual-expansion two-island freight recipe r
         const sim::Figure* s = sim::find_figure(world.figures(), sim::FigureId{1});
         return s != nullptr && s->pos.x / 256 == 257 && s->pos.y / 256 == 134;
     });
-    MESSAGE("leg 3 arrival at tick "
-            << arrive3 << " (card: 218000); "
-            << "wood stock at arrival: " << stock_of(city_src, 42) << " (card expects 2880 "
-            << "before this load, i.e. final 2368 + the 512 this load takes -- production is "
-            << "continuous and tied to elapsed ticks since founding, which this run's longer "
-            << "total sailing time may have let run longer too)");
+    CHECK(arrive3 == (historical ? 230000 : 218000));
+    CHECK(stock_of(city_src, 42) == 1984); // Before load, not the final-arrival stock.
 
     // Tick 218000: LoadCmd, source, hold 0, wood, 2 t.
     {
@@ -1550,7 +1678,7 @@ TEST_CASE("opening, real files: the manual-expansion two-island freight recipe r
         REQUIRE_MESSAGE(r.ok(), sim::reject_name(r.status));
         CHECK(r.records.at(0).transferred_88 == 512);
     }
-    MESSAGE("source wood after the second load: " << stock_of(city_src, 42) << " (card: 2368)");
+    CHECK(stock_of(city_src, 42) == 1472); // 1984 - 512, before the final sea leg.
 
     // Tick 218000 -> 265000: MoveCmd to the destination dock, actual arrival.
     {
@@ -1584,8 +1712,34 @@ TEST_CASE("opening, real files: the manual-expansion two-island freight recipe r
                             << ship_end->holds[3].amount_88
                             << " (card: 6656/2560/9472/7680 = 26/10/37/30 t)");
 
-    // Final ledger (manual-expansion.md "Ledger and visible closure"):
-    // 30000 - 1000 (two foundings' 350 each + the two builds' 150+100+50 = 1000) - 90 (source
-    // upkeep) - 47 (destination upkeep) = 28863.
-    MESSAGE("final money: " << p0->money << " (card: 28863)");
+    // Compare the same stage: final arrival, after the last leg's production/delivery.
+    CHECK(arrive1 == (historical ? 90000 : 86000));
+    CHECK(arrive2 == (historical ? 180000 : 171000));
+    CHECK(arrive4 == (historical ? 280000 : 265000));
+    const std::vector<std::uint64_t> expected_arrivals =
+        historical ? std::vector<std::uint64_t>{86000, 177500, 227000, 277000}
+                   : std::vector<std::uint64_t>{86000, 171000, 218000, 265000};
+    CHECK(arrival_ticks == expected_arrivals);
+    CHECK(first_found_driver_debit == (historical ? 351 : 350));
+    CHECK(stock_of(city_src, 42) == 2368);
+    CHECK(stock_of(city_dst, 42) == 512);
+    CHECK(money() == (historical ? 28853 : 28863));
+    CHECK(booking_total == (historical ? 147 : 137));
+    const auto& farm_end = std::get<sim::Farm>(world.find_building(forest)->payload);
+    CHECK(stats.forestry.farms.at(forest).made_88 == (historical ? 3584 : 3360));
+    CHECK(farm_end.out == (historical ? 448 : 224));
+    CHECK(ship_end->holds[0].amount_88 == 6656);
+    CHECK(ship_end->holds[1].amount_88 == 2560);
+    CHECK(ship_end->holds[2].amount_88 == 9472);
+    CHECK(ship_end->holds[3].amount_88 == 7680);
+    REQUIRE(arrivals == 4);
+    REQUIRE(stats.forestry.cuts > 0);
+    REQUIRE(stats.forestry.raw_delivered_88 > 0);
+    REQUIRE(stats.loaded_from.at(forest) > 0);
+    CHECK(command_debits == 1000);
+    CHECK(money() == 30000 - static_cast<std::int64_t>(command_debits + booking_total));
+    ledger();
+    std::cout << "OQ562 final historical=" << historical << " tick=" << world.clock().tick()
+              << " money=" << money() << " source_raw88=" << stock_of(city_src, 42)
+              << " upkeep=" << booking_total << " arrivals=" << arrivals << '\n';
 }

@@ -497,14 +497,14 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     CHECK_FALSE(out.islands[0].complete_local_records);
     CHECK(out.boundary->source.island == 0);
     CHECK(out.boundary->source.slot == 11);
-    CHECK(out.boundary->source.header == 37);
-    CHECK(out.boundary->source.record == 1);
+    CHECK(out.boundary->source.header == 42);
+    CHECK(out.boundary->source.record == 39);
     CHECK(out.boundary->tag == "GELAENDE");
-    CHECK(out.boundary->reason.find("type 1552") != std::string::npos);
-    CHECK(out.islands[0].resources.size() == 258);
+    CHECK(out.boundary->reason.find("type 1512") != std::string::npos);
+    CHECK(out.islands[0].resources.size() == 2387);
     CHECK(out.islands[0].spawns.empty());
-    CHECK(out.consumed == 255);
-    REQUIRE(out.islands[0].headers.size() == 38);
+    CHECK(out.consumed == 2333);
+    REQUIRE(out.islands[0].headers.size() == 43);
     CHECK(out.islands[0].headers[33].records == 0);
     REQUIRE(out.islands[0].headers[33].water_mask_updates);
     REQUIRE(out.islands[0].headers[34].water_mask_updates);
@@ -514,7 +514,9 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     CHECK(out.islands[0].resource.tiles.walk_mask(0) == 511);
     REQUIRE(out.islands[0].headers[35].water_mask_updates);
     REQUIRE(out.islands[0].headers[36].water_mask_updates);
-    CHECK_FALSE(out.islands[0].headers[37].water_mask_updates); // Next class stops before epilogue.
+    for (std::uint64_t h = 37; h <= 41; ++h)
+        REQUIRE(out.islands[0].headers[h].water_mask_updates);
+    CHECK_FALSE(out.islands[0].headers[42].water_mask_updates); // Next class stops before epilogue.
     const auto old_boundary =
         std::find_if(out.islands[0].resources.begin(), out.islands[0].resources.end(),
                      [](const auto& r) { return r.source.header == 35 && r.source.record == 22; });
@@ -541,10 +543,53 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
             CHECK(tiles.foot_rotation(i) == 0);
             CHECK(tiles.foot_anchor(i) == (x == 107 && y == 43));
         }
+    const auto former_cliff =
+        std::find_if(out.islands[0].resources.begin(), out.islands[0].resources.end(),
+                     [](const auto& r) { return r.source.header == 37 && r.source.record == 1; });
+    REQUIRE(former_cliff != out.islands[0].resources.end());
+    CHECK(former_cliff->raw.type == sim::TypeId{1552});
+    CHECK(former_cliff->raw.x == 54);
+    CHECK(former_cliff->raw.y == 61);
+    CHECK(former_cliff->raw.rotation == 3);
+    CHECK(former_cliff->draw_before == 255);
+    CHECK(former_cliff->effect.disposition == sim::resource_import::Disposition::Accepted);
+    CHECK(former_cliff->effect.height == 32);
+    CHECK(former_cliff->effect.draws == 0);
+    CHECK_FALSE(former_cliff->effect.variant);
+    // Independent HHbb/source-order reference expectations, not adapter output.
+    // Later partial overlays retain some anchors and replace other cells.
+    const std::vector<std::uint32_t> cliff_ids{1552, 1552, 1552, 1554, 1554,
+                                               1552, 1554, 1554, 1549};
+    const std::vector<std::uint8_t> cliff_heights{32, 32, 32, 16, 16, 32, 16, 16, 48};
+    const std::vector<std::uint8_t> cliff_rotations{3, 3, 3, 2, 2, 3, 2, 2, 0};
+    const std::vector<std::uint8_t> cliff_dx{0, 1, 2, 1, 2, 2, 1, 2, 0};
+    const std::vector<std::uint8_t> cliff_dy{0, 0, 0, 0, 0, 1, 1, 1, 1};
+    const std::vector<std::uint8_t> cliff_anchors{1, 1, 1, 1, 0, 1, 0, 0, 1};
+    for (std::int32_t dy = 0; dy < 3; ++dy)
+        for (std::int32_t dx = 0; dx < 3; ++dx) {
+            const auto at = static_cast<std::uint64_t>(dy * 3 + dx);
+            const auto i = tiles.index_of(54 + dx, 61 + dy);
+            CHECK(tiles.object(i) == cliff_ids[at]);
+            CHECK(tiles.phase(i) == 0);
+            CHECK(tiles.item_height(i) == cliff_heights[at]);
+            CHECK(tiles.foot_dx(i) == cliff_dx[at]);
+            CHECK(tiles.foot_dy(i) == cliff_dy[at]);
+            CHECK(tiles.foot_rotation(i) == cliff_rotations[at]);
+            CHECK(tiles.foot_anchor(i) == cliff_anchors[at]);
+        }
+    std::uint64_t stones = 0, cliffs = 0;
+    for (const auto& record : out.islands[0].resources) {
+        const auto* type = types.types->find(record.raw.type);
+        REQUIRE(type);
+        stones += type->flags_word == 0x3a;
+        cliffs += type->flags_word == 0x12;
+    }
+    CHECK(stones == 29);
+    CHECK(cliffs == 25);
     std::uint64_t epilogues = 0;
     for (const auto& h : out.islands[0].headers)
         epilogues += h.water_mask_updates.has_value();
-    CHECK(epilogues == 4);
+    CHECK(epilogues == 9);
 
     std::uint64_t accepted = 0, rejected = 0, resource_class = 0, resource_draws = 0;
     for (const auto& record : out.islands[0].resources) {
@@ -555,16 +600,16 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
         resource_class += original_type->prodtype >= 225 && original_type->prodtype <= 256;
         resource_draws += record.effect.draws;
     }
-    CHECK(accepted == 258);
+    CHECK(accepted == 2387);
     CHECK(rejected == 0);
-    CHECK(resource_class == 255);
-    CHECK(resource_draws == 255);
-    const auto* unsupported = types.types->find(sim::TypeId{1552});
+    CHECK(resource_class == 2333);
+    CHECK(resource_draws == 2333);
+    const auto* unsupported = types.types->find(sim::TypeId{1512});
     REQUIRE(unsupported);
-    CHECK(unsupported->flags_word == 0x12);
-    CHECK(unsupported->prodtype == 322);
-    CHECK(unsupported->width == 3);
-    CHECK(unsupported->height == 3);
+    CHECK(unsupported->flags_word == 0x8018);
+    CHECK(unsupported->prodtype == 321);
+    CHECK(unsupported->width == 2);
+    CHECK(unsupported->height == 1);
     const auto& first = out.islands[0].resources.front();
     CHECK(first.source.header == 34);
     CHECK(first.source.record == 0);
@@ -576,7 +621,8 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
               << out.complete_local_records << " resources=" << out.islands[0].resources.size()
               << " accepted=" << accepted << " rejected=" << rejected
               << " resource_class=" << resource_class << " resource_draws=" << resource_draws
-              << " spawns=" << out.islands[0].spawns.size() << " consumed=" << out.consumed;
+              << " spawns=" << out.islands[0].spawns.size() << " consumed=" << out.consumed
+              << " stones=" << stones << " cliffs=" << cliffs << " epilogues=" << epilogues;
     if (out.boundary)
         std::cout << " first_boundary_island=" << out.boundary->source.island
                   << " slot=" << out.boundary->source.slot

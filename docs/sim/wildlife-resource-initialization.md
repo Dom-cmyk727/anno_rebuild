@@ -185,3 +185,11 @@ full overlap plus per-world-block coverage, then the existing overlay writer.
 Its nonresource placements draw nothing and leave the variation plane alone.
 The ordinary 0x09/0x29 contract and selector are unchanged. Other classes remain
 explicit unsupported boundaries; this does not extend BuildCmd or World import.
+
+## 7. Narrow cliff continuation (2026-11-18)
+
+[WILDLIFE-CLIFF-1](wildlife-cliff.md) adds exact flags 0x12 / kind group 0x141
+to the same mode-2 coverage/overlay arm. Original flags remain intact: a cliff's
+missing existing-object bit 0x20 makes later ordinary resources incompatible,
+while same-group overlays may pass. No compatibility predicate, selector,
+variation, header callback, ordinary/stone path or World wiring is changed.

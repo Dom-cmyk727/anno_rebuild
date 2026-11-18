@@ -8,7 +8,7 @@ import tempfile
 
 
 def run(ref, path, expected):
-    p = subprocess.run([sys.executable, '-I', str(ref), str(path)], capture_output=True, text=True, timeout=10)
+    p = subprocess.run([sys.executable, '-I', '-B', str(ref), str(path)], capture_output=True, text=True, timeout=10)
     if p.returncode != expected or 'Traceback' in p.stdout+p.stderr:
         raise AssertionError(f'{path.name}: {p.returncode}: {p.stdout}{p.stderr}')
 
@@ -43,7 +43,7 @@ def main():
         for name, old, new in [
             ('mask', '(plane[i] & 15) | (variant << 4)', '(plane[i] & 240) | variant'),
             ('skip-draw', 'consumed += 1', 'consumed += 0'),
-            ('overwrite-anchor', 'if stone and objects[i] and reg[objects[i]].flags & 16 and anchors[i]:', 'if False:'),
+            ('overwrite-anchor', 'if mode2_overlay and objects[i] and reg[objects[i]].flags & 16 and anchors[i]:', 'if False:'),
             ('ignore-earlier', 'objects[i], phase[i], item_height[i] = tid, state & 63, height', 'objects[i], phase[i], item_height[i] = 0, state & 63, height'),
         ]:
             if source.count(old) != 1:
@@ -60,7 +60,19 @@ def main():
             else:
                 run(mutant, args.vectors, 1)
             print(f'APPLIED {name}: legal control 0, mutant 1')
-    print('resource import contract: 19 public checks passed')
+        # Existing flags, not incoming flags: admit an installed cliff by the
+        # legal path first, then prove the ordinary resource still refuses.
+        placement = (args.ref.parent/'placement_ref.py').read_text()
+        old = 'if e.flags & 0x20:'
+        if placement.count(old) != 1:
+            raise AssertionError('cliff-replaceability: replacement did not apply once')
+        control = root/'control.py'
+        control.write_text(source)
+        run(control, args.vectors, 0)
+        (root/'placement_ref.py').write_text(placement.replace(old, 'if e.flags & 0x30:'))
+        run(control, args.vectors, 1)
+        print('APPLIED cliff-replaceability: legal control 0, mutant 1')
+    print('resource import contract: 21 public checks passed')
     return 0
 
 

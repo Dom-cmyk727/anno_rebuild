@@ -146,3 +146,11 @@ stream stops at 37/1, type 1552 / flags 0x12. It completes 258 records (255
 resource draws, 3 stones), 4 header epilogues, 0 spawns. This remains a typed
 **diagnostic partial**, with explicit supplied stamp/mode/draws. The original
 PREFIX receipts and its first unsupported boundary remain preserved.
+
+### Cliff successor (2026-11-18)
+
+[WILDLIFE-CLIFF-1](wildlife-cliff.md) processes former cliff 37/1 and advances
+this same supplied-input diagnostic to GELAENDE 42/39, type 1512 / flags 0x8018.
+It completes 2,387 accepted records / 2,333 resource draws / 29 stones / 25 cliffs /
+9 header epilogues / 0 spawns. HIRSCH 71 is still unreached. Preserve both earlier
+boundary receipts; none proves complete scene initialization or a global cursor.

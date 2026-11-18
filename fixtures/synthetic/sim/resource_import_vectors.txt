@@ -56,3 +56,30 @@ w=3 h=3 plane=11,11,11,11,11,11,11,11,11 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11
 
 # STONE: Origin inside but right edge outside: full bounds reject before corner reads. Nonresource: plane unchanged, supplied draw unconsumed.
 w=3 h=3 plane=11,11,11,11,11,11,11,11,11 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=48,48,48,48,48,48,48,48,48 objects=0,0,0,0,0,0,0,0,0 types=700:323:2:2:58:0:0 records=700:2:0:0:197 anchors=0,0,0,0,0,0,0,0,0 => objects=0,0,0,0,0,0,0,0,0 phase=0,0,0,0,0,0,0,0,0 height=0,0,0,0,0,0,0,0,0 anchor=0,0,0,0,0,0,0,0,0 status=bounds plane=11,11,11,11,11,11,11,11,11 consumed=0
+
+# CLIFF: Mode 2 nonflat min 35 -> 32, not mean 52 or max minimum 48; bit 8 absence changes no height branch.
+w=3 h=3 plane=171,171,171,171,171,171,171,171,171 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=49,50,63,55,57,60,61,62,35 objects=0,0,0,0,0,0,0,0,0 types=710:322:2:2:18:0:0 records=710:0:0:0:197 anchors=0,0,0,0,0,0,0,0,0 => objects=710,710,0,710,710,0,0,0,0 phase=5,5,0,5,5,0,0,0,0 height=32,32,0,32,32,0,0,0,0 anchor=1,0,0,0,0,0,0,0,0 status=accepted consumed=0 plane=171,171,171,171,171,171,171,171,171
+
+# CLIFF: A distinct parsed kind 324/id 711: low height 15 -> 0 through group 321 bypass, no draw.
+w=3 h=3 plane=171,171,171,171,171,171,171,171,171 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=15,15,15,15,15,15,15,15,15 objects=0,0,0,0,0,0,0,0,0 types=711:324:1:1:18:0:0 records=711:1:1:0:9 anchors=0,0,0,0,0,0,0,0,0 => objects=0,0,0,0,711,0,0,0,0 phase=0,0,0,0,9,0,0,0,0 height=0,0,0,0,0,0,0,0,0 anchor=0,0,0,0,1,0,0,0,0 status=accepted consumed=0 plane=171,171,171,171,171,171,171,171,171
+
+# CLIFF: Install cliff then ordinary resource: existing flags 18 lack bit 32, incoming group 225 refuses, no draw.
+w=3 h=3 plane=171,171,171,171,171,171,171,171,171 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=48,48,48,48,48,48,48,48,48 objects=0,0,0,0,0,0,0,0,0 types=710:322:1:1:18:0:0;720:225:1:1:41:0:0 records=710:1:1:0:5;720:1:1:0:7 anchors=0,0,0,0,0,0,0,0,0 => objects=0,0,0,0,710,0,0,0,0 phase=0,0,0,0,5,0,0,0,0 height=0,0,0,0,48,0,0,0,0 anchor=0,0,0,0,1,0,0,0,0 status=accepted,occupied consumed=0 plane=171,171,171,171,171,171,171,171,171
+
+# CLIFF: Control: install stone then same resource. Existing flags 58 have bit 32, resource accepts and consumes one invariant draw.
+w=3 h=3 plane=171,171,171,171,171,171,171,171,171 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=48,48,48,48,48,48,48,48,48 objects=0,0,0,0,0,0,0,0,0 types=700:323:1:1:58:0:0;720:225:1:1:41:0:0 records=700:1:1:0:5;720:1:1:0:7 anchors=0,0,0,0,0,0,0,0,0 => objects=0,0,0,0,720,0,0,0,0 phase=0,0,0,0,7,0,0,0,0 height=0,0,0,0,48,0,0,0,0 anchor=0,0,0,0,1,0,0,0,0 status=accepted,accepted consumed=1 plane=171,171,171,171,11,171,171,171,171
+
+# CLIFF: Reverse order: resource first costs one draw, cliff over it passes existing bit 32 and keeps variation byte 11.
+w=3 h=3 plane=171,171,171,171,171,171,171,171,171 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=48,48,48,48,48,48,48,48,48 objects=0,0,0,0,0,0,0,0,0 types=710:322:1:1:18:0:0;720:225:1:1:41:0:0 records=720:1:1:0:7;710:1:1:0:5 anchors=0,0,0,0,0,0,0,0,0 => objects=0,0,0,0,710,0,0,0,0 phase=0,0,0,0,5,0,0,0,0 height=0,0,0,0,48,0,0,0,0 anchor=0,0,0,0,1,0,0,0,0 status=accepted,accepted consumed=1 plane=171,171,171,171,11,171,171,171,171
+
+# CLIFF: Same-group control: stone after cliff has compatibility, one writable cell marks chunk. Keep first cliff anchor; second gets new stone anchor.
+w=3 h=3 plane=171,171,171,171,171,171,171,171,171 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=48,48,48,48,48,48,48,48,48 objects=0,0,0,0,0,0,0,0,0 types=700:323:2:1:58:0:0;710:322:2:1:18:0:0 records=710:0:0:0:5;700:0:0:0:9 anchors=0,0,0,0,0,0,0,0,0 => objects=710,700,0,0,0,0,0,0,0 phase=5,9,0,0,0,0,0,0,0 height=48,48,0,0,0,0,0,0,0 anchor=1,1,0,0,0,0,0,0,0 status=accepted,accepted consumed=0 plane=171,171,171,171,171,171,171,171,171
+
+# CLIFF: Reverse same-group order: cliff after stone keeps first stone anchor but writes second cliff cell and anchor.
+w=3 h=3 plane=171,171,171,171,171,171,171,171,171 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=48,48,48,48,48,48,48,48,48 objects=0,0,0,0,0,0,0,0,0 types=700:323:2:1:58:0:0;710:322:2:1:18:0:0 records=700:0:0:0:5;710:0:0:0:9 anchors=0,0,0,0,0,0,0,0,0 => objects=700,710,0,0,0,0,0,0,0 phase=5,9,0,0,0,0,0,0,0 height=48,48,0,0,0,0,0,0,0 anchor=1,1,0,0,0,0,0,0,0 status=accepted,accepted consumed=0 plane=171,171,171,171,171,171,171,171,171
+
+# CLIFF: Every existing cliff cell is anchored: compatible group still fails chunk coverage before any writes.
+w=3 h=3 plane=171,171,171,171,171,171,171,171,171 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=48,48,48,48,48,48,48,48,48 objects=711,711,0,711,711,0,0,0,0 types=710:322:2:2:18:0:0;711:324:1:1:18:0:0 records=710:0:0:0:5 anchors=1,1,0,1,1,0,0,0,0 => objects=711,711,0,711,711,0,0,0,0 phase=0,0,0,0,0,0,0,0,0 height=0,0,0,0,0,0,0,0,0 anchor=1,1,0,1,1,0,0,0,0 status=coverage consumed=0 plane=171,171,171,171,171,171,171,171,171
+
+# CLIFF: A 3 by 3 cliff at x 1 exceeds a 3-wide island even though its origin lies inside: bounds reject before reads.
+w=3 h=3 plane=171,171,171,171,171,171,171,171,171 draws=4 slots=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 map104=- map201=- map404=- heights=48,48,48,48,48,48,48,48,48 objects=0,0,0,0,0,0,0,0,0 types=710:322:3:3:18:0:0 records=710:1:0:0:5 anchors=0,0,0,0,0,0,0,0,0 => objects=0,0,0,0,0,0,0,0,0 phase=0,0,0,0,0,0,0,0,0 height=0,0,0,0,0,0,0,0,0 anchor=0,0,0,0,0,0,0,0,0 status=bounds consumed=0 plane=171,171,171,171,171,171,171,171,171

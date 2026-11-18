@@ -259,7 +259,7 @@ TEST_CASE("resource import: authored ordered prefixes and draw-sensitive selecto
         CHECK(out.tiles.ignored_writes() == 0);
         ++count;
     }
-    CHECK(count == 26);
+    CHECK(count == 35);
 }
 
 TEST_CASE("resource import: errors expose no partial success or input mutation") {
@@ -621,15 +621,15 @@ TEST_CASE("resource import: original Tutorial first resource prefix") {
 }
 
 namespace {
-Rig stone_rig(std::uint32_t w = 3, std::uint32_t h = 2) {
+Rig stone_rig(std::uint32_t w = 3, std::uint32_t h = 2, std::uint32_t flags = 0x3a) {
     Rig r;
     REQUIRE(r.island.tiles.reset(0, 0, 18, 18, 4));
     r.island.terrain = sim::make_terrain(std::vector<std::uint8_t>(18 * 18, 48), {}, {});
     r.plane.assign(18 * 18, 0xab);
     sim::BuildingType stone;
     stone.id = sim::TypeId{700};
-    stone.prodtype = 323;
-    stone.flags_word = 0x3a;
+    stone.prodtype = flags == 0x12 ? 322 : 323;
+    stone.flags_word = flags;
     stone.width = w;
     stone.height = h;
     stone.head_raw.assign(56, 0);
@@ -637,7 +637,7 @@ Rig stone_rig(std::uint32_t w = 3, std::uint32_t h = 2) {
     stone.walk_mask.assign(3 * h, (1U << (3 * w)) - 1U);
     auto sibling = stone;
     sibling.id = sim::TypeId{701};
-    sibling.prodtype = 321;
+    sibling.prodtype = flags == 0x12 ? 324 : 321;
     sim::TypeRegistry::Builder builder;
     builder.add(stone).add(sibling);
     const auto built = builder.build();
@@ -709,8 +709,8 @@ TEST_CASE("resource import: stone coverage requires every touched chunk not one 
     CHECK(unsupported.error().kind == ri::ErrorKind::Unsupported);
 }
 
-TEST_CASE("resource import: stone partial overlay retains anchors but updates their walk fields") {
-    auto r = stone_rig();
+namespace {
+void partial_overlay_fields(Rig r) {
     auto sparse = *r.types->find(sim::TypeId{700});
     sparse.walk_mask.assign(6, 0);
     sparse.walk_mask[0] = 1; // Only the top-left subcell: OR differs from replacement.
@@ -770,4 +770,112 @@ TEST_CASE("resource import: stone partial overlay retains anchors but updates th
             CHECK(r.island.tiles.walk_code(i) == 2);
             CHECK(r.island.tiles.walk_mask(i) == 0x100);
         }
+}
+
+} // namespace
+TEST_CASE("resource import: stone partial overlay retains anchors but updates their walk fields") {
+    partial_overlay_fields(stone_rig());
+}
+TEST_CASE("resource import: cliff partial overlay retains anchors but updates their walk fields") {
+    partial_overlay_fields(stone_rig(3, 2, 0x12));
+}
+
+TEST_CASE("resource import: cliff square and nonsquare rotations retain mode2 heights and chunk "
+          "anchors") {
+    for (const auto shape : {std::pair{3U, 3U}, std::pair{3U, 2U}})
+        for (std::uint8_t rotation = 0; rotation < 4; ++rotation) {
+            auto r = stone_rig(shape.first, shape.second, 0x12);
+            const auto w = rotation & 1U ? shape.second : shape.first;
+            const auto h = rotation & 1U ? shape.first : shape.second;
+            std::vector<std::uint8_t> heights(18 * 18, 48);
+            heights[(7 + h) * 18 + 7 + w] = 35; // Far corner belongs to the rotated window.
+            r.island.terrain = sim::make_terrain(std::move(heights), {}, {});
+            const auto id = shape.first == shape.second ? sim::TypeId{700} : sim::TypeId{701};
+            r.records = {{id, 7, 7, rotation, 197}};
+            const auto result = evaluate(r);
+            REQUIRE(result);
+            const auto& out = result.value();
+            CHECK(out.records == std::vector{ri::Disposition::Accepted});
+            CHECK(out.consumed == 0);
+            CHECK(out.variation == r.plane);
+            CHECK(r.types->find(id)->flags_word == 0x12);
+            for (std::int32_t y = 0; y < 18; ++y)
+                for (std::int32_t x = 0; x < 18; ++x) {
+                    const auto i = out.tiles.index_of(x, y);
+                    const bool inside =
+                        x >= 7 && std::int64_t{x} < 7 + w && y >= 7 && std::int64_t{y} < 7 + h;
+                    CHECK(out.tiles.object(i) == (inside ? id.v : 0U));
+                    CHECK(out.tiles.phase(i) == (inside ? 5 : 0));
+                    CHECK(out.tiles.item_height(i) == (inside ? 32 : 0));
+                    if (inside) {
+                        CHECK(out.tiles.foot_dx(i) == x - 7);
+                        CHECK(out.tiles.foot_dy(i) == y - 7);
+                        CHECK(out.tiles.foot_rotation(i) == rotation);
+                        CHECK(out.tiles.foot_anchor(i) ==
+                              ((x == 7 || x == 8) && (y == 7 || y == 8)));
+                        CHECK(out.tiles.walk_code(i) == 1);
+                        CHECK(out.tiles.walk_mask(i) == 511);
+                    }
+                    CHECK(r.island.tiles.object(i) == 0);
+                }
+        }
+}
+
+TEST_CASE(
+    "resource import: installed cliff replaceability controls ordinary resource in both orders") {
+    for (const std::uint32_t flags : {0x3aU, 0x12U}) {
+        auto r = stone_rig(1, 1, flags);
+        sim::BuildingType resource;
+        resource.id = sim::TypeId{720};
+        resource.prodtype = 225;
+        resource.flags_word = 0x29;
+        resource.width = resource.height = 1;
+        sim::TypeRegistry::Builder builder;
+        builder.add(*r.types->find(sim::TypeId{700}))
+            .add(*r.types->find(sim::TypeId{701}))
+            .add(resource);
+        const auto built = builder.build();
+        REQUIRE(built);
+        r.types = built.value();
+        r.facts.push_back({resource.id, 0, 0});
+        const auto tile = r.island.tiles.index_of(5, 5);
+        // Both legal setups install through Session, not directly injected objects.
+        r.records = {{sim::TypeId{700}, 5, 5, 0, 5}};
+        const auto setup = evaluate(r);
+        REQUIRE(setup);
+        REQUIRE(setup.value().records == std::vector{ri::Disposition::Accepted});
+        REQUIRE(setup.value().tiles.object(tile) == 700);
+        REQUIRE(setup.value().tiles.foot_anchor(tile) == 1);
+        CHECK(setup.value().variation == r.plane);
+        CHECK(setup.value().consumed == 0);
+        // The existing object's bit 0x20 is decisive, not the new resource's flags.
+        r.records.push_back({resource.id, 5, 5, 0, 7});
+        const auto later = evaluate(r);
+        REQUIRE(later);
+        REQUIRE(later.value().records.size() == 2);
+        const bool cliff = flags == 0x12;
+        CHECK(later.value().records[0] == ri::Disposition::Accepted);
+        CHECK(later.value().records[1] ==
+              (cliff ? ri::Disposition::Occupied : ri::Disposition::Accepted));
+        CHECK(later.value().tiles.object(tile) == (cliff ? 700U : 720U));
+        CHECK(later.value().tiles.phase(tile) == (cliff ? 5 : 7));
+        CHECK(later.value().tiles.item_height(tile) == 48);
+        CHECK(later.value().consumed == (cliff ? 0 : 1));
+        CHECK(later.value().variation[tile] == (cliff ? 0xab : 0x0b));
+        CHECK(r.types->find(sim::TypeId{700})->flags_word == flags);
+        // Reverse order: resource is replaceable, so either overlay accepts over it;
+        // its one selector draw precedes the draw-free overlay and plane stays 0x0b.
+        r.records = {{resource.id, 5, 5, 0, 7}, {sim::TypeId{700}, 5, 5, 0, 5}};
+        const auto reverse = evaluate(r);
+        REQUIRE(reverse);
+        CHECK(reverse.value().records ==
+              std::vector{ri::Disposition::Accepted, ri::Disposition::Accepted});
+        CHECK(reverse.value().tiles.object(tile) == 700);
+        CHECK(reverse.value().tiles.phase(tile) == 5);
+        CHECK(reverse.value().tiles.item_height(tile) == 48);
+        CHECK(reverse.value().consumed == 1);
+        CHECK(reverse.value().variation[tile] == 0x0b);
+        CHECK(r.island.tiles.object(tile) == 0);
+        CHECK(r.plane[tile] == 0xab);
+    }
 }

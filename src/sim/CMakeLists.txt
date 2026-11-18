@@ -7,7 +7,7 @@ add_library(anno_sim src/sim.cpp src/production.cpp src/mine_source.cpp src/mine
             src/driver.cpp src/scheduler.cpp src/codec.cpp src/apply.cpp src/replay.cpp
             src/placement.cpp src/legacy_codec.cpp src/events.cpp src/timers.cpp
             src/island_tick.cpp src/scenario_formats.cpp src/island_links.cpp src/transport.cpp src/harvest.cpp src/fisher.cpp src/mason.cpp src/walk_cells.cpp src/walk_search.cpp
-            src/game_setup.cpp src/house_groups.cpp src/goods_metadata.cpp src/house_kernel.cpp src/terrain_view.cpp src/site_checks.cpp src/territory.cpp src/founding_payment.cpp src/city_creation.cpp src/figure_veto.cpp src/founding.cpp src/resident.cpp src/resident_job.cpp src/inn.cpp src/house_transition.cpp src/house_tick.cpp
+            src/game_setup.cpp src/house_groups.cpp src/goods_metadata.cpp src/house_kernel.cpp src/resource_import.cpp src/terrain_view.cpp src/site_checks.cpp src/territory.cpp src/founding_payment.cpp src/city_creation.cpp src/figure_veto.cpp src/founding.cpp src/resident.cpp src/resident_job.cpp src/inn.cpp src/house_transition.cpp src/house_tick.cpp
             src/route_cache.cpp src/ship_orders.cpp src/freight.cpp src/ship_cargo.cpp src/ship_mover.cpp src/route_coast.cpp src/route_plan.cpp src/route_world.cpp src/route_stamps.cpp)
 target_include_directories(anno_sim PUBLIC include)
 target_link_libraries(anno_sim PUBLIC anno_formats)
@@ -15,7 +15,7 @@ target_compile_features(anno_sim PUBLIC cxx_std_20)
 anno_target_defaults(anno_sim SANITIZE_NO_RECOVER)
 
 if(ANNO_BUILD_TESTS)
-  add_executable(anno_sim_tests tests/main.cpp tests/golden_test.cpp tests/sim_test.cpp tests/economy_facts_test.cpp tests/city_booking_test.cpp tests/economy_loop_test.cpp tests/economy_scale_test.cpp tests/freight_state_test.cpp tests/freight_visit_test.cpp tests/freight_lifecycle_test.cpp tests/freight_scale_test.cpp tests/integration_identity_test.cpp tests/integration_stream_test.cpp tests/integration_gameplay_test.cpp tests/integration_cross_feature_test.cpp tests/production_test.cpp
+  add_executable(anno_sim_tests tests/main.cpp tests/resource_import_test.cpp tests/golden_test.cpp tests/sim_test.cpp tests/economy_facts_test.cpp tests/city_booking_test.cpp tests/economy_loop_test.cpp tests/economy_scale_test.cpp tests/freight_state_test.cpp tests/freight_visit_test.cpp tests/freight_lifecycle_test.cpp tests/freight_scale_test.cpp tests/integration_identity_test.cpp tests/integration_stream_test.cpp tests/integration_gameplay_test.cpp tests/integration_cross_feature_test.cpp tests/production_test.cpp
                  tests/archive_test.cpp tests/extensions_test.cpp tests/slot_list_test.cpp tests/scheduler_blocks_test.cpp
                  tests/container_probe_test.cpp tests/config_test.cpp tests/types_test.cpp
                  tests/player_test.cpp tests/tile_hash_test.cpp tests/island_state_test.cpp

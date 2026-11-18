@@ -37,6 +37,7 @@
 #include <anno/sim/build_availability.hpp>
 #include <anno/sim/city_booking.hpp>
 #include <anno/sim/command.hpp>
+#include <anno/sim/driver.hpp>
 #include <anno/sim/figure.hpp>
 #include <anno/sim/fisher.hpp>
 #include <anno/sim/harvest.hpp>

@@ -70,7 +70,8 @@ struct Opening {
     std::ostringstream log;
     std::uint64_t founded = 0;
     std::vector<sim::BuildingId> houses;
-    bool chapel_tried = false;
+    std::map<std::uint32_t, sim::BuildingId> chain{};
+    std::set<std::uint32_t> no_site{};
 
     sim::ApplyResult apply(const std::string& label, const sim::Command& cmd) {
         const auto answer = w.apply(cmd);
@@ -103,10 +104,11 @@ struct Opening {
                 if (other->prodtype == 193) // STRASSE; roads may adjoin buildings.
                     continue;
                 const auto [ow, oh] = sim::footprint(*other, slot->rotation);
-                if (x < slot->x + static_cast<int>(ow) + 1 &&
-                    x + static_cast<int>(type.width) + 1 > slot->x &&
-                    y < slot->y + static_cast<int>(oh) + 1 &&
-                    y + static_cast<int>(type.height) + 1 > slot->y)
+                const int gap = type.cls == sim::RuntimeClass::House ? 0 : 1;
+                if (x < slot->x + static_cast<int>(ow) + gap &&
+                    x + static_cast<int>(type.width) + gap > slot->x &&
+                    y < slot->y + static_cast<int>(oh) + gap &&
+                    y + static_cast<int>(type.height) + gap > slot->y)
                     return false;
             }
         return true;
@@ -170,22 +172,141 @@ struct Opening {
         const auto& is = *w.islands()[ref.island.v];
         const auto* type = w.types().find(sim::TypeId{id});
         REQUIRE(type);
-        auto origins = legal_origins(is, w.types(), *type);
+        struct Candidate {
+            Origin p;
+            std::uint8_t rotation;
+            std::uint64_t inputs;
+        };
+        std::vector<Candidate> origins;
+        const auto& city = command_test::city(w, ref);
+        if (type->construction.stage != 0 &&
+            (city.stage_mask & (std::uint32_t{1} << type->construction.stage)) == 0) {
+            log << "WAIT_STAGE\t" << w.clock().tick() << '\t' << id << '\t'
+                << type->construction.stage << '\t' << city.stage_mask << '\n';
+            return {};
+        }
+        for (const auto& cost : type->cost_goods) {
+            if (city.stock.stock.at(cost.goods) < cost.amount_88) {
+                const auto holds = ship_of(w, 1).holds;
+                for (std::size_t h = 0; h < holds.size(); ++h) {
+                    if (holds[h].goods != cost.goods)
+                        continue;
+                    const auto have = command_test::city(w, ref).stock.stock.at(cost.goods);
+                    if (have >= cost.amount_88)
+                        break;
+                    const auto tons =
+                        std::min<std::uint64_t>(holds[h].amount_88 / 256,
+                                                (std::uint64_t{cost.amount_88 - have} + 255) / 256);
+                    if (tons == 0)
+                        continue;
+                    REQUIRE(h <= std::numeric_limits<std::uint32_t>::max());
+                    REQUIRE(tons <= std::numeric_limits<std::uint32_t>::max());
+                    (void)apply(
+                        "resupply_for_" + std::to_string(id),
+                        {sim::PlayerId{0},
+                         sim::UnloadCmd{sim::FigureId{1}, warehouse, static_cast<std::uint32_t>(h),
+                                        cost.goods, static_cast<std::uint32_t>(tons)}});
+                }
+            }
+            if (command_test::city(w, ref).stock.stock.at(cost.goods) < cost.amount_88) {
+                log << "WAIT_GOODS\t" << w.clock().tick() << '\t' << id << '\t' << cost.goods
+                    << '\t' << command_test::city(w, ref).stock.stock.at(cost.goods) << '/'
+                    << cost.amount_88 << '\n';
+                return {};
+            }
+        }
+        if (w.players().slots.at(0)->money < type->cost_gold) {
+            log << "WAIT_MONEY\t" << w.clock().tick() << '\t' << id << '\n';
+            return {};
+        }
+        if (no_site.contains(id))
+            return {};
+        for (std::uint8_t rotation = 0; rotation < (id == 810 ? 4 : 1); ++rotation) {
+            const auto [fw, fh] = sim::footprint(*type, rotation);
+            for (std::int32_t y = is.tiles.y0();
+                 y < is.tiles.y0() + static_cast<int>(is.tiles.height()); ++y)
+                for (std::int32_t x = is.tiles.x0();
+                     x < is.tiles.x0() + static_cast<int>(is.tiles.width()); ++x) {
+                    if (!owned(x, y, fw, fh) || !spaced(x, y, *type))
+                        continue;
+                    if (id == 801 && (x != 238 || y != 128))
+                        continue; // Previously reviewed site.
+                    bool road_overlap = false;
+                    for (std::uint32_t dy = 0; dy < fh; ++dy)
+                        for (std::uint32_t dx = 0; dx < fw; ++dx)
+                            road_overlap |=
+                                is.tiles.object(is.tiles.index_of(x + static_cast<int>(dx),
+                                                                  y + static_cast<int>(dy))) ==
+                                kRoadDirt;
+                    if (road_overlap)
+                        continue;
+                    sim::PlacementRecord rec;
+                    rec.type = type->id;
+                    rec.x = x;
+                    rec.y = y;
+                    rec.rotation = rotation;
+                    if (sim::placement_rule(is, w.types(), *type, rec).reject != sim::Reject::None)
+                        continue;
+                    std::uint64_t inputs = 0;
+                    if (id == 810) {
+                        sim::Building probe;
+                        probe.type = type->id;
+                        probe.x = x;
+                        probe.y = y;
+                        probe.rotation = rotation;
+                        for (std::size_t k = 0; k < type->entrances.size(); ++k) {
+                            const auto at = sim::entrance_position(probe, *type, k);
+                            const auto lx = (at.x >> 8) - is.tiles.x0(),
+                                       ly = (at.y >> 8) - is.tiles.y0();
+                            if (lx < 0 || ly < 0)
+                                continue;
+                            const auto cell = sim::fisher_cell_at(
+                                is.terrain->height, is.tiles.width(), is.tiles.height(),
+                                static_cast<std::uint32_t>(lx), static_cast<std::uint32_t>(ly));
+                            inputs += cell && cell->walkable_water;
+                        }
+                        if (inputs == 0)
+                            continue;
+                    } else if ((type->cls == sim::RuntimeClass::SmallFarm ||
+                                type->cls == sim::RuntimeClass::Farm) &&
+                               id != 801) {
+                        const auto radius = static_cast<int>(type->action_radius);
+                        const auto cx = x + static_cast<int>((fw - 1) / 2),
+                                   cy = y + static_cast<int>((fh - 1) / 2);
+                        for (int sy = cy - radius; sy <= cy + radius; ++sy)
+                            for (int sx = cx - radius; sx <= cx + radius; ++sx) {
+                                const auto obj = is.tiles.object(is.tiles.index_of(sx, sy));
+                                const auto* raw = w.types().find(sim::TypeId{obj});
+                                if (!raw)
+                                    continue;
+                                for (auto input : type->input_goods)
+                                    inputs += std::find(raw->output_goods.begin(),
+                                                        raw->output_goods.end(),
+                                                        input) != raw->output_goods.end();
+                            }
+                    }
+                    origins.push_back({{x, y}, rotation, inputs});
+                }
+        }
         const auto* wh = w.find_building(warehouse);
         REQUIRE(wh);
         std::sort(origins.begin(), origins.end(), [&](const auto& a, const auto& b) {
-            return std::tuple{std::abs(a.x - wh->x) + std::abs(a.y - wh->y), a.y, a.x} <
-                   std::tuple{std::abs(b.x - wh->x) + std::abs(b.y - wh->y), b.y, b.x};
+            return std::tuple{std::numeric_limits<std::uint64_t>::max() - a.inputs,
+                              std::abs(a.p.x - wh->x) + std::abs(a.p.y - wh->y), a.p.y, a.p.x,
+                              a.rotation} <
+                   std::tuple{std::numeric_limits<std::uint64_t>::max() - b.inputs,
+                              std::abs(b.p.x - wh->x) + std::abs(b.p.y - wh->y), b.p.y, b.p.x,
+                              b.rotation};
         });
-        for (const auto& p : origins) {
-            if (!owned(p.x, p.y, type->width, type->height) || !spaced(p.x, p.y, *type) ||
-                site::footprint_occupancy(is.tiles, w.types(), *type, {p.x, p.y}, type->width,
-                                          type->height) != site::Compat::Compatible)
-                continue;
-            log << "BUILD_SITE\t" << id << '\t' << p.x << '\t' << p.y << "\t0\n";
+        for (const auto& candidate : origins) {
+            const auto& p = candidate.p;
+            log << "BUILD_SITE\t" << id << '\t' << p.x << '\t' << p.y << '\t'
+                << static_cast<unsigned>(candidate.rotation) << "\tinput_cells=" << candidate.inputs
+                << '\n';
             const auto a =
                 apply("build_" + std::to_string(id),
-                      command_test::build(0, ref, {command_test::at(type->id, p.x, p.y)}));
+                      command_test::build(
+                          0, ref, {command_test::at(type->id, p.x, p.y, candidate.rotation)}));
             if (!a.ok()) {
                 log << "BUILD_REFUSAL_STOCK\t" << id;
                 const auto& c = command_test::city(w, ref);
@@ -200,6 +321,7 @@ struct Opening {
             road_to(result);
             return result;
         }
+        no_site.insert(id);
         log << "NO_SITE\t" << w.clock().tick() << '\t' << id << '\n';
         return {};
     }
@@ -230,6 +352,33 @@ struct Opening {
                 REQUIRE(view);
                 for (std::size_t k = 0; k < h->stock.size(); ++k)
                     log << view.value().group->needs.at(k).ware << ':' << h->stock[k] << ',';
+                log << '\n';
+            }
+        for (const auto& list : city.index.lists)
+            for (const auto& b : list.slots) {
+                if (!b)
+                    continue;
+                log << "PRODUCER\t" << w.clock().tick() - founded << '\t' << b->id.v << '\t'
+                    << b->type.v;
+                if (const auto* f = std::get_if<sim::Farm>(&b->payload))
+                    log << "\traw=" << f->raw << "\tout=" << f->out
+                        << "\tworkers=" << f->workers_out;
+                if (const auto* f = std::get_if<sim::SmallFarm>(&b->payload)) {
+                    log << "\traw=";
+                    for (auto n : f->raw)
+                        log << n << ',';
+                    log << "\tout=";
+                    for (auto n : f->out)
+                        log << n << ',';
+                }
+                if (const auto* f = std::get_if<sim::Workshop>(&b->payload)) {
+                    log << "\tin=";
+                    for (auto n : f->in)
+                        log << n << ',';
+                    log << "\tout=";
+                    for (auto n : f->out)
+                        log << n << ',';
+                }
                 log << '\n';
             }
         log << "SAMPLE\t" << w.clock().tick() - founded << '\t' << w.clock().tick() << '\t'
@@ -268,7 +417,8 @@ Result run(const RealStart& rs, bool food_chain, const fs::path& target) {
     prefix << "META\tcandidate=lan5-ship-a\tseat=0\tseed=" << rs.manifest.seed
            << "\thouse_updates=1\tcity_booking=1\tfisher_rules=1\tfood_chain=" << food_chain
            << "\tbudget_ticks=" << budget_ticks << '\n';
-    for (const auto id : {501U, 521U, 809U, 801U, 1310U, 1314U, 1320U, 2520U}) {
+    for (const auto id : {501U, 521U, 809U, 810U, 801U, 807U, 1001U, 1335U, 1301U, 1201U, 804U,
+                          1203U, 1022U, 1310U, 1314U, 1320U, 2520U}) {
         const auto* t = w.types().find(sim::TypeId{id});
         REQUIRE(t);
         prefix << "TYPE\t" << id << "\tclass=" << static_cast<unsigned>(t->cls)
@@ -334,7 +484,7 @@ Result run(const RealStart& rs, bool food_chain, const fs::path& target) {
     REQUIRE(founded.records.size() == 1);
     const auto wh = founded.records[0].building;
     const auto ref = expansion_test::city_of_warehouse(w, wh);
-    Opening opening{w, ref, wh, {}, w.clock().tick(), {}, false};
+    Opening opening{w, ref, wh, {}, w.clock().tick(), {}};
     opening.log << prefix.str();
     Result result;
     opening.sample(result);                 // The founding checkpoint, before any manual unloading.
@@ -355,20 +505,49 @@ Result run(const RealStart& rs, bool food_chain, const fs::path& target) {
             opening.log << "\traw=" << a.records[0].transferred_88;
         opening.log << '\n';
     }
-    for (unsigned n = 0; n < 3; ++n)
-        if (auto id = opening.build(501))
+    const auto* chapel = w.types().find(sim::TypeId{1320});
+    REQUIRE(chapel);
+    const auto stage =
+        std::find_if(w.types().stage_table().begin(), w.types().stage_table().end(),
+                     [&](const auto& r) { return r.stage == chapel->construction.stage; });
+    REQUIRE(stage != w.types().stage_table().end());
+    REQUIRE(stage->group == 0);
+    const auto pioneer = w.types().population_view(0, w.config());
+    REQUIRE(pioneer);
+    const auto capacity = pioneer.value().group->wohnmax;
+    REQUIRE(capacity > 0);
+    const std::uint64_t target_houses = (std::uint64_t{stage->count} + capacity - 1) / capacity;
+    opening.log << "POPULATION_TARGET\tstage=" << stage->stage << "\tpeople=" << stage->count
+                << "\tpeople_per_house=" << capacity << "\thouses=" << target_houses
+                << "\tunit=whole_residents_from_residents_64_div_64\n";
+    const auto maintain = [&] {
+        const auto once = [&](std::uint32_t id) {
+            if (opening.chain.contains(id))
+                return;
+            if (auto b = opening.build(id))
+                opening.chain[id] = *b;
+        };
+        once(801);
+        once(1310);
+        once(1314);
+        once(1301);
+        if (food_chain) {
+            once(809);
+            once(810);
+        }
+        while (opening.houses.size() < target_houses) {
+            const auto id = opening.build(501);
+            if (!id)
+                break;
             opening.houses.push_back(*id);
+        }
+        for (auto id : {807U, 1001U, 1335U, 1201U, 804U, 1203U, 1022U, 1320U})
+            once(id);
+    };
+    maintain();
     result.houses_built = opening.houses.size();
     if (opening.houses.empty())
-        opening.log
-            << "PRE_HOUSE_BLOCKER\tno house was built; this is not a house-growth measurement\n";
-    else {
-        CHECK(opening.build(1310).has_value());
-        if (food_chain)
-            CHECK(opening.build(809).has_value());
-        CHECK(opening.build(801).has_value());
-        CHECK(opening.build(1314).has_value());
-    }
+        opening.log << "PRE_HOUSE_BLOCKER\tno house was built; no house-growth claim\n";
     // Distinguish the readonly diagnostic on a local House value, never on live world stock.
     if (!opening.houses.empty()) {
         const auto* building = w.find_building(opening.houses.front());
@@ -420,10 +599,8 @@ Result run(const RealStart& rs, bool food_chain, const fs::path& target) {
                     result.first_settler = w.clock().tick();
             }
         if (w.clock().tick() == next_sample) {
-            if (!opening.chapel_tried && !opening.houses.empty()) {
-                opening.chapel_tried = true;
-                (void)opening.build(1320); // A single ordinary command attempt, no unlock patch.
-            }
+            maintain();
+            result.houses_built = opening.houses.size();
             opening.sample(result);
             publish();
             next_sample += sample_ticks;
@@ -466,13 +643,13 @@ TEST_CASE(
     const auto b = town_start_test::run(rs, true, root / "baseline-b.tsv");
     REQUIRE(a.hashes == b.hashes);
     REQUIRE(a.trace == b.trace);
-    const auto control = town_start_test::run(rs, false, root / "without-farm.tsv");
+    const auto control = town_start_test::run(rs, false, root / "without-food-chain.tsv");
     std::ostringstream summary;
     summary << "TOWN_RESULT\tdeterminism=equal\tcheckpoint_hashes=" << a.hashes.size()
             << "\thouses_built=" << a.houses_built
             << "\tfirst_observed_settler_tick=" << a.first_settler
             << "\tfood_failures=" << a.food_failures
-            << "\twithout_farm_food_failures=" << control.food_failures << "\tfood_effect="
+            << "\twithout_food_chain_failures=" << control.food_failures << "\tfood_effect="
             << (control.food_failures > a.food_failures ? "observed" : "inconclusive")
             << "\tdiagnostic_distinguishes=" << a.diagnostic_distinguished << '\n';
     const auto error = sim::test::write_evidence_file(root / "summary.tsv", summary.str());

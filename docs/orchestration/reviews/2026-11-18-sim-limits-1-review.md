@@ -1,13 +1,13 @@
-# SIM-LIMITS-1 — corrected review approved; exact-head CI pending
+# SIM-LIMITS-1 — accepted
 
-Mac orchestrator, 2026-11-18. **LOCAL REVIEW APPROVED, NOT YET ACCEPTED.**
+Mac orchestrator, 2026-11-18. **ACCEPTED at the reviewed final head below.**
 Final corrected head `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e`, tree
 `13e75fe49859ceca795fd6f3813e48b4da094310`; code/spec/tests remain
 `3387108059ed05562555d90145275580c150cd7e`. The first documentation checkpoint was
 `c4f52d286b6589eb86467d8681c3f03af35a4a43`; its failed lint run is retained below.
 The correction changes only the narrow allowlist and evidence/report addenda.
 Exact-head [CI 44298551123](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44298551123)
-is now the sole acceptance condition; no green result is presumed.
+completed successfully at this exact head: all 12 jobs passed.
 
 ## Reviewed scope
 
@@ -65,8 +65,7 @@ raw logs remain private in cache/sim-limits-1/.
 
 No further local campaign is needed. Original-runtime, live window/GPU, native target-host
 original-file runs, LeakSanitizer and full-suite/town coverage remain NOT_RUN. Hosted CI lacks
-original game assets and cannot extend the local corpus claim. Acceptance and DOCS-SIM-1
-release will be recorded only after the named run succeeds. Main landing remains Windows-owned.
+original game assets and cannot extend the local corpus claim. The exact-head CI acceptance condition is now satisfied. Main landing remains Windows-owned.
 
 
 ## Hosted CI finding and focused correction
@@ -99,3 +98,36 @@ abc5b3221e922f011d2c7dc7614e3f4387d343b9862e7d8dd6d045fa7eb8aae4, matching the r
 file and lint-gate provenance. All eleven prior frozen inputs and all runtime receipts remain
 unchanged. The reviewer reconciled the committed correction and documentation; no P1/P2 or
 further local campaign remains. Corrected exact-head CI alone gates acceptance and dispatch.
+
+
+## Acceptance and direct next-task release
+
+The independently reviewed source and evidence are accepted within the bounded compatibility
+maintenance scope. Hosted CI confirms all 12 jobs succeeded at the exact final head; it does
+not establish original-runtime, live-window or additional original-file coverage.
+
+DOCS-SIM-1 is released directly to EXECUTOR II MAC from this accepted candidate head. The
+executor preserves SIM-LIMITS-1 and all earlier branches, works through the reviewed inventory
+packet, ordinary-pushes only its task branch and reports READY FOR REVIEW directly to the
+Mac orchestrator. No main push, production/default change or owner-policy decision follows.
+
+
+## Final hosted receipts
+
+The orchestrator downloaded all five final test artifacts and matched each ZIP to its
+GitHub-published SHA256. Every canonical verdict is PASS. Compared with the preserved
+failed predecessor, each lane has the same selected/skipped counts and exactly one more
+executed pass: the corrected lint case. No prior failure is relabelled or hidden.
+
+| Lane | Selected | Executed | Skipped | Artifact | ZIP SHA256 |
+|---|---:|---:|---:|---|---|
+| linux-clang-asan | 2779 | 2297 | 482 | 14427216188 | 2996b85009f6c14e001b9c9db041292ff77afc40b253b969a264101c3f83bb15 |
+| linux-gcc | 2778 | 2296 | 482 | 14425288915 | c569ff86bea37ff5601846bb83eea7c94ed1256a05e9ca81576985116e468405 |
+| linux-gcc-release | 2778 | 2296 | 482 | 14425946769 | 12fc18e1e86e4e7291509d17cd179923ec12b497260c1ab9e55a311863586954 |
+| macos-clang | 2784 | 2300 | 484 | 14425801269 | ce8c11210c6fc4f22f7a4f94aba3b35ab861ea9e6b070282a1739a5837f1e023 |
+| windows-msvc | 2645 | 2194 | 451 | 14427048673 | 332c6f8243ecdffec0def33ee9235b07b1dd3ad5945b44fb31616fd02709c036 |
+
+Skipped cases retain their required-asset/platform/opt-in labels; they are not executed passes.
+The four Unix lanes additionally ran the picture contract 1/1; Windows has no such extra row.
+All final pending-CI statements above describe earlier review checkpoints. Acceptance is final
+for this bounded packet; the preserved failed run remains failed.

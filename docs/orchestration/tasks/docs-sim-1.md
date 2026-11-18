@@ -1,13 +1,13 @@
 # DOCS-SIM-1 — current simulation capability inventory with drift checks
 
-Wave 1.8. PREPARED, NOT RELEASED. The Mac orchestrator releases this only after
-SIM-LIMITS-1 is independently reviewed and its exact-head hosted CI succeeds.
+Wave 1.8. RELEASED, 2026-11-18, directly to EXECUTOR II MAC after independent
+SIM-LIMITS-1 acceptance and exact-head CI44298551123 (all 12 jobs successful).
 EXECUTOR II MAC, one bounded 3–4 hour packet. No new gameplay implementation.
 
 ## Start and preserve
 
-The release message will name the accepted SIM-LIMITS-1 full source head. Create
-`task/DOCS-SIM-1` there at an owned clean checkpoint; do not substitute moving main,
+Accepted candidate base: `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e` (code33871080).
+Create `task/DOCS-SIM-1` there at an owned clean checkpoint; do not substitute moving main,
 merge the board into source, or rebase any preserved branch. This is a candidate
 base, not a main landing. Read this exact packet from the named `orch/mac-lane`
 commit. Ordinary-push only your task branch, never main or force. The orchestrator
@@ -27,7 +27,8 @@ handover, docs/testing/evidence-contract.md and docs/testing/README.md. Then rea
   registration that CI actually executes. Reuse established mechanisms where useful.
 
 Keep private cache/docs-sim-1/CURRENT.md with source/board refs, progress, next check,
-owned jobs and evidence. Reread it and this packet after compaction. Preserve earlier
+owned jobs and evidence. Keep it as the current state, not an appended history; put old
+checkpoints elsewhere. Reread it and this packet after compaction. Preserve earlier
 branches/evidence; no old gates are restarted merely because their reports appear.
 
 ## D0 — define the finite inventory and acceptance table

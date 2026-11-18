@@ -23,8 +23,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | 1.4 [MIL-RE-1](tasks/mil-re-1.md) | ACCEPTED bounded static research; no combat implementation | `20edc775e12a4e8cd73d703d80b8ea0e4bb4e02b` | [44268712248](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44268712248), exact-head docs CI green | [Acceptance](reviews/2026-11-18-mil-re-1-review.md) |
 | 1.5 [ANNOSCENE-ORE-2](tasks/annoscene-ore-2.md) | ACCEPTED bounded research after P2 correction; no engine implementation | `b12d22b39caee90429aef77b52659aa2bfedb38e` | [44273143955](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44273143955), exact-head docs CI green | [Acceptance and preserved finding](reviews/2026-11-18-annoscene-ore-2-review.md) |
 | 1.6 [OQ-562-1](tasks/oq-562-1.md) | ACCEPTED bounded headless causal diagnosis after focused CI correction | `b7046e5e279fa979d83079feb56dc83a660f32ef` | [44282873819](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44282873819), all 12 jobs success at exact head | [Acceptance and preserved failure](reviews/2026-11-18-oq-562-1-review.md) |
-| 1.7 [SIM-LIMITS-1](tasks/sim-limits-1.md) | CORRECTED LOCAL REVIEW APPROVED; exact-head CI pending | `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e`; code `33871080` | [44298551123](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44298551123), not yet claimed green | [Review and preserved lint failure](reviews/2026-11-18-sim-limits-1-review.md) |
-| 1.8 [DOCS-SIM-1](tasks/docs-sim-1.md) | PREPARED, NOT RELEASED; dispatch independently reviewed | To use the accepted SIM-LIMITS-1 full head named at release | Not started | Await SIM-LIMITS-1 review and exact-head CI; then direct release authorized |
+| 1.7 [SIM-LIMITS-1](tasks/sim-limits-1.md) | ACCEPTED compatibility maintenance; behavior and bytes unchanged | `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e`; code `33871080` | [44298551123](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44298551123), all 12 jobs success at exact head | [Acceptance](reviews/2026-11-18-sim-limits-1-review.md) |
+| 1.8 [DOCS-SIM-1](tasks/docs-sim-1.md) | RELEASED to EXECUTOR II MAC, 2026-11-18 | Accepted base `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e` | Await executor source checkpoint | Report directly to Mac orchestrator for independent review |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -167,3 +167,17 @@ The focused lint correction is independently approved at `2f9e4c0bf84cf09998a43c
 Runtime source and the two 55-case gates remain unchanged; canonical lint2/2 and the
 unrelated-cap negative control pass. Exact-head CI44298551123 is the only remaining
 acceptance condition. Preserve prior failed run44294408513; no premature next-task release.
+
+
+## Latest dispatch — SIM-LIMITS-1 accepted, DOCS-SIM-1 released
+
+SIM-LIMITS-1 is ACCEPTED at `2f9e4c0bf84cf09998a43c7ff8098fa1522f3a4e`, code33871080,
+exact-head CI44298551123 with all 12 jobs successful. Independent review covered source,
+consumer tests, all six distinguishing controls, both 55-case local gates and final evidence.
+Earlier pending statuses are historical; no further local campaign is required.
+
+DOCS-SIM-1 is released directly from that accepted candidate. The task is a current rules,
+commands, runtime-class and hook inventory with bounded source/document drift checks, not
+new game behavior. All Seams members are included; mechanical checks and reviewed semantics
+are distinguished. The executor reports its frozen pushed head, exact CI and evidence directly
+to this orchestrator. Earlier branches and evidence remain intact; Windows owns main landing.

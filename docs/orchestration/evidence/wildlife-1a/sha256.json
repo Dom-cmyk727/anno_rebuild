@@ -1,6 +1,9 @@
 {
   "base": "b5c0ada209d94a0082bc88d793c917c7222e6a21",
-  "tested_code": "56762e421914851e669e3de0345b7311e10af51c",
+  "tested_cpp_code": "56762e421914851e669e3de0345b7311e10af51c",
+  "lint_correction": "054fd196871526be41355bddca94c512b5046576",
+  "previous_report": "64ed5655043abd26db0ab6bf6600edbdad240b80",
+  "cpp_and_executable_hashes_unchanged": true,
   "files": {
     "cache/wildlife-1a/asan-focused-01-audit.json": {
       "bytes": 2484,
@@ -58,6 +61,10 @@
       "bytes": 14895,
       "sha256": "2c555b04d9ebb4e929007f7bc1143ba2c071e8ff53df0457802b1959766567ee"
     },
+    "cache/wildlife-1a/ci-report-checkpoint-runs.json": {
+      "bytes": 29751,
+      "sha256": "de8627f87467d2db32182fcbfb4be6b5c27d943e525e5e68c477d16c8b101bbd"
+    },
     "cache/wildlife-1a/configure-asan-01.out": {
       "bytes": 19427,
       "sha256": "8088d6b2cf615d474baa8bde36bed247ad7d61a818a9d37b3649f2cbd40bedfc"
@@ -109,6 +116,54 @@
     "cache/wildlife-1a/identities.json": {
       "bytes": 1330,
       "sha256": "77743c03ce81330ce30c9cd602d4a2f5bb0f83acd985066707f09823524a40c9"
+    },
+    "cache/wildlife-1a/lint-allowance-proof.json": {
+      "bytes": 339,
+      "sha256": "a6d3fd0190e80da1b162894ed9993d052e282ec138dfb2a7a9f493accfc5beac"
+    },
+    "cache/wildlife-1a/lint-before-fix-01.out": {
+      "bytes": 240,
+      "sha256": "adae1683d8c81938db7555214e74e8de835b0c4d350198772f7ae4c0e28d9159"
+    },
+    "cache/wildlife-1a/lint-correction-01-audit.json": {
+      "bytes": 1836,
+      "sha256": "d1bea62d2aa463b40931d3abfa478a97a6d540529720c4438b5685fbee1568e9"
+    },
+    "cache/wildlife-1a/lint-correction-01.log": {
+      "bytes": 10891,
+      "sha256": "423420c92e2400a35a7e3ee00a7f9453da304a4fabf2b75d7675af699fb43e8c"
+    },
+    "cache/wildlife-1a/lint-correction-01.log.inventory.json": {
+      "bytes": 3678,
+      "sha256": "9cfa3817f149c4f93ff0754d515653f964036df507ed41e272fda82f6890fb55"
+    },
+    "cache/wildlife-1a/lint-correction-01.out": {
+      "bytes": 256,
+      "sha256": "caae76303075bc7dc558b3b9fa414f68904422897f1692071754b3715c787e9b"
+    },
+    "cache/wildlife-1a/lint-fixed-01.out": {
+      "bytes": 13,
+      "sha256": "c90ca6eba541545a82beb573bfcbcc47531df735edd4ff68c814ab50296e6948"
+    },
+    "cache/wildlife-1a/lint-selftest-fixed-01.out": {
+      "bytes": 488,
+      "sha256": "25d5dbd23f182403d85606da5bdd4ceb5f592c1fa1516ac9754f8c8c9a303903"
+    },
+    "cache/wildlife-1a/macos-ci-lint-findings.json": {
+      "bytes": 490,
+      "sha256": "5ade87633fb3da253b7aef813861d0102233f043aac4bec714c6907e4cec932f"
+    },
+    "cache/wildlife-1a/macos-ci-original-test.log": {
+      "bytes": 3778884,
+      "sha256": "dcbc15b1a6308386ca49850d87225c9e31f6673447020781b8b21a4861d367d4"
+    },
+    "cache/wildlife-1a/macos-ci-original-test.log.inventory.json": {
+      "bytes": 1516070,
+      "sha256": "f60c48c6b5ad9a71256ffe0b8d1f42ab3663da2097206af06560062f124b4af1"
+    },
+    "cache/wildlife-1a/macos-failure-44258806734.zip": {
+      "bytes": 503826,
+      "sha256": "6f7857042476048fb5de5914484b35e4f16433a920ce53910d7ff56080f6f7b7"
     },
     "cache/wildlife-1a/mutant-attempt_wrap-build.out": {
       "bytes": 292,

@@ -123,3 +123,23 @@ COUNTS: selected=2 executed=1 failed=1 empty=0 skipped=0 (required-asset=0 platf
 VERDICT: FAIL failed tests
 GATE_END {"status": 1, "ctest_rc": 8}
 ```
+
+## Narrow lint follow-up
+
+cache/wildlife-1a/lint-correction-01.log
+
+```text
+COUNTS: selected=6 executed=6 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+
+Original CI macOS artifact, retained failure (no local rerun):
+
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=2779 executed=2299 failed=1 empty=0 skipped=479 (required-asset=445 platform=9 opt-in=25 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: FAIL failed tests
+GATE_END {"status": 1, "ctest_rc": 8}
+```

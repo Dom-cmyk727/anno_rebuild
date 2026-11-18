@@ -15750,3 +15750,62 @@ Decisions and reasoning:
 
 NOT_RUN: original/HE runtime, new Unicorn emulation (unavailable), Windows/WSL/full/long suites, full pins/warnings, LeakSanitizer, World/native integration.
 QUESTIONs: none blocking bounded review; next release needs the exact type-1552 / flags-0x12 class contract. Independent orchestrator review pending.
+
+
+## 2026-11-19 — WILDLIFE-CLIFF-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-CLIFF-1` from locally reviewed STONE `18473cf4`; no further intake/main merge/rebase.
+- Frozen tested source `eb3ea560ac923c89ff39686a9d2acd3e01332831`, tree `a0e543f621781dbfb2a934809169e8cefa2a2e52`.
+- Source frozen November 18; tools interrupted before gates. Resumed only outstanding gates/closeout on November 19 by owner request.
+- Final publication changes report/evidence only; exact pushed head/tree/CI accompany direct handoff.
+- [Contract](../sim/wildlife-cliff.md) acceptance rows precede code; [evidence](evidence/wildlife-cliff-1.md) retains primary spans, counts, failures and identities.
+- D: AnnoGame 0x10008f90–0x100091ce: flags 0x12 shares mode 2 / no class-test bit 4 with 0x3a.
+- D: AnnoWelt 0x1007c955–0x1007cb3d / 0x1007cbdf: same each-world-chunk coverage and group 0x141 final-level bypass.
+- D: Game 0x10008923–0x1000893e reads EXISTING bit 0x20; cliff lacks it, so later ordinary resource refuses without a draw.
+- Same-group incoming overlay can pass compatibility (0x10008a14–0x10008a28), subject to coverage; reverse resource->cliff passes.
+- Bit 0x08 has no directly reached predicate in this fresh path; concrete +0x94/+0x84 getters read +0x75 / return +0x88, not flags +0x12.
+- Preserve original flags, shared site compatibility and lower writer unchanged; only exact flags 0x12/group 0x141 joins admitted class.
+- No special case for id 1552; second authored type/kind plus actual other cliffs take the same path, no separate overlay plane.
+- Nine hand-derived rows append to the same reference (35 total), covering height, both placement orders, same-group partial writes, bounds/coverage.
+- Direct C++ checks add 3 × 3/nonsquare/all rotations/chunk crossings, exact sparse OR and kept fields, legal installed-cliff versus stone control.
+- Private production-TU wrong existing-bit predicate: legal 0, mutant 1; 5 intended failures / 51 passes, including wrong extra draw/variation.
+- Canonical site source/binary unchanged; post-mutation rebuild check and source/private binary/output hashes retained.
+- First Python imported-module mutation check failed due same-size/timestamp .pyc reuse; failure and bounded reproduction preserved.
+- Corrected fresh-temp child uses -I -B from first control; all 21 CLI controls pass, wrong bit produces actual output disagreement.
+- Same raw Tutorial input, explicit stamp 500/mode 0/draw 7: 2,387 completed/accepted, refused 0, resource-class/draws 2,333.
+- 29 stones / 25 cliffs / 0 spawns / 9 completed header epilogues 33–41; header 42 callback absent, HIRSCH 71 not reached.
+- Former cliff 37/1 accepts at (54,61), rotation 3, height 32, 9 writes, 0 draws; all nine final footprint field sets asserted.
+- Next boundary: island ordinal 0/slot 11, GELAENDE 42/39, type 1512 FELSEN kind 321, flags 0x8018, 2 × 1, world (59,90).
+- Unsupported evaluator domain, not original rejection. Typed result stays diagnostic partial; first witness 6/48/draw 1 and mask 1,024/977 retained.
+
+```text
+# cache/wildlife-cliff-1/debug-final.log (main)
+COUNTS: selected=19 executed=19 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-cliff-1/asan-final.log (main)
+COUNTS: selected=18 executed=18 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# Three separately required contracts per profile; all six exact receipts reproduced in evidence
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- Required: installed-cliff causal C++ case, public adapter refusal contract, resource_import_reference_contract; excluded from main count.
+- No canonical failure, memory refusal, timeout, incomplete, empty, skip or sanitizer diagnostic; no whole gate rerun.
+- Debug executes original-prefix case; ASan covers synthetic bounds/errors/composition. Unchanged PE/HIRSCH/helper/picture and long lanes reused.
+- Four affected/dependent TUs strict O3/Werror Apple Clang 21/GCC 15.3 clean, GCC shadow control rejected; no full warning sweep claim.
+- Format 23.1.3/lint/diff-check pass. Compiler warnings 0; inherited Apple duplicate-library linker warning retained.
+- 276 synthetic files audited: exactly 9 authored rows appended, predecessor 26 rows/pins/recordings otherwise byte-identical; no full pins.py claim.
+- Source, original input, binary, command/inventory/log SHA receipts frozen in evidence; original bytes/listings stay private.
+- Host Apple M5 Max / 18 logical / 48 GiB / macOS 27.0.1; jobs 1, threads 2, admission enabled; coordinator/awake assertion preserved.
+- Separate CI: STONE 44390015763 terminal success 12/12. PREFIX 44385455810 failure: 9 success, 2 no-runner cancellations, downstream gate failure.
+- PREFIX jobs 135088771726/135088771902: runner 0, zero steps; terminal receipt sent separately, no retry or fake commit. CLIFF CI read after push.
+
+Decisions and reasoning:
+- Share only independently proved mode/coverage/writer behavior; retain existing bit 0x20 semantics rather than normalize cliff flags.
+- Use legal sequence controls and actual wrong predicate outputs; retain the first contract isolation failure instead of accepting stale bytecode.
+- Keep owned transient data and nonresource draw accounting; no World/native/default/registry/state/tag/pin changes.
+- Stop at the next original unsupported class, preserve predecessor evidence and resume only remaining gates after tool outage.
+
+NOT_RUN: original/HE runtime, new Unicorn emulation, Windows/WSL/full/long suites, full pins/warnings, LeakSanitizer, World/native/global cursor integration.
+QUESTIONs: none blocking bounded review; establish exact flags 0x8018/group 0x141 path before another continuation. Independent orchestrator review pending.

@@ -122,3 +122,13 @@ review of source, primary evidence, tests and receipts; no executor reviewer age
 Fix scoped findings and return for focused re-review, without repeating unaffected
 gates. Do not self-accept or begin World integration. At six hours, return a clean
 bounded checkpoint and precise remaining work rather than widening the packet.
+
+## Primary-evidence correction during execution
+
+The old wildlife note's `/1000` conversion and base cap65 are withdrawn. Direct
+original-byte checks by executor, orchestrator and independent reviewer establish
+`floor(u16 island[0x9a] / 500)`, range0..131, at0x100946e9–0x10094705. The maximum
+with jitter31 is162. Record this in the integration boundary, without assigning
+unproved physical units. This changes no raw decoder requirement. Keep the
+preserved helper/reference correction for a separate scoped packet before World
+integration; do not widen the current source/gate selection.

@@ -18,7 +18,7 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | 0.2 [MAC-HEAVY-1b](tasks/mac-heavy-1b.md) | ACCEPTED: publication correction only; Windows landing pending | `8c7155080fbe3e4544f4d4908518859b8e80c4fe` | [44193521811](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44193521811), exact-head docs gate green | [Acceptance](reviews/2026-11-17-mac-heavy-1b-review.md) |
 | 1.1 prerequisite [TOWN-START-SETUP-1](tasks/town-start-setup-1.md) | ACCEPTED; Windows landing pending | Head `ad360af024543a71e083dc3de714b7f48f354e63`; tested code `e71f2dc0` | [44209875238](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44209875238), all 12 jobs success at exact head | [Acceptance](reviews/2026-11-18-town-start-setup-1-review.md) |
 | 1.1 [TOWN-START-1](tasks/town-start-1.md) | ACCEPTED bounded measurement on repaired stack; landing pending | Accepted `9edb151c414246d306194a703db71475affbdad4`; preserved report `156badab`, measured `f36c22fa` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Acceptance and preserved failures](reviews/2026-11-18-town-start-1-review.md) |
-| 1.2 [WILDLIFE-1a](tasks/wildlife-1a.md) | LOCAL REVIEW PASSES; inherited CI closure pending; no World integration | `756e008b8027cf9186b4e79e3ae2e76b1dab4c29`, pure helpers only | [44262049576](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44262049576); not claimed green | [Conditional local review](reviews/2026-11-18-wildlife-1a-review.md) |
+| 1.2 [WILDLIFE-1a](tasks/wildlife-1a.md) | LOCAL REVIEW REOPENED for load-base bound; inherited CI closure pending; no World integration | `756e008b8027cf9186b4e79e3ae2e76b1dab4c29`, pure helpers only | [44262049576](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44262049576); not claimed green | [Conditional local review](reviews/2026-11-18-wildlife-1a-review.md) |
 | 1.3 [NET-ADR-1](tasks/net-adr-1.md) | ACCEPTED documentation; owner decisions remain open | `cf7109fe14fa729cbb0f1c775fd243cd06b34c26` | [44264630010](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44264630010), exact-head docs CI green | [Acceptance](reviews/2026-11-18-net-adr-1-review.md) |
 | 1.4 [MIL-RE-1](tasks/mil-re-1.md) | ACCEPTED bounded static research; no combat implementation | `20edc775e12a4e8cd73d703d80b8ea0e4bb4e02b` | [44268712248](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44268712248), exact-head docs CI green | [Acceptance](reviews/2026-11-18-mil-re-1-review.md) |
 | 1.5 [ANNOSCENE-ORE-2](tasks/annoscene-ore-2.md) | ACCEPTED bounded research after P2 correction; no engine implementation | `b12d22b39caee90429aef77b52659aa2bfedb38e` | [44273143955](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44273143955), exact-head docs CI green | [Acceptance and preserved finding](reviews/2026-11-18-annoscene-ore-2-review.md) |
@@ -282,3 +282,21 @@ separate. An authenticated GitHub operator should retry only the no-runner job o
 the run permits it; the Mac orchestrator currently has no authenticated CI session.
 No empty commit, full gate repeat or gameplay repair is warranted. WILDLIFE-LOAD-1
 continues independently; KBEWOHN acceptance remains pending.
+
+### Wildlife load divisor — verified correction required
+
+During WILDLIFE-LOAD-1, the executor found an inherited primary-reading error.
+The orchestrator and independent reviewer each checked the original DLL bytes:
+AnnoWelt SHA256 f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2,
+0x100946e9–0x10094705. The zero-extended u16 island field is divided by500,
+not1000. Exhaustive arithmetic over65536 inputs agrees with floor(n/500);
+base range is0..131 and maximum jittered result162. The input's gameplay units
+are not inferred from this calculation.
+
+WILDLIFE-1a's previous load-domain approval is reopened: its helper/reference/
+adapter cap65 wrongly rejects66..131. The base65+jitter31=>96 example remains
+correct arithmetic but is not a maximum. Other pure-helper findings are not
+invalidated. A focused correction and inherited-CI closure are required before
+World integration; no silent edit to the preserved branch or current decoder
+packet. WILDLIFE-LOAD-1 continues because it preserves raw fields and computes
+no timestamps or draws. Its handoff explicitly supersedes the old divisor.

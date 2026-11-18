@@ -37,3 +37,20 @@ scope. Preserve this branch while CI repairs are independently finished; no auto
 NET-ADR-1 is released independently as a documentation task from its named main pin. It does
 not consume wildlife or represent acceptance of its red inherited base. The executor stays
 productive while the Mac orchestrator owns the separate CI closure and eventual acceptance.
+
+## Subsequent primary finding — load-domain approval reopened
+
+WILDLIFE-LOAD-1 exposed a wrong upstream division claim. Independent reads of
+the matching AnnoWelt binary at0x100946e9–0x10094705 and exhaustive arithmetic
+over all65536 possible u16 inputs establish floor(n/500), not floor(n/1000).
+The helper's caller-divided base therefore ranges0..131; adding jitter31 reaches
+162. Input500 is the smallest discriminator (1 versus0). The domain cap65 in
+the helper, Python reference and C++ vector adapter excludes valid inputs; the
+old maximum-jitter example is valid but mislabeled. The original load-subset
+approval is withdrawn until a focused correction is reviewed. Other helper
+results remain scoped evidence, not a complete lifecycle proof.
+
+The current formats decoder does not compute timestamps and remains independently
+reviewable. No live-world code, pins or PRNG trajectory has been changed by this
+finding. Root evidence: cache/wildlife-time-review/check.json; independent reviewer
+/root/review_docs_sim_dispatch separately checked the actual DLL and arithmetic.

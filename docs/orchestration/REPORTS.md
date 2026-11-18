@@ -14904,3 +14904,81 @@ READY FOR REVIEW.
   text even while its page is hidden.
 
 READY FOR REVIEW.
+
+
+## ANNOSCENE-ORE-2 — READY FOR REVIEW (Mac, 2026-11-18)
+
+- Baseline `b5c0ada209d94a0082bc88d793c917c7222e6a21`, task/ANNOSCENE-ORE-2; dispatch
+  `1a5beb89` read with git show, no merge/source intake. MIL/NET/wildlife refs preserved.
+- [Focused note](../re/annoscene-ore-2.md); only it and this report changed.
+- Setup correction confirmed by orchestrator: predecessor files already exist in baseline,
+  identical blobs to ea023e18 (53666414/0b781ca8/b88c518d). No extraction or replacement.
+- Method: static GOG read, Python 3.14.6, Capstone 5.0.7 / pefile 2024.8.26; private audit.
+- Module SHA256: Scene `5b521f9541332846d32b57c93eaaee9c9d8de2ac2404cd75da0fe93e0e36fd38`;
+  Welt `f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`;
+  Game `ac721220afd27ebca5fd2ece6a8ff452289b9d7458c4e091c68adea2012db7bc`.
+- Corpus: 465 files = 429 evaluated + 36 excluded (15 PIRAT / 21 DUMMY).
+  1,590 markers; INFO[5] agrees 429/429; INFO[4] zero. No unsupported input or mismatch.
+- Re-read built-in list: 428 unique names, no network-only name. Disk-only:
+  Dschungel/D_080x080_0015_2B_Suedsee.scp. No assumption about another build's 464 files.
+- OCCUR prefix/quantity reader checked: Welt 0x10095f63/0x10096119 and 0x100634e0;
+  all ore payloads 24 bytes, tons u16 at payload 16. Three direct file-offset samples agree.
+- File tons: 1,585 at 400 and 5 at 2,000; reserve/load reset makes all 1,590 normal sources
+  Q=512,000/R1. Assignment to 1661 resets Q=102,400/R0; other retypes preserve Q/R.
+- Special attach Welt 0x10063750 receives the type descriptor (Game 0x10010a40 kind 0xd00),
+  not an island of that kind; quantities are 8.8 units, not INFO capacity.
+- Decisive unassigned ABI: Scene 0x100087d0/0x100087d2 push two 1s; getter ret 4 leaves
+  flag 1 for take. Welt 0x1006367a therefore suppresses depletion. Reserve clears; Q stays.
+- Initial private projection dropped that carried flag and wrongly predicted zero with
+  world flags 2. Preserved corpus-01/audit-01 and superseded them after instruction/stack check.
+  Final all-unassigned explicit world flags 2/0 both leave 1,590 at Q=512,000/R0.
+- Welt 0x1007c0d0 refreshes a resource-mask byte (reset 0x10 plus goods bits), not tonnage.
+  Visitor 0x100785a0, footprint offsets/rotation, generated radius bounds and overlap union read.
+  Zero-quantity objects would still count; no audit claim of a complete resource-visitor port.
+- Scene scale 0x100433c4 initialized 1.0 at 0x10007900; word rect origin is not a new clamp.
+- Treasure 0x10008cc0 through return 0x10008fc3: eight rays, radii 0..127, high corner >32;
+  first low/outside after high, one &7 draw, cyclic probing, eight steps inward then bounds.
+  No object/route/player-reachability predicate; no centre fallback or final retry.
+- Kind draw at 0x10008b69 precedes scan for climates 4/5/6; no separate facing draw on
+  resolved treasure creation path (Welt 0x10095100 -> factory/constructors/position setter).
+- Census all 8 selector inputs: 3,432 outcomes = 3,208 sites (401 templates) + 224 no-high
+  (28 templates); no final-outside/no-transition cases in this copy. Synthetic bound covered.
+- Private commands (ANNO1503_GAME_DIR set): `python3 -I cache/annoscene-ore-2/audit.py
+  --game-dir "$ANNO1503_GAME_DIR" --output cache/annoscene-ore-2/corpus-02.json`;
+  `python3 -I cache/annoscene-ore-2/contract.py`. Neither is installed in tools/ or CTest.
+- `AUDIT_VERDICT: PASS` — cache/annoscene-ore-2/corpus-02.log,
+  SHA256 `ff7f10ad720152edf6c06a33c9d7a7127e3bceb32a16258490acd345055ec66d`.
+- `ORE2_AUDIT_CONTRACT: checked=26 failed=0` — contract-03.log; legal/restored corpus,
+  missing/empty/malformed, wrong expected exit 1, special-reset/threshold/carried-flag mutants.
+- `CALL_ABI_CHECK: instructions=4 stack_case=1 failed=0; take_flag=1 not 0` — abi-boundary-01.log.
+  `HEIGHT_PREDICATE_CHECK: checked=256 failed=0; threshold equality h=32 is not high` — height-boundary-01.log.
+- `DIRECT_SAMPLE_CHECK: checked=3 failed=0` — direct-samples-02.log.
+  `ORE2_FUNCTION_ENDS: checked=7 failed=0; following tables/constructors excluded` — function-boundaries-01.log.
+- Full 466-file input hash manifest (465 templates + FigurenHeader): input-hashes.json SHA256
+  `a135899f04e9486176079e512ec4876081fb8ff8a20064a997bf22d1c61cc94a`.
+- Final full raw corpus JSON SHA256 `cc1efd79c5c291820769506cf3458f98ce57baf594bab611e9d59e1abe77fbeb`.
+  Audit source SHA256 `49a98b2469b3e8c735f0cffdacdba4e8a98f0742663edf3873dd9865404b97f4`.
+- `ORE2_DOC_LINKS: checked=4 failed=0`; `DIFF_CHECK: PASS`; `DOCUMENT_VERDICT: PASS`
+  in cache/annoscene-ore-2/document-checks-final.log. Exact-head hosted docs CI in handoff.
+  No C++ or long test campaign; documentation-only gate. Independent review pending.
+- NOT_RUN: original/HE runtime, live generated scenario placement, exact marker ordering
+  and its draw-index identity, full spatial-query draw closure, native setup, treasure rewards.
+  OQ-151 remains open; no engine, PRNG/state identity, map or default changed.
+
+| Requirement | Positive / distinguishing control | Evidence | Review |
+|---|---|---|---|
+| Quantity/ABI | reserve reset and retained take flag; dropped-flag mutant differs | contract-03, abi-boundary-01 | pending |
+| Treasure boundary | 32/33, empty/one-site, radius 127; equality mutant differs | contract-03, height-boundary-01 | pending |
+| Honest census | every 465 input accounted; missing/empty/malformed/wrong expected refuse | corpus-02, contract-03, input manifest | pending |
+
+**Decisions and reasoning:**
+- Keep marker identity, stored/extractable quantity and resource-mask bits separate.
+- Follow callee cleanup before interpreting the unassigned accessor pair; preserve the
+  wrong first projection as history and add a discriminating negative control.
+- Label accessor/world-flag scenarios and fixed selector inputs; corpus data is not runtime parity.
+- Next boundary: placement reference contract; production port also needs marker ordering,
+  complete reached draw closure and its timeline contract. No generated ore implementation here.
+
+**QUESTIONs:** none requiring owner policy for this read. Remaining edges are explicit in the note.
+
+READY FOR REVIEW.

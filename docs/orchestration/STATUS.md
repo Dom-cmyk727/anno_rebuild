@@ -170,6 +170,11 @@ says who is doing what, where the work is, and what it waits on.
   order?", the owner answered "Yes". They run in the UI lane, then UI-RANGE-1. Also, asked "Delete the public
   task branch with the data table after landing, and recreate it clean?", the owner answered "Yes, clean it
   up": `task/BUILDINGS-REF-1` is recreated as one clean commit.
+- **CI pinned to ubuntu-24.04, LANDED on main `a6468efd`** 2026-11-19 (owner: "Yes, land it"). GitHub's
+  `ubuntu-latest` became Ubuntu 26.04 / GCC 15.2 that morning, and every branch's Linux `-Werror` build failed
+  (`<ciso646>` under Clang with libstdc++ 15; a GCC 15 null-dereference in `freight_state.hpp`; run
+  44493276095). The pin restores the documented GCC 13 / Clang 18 (CI 44500826347 green). Branches merge
+  origin/main to get green. A move to GCC 15 is its own later packet.
 - **FLAKE-RESIZE-1 reviewed, acceptance pending CI** 2026-11-19, head `11dd877a` (fix `b3304fd1`). Correction:
   CI 44493276095 on `11dd877a` FAILED in the three Linux C++ jobs (`anno_sim_replay_g3_run` failed, many sim
   cases incomplete) although the head adds only REPORTS to `b3304fd1`, whose run was green; the failed jobs

@@ -224,3 +224,38 @@ source-geometry implementation or obtain those runtime facts first.
 | Oracle cannot echo | changed expected fails, echo-only fails contract | executed negative control |
 | Source witness | raw Tutorial four corners48/current tile419; authored draw6 | raw decode plus flat-height hand example, not original execution |
 | No engine/state changes | no src delta, unchanged pins/import artifacts | preservation receipts retained |
+
+### Focused review correction: callback profile and left-height spill
+
+2026-11-19, P2 from independent evidence review. The first 25 vectors left all
+height callbacks at PC53/nearest. They did not distinguish ignored callback PC/RC,
+and omitting the first-triangle left-height store also survived. Those receipts
+remain valid for their narrower scope; they did not prove these three predicates.
+All 25 existing expectations are preserved; append 4 hand-derived height vectors.
+
+H: let a=11184811/2^26, Rn=13981013/2^24, Ru=13981014/2^24.
+All cases use stored X=Z=a in the first triangle, not a recomputed exact 1/6.
+- RC up, corners [0,1,2,4]: R=Ru. Before the final store the exact scheduled
+  expression minus 1/2 is 7456541/1250999956144128, between 0 and one f32 ULP.
+  PC53 directed-operation errors cannot bridge either boundary. Final up word
+  is 0x3f000001; the existing nearest control gives 0x3f000000.
+- PC24/nearest, corners [0,3,0,0]: -3*a rounds to -1/2, right height 5/2.
+  Product 55924055/2^27 rounds to 13981014/2^25. Dividing by Rn gives
+  6990507/13981013, above midpoint 1/2+2^-25 by 2796203/469124949999616;
+  final nearest word 0x3f000001. PC53's unrounded scheduled quotient is
+  1876499889476949/3752999599996928, below that midpoint by
+  22369619/3752999599996928; final word 0x3f000000. Both controls are included.
+- Required left spill, PC53/nearest, corners [1,0,2,0]: stored left is
+  9786709/2^23, right 2*a. Scheduled interpolant is
+  1876499727297197/1876499799998464, below midpoint 1-2^-25 by
+  16777215/1876499799998464, hence 0x3f7fffff. Omitting the spill instead
+  places it above the midpoint by 100663293/3752999599996928, hence 0x3f800000.
+  A conservative total PC53 operation-error bound 2^-48 is smaller than all the
+  separating gaps above (the finite operations here stay below magnitude 4).
+
+C: now 29 vectors (14 position/4 table/11 height). Contract adds separate
+height-local ignored-RC, ignored-PC and omitted-spill source mutants. Each must
+fail its specific appended Y assertion with exactly one disagreement while all
+other controls execute. Existing high-offset/height-table/diagonal mutants remain.
+Reference algorithm unchanged; only evidence/contract coverage corrected. Original
+CW/runtime and all previously stated admission boundaries remain unobserved.

@@ -28,6 +28,7 @@ def contract(ref, vectors, root):
         if actual != code:
             raise AssertionError(f'{path.name}: expected {code}, got {actual}: {output}')
         checks += 1
+        return output
     check(vectors, 0)
     bad = json.loads(text)
     bad[0]['expected']['x'] += 1
@@ -54,7 +55,15 @@ def contract(ref, vectors, root):
     for name, before, after in [
         ('rounded-high-shortcut', 'a.mul(F(1), offset)', 'F(1) - value(0x3f555555)'),
         ('height-table-scale', 'F(5368709, 1 << 27)', 'F(10737418, 1 << 27)'),
-        ('strict-diagonal', 'if left <= x <= right:', 'if left <= x < right:')]:
+        ('strict-diagonal', 'if left <= x <= right:', 'if left <= x < right:'),
+        ('ignore-height-rounding',
+         'def height(x, z, corners, pc, rc):\n    a = Arithmetic(pc, rc)',
+         "def height(x, z, corners, pc, rc):\n    a = Arithmetic(pc, 'nearest')"),
+        ('ignore-height-precision',
+         'def height(x, z, corners, pc, rc):\n    a = Arithmetic(pc, rc)',
+         'def height(x, z, corners, pc, rc):\n    a = Arithmetic(53, rc)'),
+        ('omit-left-height-spill', 'low = a.s(edge(ha, hc, t, d))',
+         'low = edge(ha, hc, t, d)')]:
         if source.count(before) != 1:
             raise AssertionError(name + ': replacement did not match exactly once')
         mutant = source.replace(before, after)
@@ -62,7 +71,14 @@ def contract(ref, vectors, root):
             raise AssertionError(name + ': replacement not applied')
         path = root/(name+'.py')
         path.write_text(mutant, encoding='utf-8')
-        check(vectors, 1, path)
+        output = check(vectors, 1, path)
+        diagnostics = {
+            'ignore-height-rounding': '25 y: expected 1056964609, got 1056964608',
+            'ignore-height-precision': '26 y: expected 1056964609, got 1056964608',
+            'omit-left-height-spill': '28 y: expected 1065353215, got 1065353216'}
+        if name in diagnostics and (diagnostics[name] not in output or
+                                    '29 vectors, 1 disagreements' not in output):
+            raise AssertionError(name + ': intended numeric assertion/control coverage missing')
         print('actual source mutant rejected: ' + name)
     print(f'geometry contract: {checks} checks, 0 failures')
 

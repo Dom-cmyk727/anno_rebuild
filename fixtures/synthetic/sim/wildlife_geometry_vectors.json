@@ -463,5 +463,89 @@
       "consumed": 0
     },
     "derivation": "Actual Tutorial tile (111,45), raw corners 48: each table53/nearest word is 16106127/2^23; flat interpolation preserves it."
+  },
+  {
+    "kind": "height",
+    "inputs": {
+      "x": 1042983595,
+      "z": 1042983595,
+      "corners": [
+        0,
+        1065353216,
+        1073741824,
+        1082130432
+      ],
+      "pc": 53,
+      "rc": "up"
+    },
+    "expected": {
+      "y": 1056964609,
+      "triangle": 1,
+      "consumed": 0
+    },
+    "derivation": "RC up, a=11184811/2^26. R=13981014/2^24; pre-final y-1/2=7456541/1250999956144128 (>0, <one f32 ULP). Directed PC53 errors <2^-48 cannot cross either bound. Final up store chooses 0x3f000001, nearest control row18 is 0x3f000000."
+  },
+  {
+    "kind": "height",
+    "inputs": {
+      "x": 1042983595,
+      "z": 1042983595,
+      "corners": [
+        0,
+        1077936128,
+        0,
+        0
+      ],
+      "pc": 24,
+      "rc": "nearest"
+    },
+    "expected": {
+      "y": 1056964609,
+      "triangle": 1,
+      "consumed": 0
+    },
+    "derivation": "PC24: -3a rounds to -1/2, right height=5/2. Exact product55924055/2^27 rounds to13981014/2^25. Divide by R=13981013/2^24: 6990507/13981013 is above 1/2+2^-25 by2796203/469124949999616, so final word0x3f000001."
+  },
+  {
+    "kind": "height",
+    "inputs": {
+      "x": 1042983595,
+      "z": 1042983595,
+      "corners": [
+        0,
+        1077936128,
+        0,
+        0
+      ],
+      "pc": 53,
+      "rc": "nearest"
+    },
+    "expected": {
+      "y": 1056964608,
+      "triangle": 1,
+      "consumed": 0
+    },
+    "derivation": "Same patch, PC53 quotient1876499889476949/3752999599996928 is below f32 midpoint1/2+2^-25 by22369619/3752999599996928; operation round errors <2^-48 cannot bridge it. Nearest word0x3f000000."
+  },
+  {
+    "kind": "height",
+    "inputs": {
+      "x": 1042983595,
+      "z": 1042983595,
+      "corners": [
+        1065353216,
+        0,
+        1073741824,
+        0
+      ],
+      "pc": 53,
+      "rc": "nearest"
+    },
+    "expected": {
+      "y": 1065353215,
+      "triangle": 1,
+      "consumed": 0
+    },
+    "derivation": "Left stored S(1+a)=9786709/2^23; right=2a; R=13981013/2^24. Interpolant1876499727297197/1876499799998464 is below midpoint1-2^-25 by16777215/1876499799998464. Without spill it is above midpoint by100663293/3752999599996928, choosing1 instead. PC53 errors <2^-48 are smaller than either gap."
   }
 ]

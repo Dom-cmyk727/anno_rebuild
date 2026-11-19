@@ -142,7 +142,7 @@ CMake 3.31.10,Ninja 1.13.2. Jobs 1,threads 2,2,048 MiB/thread,normal memory admi
 no competing gate at preflight, ample disk. Existing coordinator and owner awake
 assertion preserved. ASAN detect_leaks=0:halt_on_error=1; UBSAN
 halt_on_error=1:print_stacktrace=1. GPU unused. Original game files read-only at
-/Users/dom/Dev/anno1503-worktrees/anno1503/game/app.
+`game/app`.
 
 ## SHA256 receipts
 

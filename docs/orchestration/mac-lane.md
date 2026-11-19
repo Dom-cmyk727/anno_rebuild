@@ -60,7 +60,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife first-call composition [WILDLIFE-FIRST-CALL-1](tasks/wildlife-first-call-1.md) | ACCEPTED; isolated source-to-fill | `7d2df0fc5c94786372960000b1c7fe8d3a28dee2`; tested `a6f7527d` | [44496760869](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44496760869), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-first-call-1-review.md) |
 | Animal construction callbacks [WILDLIFE-CREATE-CLOSURE-1](tasks/wildlife-create-closure-1.md) | ACCEPTED; bounded creation contract | `252ed66cdb5e61818f459039822d2dd8167cbd04` | [44500172507](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44500172507), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-create-closure-1-review.md) |
 | Animal creation effects [WILDLIFE-CREATE-EFFECTS-1](tasks/wildlife-create-effects-1.md) | LOCAL REVIEW APPROVED; CI pending | `25bab774208c9e610b43447e247d99cc1aba0195`; tested `37c144b1` | [44508278589](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44508278589), pending | [Review](reviews/2026-11-19-wildlife-create-effects-1-review.md) |
-| Animal end/release effects [WILDLIFE-RELEASE-EFFECTS-1](tasks/wildlife-release-effects-1.md) | RELEASED; closed-profile owned lifecycle projection | Locally reviewed base `25bab774` | Exact cleanup callbacks before code; focused end/release tests | Direct reportback to Mac orchestrator |
+| Animal end/release effects [WILDLIFE-RELEASE-EFFECTS-1](tasks/wildlife-release-effects-1.md) | LOCAL REVIEW APPROVED; P3 closed, CI pending | `901a8467f766825ae9683cb41dee33522a9aff39`; tested `33fe219c` | [44511432981](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44511432981), pending | [Review](reviews/2026-11-19-wildlife-release-effects-1-review.md) |
+| Animal species source [WILDLIFE-SPECIES-LOAD-1](tasks/wildlife-species-load-1.md) | RELEASED; source ring to owned selection plan | Corrected locally reviewed base `901a8467` | Existing selector unchanged; no coordinate/World integration | Direct reportback to Mac orchestrator |
 | Windows dual-edition navigation [WIN-NAV-EDITIONS-1](tasks/windows-nav-editions-1.md) | Owner-requested HANDOFF READY; Windows intake pending | Accepted diagnosis `74d50bfe`, production base `889143ba` | GOG and HE verification requested; no repair released | Owner forwards to Windows orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
@@ -1198,3 +1199,25 @@ Unsupported cleanup state refuses; no invented safer ownership policy, live
 manager or World/state/default/identity change. Windows navigation/FP work stays
 separate. Executor pushes own task branch and reports directly here for review.
 Main, shared TASKS/STATUS and other-lane work remain untouched.
+
+## End/release reviewed; source species plan released
+
+RELEASE-EFFECTS corrected901a8467 is independently locally APPROVED. Original
+empty-cleanup callbacks and category/home lookup agree with code; focused
+Debug/ASan each14 unique passes, four causal mutants and83 receipt hashes hold.
+The sole P3 getter-address typo is corrected and re-reviewed; code/gates unchanged.
+The293 physical fixture count includes ignored Python bytecode, not a new tracked
+fixture. Full World/end/hunt/runtime claims remain excluded.
+
+Corrected CI44511432981 is queued; prior release5116ba92 CI44511028378 remains
+preserved. CREATE-EFFECTS25bab774 still awaits its last hosted lane/aggregate in
+44508278589. Neither is silently marked accepted. No local tests repeated.
+
+WILDLIFE-SPECIES-LOAD-1 is independently scope-approved and RELEASED on901a8467.
+Bind the original climate's32-entry u16 ring and numeric goods/kind facts, preserve
+ring order/duplicates/unsupported selections, then call the unchanged pure selector.
+Source-profile bounds must be established independently of unrelated kernel rows.
+Use supported synthetic60001 rather than impossible90001 in a u16 source ring.
+Stop at owned selection/creation plan; no fractional positions, live manager,
+World, default/tag/identity/PRNG change. Executor pushes its own branch and reports
+directly here for review. Main, shared boards and Windows/UI work untouched.

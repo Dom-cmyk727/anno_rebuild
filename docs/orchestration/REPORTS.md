@@ -15015,3 +15015,45 @@ the fix is `world.rules().cargo` (`cache/gates/build-r2.log`). The `^viewer_wiri
 3. Gate: the ghost, dev tool and oracle cases, all required, plus the sim determinism, replay and save cases (213
    tests by name; `pins.py check --area sim` if quick). State that no pin or golden moved.
 4. clang-format, one WSL run, a REPORTS addendum, push and mirror.
+
+## UI-GHOST-1 addendum — fix round R2: the play window opens on the developer city — READY FOR REVIEW
+
+Owner's decision (2026-11-17, "Start at my city"): his R1 retest happened on the start-view island, the middle island
+100, where building is refused correctly. Commits: `4c586744` (WIP, did not build; halted that evening), `6634cb8d`
+(the one-line fix `world.rules().cargo`, completing it), then this entry.
+
+- `DevToolSetup::home`: the developer city's warehouse (the Kontor, `Rules::cargo.warehouse_prodtypes`), else its
+  first building in the canonical order, else the island's centre. Computed in `dev_tool_setup` from read-only
+  queries of the loaded world. No hardcoded coordinates.
+- The viewer's start camera centres on that tile, at sea level, when a play session has a developer city. Otherwise
+  (scene views, sessions with no city yet) it stays on the scene's middle. The ship-start opening still overrides it
+  with its ship. The code is marked as the owner's decision. BUILDINGSOBJECTS §5.1 ("Off the island") notes it.
+- Camera only: viewer state, no sim, stream or save change.
+
+| Requirement | Proof | Evidence |
+|---|---|---|
+| The start camera is on the developer city's island | new `viewer_wiring_ui_start_view` (no `look`): `camera.tile` inside island 1 (1048..1303, 440..695) and within ±6 of the Kontor at (1284, 540) | `cache/gates/gate-r2b.log` |
+| R1's off-island coverage kept | `viewer_wiring_ui_ghost_world` now looks at the middle island (712, 712) first | `gate-r2b.log` |
+| No script relied on the old start view | `^viewer_wiring_` on the R2 build: `selected=33 executed=33 failed=0`, PASS. No other script needed a `look` | `cache/gates/wiring-r2-02.log` |
+| Determinism unchanged | the sim replay, determinism, save, golden, pin and hash cases plus the `anno_sim_replay_*` CLI cases (213 by name, inside the gate): all passed, one opt-in skip (`SCRIPT2 original encoded canary replay worker`). **No pin or golden moved**: `git diff 4dfdd9b7..HEAD -- fixtures` is empty. `pins.py check` was skipped as instructed | `gate-r2b.log` |
+
+**Gate** (head `6634cb8d`, MSVC Release, the same env; each heavy job only after checking that no other cl/link or
+WSL compile ran, the new PC-sharing rule):
+- Build `anno1503 anno_app_tests anno_app_input_tests anno_ui_mock anno_sim_tests sim_replay`: no warnings.
+  clang-format 23.1.3: clean.
+- `run_selected.py --jobs 8` over the oracle, `^viewer_wiring_`, ghost, dev-tool, construction/selection, Build
+  and determinism/replay/save lanes, with ten required tests (the six oracle tests, `viewer_wiring_ui_ghost`,
+  `_ghost_world`, `_ghost_pixel_check`, `_start_view`): `selected=407 executed=404 failed=0 empty=0 skipped=3
+  (opt-in=3) incomplete=0 sanitizer_lines=0`, PASS (`gate-r2b.log`).
+- A first run, `gate-r2.log`, failed 45 `anno_sim_replay_*` cases: `sim_replay` had never been built in this build
+  dir ("no such file"). It was built and that lane rerun alone (`46/46`, `gate-r2-replay.log`), then the whole gate
+  was rerun for one verdict (above). The first run is kept, not counted.
+- WSL `check_unix_warnings.sh`, one run: GCC 13 and Clang 18, with and without GPU (418 / 85 files), clean, both
+  negative controls caught (`cache/gates/unix-warnings-r2.log`).
+
+**Owner's test:** start as before (`--play data\maps\lan5.txt`, default rules). The window now opens on your city's
+Kontor. Arm the pioneer house: free land shows the house and its yellow radius outline; water shows the yellow
+diamond. With `ANNO_DEV_GOODS_TONS=3` the ghost blinks after one house. Other islands show the diamond, and a click
+there is refused (OutOfIsland).
+
+READY FOR REVIEW.

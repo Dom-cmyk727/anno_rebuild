@@ -52,7 +52,7 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife load-thread numerics [WILDLIFE-RASTER-FP-1](tasks/wildlife-raster-fp-1.md) | ACCEPTED research/capture card; Windows observation pending | `aec8bcc8fc1a35230dffba91c8e8b34c35f31bf3`; production base `889143ba` | [44464134541](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44464134541), all 12 jobs successful | [Review and Windows intake](reviews/2026-11-19-wildlife-raster-fp-1-review.md) |
 | Wildlife ground preparation [WILDLIFE-PREPROCESS-CONTRACT-1](tasks/wildlife-preprocess-contract-1.md) | ACCEPTED bounded preprocessing contract | `54798a4b5f5bc8a2c65874ea375441b7cca9e21f`; production base `889143ba` | [44467047682](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44467047682), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-preprocess-contract-1-review.md) |
 | Wildlife numerical preparation [WILDLIFE-GROUND-PREPARE-1](tasks/wildlife-ground-prepare-1.md) | ACCEPTED; isolated UNWIRED numerical leaf | `5bdfd92ac01a70656a718cea4f7c7405445b41d5`; tested `92c17db` | [44469519552](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44469519552), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-ground-prepare-1-review.md) |
-| Wildlife growth source [WILDLIFE-GROWTH-LOAD-1](tasks/wildlife-growth-load-1.md) | IN PROGRESS; executor sanitizer gate running | Accepted base `5bdfd92a` | Executor reports focused Debug passed; new source not yet reviewed | Frozen reportback directly to Mac orchestrator |
+| Wildlife growth source [WILDLIFE-GROWTH-LOAD-1](tasks/wildlife-growth-load-1.md) | CHANGES REQUESTED; [focused reference correction](tasks/wildlife-growth-load-1-fix.md) released | `e89409e17b6173c442fddfa959f70de781689678`; tested `0dc52331` | [44475449514](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44475449514), in progress; cannot waive reference discrepancy | [Review](reviews/2026-11-19-wildlife-growth-load-1-review.md) |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -1009,3 +1009,21 @@ GROWTH-LOAD remains the active released task at accepted base `5bdfd92a`. The
 executor reports focused Debug complete and its sanitizer gate running. That
 progress is not reviewed acceptance. Continue unchanged; no interruption, new
 assignment, board merge or main push is requested.
+
+
+## Latest review — growth loader needs one reference correction
+
+GROWTH-LOAD `e89409e1` has approved bounded production review, but independent
+evidence review found one P2: the Python reference accepts out-of-int32 values
+in discarded missing-comma tails, while C++ correctly refuses them. The existing
+32 CLI controls miss that branch. Root verified 105 manifest hashes and 30
+published rows; other reference-first, numerical, original-file and scoped gate
+reuse evidence stands. Current CI is pending and cannot waive the discrepancy.
+
+The [focused correction](tasks/wildlife-growth-load-1-fix.md) is RELEASED on
+the existing task branch. Fix reference tail bounds and add paired legal/invalid
+boundary controls in both languages; rerun only affected tests/contracts and
+reuse unaffected evidence explicitly. No production, generic-parser, identity
+or original-data change. The next kernel-binding packet is prepared and scope-
+reviewed, but NOT RELEASED until this correction passes independent re-review.
+Executor reports directly here; main and earlier evidence remain untouched.

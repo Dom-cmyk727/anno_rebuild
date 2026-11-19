@@ -1,0 +1,48 @@
+# (p+5)//10 for p=0; zero retains a7, positive replaces low nibble, clamp at10.
+ground q0 w=1 h=1 origin=0,0 gfx=0 objects=0 ground=167 lookup=0 kernel=0,0,0,0,0,0,0,0,0,0,0,0,12,0,0,0,0,0,0,0,0,0,0,0,0 facts=0,N,0,0 => ground=167
+# (p+5)//10 for p=4; zero retains a7, positive replaces low nibble, clamp at10.
+ground q4 w=1 h=1 origin=0,0 gfx=0 objects=0 ground=167 lookup=4 kernel=0,0,0,0,0,0,0,0,0,0,0,0,12,0,0,0,0,0,0,0,0,0,0,0,0 facts=0,N,0,0 => ground=167
+# (p+5)//10 for p=5; zero retains a7, positive replaces low nibble, clamp at10.
+ground q5 w=1 h=1 origin=0,0 gfx=0 objects=0 ground=167 lookup=5 kernel=0,0,0,0,0,0,0,0,0,0,0,0,12,0,0,0,0,0,0,0,0,0,0,0,0 facts=0,N,0,0 => ground=161
+# (p+5)//10 for p=255; zero retains a7, positive replaces low nibble, clamp at10.
+ground q255 w=1 h=1 origin=0,0 gfx=0 objects=0 ground=167 lookup=255 kernel=0,0,0,0,0,0,0,0,0,0,0,0,12,0,0,0,0,0,0,0,0,0,0,0,0 facts=0,N,0,0 => ground=170
+# 20<100: (20+300)//4=80; b8, output a8.
+ground blend_low w=1 h=1 origin=0,0 gfx=0 objects=90001 ground=167 lookup=20 kernel=0,0,0,0,0,0,0,0,0,0,0,0,12,0,0,0,0,0,0,0,0,0,0,0,0 facts=90001,V,225,100 => ground=168
+# 100>20: (20+300)//4=80; b8, output a8.
+ground blend_high w=1 h=1 origin=0,0 gfx=0 objects=90001 ground=167 lookup=100 kernel=0,0,0,0,0,0,0,0,0,0,0,0,12,0,0,0,0,0,0,0,0,0,0,0,0 facts=90001,V,256,20 => ground=168
+# Kind224 outside225..256: p20,b2,a2.
+ground outside_low w=1 h=1 origin=0,0 gfx=0 objects=90001 ground=167 lookup=20 kernel=0,0,0,0,0,0,0,0,0,0,0,0,12,0,0,0,0,0,0,0,0,0,0,0,0 facts=90001,V,224,100 => ground=162
+# Kind257 outside225..256: p20,b2,a2.
+ground outside_high w=1 h=1 origin=0,0 gfx=0 objects=90001 ground=167 lookup=20 kernel=0,0,0,0,0,0,0,0,0,0,0,0,12,0,0,0,0,0,0,0,0,0,0,0,0 facts=90001,V,257,100 => ground=162
+# 1x1: b2*6//12=1; preserve high a; no renormalization.
+ground s1_corner w=1 h=1 origin=0,0 gfx=0 objects=0 ground=167 lookup=20 kernel=0,0,0,0,0,0,0,0,0,0,0,0,6,0,0,0,0,0,0,0,0,0,0,0,0 facts=0,N,0,0 => ground=161
+# b1,b1: each6//12=0; summing before division would give1 at first.
+ground s2_terms w=2 h=1 origin=0,0 gfx=0,4 objects=0,0 ground=167,183 lookup=10,10 kernel=0,0,0,0,0,0,0,0,0,0,0,0,6,6,0,0,0,0,0,0,0,0,0,0,0 facts=0,N,0,0 => ground=160,176
+# b0,b2: zero centre keepsa7 despite east contribution; second nonzero writesb0.
+ground s3_centre w=2 h=1 origin=0,0 gfx=0,4 objects=0,0 ground=167,183 lookup=0,20 kernel=0,0,0,0,0,0,0,0,0,0,0,0,0,12,0,0,0,0,0,0,0,0,0,0,0 facts=0,N,0,0 => ground=167,176
+# b1,zero kernel: writea0, unlike centre-zero skip.
+ground s4_zero_sum w=1 h=1 origin=0,0 gfx=0 objects=0 ground=167 lookup=10 kernel=0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 facts=0,N,0,0 => ground=160
+# 26*255//12=552 clamps10; alone insensitive to product wrap.
+ground s5_saturation w=1 h=1 origin=0,0 gfx=0 objects=0 ground=167 lookup=255 kernel=0,0,0,0,0,0,0,0,0,0,0,0,255,0,0,0,0,0,0,0,0,0,0,0,0 facts=0,N,0,0 => ground=170
+# b2,centre weight12 gives2 versus s1 weight6 gives1.
+ground s6_profile w=1 h=1 origin=0,0 gfx=0 objects=0 ground=167 lookup=20 kernel=0,0,0,0,0,0,0,0,0,0,0,0,12,0,0,0,0,0,0,0,0,0,0,0,0 facts=0,N,0,0 => ground=162
+# Left1+3=4,right4+1=5; immutable scratch, asymmetric horizontal kernel.
+ground s7_scratch w=2 h=1 origin=0,0 gfx=0,4 objects=0,0 ground=167,183 lookup=20,30 kernel=0,0,0,0,0,0,0,0,0,0,0,24,6,12,0,0,0,0,0,0,0,0,0,0,0 facts=0,N,0,0 => ground=164,181
+# 26*10=260,//12=21 clamps10; byte product4 gives0.
+ground s10_width w=1 h=1 origin=0,0 gfx=0 objects=0 ground=167 lookup=255 kernel=0,0,0,0,0,0,0,0,0,0,0,0,10,0,0,0,0,0,0,0,0,0,0,0,0 facts=0,N,0,0 => ground=170
+# b rows1,2,3/4,1,2/2,3,1. centre+2east+south gives9,9,5/8,8,3/8,5,1; corner/edge/interior un-clamped.
+ground two_d w=3 h=3 origin=17,-11 gfx=0,4,8,12,16,20,24,28,32 objects=0,0,0,0,0,0,0,0,0 ground=167,183,199,215,231,247,23,39,55 lookup=10,20,30,40,10,20,20,30,10 kernel=0,0,0,0,0,0,0,0,0,0,0,0,12,24,0,0,0,12,0,0,0,0,0,0,0 facts=0,N,0,0 => ground=169,185,197,216,232,243,24,37,49
+# Explicit N retains p20,b2,a2; missing entry instead refuses.
+ground state_N w=1 h=1 origin=0,0 gfx=0 objects=70000 ground=167 lookup=20 kernel=0,0,0,0,0,0,0,0,0,0,0,0,12,0,0,0,0,0,0,0,0,0,0,0,0 facts=70000,N,0,0 => ground=162
+# Explicit A retains p20,b2,a2; missing entry instead refuses.
+ground state_A w=1 h=1 origin=0,0 gfx=0 objects=70000 ground=167 lookup=20 kernel=0,0,0,0,0,0,0,0,0,0,0,0,12,0,0,0,0,0,0,0,0,0,0,0,0 facts=70000,A,225,0 => ground=162
+# Explicit F retains p20,b2,a2; missing entry instead refuses.
+ground state_F w=1 h=1 origin=0,0 gfx=0 objects=70000 ground=167 lookup=20 kernel=0,0,0,0,0,0,0,0,0,0,0,0,12,0,0,0,0,0,0,0,0,0,0,0,0 facts=70000,F,225,0 => ground=162
+# Explicit V retains p20,b2,a2; missing entry instead refuses.
+ground state_V w=1 h=1 origin=0,0 gfx=0 objects=70000 ground=167 lookup=20 kernel=0,0,0,0,0,0,0,0,0,0,0,0,12,0,0,0,0,0,0,0,0,0,0,0,0 facts=70000,V,225,0 => ground=162
+# Object0 has explicit successful descriptor: p20 blends80,b8; zero is not implicitly null.
+ground zero_word_descriptor w=1 h=1 origin=0,0 gfx=0 objects=0 ground=167 lookup=20 kernel=0,0,0,0,0,0,0,0,0,0,0,0,12,0,0,0,0,0,0,0,0,0,0,0,0 facts=0,V,225,100 => ground=168
+# Object16384 resolves its OWN null fact; must not mask to0 which has v100.
+ground whole_word w=1 h=1 origin=0,0 gfx=0 objects=16384 ground=167 lookup=20 kernel=0,0,0,0,0,0,0,0,0,0,0,0,12,0,0,0,0,0,0,0,0,0,0,0,0 facts=0,V,225,100;16384,N,0,0 => ground=162
+# GFX0..3 shareindex0. First p20,b2,a2; rotation3 edited below.
+ground rotation_bits w=1 h=1 origin=0,0 gfx=3 objects=0 ground=167 lookup=20 kernel=0,0,0,0,0,0,0,0,0,0,0,0,12,0,0,0,0,0,0,0,0,0,0,0,0 facts=0,N,0,0 => ground=162

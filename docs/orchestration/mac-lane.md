@@ -46,8 +46,9 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife post-island contract [WILDLIFE-POSTLOAD-1](tasks/wildlife-postload-1.md) | ACCEPTED; corrected bounded research | `1628ba18a5b6eefb55684afc3091ba3be9fa10c8`; research source `09614995` | [44447642251](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44447642251), all12 jobs successful | [Focused review](reviews/2026-11-19-wildlife-postload-1-review.md) |
 | Wildlife graphics leaf [WILDLIFE-GFX-FINALIZE-1](tasks/wildlife-gfx-finalize-1.md) | ACCEPTED; isolated UNWIRED graphics leaf | `ad2a1a23bbc4fe877c18f0e7bf8f4ce0180270b5`; source `e9256f22` | [44449632964](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44449632964), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-gfx-finalize-1-review.md) |
 | Wildlife catalogue inputs [WILDLIFE-POSTLOAD-INPUTS-1](tasks/wildlife-postload-inputs-1.md) | ACCEPTED; bounded first-call input contract | `263958edb83daa290aeb674f5b2b30c0655c5bb4`; research source `625db996` | [44452465008](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44452465008), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-postload-inputs-1-review.md) |
-| Wildlife first-call fill [WILDLIFE-POSTLOAD-FILL-1](tasks/wildlife-postload-fill-1.md) | LOCAL REVIEW APPROVED; nonblocking evidence prose correction carried, CI pending | `889143ba1485a2fed72c03bd648c9c39878c4f06`; source `db2240a6` | [44456284511](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44456284511), in progress | [Review](reviews/2026-11-19-wildlife-postload-fill-1-review.md) |
-| Wildlife navigation inputs [WILDLIFE-NAV-INPUTS-1](tasks/wildlife-nav-inputs-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `889143ba` | Not started; contract/reproduction only | Frozen reportback directly to Mac orchestrator |
+| Wildlife first-call fill [WILDLIFE-POSTLOAD-FILL-1](tasks/wildlife-postload-fill-1.md) | LOCAL REVIEW APPROVED; evidence prose corrected in NAV-INPUTS, CI pending | `889143ba1485a2fed72c03bd648c9c39878c4f06`; source `db2240a6` | [44456284511](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44456284511), in progress | [Review](reviews/2026-11-19-wildlife-postload-fill-1-review.md) |
+| Wildlife navigation inputs [WILDLIFE-NAV-INPUTS-1](tasks/wildlife-nav-inputs-1.md) | LOCAL REVIEW APPROVED; production compatibility decision pending | `74d50bfeedf1a48ab7e140cc66e36859e0d0a9c3`; production base `889143ba` | [44458725953](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44458725953), in progress | [Review](reviews/2026-11-19-wildlife-nav-inputs-1-review.md) |
+| Wildlife secondary raster [WILDLIFE-RASTER-CONTRACT-1](tasks/wildlife-raster-contract-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `74d50bfe` | Not started; contract only | Frozen reportback directly to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -65,6 +66,13 @@ OQ-800 through OQ-899 are reserved for this lane; none allocated yet. Next: OQ-8
 D-1 map choice and D-2 living defaults remain with the owner. TOWN-START-1 measures candidate A
 with explicit test rules only. Any new policy question stops the dependent step and is sent to the owner.
 Deleting or rewriting the old public MAC-HEAVY-1 branch is also an owner decision; this dispatch does neither.
+
+Navigation arithmetic: independent NAV-INPUTS review confirms premature wrapping
+and capping in production coarse obstacle heights. The owner is asked to approve
+a faithful correction with coordinated semantic compatibility handling. Saved
+NavMotion/replay can be affected even without a layout change. No identity is
+allocated and no production repair is released pending that decision; the
+secondary-raster contract proceeds independently.
 
 ## Dispatch history (pending CI statements below are historical)
 
@@ -871,3 +879,21 @@ then assess callers/replay compatibility before any production route correction.
 No runtime routing/identity change, secondary-raster port or World integration.
 Executor ordinary-pushes its task branch and reports directly here for review
 and next release. Main untouched.
+
+
+## Latest dispatch — navigation evidence reviewed; secondary raster released
+
+NAV-INPUTS `74d50bfe` is independently locally APPROVED, no actionable findings.
+47 manifest receipts and all 24 published rows verified. Canonical and sum-only
+probes each have 3 mismatches in 13 rows; both corrections give 13 agreements;
+the component-mask overcorrection is caught. Seven ordinary controls and four
+geometry checks execute. The legal import domain is proved, not a shipped-content
+trajectory divergence or World publication. FILL's empty-log disclosure is
+corrected. Both exact NAV-INPUTS and FILL CI runs remain in progress.
+
+[WILDLIFE-RASTER-CONTRACT-1](tasks/wildlife-raster-contract-1.md) is RELEASED
+after independent scope review. Close the initialized height-table producer,
+flags-2 sampling/rounding/merge, generation and actual first-reader contract.
+No production routing repair, compatibility allocation, raster implementation or
+World integration. Executor ordinary-pushes its task branch and reports directly
+here for review and next release. Main untouched.

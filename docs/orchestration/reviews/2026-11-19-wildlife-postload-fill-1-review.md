@@ -58,3 +58,10 @@ reviewed and RELEASED: close/reproduce original extrema inputs and V9 mismatch,
 including both sum mask and final clamp, then provide compatibility/caller impact
 for a bounded repair decision. No production route or replay change is released.
 Executor reports directly for review and next release; main untouched.
+
+## Follow-up at NAV-INPUTS review
+
+At `74d50bfeedf1a48ab7e140cc66e36859e0d0a9c3`, both independent reviewers
+verified the P3 correction: the empty log is preserved and no retained initial
+failure text is claimed. No historical failure was recreated. The FILL code
+and successful gates are unchanged. Exact FILL CI remains in progress.

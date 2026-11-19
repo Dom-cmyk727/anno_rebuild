@@ -4,7 +4,375 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-14, by the Claude Code orchestrator:
+**Last updated:** 2026-11-17, by the Claude Code orchestrator:
+- **`main` is `4dfdd9b7`** (2026-11-17, 09:40): RENDER-DIRECT-1a and LAYER-CHECK-1 landed through `land.py`
+  (`land/atlas-layers`, gate run 44038235036, green) under the owner's standing rule. Verified as
+  `origin/main`; `refs/candidates/atlas-layers` is deleted; GitLab and the share are mirrored. Next in line:
+  `refs/candidates/ui-tabs-b` (`004a26f4`, UI-TABS-1 stage B), stacked on it.
+- **Earlier, `main` was `09315620`** (2026-11-17, morning): the three stacked candidates landed as one push through
+  `land.py` (`land/batch-zoom-tabs`, gate run 44019437266, green), on the owner's OK:
+  - `784b5a27`: ZOOM-SMOOTH-2 with 2f, and the UI-PANELS-PREP documents;
+  - `945c3216`: GATE-MAC-1, UNIX-WARN-1, ZOOM-SMOOTH-3, and the bounce branch with TRACE-COLS-1;
+  - `09315620`: UI-TABS-1 stage A.
+  The candidate refs are deleted. Before that, `main` was `ac02d4a2` (2026-11-16, evening: UI-MINIMAP-1,
+  FISHER-RE-4, ANNOSCENE-ORE-1). The full game-file run on the Windows PC due 2026-11-17 runs on `09315620`
+  after the Windows executor's measurement.
+- **Landing candidate `784b5a27`** (tree `db83cb92`; main `ac02d4a2`, then ZOOM-SMOOTH-2 with 2f, then
+  UI-PANELS-PREP as documents): **the owner's OK** 2026-11-16 ("Yes, land both"); CI green on both reviewed heads
+  (`d33432aa` run 43946504718, `f8460129`). Fetchable as `refs/candidates/drag-panels` (no CI run started).
+  **The Windows PC's part PASSED:** GPU tests on the RTX 4090 and the app lanes with the game files, 516
+  selected, 513 executed, 0 failed, 3 opt-in skips; the drag fix's `live_resize` cases among them. The Mac's
+  full run is requested (the owner pastes the prompt); not landed yet.
+  **The owner, 2026-11-16:** GATE-MAC-1 (`d4f2e592`) and UNIX-WARN-1 (`841af180`, once its CI is green) "land
+  with the next one": the candidate `784b5a27` stays as it is, and the two go into the following candidate.
+- **Landing candidate `945c3216`** (tree `0dce3018`), **stacked on `784b5a27`**: GATE-MAC-1 `d4f2e592`,
+  UNIX-WARN-1 `841af180`, ZOOM-SMOOTH-3 `c552c193` and the bounce branch `0a2f0240` (ZOOM-BOUNCE-1 to 3 and
+  TRACE-COLS-1), each with CI green on its reviewed head. **The owner, 2026-11-17:** asked whether both zoom
+  branches join the next candidate with the Metal and warning fixes, "yes both". One conflict, in
+  `src/app/src/viewer.cpp`: both sides' helpers kept (ZOOM-SMOOTH-2's live-resize trace and move fallback,
+  ZOOM-SMOOTH-3's GPU-only `hitch_tracking_enabled`). Fetchable as `refs/candidates/zoom-diag`. **The Windows
+  PC's part PASSED** 2026-11-17: GPU tests on the RTX 4090 (selected by name, `ANNO_GPU_ADAPTER=RTX`), the app
+  lanes and the window-trace contract with the game files, 520 selected, 517 executed, 0 failed, 3 opt-in
+  skips; the WSL warning check clean under GCC 13 and Clang 18, with and without the viewer's GPU code, both
+  negative controls caught. They land in order, `784b5a27` first.
+- **Landing candidate `09315620`** (tree `78444576`), **stacked on `945c3216`**: UI-TABS-1 stage A `a79499cf`
+  (the tab and sub-tab switching; CI green; accepted by the UI lane on the owner's viewer test). **The owner,
+  2026-11-17:** asked whether stage A lands with this batch, "Yes stack it". Two conflicts were resolved: both
+  includes kept in `src/app/src/viewer.cpp`, and in `docs/open-questions.md` UI-TABS-1's code-read line plus
+  OQ-641 to 644 after the candidate's entries. Fetchable as `refs/candidates/ui-tabs-a`. **The Mac's one full
+  run on `09315620` covers all three candidates**. **The Windows PC's part PASSED** 2026-11-17: the same
+  selection plus `ui_subtabs_compare` (with the GOG shots) and `viewer_wiring_ui_subtabs`, 531 selected, 528
+  executed, 0 failed, 3 opt-in skips; the WSL warning check clean, both negative controls caught. Waiting for
+  the Mac's run. **The Mac's run on `09315620`** 2026-11-17 (HEAD and tree verified, both ancestors; Apple M5 Max,
+  macOS 27.0.1, Metal; log sha256 `2e1b9439...016c`):
+  - 2,758 selected, 2,715 executed, **0 failed**;
+  - 43 skips: platform 9, opt-in 29 (the new one is `ui_subtabs_compare` without the GOG shots), gpu 2, other 3;
+  - the three Metal timestamp tests now pass;
+  - the warning script exits 0 (Apple Clang only on that host).
+  Its verdict line reads FAIL only because the prompt's `--allow-skip other` did not admit the two `gpu`
+  skips. They are `play: GPU matches the CPU path on one scene` and its Radeon variant, which are pinned to this
+  PC's named adapters and skip on every Mac run (the same two in the 42 of the previous run). Both ran and
+  passed in this PC's part. The orchestrator counts the Mac's evidence as passed for the three candidates; the
+  next Mac prompt admits `gpu` skips and names the two expected ones. Landing `09315620` (which contains
+  `784b5a27` and `945c3216`) through `land.py`, as `land/batch-zoom-tabs`. Found in passing: the two tests'
+  skip message prints the adapter name as a pointer (`play_gpu_test.cpp:75`, a `const char*` streamed into
+  doctest), a one-line fix for the Windows lane.
+  **The owner's landing OK for all three, 2026-11-17:** "Also land everything once the test is done". So they land
+  in order once this PC's parts and the Mac's run pass with nothing new failing.
+- **The owner, 2026-11-17, on RENDER-DIRECT-1a and LAYER-CHECK-1:** "You will land them once you approve
+  them". They land without a further ask once accepted (CI green on the reviewed head), through the usual
+  candidate gates: a candidate stacked on `09315620`, this PC's changed lanes and the Mac's full run.
+  **Both ACCEPTED** 2026-11-17: RENDER-DIRECT-1a `5fb98192` (run 44010395552) and LAYER-CHECK-1 `c9a3bb23`
+  (run 44010921049). **Landing candidate `4dfdd9b7`** (tree `e218b8f5`), stacked on `09315620`: one end-of-file
+  conflict in `docs/open-questions.md`, both sides kept (OQ-690 after the candidate's entries). Fetchable as
+  `refs/candidates/atlas-layers`. **The Windows PC's part PASSED** 2026-11-17: the residency cases and both
+  layer-check tests, 10 selected, 10 executed, 0 failed; `bench_frame --atlas-report` on `lan5.txt` ran (worst
+  group 0, 134,217,728 bytes); the WSL warning check clean. **The Mac's run PASSED** 2026-11-17:
+  - HEAD `4dfdd9b7` and tree `e218b8f5` verified, `ui-tabs-a` an ancestor;
+  - 2,761 selected, 2,718 executed, **0 failed**;
+  - 43 skips, unchanged: platform 9, opt-in 29, gpu 2, other 3. The only gpu skips are the two play tests
+    pinned to this PC's adapters;
+  - the warning script exits 0;
+  - Apple M5 Max, macOS 27.0.1; log sha256 `bf704b97...6ed6`.
+  **LANDED on main `4dfdd9b7`** 2026-11-17 through `land.py` (`land/atlas-layers`, gate run 44038235036),
+  under the standing rule.
+- **Standing rule, the owner 2026-11-17:** asked whether every packet the orchestrator accepts lands without
+  asking from now on, the owner answered "Yes standing rule". So an accepted packet (CI green on the reviewed
+  head) lands through the usual gates (a landing candidate, this PC's changed lanes and GPU tests, the Mac's
+  full run with the same tree, `land.py`) without a separate landing OK. Owner decisions (defaults, anything
+  that may change the feel, open questions marked for the owner) still go to the owner, and a candidate whose
+  gates show a new failure does not land.
+- **The owner's zoom recording after ZOOM-SMOOTH-3** (2026-11-17, `rendering_01.mp4`, narrated):
+  [findings](../render/zoom-session-2026-11-17.md).
+  - Late islands are gone: a fast zoom-out shows every island at once, and the owner said "working really,
+    really well".
+  - Not-ready frames remain only on the first visit to the closest zoom: up to 59 chunks at once.
+  - Dissolves remain in every zooming window. The owner pointed at one, a lake turning from hazy to its final
+    water as the camera stopped.
+  - So the zoom does not meet the owner's rule yet. RENDER-DIRECT removes stand-ins and dissolves.
+  - Window move and resize kept drawing at 64-72 fps during the held drag.
+- **Landing candidate `c9bdc3e3`** (tree `2d76c26d`), stacked on `004a26f4` (ui-tabs-b), at
+  `refs/candidates/atlas-pages-minimap`:
+  - RENDER-DIRECT-1b `95a5ace6`, with one conflict in `src/app/CMakeLists.txt`: both new test files kept;
+  - UI-MINIMAP-2 `c5b10c85`, ACCEPTED, [review](reviews/2026-11-17-ui-minimap-2-review.md);
+  - RE-HE-PRODUCTION-1 `1e2939ac`, ACCEPTED (docs only, CI 44069937897 green). It is the History Edition's
+    production, worker and cart code against GOG, the owner's request in `he_01.mp4` 7:30. Every function
+    is identical logic; the one rules difference is HE's single-precision `PROD3` load. That makes `need1`
+    of 1010 (KANONENBAU) 7 against 6, and of 3979 (PIONIER) 4 against 3. New OQ-710. The open-questions
+    end conflict was resolved with both sides kept.
+  **The Windows PC's part PASSED** 2026-11-17:
+  - changed lanes (atlas, lan5, minimap/magnifier, budget) and every GPU test on the 4090 and the Radeon:
+    189 selected, 188 executed, 0 failed, 1 platform skip;
+  - the WSL warning check clean on all four configurations, 422 files.
+  It waits for the Mac's run (GATE-RUN atlas-pages-minimap, which covers ui-tabs-b).
+  **A flake found on main:** `anno_app_input_tests` "the watch never reads its own shared guard ..."
+  (`live_resize_test.cpp`, ZOOM-SMOOTH-2b) failed once in CI's linux-clang-asan job, run 44076929673 on
+  UI-STATUS-1's merge, which does not touch it. It is queued for the Windows executor after
+  RENDER-DIRECT-1c as FLAKE-RESIZE-1.
+  **UI-STATUS-1 B+C** `0ee20000` is ACCEPTED (CI 44062827710),
+  [review](reviews/2026-11-17-ui-status-1-review.md). It is not in the stack yet: it conflicts with UI-TABS-1 B
+  in seven files. The UI lane merges `refs/candidates/ui-tabs-b` into its branch, resolves, runs both lanes'
+  gates and pushes; the next candidate takes it.
+- **The owner, 2026-11-17, on the editions' `PROD3` difference (RE-HE-PRODUCTION-1):** asked whether the
+  rebuild uses GOG's values (`need1` 6 for 1010 KANONENBAU, 3 for 3979 PIONIER), the History Edition's (7
+  and 4), or an edition option, the owner answered "GOGs values". So the rebuild keeps today's GOG behaviour,
+  with no option. OQ-032's HE line records the History Edition's values as evidence only.
+- **The owner's go for the UI lane's `he_01` packets, 2026-11-17:** asked about all of them in order (entrance
+  arrows, range display, farm productivity bar, harvest icon, plank text), only the arrows and range display,
+  or hold, the owner answered "all of them". The order:
+  1. UI-INFO-2b;
+  2. UI-RANGE-1 A then B;
+  3. the RE stages of UI-PRODBAR-1 and UI-HARVEST-ICON-1;
+  4. their B stages;
+  5. the PLANKEGROSS banner text.
+  Analysis: `E:\1503_test_videos\he_01_work\he_01-report.md`, outside git.
+- **OQ number reservations (2026-11-17):** 690 RENDER-DIRECT-1a; 691-695 UI-TABS-1 B; 700-707 UI-STATUS-1;
+  708-709 ISLAND-CROPS-1; 710 RE-HE-PRODUCTION-1; 711-714 UI-INFO-2b; 715-719 UI-PRODBAR-1; 720-724
+  UI-HARVEST-ICON-1; 725 INFO-2b spare; 726 UI-PRODBAR-1 (the fertility grid rebuild); 727 RENDER-DIRECT-1d;
+  728-749 BUILDINGS-REF-1; 750 and 755-763 UI-INFO-2d, UI-GHOST-1 and UI-BUILDCAT-1 (the UI lane
+  asked for 750-759, but 751-754 were already UNITS-REF-1's); 751-754 UNITS-REF-1. The next free number is 764. UI-HARVEST-ICON-1 A (ccaab768, with ISS-151 the whaler) and UI-PRODBAR-1 A (6b6758b9) are ACCEPTED
+  2026-11-17 (docs only, CI green) and land with the next candidate; their B stages are released. FERTILITY-1
+  (the Wachstum table, the nibble grid, the crop test, single-tile placement; about 9-10 h in four stages) goes
+  to the UI lane after ISLAND-CROPS-1 1b, drafted for the orchestrator's review. **The owner, OQ-723,
+  2026-11-17:** asked "Show only your own buildings' status icons (original), or add an option to see all?",
+  the owner answered "Own only": the original's owner gate, no rules option.
+- **Landing candidate `c01d5806`** (tree `6f30c28f`), stacked on `c9bdc3e3`, at `refs/candidates/status-crops`:
+  - UI-STATUS-1 B+C with the UI lane's merge of ui-tabs-b, `5e5a51de` (CI 44076929673 green after a rerun
+    of the flaky clang-asan job). Conflicts: the app test list (all five test files kept) and the open
+    questions (700-707 before 710);
+  - ISLAND-CROPS-1 1a `4bebe08e`, ACCEPTED (CI 44070678390): the ANBAU crop list decoded, with a writer;
+    1,133 records round-trip byte for byte; OQ-708 inserted before 710;
+  - UI-PRODBAR-1 A `6b6758b9` and UI-HARVEST-ICON-1 A `ccaab768`, ACCEPTED (docs only), with ISS-151.
+  The register now runs 690-695, 700-708, 710, 715-724 in order. **The Windows PC's part PASSED** 2026-11-17:
+  - changed lanes (status bar, balance rows, insel/ANBAU, app tests and wiring, layer check): 491 selected,
+    484 executed, 0 failed, 7 opt-in skips;
+  - the WSL warning check clean, 425 files.
+  One Mac run on `c01d5806` (GATE-RUN status-crops) covers ui-tabs-b, `c9bdc3e3` and this candidate.
+  OQ-728..749 are reserved for BUILDINGS-REF-1 (`docs/BUILDINGSOBJECTS.md`, the standing reference for
+  building work, landing as one squashed commit without its first commit's data table).
+- **RENDER-DIRECT-1c and 1d (Windows), 2026-11-17:**
+  - **1c:** fix round `f148638e` answered the review ([review](reviews/2026-11-17-render-direct-1c-review.md)).
+    `endless02.sze`'s real worst sets were uploaded with the compositor's budget: RTX 377 of 537 MB, Radeon
+    357 of 403 MB. It added an error scope around texture creation, so a refused allocation can no longer be
+    reported as success.
+  - **1d:** on this PC's Radeon iGPU, a single texture is refused above about 240 MiB (12 layers allocate, 13
+    don't), while the total heap holds about 7.3 GiB. The 340 MiB worst pair, split 12 + 5 layers into two
+    textures, allocates and reads back exact.
+  - **Orchestrator's technical decision (OQ-727):** the owner's 384 MiB integrated budget (OQ-096b) stays.
+    The upload splits any resident set into textures of at most the per-resource ceiling; the ceiling is
+    configuration, with a measured default and a runtime fallback that halves on an allocation refusal. This
+    changes no owner decision. It is implemented with the draw passes (RENDER-DIRECT-2).
+  - **CI on 1c `f148638e` failed:** the adapter-pinned cases skip as `gpu` on lavapipe, where the job requires
+    a GPU. They get the same skip classification as `play_gpu_test`'s pinned cases, plus one adapter-agnostic
+    upload case; then 1c and 1d are accepted on green CI.
+- **The owner's go, 2026-11-17:** asked "go for UI-INFO-2d (the arrow-reading code moved into the file-format
+  library, arrows on a placed building's info picture, the preview flags), UI-GHOST-1 and UI-BUILDCAT-1, in that
+  order?", the owner answered "Yes". They run in the UI lane, then UI-RANGE-1. Also, asked "Delete the public
+  task branch with the data table after landing, and recreate it clean?", the owner answered "Yes, clean it
+  up": `task/BUILDINGS-REF-1` is recreated as one clean commit.
+- **The owner's "go for all", 2026-11-17,** to the two open questions (prune the co-dev share repo; install
+  the Linux viewer dev packages in WSL):
+  - the share repo's reflog was expired and `gc --prune=now` run: `c0c3f3a0` is gone, `fsck` clean, the
+    branch stays `cc2c6e80`, `receive.denyNonFastForwards` still true;
+  - WSL Ubuntu: `dpkg --configure -a` (an interrupted dpkg state) then the 20 SDL X11/Wayland/audio dev
+    packages of ci.yml, all installed, so the viewer's ASan build configures locally.
+- **UI-BUILDCAT-1 ACCEPTED**, head `79ab3079` (CI 44148359924 attempt 2 green; owner test "good, works").
+  **Candidate 10 `refs/candidates/ui-info-2d-buildcat` = `95897a55`** (tree `d6509925`) on candidate 9:
+  UI-INFO-2d and UI-BUILDCAT-1. Hand-resolved: `docs/open-questions.md` (block by block), `data/ui/masks.txt`
+  (BUILDCAT removes the category-column mask), REPORTS. Its PC part runs at the next quiet slot.
+- **UI-INFO-2d ACCEPTED** 2026-11-17, head `e4ae2b16` (CI 44139437510 green after a macOS-runner rerun;
+  owner test "Yes, they looked right"): the OBJECTPOS sub-record reader/writer moved into `formats` (round
+  trip and corpus tests), the CONPO2 entrance arrows and the further sprite sets on the info picture.
+  UI-BUILDCAT-1 `79ab3079` (owner test "good, works") waits for its macOS-job rerun of CI 44148359924.
+  Both go on candidate 9 as candidate 10.
+- **UI-GHOST-1 B `912f1d3a`: the owner's test FAILED** 2026-11-17 ("no house, no lines, no sidebar"); not
+  stacked. The UI lane's analysis (`E:\1503_test_videos\ui_10_rca.md`):
+  - **No sidebar:** the test build held GHOST-1 alone, without the accepted-but-unlanded BUILDCAT-1.
+    **Process rule from now on:** every owner test runs on a local integration build of main plus all
+    accepted-but-unlanded UI branches (never pushed), and the test message lists its branches.
+  - **No house, no lines:** the dev tool's pick only returned tiles inside the developer city's island,
+    so with the owner's view elsewhere the ghost was always hidden; the scripted tests all started with
+    `look 1148 522`, a blind spot. It also explains ui_9's "nothing is to be placed".
+  - **Fix round R1:** a whole-map pick (any island, the sea), the refused footprint everywhere as in the
+    original, OQ-760 resolved, a wiring case from the default start view with a failure proof. Then the
+    owner retests on an integration build of GHOST-1 R1 + BUILDCAT-1 + UI-INFO-2d.
+- **RENDER-DIRECT-1d ACCEPTED** 2026-11-17, head `16f2d9f6` (CI 44160833294 green on every job). The
+  texture-ceiling bisection hung on CI's software OpenGL adapter (it doubled toward a huge reported limit).
+  The orchestrator's technical call (the commit message says "owner's call"; it was the orchestrator's):
+  the measurement is opt-in (`ANNO_MEASURE_TEXTURE_CEILING=1`, classified `opt-in`), with a 256-layer cap
+  as a second guard; the GPU correctness cases still run on lavapipe. Documented in `docs/render/atlas.md`
+  §13. Local: 135/135 on the RTX 4090, WSL clean.
+- **Candidate 9 `refs/candidates/render-direct-1cd` = `45384a64`** (tree `5f933507`): RENDER-DIRECT-1d
+  (which contains 1c) on top of candidate 8. **Its PC part PASSED** 2026-11-17: atlas upload, adapter
+  memory diagnostics and every GPU test on the 4090 and the Radeon, 170 selected, 168 executed, 0 failed
+  (one platform skip, the budget-ports case; one opt-in skip, the 1d ceiling measurement); the WSL check
+  clean. One Mac run on `45384a64` (GATE-RUN render-direct-1cd) covers candidates 5-9.
+- **[FLAKE-RESIZE-1](tasks/flake-resize-1.md) released** to the Windows executor.
+- **RENDER-DIRECT-1c ACCEPTED** 2026-11-17, head `46991ff8` (CI 44129323379 green). The CI fix rounds:
+  - the game-file check now runs before the named-adapter pick, so a runner without game files skips as
+    `required-asset`, the order `play_gpu_test` uses;
+  - the synthetic exactness case and the one-byte-short refusal are adapter-agnostic, so CI's lavapipe
+    runs the upload path for real (OQ-089); the non-Vulkan software adapters skip with a reason.
+  1d (`849aa4c4`, 1c merged in plus the same fix) is accepted when its CI run 44146266934 is green.
+- **Candidate 8 `refs/candidates/refs-crops-fertility-2` = `43157de2`** (tree `746a6b65`), stacked on
+  `c01d5806`. It replaces `c4b79447` (ref deleted): that one failed to link on the PC because the
+  orchestrator's conflict resolution of `src/app/CMakeLists.txt` dropped the two branches' new sources
+  (`info_preview.cpp`, `fertility_indicator.cpp`). The two UI merges were redone; the only difference to
+  `c4b79447` is those three CMake lines. Contents:
+  `c01d5806`: BUILDINGS-REF-1 `cc2c6e80`, UNITS-REF-1 `8a8086e4`, FERTILITY-1a `3637c288`, ISLAND-CROPS-1 1b
+  `1eef2cfb`, UI-INFO-2b `1a6f5ef5`, UI-PRODBAR-1 B `be6e13ed`.
+  - Conflicts resolved by hand: `docs/open-questions.md` (in-place updates of OQ-023, 708, 624 and the
+    fertility note, new OQs in numeric order 708-754), `data/ui/README.md` (both hud.txt clauses) and
+    `src/app/CMakeLists.txt` (the union of the test files). No CR, no markers.
+  - **The Windows PC's part PASSED** 2026-11-17 on `43157de2`:
+    - msvc build clean;
+    - the whole sim, app and formats binaries, the placement/stream/pin oracles and the GPU tests on the
+      RTX 4090: 2,298 selected, 2,270 executed, 0 failed, 25 opt-in and 3 known symlink skips;
+    - the WSL GCC 13 / Clang 18 check clean (430 + 92 files).
+  - It changes the state stream (ISLAND-CROPS-1 1b), so it lands only after the Mac's full game-file run
+    (GATE-RUN refs-crops-fertility-2), which also covers the three candidates below it. The PC part (build,
+    changed lanes, the WSL check) runs when the PC is quiet; the owner's viewer is open now.
+  - UI-INFO-2d (`e4ae2b16`, owner test passed "Yes, they looked right") waits for its CI rerun and the
+    orchestrator's review, then goes on top.
+- **UNITS-REF-1 ACCEPTED** 2026-11-17, head `8a8086e4` (CI 44118907639 attempt 3 green; the first two
+  had no macOS runner): `docs/UNITS.md`, the standing reference for every movable unit. **ISLAND-CROPS-1
+  1b ACCEPTED**, head `1eef2cfb` (CI 44108255131 attempt 3 green):
+  [review](reviews/2026-11-17-island-crops-1b-review.md). It changes the state stream (section bases
+  header 2, islands 2), so it lands after the Mac's full run on its candidate.
+- **UI-BUILDCAT-1 moved ahead of UI-GHOST-1 B** 2026-11-17: during the UI-INFO-2d viewer test the owner
+  told the UI lane "the side panel in the construction menu is STILL missing, fix now". It is released on
+  `task/UI-BUILDCAT-1` (`443cbd2d`, base `4dfdd9b7`): all eight VIEWBAUTAB tabs with the selected frame, the
+  hit test (OQ-714), the oracle tests' column mask removed (it hid the gap), wiring tests; OQ-759..763.
+  UI-GHOST-1 stage A (docs, `c54adcf3`, built on the clean BUILDINGS-REF-1) is done; stage B follows.
+- **FERTILITY-1 1a ACCEPTED** 2026-11-17, head `3637c288` (CI 44106292573 green):
+  [review](reviews/2026-11-17-fertility-1a-review.md). It adds the single-quad tile-object placement
+  class (floor of the four-corner mean >= 32, overlap only with bit-`0x20` objects, the exempt classes);
+  C++ = oracle on all 2,266 corpus lines; no golden or hash change. Two comment nits go to 1b. It is
+  stacked into the next landing candidate.
+- **BUILDINGS-REF-1 recreated clean:** `task/BUILDINGS-REF-1` = `cc2c6e80` (one commit, tree `167625b0` =
+  `00714b67`'s) on GitHub and GitLab; no origin ref or tag contains `c0c3f3a0` (checked by the
+  orchestrator). The co-dev share repo refused the forced update (its `receive.denyNonFastForwards`).
+  Asked "May I lift the share repo's force-push protection for one push, then restore it?", the owner
+  answered "Yes, one push": the share's branch is `cc2c6e80` now (forced with lease against `00714b67`),
+  the protection restored (`denyNonFastForwards` and `denyDeletes` both true), and no ref there contains
+  `c0c3f3a0`. The unreachable commit object is still in the share's object store until it is pruned.
+- **CI infrastructure:** runs 44118907639 (UNITS-REF-1) and 44108255131 (ISLAND-CROPS-1 1b) failed only
+  because their macOS jobs got no runner (abandoned, 0 steps); the failed jobs were rerun.
+- **UNITS-REF-1 dispatched** 2026-11-17 on the owner's request: "I want the same kind of research on any movable
+  unit, I.e. movable by the player and the Ai, like ships, soldiers, cannons, scouts etc And also movable units
+  that are NOT movable by the player like wildlife, birds (birds landing on ships when they stay still),
+  civilians, workers. What done looks like: a concise report that is double checked on gog and HE data and code
+  containing ALL ingame units that will be used as reference for the project called UNITS.md".
+  - It goes to the HE/GOG research session (`he-vs-gog-production-wor`, which did RE-HE-PRODUCTION-1).
+  - Docs only: `docs/UNITS.md` in BUILDINGSOBJECTS.md's form; the per-figure inventory comes from a `tools/`
+    generator into `cache/`, never committed. OQ-751 onwards.
+- **[MAC-HEAVY-1](tasks/mac-heavy-1.md) written** 2026-11-17 for the Mac executor, on the owner's request
+  ("I also need a new mac job. This can be more comprehensive once this time, it may contain CPU and or RAM
+  heavy test jobs"). Released when the owner pastes the prompt, after GATE-RUN ui-tabs-b. Verification of
+  `main` only, with a time box per stage:
+  - the whole game-file suite under ASan and UBSan;
+  - every doctest binary whole in default and three shuffled orders;
+  - the full suite three times for flakes;
+  - the long opt-in runs;
+  - `anno-sim-replay population` invariants over every `.sze` at 0-600 game seconds, release against asan
+    byte for byte;
+  - the RENDER-DIRECT-1a atlas report compared across platforms.
+- **UI lane, 2026-11-17:**
+  - **UI-STATUS-1** (the status bar for the island under the cursor, the owner's rule from `ui_6.mp4`) was
+    written and its stage A started on the owner's "Yes, write it" in the UI lane's session. OQ-700..709
+    are reserved for it.
+  - **UI-MINIMAP-2** (the magnifier's last minus reaches the wheel's furthest zoom-out): asked "Go for the
+    UI lane's UI-MINIMAP-2 (magnifier zooms out as far as the wheel)?", the owner answered "Yes, go".
+    Released on `task/UI-MINIMAP-2` (`1d766083`). Its builds wait until the PC is free.
+- **The owner decided OQ-096 and OQ-096b** 2026-11-17. Asked "Raise it to 384 MiB, one mipmap level on both
+  cards (my recommendation)", against keeping 256 MiB with no mips on the iGPU or deciding on a build, the
+  owner answered "your recommendation". So `atlas_budget_mb` defaults to 512 MiB discrete and 384 MiB
+  integrated, and the direct renderer's static and water atlas has one mip level with 2 px padding on both
+  adapters. The Windows executor records it on `task/RENDER-DIRECT-1a`; RENDER-DIRECT-1b is written on it.
+- **What is left and who does what next:** [remaining-work-2026-11-16.md](remaining-work-2026-11-16.md)
+  (2026-11-16, the owner's request): a research agent read the repository and every document; the
+  orchestrator checked its plan, changed the order to the LAN target's critical path, and assigned first lists
+  to the three lanes, with ten decisions for the owner. New packets: [UNIX-WARN-1](tasks/unix-warn-1.md),
+  [TRACE-COLS-1](tasks/trace-cols-1.md) (Windows, **RELEASED** 2026-11-17 after ZOOM-SMOOTH-3d's review;
+  **ACCEPTED** 2026-11-17, `ba32d939`, CI green (run 43989860151), [review](reviews/2026-11-17-trace-cols-1-review.md):
+  the column order is one contract, checked by a test; the shell test's two stale patterns are fixed and a guard
+  fails any case whose edit changes nothing; the bounce branch is ready for a landing candidate on the owner's OK);
+  [RENDER-DIRECT-1a](tasks/render-direct-1a.md) (Windows, **RELEASED** 2026-11-17: the resident atlases'
+  needs measured with the engine's own code over every scene and the LAN map, and their layout fixed in
+  `docs/render/atlas.md`; measurement and document only; **reviewed** `9773d4d0`,
+  [review](reviews/2026-11-17-render-direct-1a-review.md): the measurement is accepted, **CHANGES REQUESTED**
+  in the document: the fit is checked per group, not for all groups or the pair a zoom crosses; dropping the
+  mips is the owner's decision; figure needs are start units only; the static green test is not player
+  colour. Known, separate: `scene_reclaim_test` fails when `anno_render_tests` runs whole in its default
+  order, on `main` too. **Fix round** `6bfb78cd`: all four answered; ACCEPTED once CI is green after the new
+  OQ is renumbered 641 to 690. The pair of zoom groups 0+1 does not fit the iGPU's 256 MiB in one scene (272 MiB),
+  in 20 with one mip level; a QUESTION to the owner, OQ-096b with OQ-096);
+  [LAYER-CHECK-1](tasks/layer-check-1.md) (Windows, **RELEASED** 2026-11-17 ahead of RENDER-DIRECT-1b, which
+  waits for the owner's answer: a test that `formats`, `sim` and `sim_load` include and link nothing above
+  them; **reviewed** `8bb58166`, [review](reviews/2026-11-17-layer-check-1-review.md): link check and rule
+  table hold, **CHANGES REQUESTED**: headers outside `anno/` must be an allow list, not a deny list; the docs
+  section is moved out of the golden-writer section);
+  [RENDER-DIRECT-1b](tasks/render-direct-1b.md) (Windows, **RELEASED** 2026-11-17, to start after
+  LAYER-CHECK-1: the atlas pages built on the CPU with premultiplied alpha, dilated padding and one mip level,
+  proven equal to the decoder texel for texel, and the 384 MiB integrated default in code; nothing uploaded or
+  drawn; **reviewed** `c7a1e77b`, [review](reviews/2026-11-17-render-direct-1b-review.md): **CHANGES
+  REQUESTED**:
+  - F1: every timing came from the Debug `dev` build;
+  - F2: the proof sampled every 7th frame and left out `lan5.txt`;
+  - F3: duplicate frame ids race;
+  - F4: the mip rectangle is one texel short for odd sizes;
+  - F5: the iGPU's adjacent pair is to be measured with real pages.
+  The lan5 case goes into the app tests, so `anno_render_tests` does not link `anno_app_core`. CI on
+  `c7a1e77b` failed the evidence preflight: a new skip message for a missing game file, which must be a
+  failure. The 4090 gate ran by mistake in WSL on llvmpipe, so it is no result; it reruns from the msvc
+  build. **Fix round `95a5ace6`: all five answered.** The Release bytes equal the Debug run; every frame and
+  texel is checked, `lan5.txt` among them; the 4090 gate passed 119/119 on the real adapter; the iGPU pair
+  is 340 MiB, under 384. **CI green** (run 44051159572). **ACCEPTED** 2026-11-17; it lands under the
+  standing rule); [RENDER-DIRECT-1c](tasks/render-direct-1c.md) (Windows, **RELEASED** 2026-11-17 on
+  1b: the pages uploaded to a texture array and proven byte-exact by readback and by nearest sampling on
+  both adapters; VRAM and upload time measured; nothing in the viewer's frame changes).
+- **UI lane: UI-TABS-1 started** (2026-11-16, the owner's go in the UI lane's session, as reported by it):
+  `task/UI-TABS-1` from `main` `ac02d4a2`, packet `tasks/ui-tabs-1.md` on that branch (`6d20d16e`). Stage A: the
+  tab and sub-tab switching (player, city view, options) with clicks and the keys D, S and C; stage B (the
+  overview's live figures) after A's review. App-side only. Landing stays with the orchestrator.
+  **Stage A** (`a79499cf`) is in the landing candidate `09315620`. **Stage B** (`dd18401f`, on A, no rebase),
+  as the UI lane reports 2026-11-17:
+  - what it does: the figure rows of the player overview and of the "?" city page, from the snapshot;
+  - accepted by the UI lane, the owner's viewer test running, CI running;
+  - the account rows draw only while `Rules::city_booking` is on, and stay empty with the default rules;
+  - new OQ-691 to 695;
+  - when A is on `main`, the lane merges `origin/main` into the branch and reports B's head and CI for the
+    orchestrator's review; it then lands under the standing rule once the owner's test has passed.
+  **Stage B ACCEPTED** 2026-11-17, head `5e6c1ad5`, CI green (run 44023629594). The owner's viewer test is
+  `ui_6.mp4`; [review](reviews/2026-11-17-ui-tabs-1-b-review.md). **Landing candidate `004a26f4`** (tree
+  `7ab5576f`), stacked on `4dfdd9b7`; one end-of-file conflict in `docs/open-questions.md`, both sides kept.
+  Fetchable as `refs/candidates/ui-tabs-b`. **The Windows PC's part PASSED** 2026-11-17. It was the day's
+  full game-file run, msvc build of `004a26f4`, GPU tests on the 4090 and the Radeon:
+  - 2,755 selected, 2,720 executed, 1 failed, 34 skipped (platform 3, opt-in 26, other 5);
+  - the one failure was a memory refusal (`low-memory stop`, free 1.9 GB) while the UI lane built
+    alongside. That case (`anno_render_tests.chunk draw lists replay ...`) passed when rerun alone: 1/1;
+  - the WSL warning check is clean.
+  Waits for the Mac's run (GATE-RUN ui-tabs-b).
+  **Two questions for the sim lane**, raised by stage B; the rows stay empty until they are answered:
+  1. `Player::upkeep_a/b` and `stat_a/b` are held and decayed by the sim but fed by nothing. The overview's
+     rows 3 to 6 need them; the History Edition shows military 17 for the start ship.
+  2. A city knowledge or research figure (city `+0x320` slot `+0x20`, 8.8 fixed point, OQ-157) for the city
+     page's row 7.
+  Queued for the Mac lane after TOWN-START-1, as a packet to be written (what feeds them in the original,
+  with addresses, then the feed).
+  **Stage A reviewed** 2026-11-16 (`a79499cf`, [review](reviews/2026-11-16-ui-tabs-1-stage-a-review.md)):
+  ACCEPTED once CI is green; two of its addresses were disassembled again by the orchestrator; the owner's
+  viewer test is next.
+- **Landing evidence, owner rule of 2026-11-16** ("i agree with you recommendations", after the PC's memory
+  stopped up to 14 large tests per run): from the next landing on,
+  1. **the Mac executor runs the full game-file suite** on each landing candidate (it has the files and more
+     memory); the orchestrator checks that the Mac's merge has the same tree as the candidate;
+  2. **the Windows PC runs the GPU tests on the 4090 and the lanes the candidate changes**, with the game
+     files, under MSVC;
+  3. **one full game-file run on the Windows PC per day** (or before anything important) stays the check for
+     the Windows target, since a Mac pass is not Windows acceptance.
+  This replaces "a full MSVC game-file run on this PC before every landing" (2026-11-07). A Windows-only
+  failure in an untouched lane is then found by the daily run, not at the landing.
 - **LANDED on `main`, three in a row, each with the owner's OK** (`main` `95eea7de` → `d89d54a6`, by fast-forward;
   GitLab and the share are synced):
   - **UI-INFO-1** as `411f37eb`: the building info panel's name, costs and upkeep, with the flagged preview
@@ -120,17 +488,275 @@ says who is doing what, where the work is, and what it waits on.
     unmodified binary gives 102 to 127 today, not 30), so 1b and 1c can land together. The ring is split into
     **ZOOM-SMOOTH-1c2, RELEASED** the same day, ahead of 1d; **ACCEPTED** the same day (`619f88f6`,
     [review](reviews/2026-11-15-zoom-smooth-1c2-review.md)): correct, but no readiness gain yet and an iGPU busy
-    cost; 1d (RELEASED) measures it on and off and removes it if it still buys nothing. The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
+    cost; 1d measured it on and off: **ZOOM-SMOOTH-1d ACCEPTED as a partial** 2026-11-15 (`1f7a5a9f`,
+    [review](reviews/2026-11-15-zoom-smooth-1d-review.md)): the GPU upload share wins on every mode, the ring is off by
+    default (it costs zoompan); **1e ACCEPTED** 2026-11-15 (`4ebb9de0`,
+    [review](reviews/2026-11-15-zoom-smooth-1e-review.md)): the live target is NOT MET with step 5 alone, so
+    **ZOOM-SMOOTH-1 is CLOSED as a partial** and its 0-on-all-counters target is RENDER-DIRECT-6's (ADR 0007:
+    no stand-ins, no dissolves). 1c2, 1d and 1e **LANDED** on main `cc7af72c` 2026-11-15 (owner OK; the
+    game-file run on that SHA: 2630 executed, 0 failed, PASS; main healthy). **ZOOM-SMOOTH-2 RELEASED**; READY the same day
+    (`c86ab749`) and NOT YET ACCEPTED ([review](reviews/2026-11-15-zoom-smooth-2-review.md)): a data race on the
+    reentrancy flag and a sim wake that waits for a drag-time draw; **ZOOM-SMOOTH-2b** (`c4b3d5b7`,
+    [review](reviews/2026-11-15-zoom-smooth-2b-review.md)) fixed the race; its wake fix also delays wakes during
+    ordinary draws and its gate ran on a stale binary, so **ZOOM-SMOOTH-2c** fixed both (`05aab883`, the code ACCEPTED,
+    [review](reviews/2026-11-15-zoom-smooth-2c-review.md)). **The owner's hands-on proof** (2026-11-15,
+    [review](reviews/2026-11-15-zoom-smooth-2-proof-review.md)): resize is smooth (mean 6.9 ms, worst 31.9 ms),
+    the **drag is NOT MET** (worst 298 ms, the watch not called), maximise and restore are unchanged (121 to
+    151 ms, not in the fix). ZOOM-SMOOTH-2 does not land yet; **ZOOM-SMOOTH-2d** (a diagnostic trace of the
+    modal loop) is RELEASED. **2d ACCEPTED** 2026-11-16 (`d80beed7`,
+    [review](reviews/2026-11-16-zoom-smooth-2d-review.md)): the owner's traced run shows the cause. Windows
+    delivers the redraw timer only when no other message waits, and a fast drag's move messages starve it
+    (gaps up to 526 ms; the move loop itself starts within 1 ms). **ZOOM-SMOOTH-2e RELEASED**: a second trigger
+    on the window's move events, at most one draw per 16 ms, through the same drawing path. Before that the owner
+    does the hands-on drag and resize proof (no dev script can make a real window drag). The owner agreed (2026-11-15:
+    "Yes, I'll do it").
+    **The owner's UI test on main `cc7af72c`** (2026-11-15, recording `ui_4`, log folder
+    `cache/owner-ui-test-20261115-164504` in the game-file worktree), analysed by the UI lane. UI findings stay
+    with the UI lane (the cancel-X does not leave placement mode; demolish stays on when a building is picked; no
+    ghost off the city's island; dead tabs and minimap, already UI-TABS-1 and UI-MINIMAP-1). For the render lane:
+    a one-frame zoom "bounce" at about game 32270 ms (one frame at another scale between two matching frames),
+    queued as [ZOOM-BOUNCE-1](tasks/zoom-bounce-1.md) (written) after ZOOM-SMOOTH-2c; the same log has a 123 ms gap at the maximise before the recording, a "before" for ZOOM-SMOOTH-2, and a 73 ms first frame (63 ms in the construction UI), the UI lane's; the dissolve and not-ready
+    counts above 0 while zooming are the known ZOOM-SMOOTH-1 remainder, RENDER-DIRECT's.
+    **UI-PLACE-1** (UI lane, from that test; `e2499746`) is ACCEPTED for landing
+    ([review](reviews/2026-11-15-ui-place-1-review.md)): a menu cell ends demolish mode and the pickaxe works with
+    nothing armed; the original's cancel-X keeps the building armed, so that finding was withdrawn. **LANDED on
+    main `2ba85176`** 2026-11-15 (owner OK; verified as an ancestor of `origin/main`; game-file run 2634 executed,
+    8 not passing for memory, the lost WSL coordinator or load, all 8 PASS alone, one of them with
+    `ANNO_TEST_HEADROOM_MB=2048`; main healthy). **UI-PLACE-2** (`5f29eb93`, Esc and the right click step back,
+    owner: "Yes, like original") is ACCEPTED for landing ([review](reviews/2026-11-15-ui-place-2-review.md));
+    the stacked candidate `67a960c9` (UI-PLACE-2, then FISHER-1e; owner: "Yes, land both") **LANDED on main**
+    2026-11-15, verified as an ancestor of `origin/main` (first parents `1152de25` UI-PLACE-2, `67a960c9`
+    FISHER-1e). Game-file run: 2641 executed, 4 large render tests timed out waiting for memory, all 4 PASS
+    alone (one with `ANNO_TEST_HEADROOM_MB=2048`); both fisher real-map canaries passed on Windows for the first
+    time; main healthy.
+    **Next for the Mac** (owner, 2026-11-15): [FISHER-RE-3](tasks/fisher-re-3.md), a fisher hut with every
+    entrance on land, "matching pixel perfect with HE as reference": RELEASED as a read with a capture
+    recipe; the History Edition picture comparison is a later Windows step (FISHER-HE-1, not released).
+    **FISHER-RE-3 ACCEPTED as the GOG read** 2026-11-16 (`5901b846`,
+    [review](reviews/2026-11-16-fisher-re-3-review.md)): a hut can stand with both entrances on land (a real
+    site on `02Trade01`); its fisher leaves and catches but cannot come home, the raw stock is not credited and
+    the worker is released after a wait. History Edition NOT_RUN. The picture comparison needs the sim rule
+    (FISHER-1f), a viewer switch for the fisher rule, and the captures. **RELEASED 2026-11-16:**
+    [FISHER-1f](tasks/fisher-1f.md) to the Mac (the sim rule) and [FISHER-HE-1](tasks/fisher-he-1.md) to the UI
+    Executor (owner: "UI Executor"): the originals' reference captures first, then the viewer switch, then the
+    comparison once FISHER-1f has landed.
+    **Owner rule, 2026-11-16 (confirmed to the orchestrator: "yes"):** reference tests against the running
+    original are done on the **History Edition**; the GOG version is used for reading its code. The owner gave
+    the reason in the UI lane's session: "Simply because its more stable." Code addresses in `docs/re/` stay
+    those of the GOG DLLs, so a History Edition result that differs from a GOG read is a finding to report, not
+    to smooth over.
+    **FISHER-HE-1 step A, first evidence** (UI lane, 2026-11-16): on the GOG original, run on the desktop with the
+    owner's OK before that rule, the scene is `Tutorial\02Trade01.sze` and the closed hut was built at the
+    card's site. A partial record (cut at game ms 79,307, not a complete run) agrees with the read so far: a
+    figure 142 goes out on the water and stops twice for about 11 s each; at 78.5 s its home link is cleared
+    and a wait of about 15 starts; a second 142 comes out of the hut. Not captured: the full 120 s, the
+    disappearance, the stock. The owner now runs the capture himself on the History Edition from the UI
+    lane's recipe and adds a hut site of his own; the card's closed site is kept, and his sites count as
+    extra open controls.
+    **FISHER-HE-1 step A ACCEPTED as the behaviour reference** 2026-11-16
+    ([review](reviews/2026-11-16-fisher-he-1-step-a-review.md)): in the History Edition, played by the owner, the
+    closed hut's boat appears 1.3 s after the build, stops three times for about 11.2 s, never comes home, the
+    hut's stock stays 0, the boat vanishes at 38.85 s and a new one appears about half a second later. This
+    confirms FISHER-RE-3's read in a running original. One difference to settle: after the release nothing is
+    visible, while the read has a 15 s wait. **Step B RELEASED** to the UI lane (the viewer switch and the stock
+    readout). Step C needs one clean History Edition run (fixed camera, both sites) first.
+    **FISHER-1f ACCEPTED** 2026-11-16 (`498785e8`, [review](reviews/2026-11-16-fisher-1f-review.md)): the sim's
+    closed hut now sends its worker out, takes three catches, fails to come home, credits nothing and frees the
+    slot; no new saved state. Against the owner's recording the catch rhythm, the new worker and the end tile
+    agree; the first leg is about 0.6 s slower (F1, for step C), and what is visible after the release is open
+    (F2). **FISHER-RE-4 RELEASED** to the Mac (a read: is a released figure drawn?). **FISHER-RE-3 and FISHER-1f
+    LANDED on main `4b104d3a`** 2026-11-16 (owner: "Yes, land both"; verified as an ancestor of `origin/main`,
+    first parents `6822bf11` and `4b104d3a`). Game-file run on the Windows PC: 2649 executed, 0 failed, PASS,
+    no memory refusal; the closed-hut tests ran on Windows for the first time; main healthy. The first
+    `land.py` attempt stopped on GitHub's hourly API limit and was repeated after the reset. This was the
+    last landing under the old every-landing rule.
+    **FISHER-VIEW-1** (UI lane, FISHER-HE-1 step B; `eb11f0c6`) is ACCEPTED for landing
+    ([review](reviews/2026-11-16-fisher-view-1-review.md)): `--fisher-rules` and `--player` in `--play`, and the
+    hut's stock readout. The owner's OK is given ("Yes, land it"); candidate `0f46b1b2` has the branch's tree.
+    The Windows PC's part PASSED (GPU on the 4090 and the app lanes with the game files: 472 executed, 0 failed);
+    the Mac's full run on the same tree: 2656 executed, 2 failed, both GPU timing tests on Metal that pass on
+    the 4090. **LANDED on main `0f46b1b2`** 2026-11-16, verified as an ancestor of `origin/main`; the first
+    landing under the new landing-evidence rule; main healthy by that rule. The next full game-file run on the
+    Windows PC (the daily one) is due on 2026-11-17 or with the next landing, whichever comes first.
+    **New jobs, 2026-11-16** (the owner asked for one per lane): **Windows executor:**
+    [ZOOM-BOUNCE-1](tasks/zoom-bounce-1.md) RELEASED, READY and ACCEPTED as **not reproduced** the same day
+    (`1b7d722d`, [review](reviews/2026-11-16-zoom-bounce-1-review.md): 45,825 scripted frames with no view, group or
+    scale out of line; the owner's log has exactly one not-ready frame, five stand-in chunks, next to the flagged
+    frame; the UI lane checked the recording and **refuted that**: frame 970 is the whole view about 1.5 % closer
+    around the cursor for one frame, steady before and after, so the overshoot is real; **ZOOM-BOUNCE-2 RELEASED**
+    (notches at the zoom limits, the presented scale logged): **not reproduced again** in 21,775 frames
+    (`bf35b89c`); found on the way: the rebuild's closest zoom is 84 x sqrt(2) = 118.8 px tiles, closer than the
+    original's 84 px (the owner's choice whether that stays the default); next, the owner's real wheel with
+    every wheel event traced (ZOOM-BOUNCE-3, queued after ZOOM-SMOOTH-3)); **ZOOM-SMOOTH-3 ACCEPTED** 2026-11-16
+    (`3526d253`, CI green; [review](reviews/2026-11-16-zoom-smooth-3-and-bounce-3.md)): the 9 to 18 ms spikes at
+    maximum zoom-out are gone (worst 1.3 to 5.1 ms); one step is left, `finish`, 4.4 to 10.8 ms in rare frames
+    with no new work; its cause is not classified, so **[ZOOM-SMOOTH-3b](tasks/zoom-smooth-3.md) is RELEASED**
+    (CPU against wall time of that call, draws per pass, the real drawn-chunk count); **3b ACCEPTED as
+    diagnostics** 2026-11-16 (`73f06bd2`, CI green; [review](reviews/2026-11-16-zoom-smooth-3b-review.md)):
+    `finish` grows with the draws (correlation 0.77 to 0.85; 99th percentile 1.2 ms of the 2 ms frame), and three
+    background threads call wgpu (plane pre-creation, the fluid job, its background release); the 4 to 10 ms
+    calls were not looked for in the session that showed them and the CPU-time question is open, so
+    **UNIX-WARN-1 reviewed** 2026-11-16 (`841af180`,
+    [review](reviews/2026-11-16-gate-mac-1-and-unix-warn-1-review.md)): the warning check reads the define from
+    CMake and checks itself with a deliberate warning; **ACCEPTED**, CI green on `841af180` (run 43966539320,
+    all 12 jobs) 2026-11-17;
+    **[ZOOM-SMOOTH-3c](tasks/zoom-smooth-3.md) ACCEPTED** 2026-11-16 (`7bec1780`, CI green;
+    [review](reviews/2026-11-16-zoom-smooth-3c-review.md)): the spikes reproduced (2 calls over 4 ms in 126,274
+    frames, longest 13.6 ms); they were waiting, not computing; `finish` costs 0.14 ms per 100 draws, which
+    supports RENDER-DIRECT; its overlap check reads the background stamps before the call and cannot see a
+    section that runs during it, so **ZOOM-SMOOTH-3d** (about 1 hour, the series' last) is RELEASED;
+    **ZOOM-SMOOTH-3d ACCEPTED** 2026-11-17 (`c552c193`, CI green;
+    [review](reviews/2026-11-17-zoom-smooth-3d-review.md)): the check now reads after the call and sees running
+    sections; 9 slow calls in 63,204 frames, none overlapping a named section; the long ones wait, the owner of
+    the wait is unknown. **The series is closed**, its residual recorded (about one call over 4 ms per 47,000
+    frames); the branch is ready for a landing candidate on the owner's OK; **ZOOM-SMOOTH-2f is reviewed**
+    (`d33432aa`, [note](reviews/2026-11-16-zoom-smooth-2e-owner-proof.md)): the guard is in place, ACCEPTED once
+    CI is green on that head; then ZOOM-SMOOTH-2 is ready for a landing candidate (owner's OK);
+    **ZOOM-BOUNCE-3 ACCEPTED**
+    (`fc1fbff7`, CI green, same review): two opposite notches 5 ms apart give a 1.47 % zoom-in for one frame,
+    the size the owner saw; **the owner's wheel test is done** (2026-11-16): 1,027 notches, no two opposite
+    notches closer than 60 ms, no frame of 28,465 where the zoom turns round, and the owner saw no bounce; the
+    bounce is closed as not reproduced, diagnostics in place, no filter; ZOOM-SMOOTH-2e's code is ACCEPTED
+    (`46fd1f2b`, a move trigger at most every 16 ms) and **the owner's fast drag is MET** (2026-11-16,
+    [note](reviews/2026-11-16-zoom-smooth-2e-owner-proof.md)): the longest gap between draws is 30.9 ms (before:
+    526 ms), the 99th percentile 24.4 ms (before: 136 ms); ZOOM-SMOOTH-2 lands after the small
+    [ZOOM-SMOOTH-2f](tasks/zoom-smooth-2.md) (a thread guard, queued after 3b), with the owner's OK. **Mac:** the gate run for FISHER-VIEW-1,
+    FISHER-RE-4, then [ANNOSCENE-ORE-1](tasks/annoscene-ore-1.md) RELEASED. **All three reported and reviewed**
+    2026-11-16 ([review](reviews/2026-11-16-mac-three-reports-review.md)): the gate run on `eb11f0c6` has the
+    candidate's tree and 2656 executed with 2 failures, both GPU timing tests on Metal that pass on the 4090 (a
+    Mac-only gap, GATE-MAC-1 to be written); **FISHER-RE-4 ACCEPTED** (`ee507a8c`): the original does not draw a
+    released fisher, because its end animation 17 has no sprite set; **ANNOSCENE-ORE-1 ACCEPTED** (`ea023e18`):
+    `INFO` byte 5 equals the ore markers in 429 of 429 templates. The owner's OK is given ("Land them
+    together"): both land stacked with the next candidate (the minimap or the drag fix, whichever is ready first). **UI lane:** started **UI-MINIMAP-1**
+    (branch `task/UI-MINIMAP-1` from main `4b104d3a`, its packet at `837ffc17` on that branch): step A the
+    evidence (a static read of the GOG `View.dll` minimap routines, and the owner's History Edition recording of
+    the minimap controls), step B the drawing (islands, view box, markers), step C clicks and buttons. A view
+    rotation, if the History Edition's arrows do that, would be a separate packet. UI-TABS-1 and the 73 ms
+    first frame follow.
+    Step A.1 (the GOG read, `docs/re/ui.md` §2.9 on the branch, OQ-628 to 634) is done: the minimap is drawn by
+    `AnnoFrame.dll` from AnnoWelt's 256 x 256 owner-and-height image, with a white view box, figure markers,
+    the selected ship's route and alert sprites; its top-right plus and minus zoom the minimap, the magnifier
+    zooms the main view, a click centres the camera, and **the chevrons turn the whole view**. The rebuild's
+    renderer has no view turn, so that is a render-lane packet to be written (VIEW-TURN-1), to be placed
+    against RENDER-DIRECT by the orchestrator; UI-MINIMAP-1 covers drawing, zoom and click.
+    **Step B1 (the drawing) reviewed and ACCEPTED** 2026-11-16 (`5852e5e7`): the parchment, the world image and
+    the white view box are drawn under the chrome's hole in the CPU and GPU UI paths (0 of 31,850 pixels
+    differ between them); every number is in `data/ui/minimap.txt` with the original's value and its code
+    address, guarded by a test; app code only. Against the owner's History Edition recording the island
+    outlines agree. Owner colours, markers and clicks (B2, C) follow on the same branch; it lands when the
+    packet is complete, with the owner's OK.
+    **Correction, 2026-11-16:** the orchestrator accepted B1 before its hosted CI had run. CI on `5852e5e7`
+    then FAILED in the evidence preflight: a new doctest name holds a `*`, which `cmake/CheckTestNames.cmake`
+    rejects (the code was not reached). The UI lane renames it with B2. `5852e5e7` is not a landing head; a
+    review counts as accepted for landing only with a green CI on the reviewed head.
+    **The orchestrator's own picture check against the History Edition** (owner's instruction, 2026-11-16;
+    [note](reviews/2026-11-16-ui-minimap-1-he-check.md)), on `8978a6a1`, maximised at 2560 x 1369: position,
+    islands, colours, the marker and the view box agree with the owner's recording. To fix before landing: the
+    scroll's left end is cut off (F1) and the parchment is speckled (F2). Also found: our tutorial starts 2.08
+    times farther out than the History Edition and elsewhere (F4), and our closest zoom is 1.42 times closer
+    than the recording's (F5, a question). **The fix round (`3c7ea686`) was checked the same way and ACCEPTED:** the
+    scroll's left end is drawn (it was a texture nothing drew), and the parchment is filtered as the History
+    Edition's (grain 3.5 against its 3.2; the GOG look stays a setting). `[CAMARAPOS]` is not a start camera;
+    the History Edition starts at zoom level 1 on the player's ship. **CI is green on `3c7ea686`** (run
+    43911327994). The candidate `ac02d4a2` (main `0f46b1b2`, then UI-MINIMAP-1, FISHER-RE-4 and ANNOSCENE-ORE-1;
+    tree `bf78e4f1`) is built locally and not pushed; it waits for the owner's landing OK, then the Mac's full
+    run and the Windows PC's GPU and app lanes.
+    **Owner's landing OK given 2026-11-16** ("Yes, land it"). The candidate is fetchable as
+    `refs/candidates/minimap-stack` (a non-branch ref; no CI run started). **The Windows PC's part PASSED** on
+    `ac02d4a2`: GPU tests on the RTX 4090 and the app lanes with the game files, 506 selected, 503 executed, 0
+    failed, 3 opt-in skips; the reference lanes (`annoscene_ore_*`, `fisher_*`, `script_objects_*`) 6 of 6.
+    **The Mac's full run** (Apple M5 Max, Metal; the same HEAD and tree): 2,733 selected, 2,688 executed, 3
+    failed, 42 skipped; log sha256 `512192f5...37d5d1`. The three failures are GPU timestamp tests of
+    `anno_render_gpu_tests` on Metal: the two known ones and a third (the sea pass's timing) that passed in the
+    Mac's run before. The candidate changes no file under `src/render`, `assets`, `formats`, `sim` or
+    `test_support`, and all three pass on the RTX 4090, so they are not from the candidate. Every new test
+    passed on the Mac (28 minimap cases, both minimap viewer scripts, both ore reference tests).
+    **LANDED 2026-11-16: `main` `0f46b1b2` -> `ac02d4a2`** by `land.py` (required check `gate` green, run
+    43929064417), verified an ancestor of `origin/main` in a separate command; GitLab and the share are synced.
+    It holds UI-MINIMAP-1 (`3c7ea686`), FISHER-RE-4 and ANNOSCENE-ORE-1.
+    **[GATE-MAC-1](tasks/gate-mac-1.md) is RELEASED to the Mac** (2026-11-16, the owner pastes the prompt; base `ac02d4a2`):
+    why the timestamp tests fail on Metal, then a fix or corrected tests, so the Mac's verdict can be PASS.
+    **GATE-MAC-1 ACCEPTED** 2026-11-16 (`d4f2e592`, CI green;
+    [review](reviews/2026-11-16-gate-mac-1-and-unix-warn-1-review.md)): on Apple Metal the end tick comes before
+    the begin tick, also in a separate WebGPU program, so the fault is below our code; the engine's rejection and
+    wall-clock fallback stay, and only Apple Metal may miss a reading in the three tests. The orchestrator ran
+    the GPU tests on the RTX 4090 (118 of 118) and the changed three on the Radeon iGPU (3 of 3), both with the
+    strict rules. Lands with the next candidate.
+    **UI-PANELS-PREP** (UI lane, the owner's request in its session, 2026-11-16): four read-only research
+    subagents prepare the in-game panels that do not exist yet, with the History Edition as the reference and
+    both editions' files: the warehouse and trade panels; the ship panels and diplomacy; statistics; the
+    in-game options and the main menu. Evidence and specs only (`docs/re/ui-<area>.md` and draft packets
+    `tasks/ui-<area>-1.md` on `task/UI-PANELS-PREP` from main `0f46b1b2`), no implementation, no game runs,
+    OQ-650 to 689 reserved. Nothing is released from them without the owner's go per packet.
+    **Done** 2026-11-16 (`task/UI-PANELS-PREP` `55c8c264`, docs only): four specs with draft packets, each with
+    "what the sim must provide"; OQ-650 to 689 all used, OQ-641 to 649 free.
+    **The owner's four decisions, reported by the UI lane from its session:** F5 to F8 set the speed, F10
+    quick-saves and P pauses, as the original (the ship opening's quick-save moves from F5 to F10); the main
+    menu gets a modern layout that adapts to the user's resolution, after a short design study put to the
+    owner ("find and identify a modern state of the art solution that will adjust to the users resolution");
+    save files are named as the original (GUID names, the display name inside); the statistics memory slots
+    are saved game state, as the original.
+    **Fix round `f8460129` checked 2026-11-16: ACCEPTED as documents**, all eleven points done, CI green; it
+    lands with the next candidate on the owner's OK. Before it:
+    **Reviewed 2026-11-16: ACCEPTED WITH FIXES, not landed**
+    ([review](reviews/2026-11-16-ui-panels-prep-review.md)): an independent reviewer checked 42 claims against
+    the GOG files, 33 hold; eleven points are to fix on the branch first (a merge conflict in the open
+    questions, a History Edition scale claim that contradicts the other three specs, one panel position off
+    by a pixel, a layout-table claim the code refutes, seven info rows not six, two incomplete records).
+    **What the panels need from the sim** (for the Mac's packets; details in the specs' sim sections):
+    trade: OQ-155 is answered (list 1 is the sell list, list 0 the buy list, so `GoodsSetting::buy` names the
+    sell list), the two visible slot counts are not kept, the amount is not clamped to the capacity, a
+    foreign-Kontor trade command and the traders' rule are missing; statistics: the per-city history (`STST2`,
+    60 samples every 2,500 ticks), the largest capacity seen, rates beyond the workshop, residents per group
+    and the eight memory slots are missing; ships and diplomacy: names, cannons, patrol, flag, boarding, sale,
+    treaties, tribute and their commands are missing; options: only the game speed is a sim command.
+    **UI-PAN-1** (UI lane; `65a9632c`; owner: "Yes, no click pan") is ACCEPTED for landing
+    ([review](reviews/2026-11-16-ui-pan-1-review.md)): a press inside the 4 px click slop no longer moves the map.
+    **LANDED on main `3ce4150e`** 2026-11-16 (owner: "Yes, land it"; verified as an ancestor of `origin/main`;
+    game-file run 2632 executed, 14 stopped by the low-memory guard, all 14 PASS alone with
+    `ANNO_TEST_HEADROOM_MB=2048`; main healthy).
+    **Co-developer exchange** (2026-11-16): his deliveries 14 to 19 (notes only) were read as untrusted data.
+    One finding is confirmed on our files and closes an open point of `annoscene.md` §5 step 10: the ore table's
+    ids at `AnnoScene 0x1003AF24` are `FigurenHeader.dat` figure types (1560 to 1564 and 1661 share one
+    `BEWOHNTYPE` record; 1550 and 1551 the treasure's), to be recorded in the note by a small Mac step together
+    with a check of his claim that `INFO` byte 5 is the number of ore markers. Our reply
+    `to-codev/reply-2026-11-16.md` (owner: "Yes, send it"; 14,001 bytes, sha256 `49168f86...`) answers his nine
+    questions with their evidence levels and repeats the request for his build's hashes. The stacked candidate `7c7c6942` (UI-INFO-2, ZOOM-SMOOTH-1 partial, 1b, 1c)
     PASSED its game-file run (2608 executed, 0 failed); landing waits for the owner's OK.
     **The Mac's four tasks reviewed 2026-11-15** ([review](reviews/2026-11-15-mac-four-task-review.md)): FISHER-1b
     and FIXTURES-TRIM-1 ACCEPTED with findings, FISHER-RE-2 ACCEPTED, FISHER-1c a QUESTION checkpoint (the S01_02_01
     canary needs the script's OBJECT_STADT definitions; the owner chooses). Candidate `23885eb3` (the above plus
     FISHER-1b and FIXTURES-TRIM-1) PASSED its game-file run (2617 executed, 0 failed); landing waits for the owner's OK. UI-INFO-2c ACCEPTED (`abf7dba0`); candidate `b47f77e4` (the seven) PASSED after 3 memory refusals each passed alone. The owner decided OQ-623 on 2026-11-15: `.` turns as the
     original does ("Like original."), sent to the UI lane.
+    **The owner chose OQ-625 option 1a** (2026-11-15): the script work in small reviewed steps
+    ([packet](tasks/script-objects-1.md)); **SO-1a ACCEPTED** the same day (`b573c6be`,
+    [review](reviews/2026-11-15-so-1a-review.md)): the operand is island (low byte) and city slot (high byte), and
+    KILLED is a live empty-slot test; an invalid island or slot refuses through `ScriptFault`. **SO-1b ACCEPTED** the same day (`d19c446a`,
+    [review](reviews/2026-11-15-so-1b-review.md)): the engine evaluates city objects live; `S01_02_01` now refuses
+    at `QUESTLOG_SHOW` (payload offset 1339). **Not landed:** the candidate `816c6352` (SO-1a, SO-1b, SL-0; owner OK
+    2026-11-15) passed the local game-file run (2637 executed, 2 memory refusals PASS alone) but its hosted `gate`
+    FAILED once on one macOS timing test (`anno_app_tests` "command queue: a push never waits for a turn (measured)";
+    the candidate changes no app code). The failed job was rerun, as `land.py` instructs, and passed. **LANDED on main
+    `816c6352`** 2026-11-15, verified as an ancestor of `origin/main`; main healthy. (An earlier board commit said
+    LANDED before that was true; it was corrected at once.) The flaky timing test is noted for GATE-2a. **SL-0 ACCEPTED as a read** (`68c140c5`,
+    [review](reviews/2026-11-15-sl-0-review.md)): 14 names remain; 9 of them need the computer players' trade,
+    diplomacy and military, mission outcomes or a clipboard paste, so the unchanged script cannot run before
+    PLAN M5. **The owner chose "Find another map"** (2026-11-15) for the fisher
+    proof: **FISHER-MAP-1 ACCEPTED** (`21e373e7`,
+    [review](reviews/2026-11-15-fisher-map-1-review.md)): the canary maps are `01_1024_easy_256` (three standing
+    Venice huts, no command) and `02Trade01` (one human hut by one Build command); the five small script names
+    alone unlock no shipped map, WON is the commonest blocker. **FISHER-1e ACCEPTED** (`70ecba52`,
+    [review](reviews/2026-11-15-fisher-1e-review.md)): three Venice huts and one human hut each complete a whole
+    trip (39.6 to 43.1 game seconds) on the two shipped maps with nothing suppressed; determinism, save and
+    reload, and flag-off identity hold; no engine change. **LANDED** on main `67a960c9` (see the UI-PLACE entry). Still the owner's: the BEAMDOWN rule,
+    whether SL-1 and SL-2 are built now, and landing SO-1a, SO-1b and SL-0.
     **FISHER-1d ACCEPTED 2026-11-15** (`e006a45b`, [review](reviews/2026-11-15-fisher-1d-review.md)): the
     runtime fish fill behind the flag and B1–B5. The S01_02_01 canary needs a script-language plan beyond the two
     city objects (owner decision). Candidate `7bc3ea79` (`b47f77e4` + FISHER-1d) PASSED its game-file run (2627 executed,
     0 failed); the owner's OK 2026-11-15 ("Review and land all"): landing all eight with this board.
+    **LANDED 2026-11-15 as `main` `b9b8df23`** (land.py, `gate` green): UI-INFO-2, the ZOOM-SMOOTH-1 partial, 1b, 1c,
+    FISHER-1b, FIXTURES-TRIM-1, UI-INFO-2c and FISHER-1d (with FISHER-RE-2 and 1c's checkpoint). Main is healthy: the
+    game-file run of `7bc3ea79` covers it, the rest is docs only.
 - **[PINS-1](tasks/pins-1.md) ACCEPTED after fix round 1 and LANDED as `d2884227`** (2026-11-14,
   [re-review](reviews/2026-11-13-pins-1-review.md#fix-round-1-re-review-2026-11-14)), head `661cd2a6`, CI green.
   - **Fixed:** the two highmap pins are oracle-owned, and a contract test guards that class of mistake.

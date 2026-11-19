@@ -3,6 +3,7 @@
 #include <deque>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <tuple>
 #include <utility>
@@ -15,6 +16,7 @@
 #include <anno/sim_load/original_registry.hpp>
 #include <anno/sim_load/wildlife_create.hpp>
 #include <anno/sim_load/wildlife_final_facts.hpp>
+#include <anno/sim_load/wildlife_habitat_load.hpp>
 #include <anno/sim_load/wildlife_materialize.hpp>
 #include <anno/sim_load/wildlife_release.hpp>
 #include <anno/sim_load/wildlife_species.hpp>
@@ -1926,6 +1928,383 @@ TEST_CASE("wildlife final facts: original completed Tutorial chunk and metadata 
     REQUIRE_FALSE(unresolved);
     CHECK(unresolved.error().stage == MatS::Cave);
     CHECK(unresolved.error().diagnostic_only.selector_consumed == 0);
+    for (std::uint64_t i = 0; i < tiles.tile_count(); ++i)
+        REQUIRE(tiles.object(i) == before[i]);
+}
+
+namespace {
+Buffer habitat_scene(std::uint8_t property, std::size_t info_size = 12) {
+    const auto packed = [](std::string_view name, const Buffer& bytes) {
+        fmt::chunk::Chunk c;
+        c.name_field = *fmt::chunk::name_field(name);
+        c.payload = bytes;
+        Buffer out;
+        REQUIRE(fmt::chunk::write_chunk(c, out));
+        return out;
+    };
+    Buffer head;
+    for (const auto value : {24U, 40U, 32U, 24U})
+        fmt::put_u16_le(head, static_cast<std::uint16_t>(value));
+    fmt::put_u32_le(head, 9);
+    Buffer info(info_size, 0);
+    if (!info.empty())
+        info[0] = property;
+    if (info.size() > 1)
+        info[1] = 5; // Not property 7. Wrong INFO offset must differ.
+    const auto tail = packed("INFO", info);
+    head.insert(head.end(), tail.begin(), tail.end());
+    return packed("ANNO", packed("SCENE", packed("INSEL5", head)));
+}
+struct HabitatRig {
+    FinalRig metadata;
+    load::WildlifeFirstCallResult prepared;
+    Buffer scene;
+    HabitatRig(std::uint8_t property = 2) {
+        auto double_entry = metadata.source.entries[1];
+        double_entry.id = 90002;
+        const std::string cave = "TIERHOEHLE";
+        Buffer kind(cave.begin(), cave.end());
+        kind.push_back(0);
+        double_entry.records[1] = metadata.source.record("PRODTYPE", kind);
+        metadata.source.entries.push_back(double_entry);
+        auto both = *metadata.types->find(sim::TypeId{105});
+        both.id = sim::TypeId{90002};
+        both.prodtype = 325;
+        sim::TypeRegistry::Builder builder;
+        for (const auto& t : metadata.types->types())
+            builder.add(t);
+        builder.add(both);
+        const auto types = builder.build();
+        REQUIRE(types);
+        metadata.types = types.value();
+        auto& island = prepared.fill.island;
+        island.slot = 9;
+        island.complete_local_records = true;
+        island.resource.tiles = sim::TileLayer(24, 40, 32, 24, 8);
+        island.terrain = sim::make_terrain(Buffer(768, 32), std::vector<std::uint16_t>(768, 104),
+                                           Buffer(768, 6));
+        property_source(property);
+    }
+    void property_source(std::uint8_t value) {
+        scene = habitat_scene(value);
+        prepared.source_sha256 = fmt::sha256_hex(scene);
+        prepared.fill.island.climate = value;
+    }
+    void cell(std::int32_t x, std::int32_t y, std::uint32_t word) {
+        auto& tiles = prepared.fill.island.resource.tiles;
+        REQUIRE(tiles.contains(32 + x, 48 + y));
+        tiles.set_object(tiles.index_of(32 + x, 48 + y), word);
+    }
+    auto bind(std::uint32_t cx = 1, std::uint32_t cy = 1) const {
+        return load::bind_wildlife_habitat_chunk(prepared, scene, cx, cy, final_profile,
+                                                 metadata.source.entries, metadata.source.image,
+                                                 *metadata.types);
+    }
+};
+constexpr std::array<std::pair<std::int32_t, std::int32_t>, 8> habitat_offsets{
+    {{-1, 0}, {1, 0}, {-1, -1}, {0, -1}, {1, -1}, {-1, 1}, {0, 1}, {1, 1}}};
+std::string habitat_region(const load::WildlifeHabitatChunk& out) {
+    std::string rows;
+    for (const auto& c : out.region)
+        rows += std::to_string(c.x) + " " + std::to_string(c.y) + " " +
+                std::to_string(c.original_word) + " " + std::to_string(c.resolved_word) + " " +
+                std::to_string(c.fact.kind) + " " + std::to_string(c.fact.goods) + "\n";
+    return rows;
+}
+} // namespace
+TEST_CASE("wildlife habitat load: each halo offset growing resolution zero and exact threshold") {
+    for (std::size_t n = 0; n < 8; ++n) {
+        HabitatRig rig;
+        rig.cell(0, 0, 105);
+        for (const auto other : {(n + 1) % 8, (n + 2) % 8})
+            rig.cell(habitat_offsets[other].first, habitat_offsets[other].second, 105);
+        auto baseline = rig.bind();
+        REQUIRE_MESSAGE(baseline, (baseline ? "" : baseline.error()));
+        CHECK(baseline.value().habitat[0] == false); // 1+2 = 3, strictly below 4.
+        rig.cell(habitat_offsets[n].first, habitat_offsets[n].second, 104);
+        const auto result = rig.bind();
+        REQUIRE(result);
+        const auto& out = result.value();
+        REQUIRE(out.cells.size() == 64);
+        REQUIRE(out.region.size() == 100);
+        CHECK(out.property7 == 2);
+        CHECK(out.habitat[0] == true); // 1+3 = 4, inclusive.
+        const auto& neighbor = out.region[out.cells[0].neighbors[n]];
+        CHECK(neighbor.x == 32 + habitat_offsets[n].first);
+        CHECK(neighbor.y == 48 + habitat_offsets[n].second);
+        CHECK(neighbor.original_word == 104);
+        CHECK(neighbor.resolved_word == 105);
+        CHECK(neighbor.fact.object.v == 104);
+        CHECK(neighbor.fact.kind == 225);
+        CHECK(neighbor.fact.goods == 70);
+        CHECK(rig.prepared.fill.island.resource.tiles.object(
+                  rig.prepared.fill.island.resource.tiles.index_of(neighbor.x, neighbor.y)) == 104);
+    }
+    HabitatRig both;
+    both.cell(0, 0, 105);
+    both.cell(-1, 0, 90002);
+    auto below = both.bind();
+    REQUIRE(below);
+    CHECK(below.value().habitat[0] == false); // 1+2 = 3.
+    both.cell(1, 0, 105);
+    const auto equal = both.bind();
+    REQUIRE(equal);
+    CHECK(equal.value().habitat[0] == true); // 1+2+1 = 4; OR collapse would give 3.
+    HabitatRig easy(5);
+    easy.cell(0, 0, 104);
+    const auto no_neighbors = easy.bind();
+    REQUIRE(no_neighbors);
+    CHECK(no_neighbors.value().property7 == 5);
+    CHECK(no_neighbors.value().habitat[0] == true); // Growing centre, score 1.
+    CHECK(no_neighbors.value().region[11].resolved_word == 105);
+    easy.property_source(2);
+    const auto ordinary_property = easy.bind();
+    REQUIRE(ordinary_property);
+    CHECK(ordinary_property.value().habitat[0] == false);
+    easy.cell(0, 0, 0);
+    easy.property_source(5);
+    const auto empty = easy.bind();
+    REQUIRE(empty);
+    CHECK(empty.value().habitat[0] == false);
+}
+TEST_CASE("wildlife habitat load: source admission geometry missing successor and source property "
+          "refuse") {
+    for (unsigned variant = 0; variant < 10; ++variant) {
+        HabitatRig rig(5);
+        rig.cell(0, 0, 104);
+        REQUIRE(rig.bind());
+        auto cx = 1U, cy = 1U;
+        if (variant == 0)
+            cx = 0;
+        if (variant == 1)
+            cy = 2; // Last chunk has no southern halo.
+        if (variant == 2)
+            rig.prepared.fill.island.climate = 2; // Numeric claim cannot replace INFO 5.
+        if (variant == 3)
+            rig.scene.back() ^= 1; // Exact source pairing required.
+        if (variant == 4) {
+            rig.scene = habitat_scene(5, 11);
+            rig.prepared.source_sha256 = fmt::sha256_hex(rig.scene);
+        }
+        if (variant == 5)
+            rig.cell(-1, -1, 77777); // Missing actual type, not false habitat.
+        if (variant == 6)
+            rig.metadata.source.entries.erase(rig.metadata.source.entries.begin() +
+                                              1); // Successor.
+        if (variant == 7)
+            rig.prepared.fill.island.complete_local_records = false;
+        if (variant == 8)
+            rig.prepared.fill.island.terrain.reset();
+        if (variant == 9) {
+            auto t = *rig.metadata.types->find(sim::TypeId{104});
+            t.id = sim::TypeId{std::numeric_limits<std::uint32_t>::max()};
+            sim::TypeRegistry::Builder builder;
+            for (const auto& old : rig.metadata.types->types())
+                builder.add(old);
+            builder.add(t);
+            const auto types = builder.build();
+            REQUIRE(types);
+            rig.metadata.types = types.value();
+            auto actual = rig.metadata.source.entries[0];
+            actual.id = t.id.v;
+            rig.metadata.source.entries.push_back(actual);
+            rig.cell(0, 0, t.id.v); // Checked successor addition, never wraps to 0.
+        }
+        const auto refused = rig.bind(cx, cy);
+        REQUIRE_FALSE(refused);
+        if (variant == 9)
+            CHECK(refused.error() == "habitat source: successor overflow");
+    }
+    HabitatRig zero(5);
+    auto type0 = *zero.metadata.types->find(sim::TypeId{90002});
+    type0.id = sim::TypeId{0};
+    sim::TypeRegistry::Builder builder;
+    for (const auto& old : zero.metadata.types->types())
+        builder.add(old);
+    builder.add(type0);
+    const auto types = builder.build();
+    REQUIRE(types);
+    zero.metadata.types = types.value();
+    auto entry0 = zero.metadata.source.entries.back();
+    entry0.id = 0;
+    zero.metadata.source.entries.push_back(entry0);
+    const auto result = zero.bind();
+    REQUIRE(result);
+    CHECK(result.value().types.types.empty()); // Zero skipped BEFORE lookup, not resolved Null.
+    for (const auto& value : result.value().habitat)
+        CHECK(value == false);
+}
+TEST_CASE("wildlife habitat load: complete outcomes compose literal recycle collision and partial "
+          "maintenance") {
+    std::optional<load::WildlifeHabitatChunk> owned;
+    {
+        HabitatRig rig(5);
+        const std::vector<std::uint8_t> candidates{9, 11, 13, 15, 25, 27, 29, 31};
+        for (const auto p : candidates)
+            rig.cell(p & 7, p >> 3, 105);
+        // Decoys beyond the admitted halo, nonzero origin and non-square stride.
+        rig.cell(23, -1, 90002);
+        const auto before = rig.prepared.fill.island.resource.tiles;
+        const auto result = rig.bind();
+        REQUIRE(result);
+        for (std::size_t p = 0; p < 64; ++p) {
+            const auto expected =
+                std::find(candidates.begin(), candidates.end(), p) != candidates.end();
+            CHECK(result.value().habitat[p] == expected);
+        }
+        const auto repeated = rig.bind();
+        REQUIRE(repeated);
+        CHECK(habitat_region(repeated.value()) == habitat_region(result.value()));
+        CHECK(repeated.value().habitat == result.value().habitat);
+        for (std::uint64_t i = 0; i < before.tile_count(); ++i)
+            REQUIRE(rig.prepared.fill.island.resource.tiles.object(i) == before.object(i));
+        owned = result.value();
+    }
+    REQUIRE(owned);
+    CHECK(owned->property7 == 5);
+    CHECK(owned->region[0].x == 31);
+    CHECK(owned->region[99].y == 56);
+    auto occupied = ready_record(10, 2, 7);
+    occupied.occupied = true;
+    occupied.saved_id = std::uint16_t{101};
+    auto rejected = ready_record(20, 4, 8);
+    rejected.saved_id = std::uint16_t{202};
+    rejected.high_bit = true;
+    rejected.timestamp = std::uint8_t{12};
+    const auto retained = ready_record(30, 9, 9);
+    load::WildlifeChunkRecord unrelated;
+    unrelated.token = 90;
+    unrelated.category = 3;
+    const load::WildlifeChunkSnapshot input{0x8101, {occupied, rejected, retained, unrelated}};
+    const auto before = input;
+    const std::array<std::uint32_t, 3> draws{0, 0, 999};
+    const auto result = load::prepare_wildlife_habitat_maintenance(
+        *owned, input, 259000, load::WildlifeChunkAllocation::NormalSuccess, {}, draws);
+    REQUIRE(result);
+    auto inserted = rejected;
+    inserted.position = std::uint8_t{31};
+    inserted.goods = std::uint16_t{255};
+    inserted.timestamp = std::uint8_t{3};
+    CHECK(result.value().completed.chunk ==
+          load::WildlifeChunkSnapshot{0x8101, {inserted, occupied, retained, unrelated}});
+    CHECK(result.value().completed.recycled_order ==
+          std::vector<load::WildlifeChunkRecord>{rejected});
+    REQUIRE(result.value().completed.attempts.size() == 2);
+    CHECK(result.value().completed.attempts[0].position == 9);
+    CHECK(result.value().completed.attempts[0].collision == std::uint64_t{30});
+    CHECK(result.value().completed.attempts[1].position == 31);
+    CHECK(result.value().completed.consumed == 2);
+    CHECK(result.value().completed.retained_before_replenish == 2);
+    CHECK(result.value().completed.retained == 3);
+    CHECK(result.value().completed.desired == 3);
+    CHECK(result.value().completed.candidates == std::vector<std::uint8_t>{29, 11, 13, 15, 25, 27});
+    CHECK(input == before);
+    CHECK(draws[result.value().completed.consumed] == 999);
+    const auto partial = load::prepare_wildlife_habitat_maintenance(
+        *owned, input, 259000, load::WildlifeChunkAllocation::NormalSuccess, {},
+        std::span<const std::uint32_t>(draws).first(1));
+    REQUIRE_FALSE(partial);
+    CHECK(partial.error().fault == load::WildlifeChunkFault::DrawsExhausted);
+    CHECK(partial.error().stage == load::WildlifeChunkStage::SelectCandidate);
+    const auto& out = partial.error().diagnostic_only;
+    REQUIRE(out.reserved);
+    auto collision = rejected;
+    collision.position = std::uint8_t{9};
+    collision.goods = std::uint16_t{255};
+    CHECK(*out.reserved == collision); // OLD timestamp 12/high bit/ID retained.
+    CHECK(out.chunk == load::WildlifeChunkSnapshot{0x8101, {occupied, retained, unrelated}});
+    CHECK(out.consumed == 1);
+    CHECK(out.candidates == std::vector<std::uint8_t>{31, 11, 13, 15, 25, 27, 29});
+    CHECK(out.discarded.empty());
+}
+TEST_CASE("wildlife habitat load: original Tutorial halo property and maintenance match "
+          "independent oracle") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        std::cout << "SKIPPED: ANNO1503_GAME_DIR not set (original habitat source unavailable)\n";
+        return;
+    }
+    const auto read = [](const std::filesystem::path& path) {
+        std::ifstream in(path, std::ios::binary);
+        REQUIRE(in);
+        return Buffer(std::istreambuf_iterator<char>(in), {});
+    };
+    const auto scene = read(*dir / "Scenes/Tutorial/01Discover01.sze");
+    CHECK(fmt::sha256_hex(scene) ==
+          "225ed50b005743e00d8d3ffe18667d4565dc781ef45bd6d9b767fd2fe056c0f6");
+    const auto bytes = read(*dir / "Anlagen.dat");
+    const auto entries = fmt::anlagen::AnlagenFile::parse(bytes);
+    REQUIRE(entries);
+    const auto game = read(*dir / "AnnoGame.dll");
+    const auto registry = load::load_original_registry(*dir, load::FigureEntries::Required);
+    REQUIRE_MESSAGE(registry.types, registry.error);
+    load::PrefixInputs supplied;
+    supplied.sampled_stamps = {500};
+    supplied.stamp_provenance = "authored stamp 500";
+    supplied.mode_provenance = "authored mode 0";
+    const std::vector<std::uint32_t> prefix_draws(20000, 7);
+    const auto prepared = load::prepare_wildlife_first_call(
+        scene, {0, 11}, entries.value().entries, game, *registry.types, supplied, prefix_draws);
+    REQUIRE_MESSAGE(prepared, (prepared ? "" : prepared.error().reason));
+    const auto& tiles = prepared.value().fill.island.resource.tiles;
+    std::vector<std::uint32_t> before;
+    for (std::uint64_t i = 0; i < tiles.tile_count(); ++i)
+        before.push_back(tiles.object(i));
+    const auto result =
+        load::bind_wildlife_habitat_chunk(prepared.value(), scene, 10, 2, final_profile,
+                                          entries.value().entries, game, *registry.types);
+    REQUIRE_MESSAGE(result, (result ? "" : result.error()));
+    const auto& out = result.value();
+    CHECK(out.property7 == 2); // Independent raw INFO byte 0, not byte 1.
+    CHECK(out.world_x == 104);
+    CHECK(out.world_y == 40);
+    REQUIRE(out.region.size() == 100);
+    const auto rows = habitat_region(out);
+    CHECK(fmt::sha256_hex(Buffer(rows.begin(), rows.end())) ==
+          "5c9ea575bb934faba1443664f3bdc6af90bfea6891d96a30b03b3574784c4ee0");
+    std::string outcomes;
+    std::size_t count = 0;
+    for (std::size_t i = 0; i < 64; ++i) {
+        REQUIRE(out.habitat[i]);
+        const auto value = *out.habitat[i];
+        outcomes += std::to_string(i) + " " + (value ? "1\n" : "0\n");
+        count += value ? 1U : 0U;
+    }
+    CHECK(count == 2);
+    CHECK(fmt::sha256_hex(Buffer(outcomes.begin(), outcomes.end())) ==
+          "22c133fe0767858fa6a42c437a06e10175b75a55f4075d31e9bdfd9acacc288f");
+    for (const auto& [name, expected] : std::array<std::pair<const char*, std::string>, 2>{
+             {{"ANNO_WILDLIFE_HABITAT_REGION_ORACLE", rows},
+              {"ANNO_WILDLIFE_HABITAT_ORACLE", outcomes}}}) {
+        if (const char* path = std::getenv(name)) {
+            std::ifstream in(path, std::ios::binary);
+            REQUIRE(in);
+            CHECK(std::string(std::istreambuf_iterator<char>(in), {}) == expected);
+        }
+    }
+    // Authored empty records, successful fresh token, time and draws. No original
+    // manager outcome, global ID or full-world PRNG history is asserted.
+    const std::array<std::uint32_t, 2> draws{17, 999};
+    const auto plan = load::prepare_wildlife_habitat_maintenance(
+        out, {0x8000, {}}, 259000, load::WildlifeChunkAllocation::NormalSuccess, {5000}, draws);
+    REQUIRE(plan);
+    auto fresh = ready_record(5000, 47);
+    fresh.timestamp = std::uint8_t{3};
+    CHECK(plan.value().completed.chunk == load::WildlifeChunkSnapshot{0x8001, {fresh}});
+    CHECK(plan.value().completed.retained_before_replenish == 0);
+    CHECK(plan.value().completed.desired == 1);
+    CHECK(plan.value().completed.retained == 1);
+    CHECK(plan.value().completed.consumed == 1);
+    CHECK(plan.value().completed.fresh_used == 1);
+    REQUIRE(plan.value().completed.attempts.size() == 1);
+    CHECK(plan.value().completed.attempts[0].modulus == 1);
+    CHECK(plan.value().completed.attempts[0].position == 47);
+    CHECK(plan.value().completed.candidates.empty());
+    CHECK(draws[plan.value().completed.consumed] == 999);
+    const auto repeat = load::prepare_wildlife_habitat_maintenance(
+        out, {0x8000, {}}, 259000, load::WildlifeChunkAllocation::NormalSuccess, {5000}, draws);
+    REQUIRE(repeat);
+    CHECK(repeat.value().completed.chunk == plan.value().completed.chunk);
     for (std::uint64_t i = 0; i < tiles.tile_count(); ++i)
         REQUIRE(tiles.object(i) == before[i]);
 }

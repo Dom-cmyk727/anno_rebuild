@@ -187,6 +187,11 @@ says who is doing what, where the work is, and what it waits on.
     never change a class or shore. Shipped scenes: 0 class or own-block shore changes. Recommendation: the
     faithful correction (WILDLIFE-NAV-REPAIR-1); owner decisions: the ADR 0006 section base and the
     pin/replay rebaseline policy. Original runtime NOT_RUN in both editions.
+  - **The owner's go, 2026-11-19:** asked "Approve the faithful navigation fix as the Mac's next repair
+    packet?", the owner answered "Yes, approve it". WILDLIFE-NAV-REPAIR-1 goes to the Mac lane: the
+    component mask before the add, no sum mask, no clamp, the 13 rows as permanent tests, the fine rule
+    and the conversion unchanged. The ADR 0006 section-version bump and any pin/replay rebaseline are
+    proposed in its report and applied only after a separate owner OK.
 - **The Mac's GATE-RUN on candidate 10 `95897a55` FAILED** (Mac review
   `reviews/2026-11-17-gate-ui-info-2d-buildcat-review.md` on `orch/mac-lane`): 2,805 executed, 2 failed,
   `viewer_wiring_ui_magnifier_range` and `_stepped` ("no frame was drawn within 30000 ms" on Metal); and 10

@@ -45,7 +45,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife EVENTINSEL boundary [WILDLIFE-EVENTINSEL-1](tasks/wildlife-eventinsel-1.md) | ACCEPTED; bounded empty-header/local-record scope | `218b838eb543782c60629f51288005fdd699c492`; source `c6c106a4` | [44443163952](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44443163952), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-eventinsel-1-review.md) |
 | Wildlife post-island contract [WILDLIFE-POSTLOAD-1](tasks/wildlife-postload-1.md) | LOCAL REVIEW APPROVED after two docs corrections; CI pending | `1628ba18a5b6eefb55684afc3091ba3be9fa10c8`; research source `09614995` | [44447642251](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44447642251), in progress | [Focused review](reviews/2026-11-19-wildlife-postload-1-review.md) |
 | Wildlife graphics leaf [WILDLIFE-GFX-FINALIZE-1](tasks/wildlife-gfx-finalize-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `ad2a1a23bbc4fe877c18f0e7bf8f4ce0180270b5`; source `e9256f22` | [44449632964](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44449632964), in progress | [Review](reviews/2026-11-19-wildlife-gfx-finalize-1-review.md) |
-| Wildlife catalogue inputs [WILDLIFE-POSTLOAD-INPUTS-1](tasks/wildlife-postload-inputs-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `ad2a1a23` | Not started; bounded input contract | Frozen reportback directly to Mac orchestrator |
+| Wildlife catalogue inputs [WILDLIFE-POSTLOAD-INPUTS-1](tasks/wildlife-postload-inputs-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `263958edb83daa290aeb674f5b2b30c0655c5bb4`; research source `625db996` | [44452465008](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44452465008), in progress | [Review](reviews/2026-11-19-wildlife-postload-inputs-1-review.md) |
+| Wildlife first-call fill [WILDLIFE-POSTLOAD-FILL-1](tasks/wildlife-postload-fill-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `263958ed` | Not started; owned UNWIRED first-call implementation | Frozen reportback directly to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -831,3 +832,21 @@ independent scope review. Close direct catalogue producer/type2/type11 facts and
 lifetime/validation requirements for first-call fill. No src/global/preprocessing/
 navigation/World changes. Executor ordinary-pushes the task branch and reports
 directly here for review and next implementation release. Main untouched.
+
+## Latest dispatch — catalogue inputs reviewed; first-call fill released
+
+INPUTS263958ed/source625db996 is independently locally APPROVED, no findings.
+72 receipts verified; docs-only result. Fresh concrete catalogue/type-array,
+HEAD/getter profile and lifetime facts bind first-call grass/fish semantics.
+Python/PE checks stay distinct from original-runtime or full-fill execution;
+no C++ campaign repeated. Exact CI44452465008 and GFX/corrected POSTLOAD runs
+remain pending at this check.
+
+[WILDLIFE-POSTLOAD-FILL-1](tasks/wildlife-postload-fill-1.md) is RELEASED after
+independent scope review. Implement the isolated owned first-call fill under
+validated precomputed-ground/catalogue capability, with independent reference,
+full-field controls, ownership/digest checks and bounded real-input leaf evidence.
+Remain UNWIRED; stop before navigation/raster/graphics. No c2-zero preprocessing,
+V9 repair, global/World/native/tag/default or other-lane change. Executor ordinary-
+pushes its task branch and reports directly here for review/next release.
+Main untouched.

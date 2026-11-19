@@ -17,6 +17,7 @@
 #include <anno/sim_load/original_registry.hpp>
 #include <anno/sim_load/wildlife_create.hpp>
 #include <anno/sim_load/wildlife_final_facts.hpp>
+#include <anno/sim_load/wildlife_geometry.hpp>
 #include <anno/sim_load/wildlife_habitat_load.hpp>
 #include <anno/sim_load/wildlife_import_plan.hpp>
 #include <anno/sim_load/wildlife_materialize.hpp>
@@ -2316,7 +2317,8 @@ struct ImportRig {
     FinalRig metadata;
     Buffer scene;
     load::WildlifeFirstCallResult prepared;
-    ImportRig(std::uint8_t mode = 1, std::uint16_t stamp = 500) {
+    ImportRig(std::uint8_t mode = 1, std::uint16_t stamp = 500,
+              std::optional<std::array<std::uint8_t, 4>> geometry_patch = {}) {
         // Authored resource-table section, disjoint from the name-table section.
         auto& image = metadata.source.image;
         image.resize(0x4600, 0);
@@ -2393,7 +2395,14 @@ struct ImportRig {
         Buffer info(12, 0);
         info[0] = 2;
         append(body, packed("INFO", info));
-        append(body, packed("HEIGHT", block(Buffer(768, 32))));
+        Buffer heights(768, 32);
+        if (geometry_patch) {
+            const std::array<std::size_t, 4> indices{9 * 32 + 9, 9 * 32 + 10, 10 * 32 + 9,
+                                                     10 * 32 + 10};
+            for (std::size_t i = 0; i < 4; ++i)
+                heights[indices[i]] = (*geometry_patch)[i];
+        }
+        append(body, packed("HEIGHT", block(heights)));
         append(body, packed("GFXID", block(Buffer(1536, 0))));
         Buffer objects;
         for (std::uint8_t y = 7; y <= 16; ++y)
@@ -2810,4 +2819,197 @@ TEST_CASE(
     CHECK(selected.unchanged_chunk.completed.chunk == out.snapshot);
     CHECK(prepared.value().fill.island.spawns.size() == 156);
     CHECK(prepared.value().fill.island.resource_list_nodes.size() == 21);
+}
+namespace {
+load::WildlifeNumericContext geometry_context() {
+    const load::WildlifeFpProfile p{53, load::WildlifeRounding::Nearest};
+    const auto context = load::prepare_wildlife_numeric_context(
+        {p, p, "authored table53/nearest and callback53/nearest, not observed"});
+    REQUIRE(context);
+    return context.value();
+}
+load::WildlifeCreationEffects geometry_effects(const load::WildlifeCreationDescriptor& descriptor,
+                                               const load::WildlifeOrdinaryGeometry& geometry,
+                                               sim::TileRect area) {
+    load::WildlifeCreationInputs input;
+    input.manager = load::WildlifeManagerOutcome::Success;
+    input.assigned_id = 123;
+    input.creation_time = 10000;
+    input.position_words = geometry.words;
+    input.geometry.area = area;
+    input.geometry.home_x = geometry.home[0];
+    input.geometry.home_z = geometry.home[1];
+    input.prior = {17, 8, 9, 0};
+    input.sweep_time = 10000;
+    input.helper_consumed = 2;
+    const auto effects = load::project_wildlife_creation(descriptor, input);
+    REQUIRE_MESSAGE(effects, (effects ? "" : effects.error()));
+    CHECK(effects.value().helper_consumed == 2);
+    REQUIRE(effects.value().animal);
+    CHECK(effects.value().animal->position_words == geometry.words);
+    CHECK(effects.value().animal->home == geometry.home);
+    CHECK(effects.value().animal->engine_id == 123);
+    return effects.value();
+}
+} // namespace
+TEST_CASE("wildlife geometry: nonflat prepared source composition ownership and strict admission") {
+    const auto numeric = geometry_context();
+    const auto owned = [&] {
+        ImportRig rig{1, 500, std::array<std::uint8_t, 4>{0, 25, 50, 100}};
+        Source animals;
+        species_source(animals);
+        const auto welt = species_pe();
+        const load::WildlifeSpeciesSource species{
+            welt, rig.metadata.source.image, animals.entries,
+            fmt::annowelt::WildlifeSpeciesProfile::GogClimate2, 2};
+        const std::array<std::uint32_t, 6> maintenance{0, 1, 0, 0, 0, 999};
+        const std::array<std::uint32_t, 11> selectors{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 999};
+        const auto plan = load::prepare_wildlife_import_plan(
+            rig.prepared, rig.scene, 1, 1, import_runtime(), final_profile,
+            rig.metadata.source.entries, rig.metadata.source.image, *rig.metadata.types, species,
+            maintenance, selectors);
+        REQUIRE_MESSAGE(plan, (plan ? "" : plan.error().reason));
+        const auto before = rig.prepared.fill.island.terrain->height;
+        const auto batch = load::bind_wildlife_ordinary_source(
+            rig.prepared, plan.value(), numeric,
+            "fresh authored HEIGHT through completed first-call");
+        REQUIRE_MESSAGE(batch, (batch ? "" : batch.error().reason));
+        const auto geometry = batch.value().project(0);
+        REQUIRE_MESSAGE(geometry, (geometry ? "" : geometry.error().reason));
+        const auto& g = geometry.value();
+        // Tile33/49 low offset rounds to43691/2^18; y=3*43691/2^18 =131073/2^18.
+        CHECK(g.words == std::array<std::uint32_t, 3>{0x4204aaab, 0x3f000040, 0x4244aaab});
+        CHECK(g.corners == std::array<std::uint8_t, 4>{0, 25, 50, 100});
+        CHECK(g.home == std::array<std::uint32_t, 2>{33, 49});
+        CHECK(g.triangle == 1);
+        CHECK(g.corner_reads == 4);
+        CHECK(g.actual_object == 105);
+        // Four source resource origins now have means 24/22/30/28 below 32:
+        // (8,8),(9,8),(10,8),(8,9). 99-4 resource draws +1 jitter =96.
+        CHECK(g.unchanged_draws.imported_prefix == 96);
+        CHECK(g.unchanged_draws.maintenance == 5);
+        CHECK(g.unchanged_draws.selector_only == 10);
+        CHECK(g.scene_sha256 == rig.prepared.source_sha256);
+        CHECK(g.corner_provenance == "fresh authored HEIGHT through completed first-call");
+        CHECK(rig.prepared.fill.island.terrain->height == before);
+        auto selected = std::find_if(plan.value().materialization.completed.entries.begin(),
+                                     plan.value().materialization.completed.entries.end(),
+                                     [](const auto& e) { return e.token == 0; });
+        REQUIRE(selected != plan.value().materialization.completed.entries.end());
+        REQUIRE(selected->selection);
+        REQUIRE(selected->selection->creation);
+        const auto effects = geometry_effects(*selected->selection->creation, g, {24, 40, 32, 24});
+        CHECK(effects.animal->type.v == 60001);
+        CHECK(batch.value().project(0).value().words == g.words);
+        CHECK_FALSE(batch.value().project(999999));
+        CHECK_FALSE(load::bind_wildlife_ordinary_source(rig.prepared, plan.value(), numeric, ""));
+        auto mismatch = rig.prepared;
+        mismatch.source_sha256 = "wrong";
+        CHECK_FALSE(load::bind_wildlife_ordinary_source(mismatch, plan.value(), numeric, "fresh"));
+        mismatch = rig.prepared;
+        mismatch.fill.island.terrain.reset();
+        CHECK_FALSE(load::bind_wildlife_ordinary_source(mismatch, plan.value(), numeric, "fresh"));
+        mismatch = rig.prepared;
+        auto corrupt = std::make_shared<sim::Terrain>(*mismatch.fill.island.terrain);
+        corrupt->height[0] ^= 1;
+        mismatch.fill.island.terrain = corrupt;
+        CHECK_FALSE(load::bind_wildlife_ordinary_source(mismatch, plan.value(), numeric, "fresh"));
+        auto wrong = plan.value();
+        for (auto& e : wrong.materialization.completed.entries)
+            if (e.token == 0) {
+                e.tile->object_word = 104;
+                e.type->object_word = 104;
+            }
+        const auto wrong_source =
+            load::bind_wildlife_ordinary_source(rig.prepared, wrong, numeric, "fresh");
+        REQUIRE_FALSE(wrong_source);
+        CHECK(wrong_source.error().stage == load::WildlifeGeometryStage::Source);
+        mismatch = rig.prepared;
+        auto short_heights = before;
+        short_heights.pop_back();
+        mismatch.fill.island.terrain =
+            sim::make_terrain(short_heights, rig.prepared.fill.island.terrain->gfx, {});
+        CHECK_FALSE(load::bind_wildlife_ordinary_source(mismatch, plan.value(), numeric, "fresh"));
+        auto cave = plan.value();
+        for (auto& e : cave.materialization.completed.entries)
+            if (e.token == 0)
+                e.selection->choice.value.position = -1;
+        CHECK_FALSE(load::bind_wildlife_ordinary_source(rig.prepared, cave, numeric, "fresh"));
+        return std::pair{batch.value(), g};
+    }();
+    // All source scene/metadata/plan owners destroyed; batch and output remain owned.
+    const auto result = owned.first.project(0);
+    REQUIRE(result);
+    CHECK(result.value().words == owned.second.words);
+    CHECK(result.value().scene_sha256 == owned.second.scene_sha256);
+}
+TEST_CASE(
+    "wildlife geometry: original Tutorial source words compose into supplied creation effects") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        std::cout
+            << "SKIPPED: ANNO1503_GAME_DIR not set (original ordinary geometry unavailable)\n";
+        return;
+    }
+    const auto read = [](const std::filesystem::path& path) {
+        std::ifstream in(path, std::ios::binary);
+        REQUIRE(in);
+        return Buffer(std::istreambuf_iterator<char>(in), {});
+    };
+    const auto scene = read(*dir / "Scenes/Tutorial/01Discover01.sze"),
+               game = read(*dir / "AnnoGame.dll"), welt = read(*dir / "AnnoWelt.dll");
+    const auto data = read(*dir / "Anlagen.dat"), figdata = read(*dir / "FigurenHeader.dat");
+    const auto entries = fmt::anlagen::AnlagenFile::parse(data);
+    const auto figures = fmt::figuren::FigurenHeader::parse(figdata);
+    REQUIRE(entries);
+    REQUIRE(figures);
+    const auto registry = load::load_original_registry(*dir, load::FigureEntries::Required);
+    REQUIRE_MESSAGE(registry.types, registry.error);
+    load::PrefixInputs input;
+    input.sampled_stamps = {500};
+    input.stamp_provenance = "authored stamp 500";
+    input.mode_provenance = "authored mode 0";
+    const auto prepared = load::prepare_wildlife_first_call(scene, {0, 11}, entries.value().entries,
+                                                            game, *registry.types, input,
+                                                            std::vector<std::uint32_t>(20000, 7));
+    REQUIRE(prepared);
+    load::WildlifeImportRuntime runtime;
+    runtime.time = 10000;
+    runtime.flags = {std::uint16_t{0x8000}, "authored non-presence context"};
+    runtime.provenance = "authored time/no allocation";
+    const load::WildlifeSpeciesSource species{
+        welt, game, figures.value().entries, fmt::annowelt::WildlifeSpeciesProfile::GogClimate2, 2};
+    const std::array<std::uint32_t, 1> maintenance{999};
+    const std::array<std::uint32_t, 3> selectors{6, 0, 999};
+    const auto plan = load::prepare_wildlife_import_plan(
+        prepared.value(), scene, 10, 2, runtime, final_profile, entries.value().entries, game,
+        *registry.types, species, maintenance, selectors);
+    REQUIRE_MESSAGE(plan, (plan ? "" : plan.error().reason));
+    const auto batch = load::bind_wildlife_ordinary_source(
+        prepared.value(), plan.value(), geometry_context(),
+        "fresh original completed HEIGHT, authored numeric context");
+    REQUIRE_MESSAGE(batch, (batch ? "" : batch.error().reason));
+    const auto geometry = batch.value().project(21);
+    REQUIRE_MESSAGE(geometry, (geometry ? "" : geometry.error().reason));
+    const auto& g = geometry.value();
+    // Independent prior raw decode and hand words, not current C++/Python generated expected
+    // values.
+    CHECK(g.words == std::array<std::uint32_t, 3>{0x42dfaaab, 0x3ff5c28f, 0x42375555});
+    CHECK(g.corners == std::array<std::uint8_t, 4>{48, 48, 48, 48});
+    CHECK(g.home == std::array<std::uint32_t, 2>{111, 45});
+    CHECK(g.actual_object == 419);
+    CHECK(g.triangle == 2);
+    CHECK(g.corner_reads == 4);
+    CHECK(g.unchanged_draws.imported_prefix == 4745);
+    CHECK(g.unchanged_draws.maintenance == 0);
+    CHECK(g.unchanged_draws.selector_only == 2);
+    const auto& selection = plan.value().materialization.completed.entries[0].selection;
+    REQUIRE(selection);
+    REQUIRE(selection->creation);
+    const auto effects = geometry_effects(*selection->creation, g, {24, 24, 128, 128});
+    CHECK(effects.animal->type.v == 528);
+    CHECK(effects.animal->yield == 0);
+    CHECK(effects.spawn.id == 123);
+    CHECK(plan.value().materialization.completed.unused_draws == std::vector<std::uint32_t>{999});
+    CHECK(plan.value().unused_maintenance == std::vector<std::uint32_t>{999});
 }

@@ -1,6 +1,6 @@
 # WILDLIFE-CREATE-EFFECTS-1 — independent review
 
-2026-11-19. LOCAL REVIEW APPROVED; exact-head hosted CI pending.
+2026-11-19. ACCEPTED within the bounded scope below; Windows landing pending.
 
 - Published head `25bab774208c9e610b43447e247d99cc1aba0195`, tree
   `b590b969c475ed52ba1618a1aad143420bbcf151`.
@@ -8,7 +8,10 @@
   `6aa8c14d03cb982652695d0bc057650d3212322f`; publication delta docs only.
 - Base `252ed66cdb5e61818f459039822d2dd8167cbd04`.
 - CI [44508278589](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44508278589)
-  running at review. Local approval is not hosted acceptance.
+  completed: all 12 jobs successful at the exact published head.
+  Public jobs-response SHA256:
+  `bb58dc652c505d05e37ae1d3a48207edab4744d4127bcc534623e6cee62986e5`.
+  No passing local gate was repeated for this acceptance.
 - Task-branch contract: `docs/sim/wildlife-create-effects.md`; evidence:
   `docs/orchestration/evidence/wildlife-create-effects-1.md`.
 

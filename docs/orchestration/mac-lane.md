@@ -59,9 +59,10 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife source provenance [WILDLIFE-PREP-PROVENANCE-1](tasks/wildlife-prep-provenance-1.md) | ACCEPTED bounded contract; P3 closed | `0a30d44a6214b2c3e1d6859fb5a65b7c1c3b4719`; engine `4054d93a` | [44494353183](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44494353183), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-prep-provenance-1-review.md) |
 | Wildlife first-call composition [WILDLIFE-FIRST-CALL-1](tasks/wildlife-first-call-1.md) | ACCEPTED; isolated source-to-fill | `7d2df0fc5c94786372960000b1c7fe8d3a28dee2`; tested `a6f7527d` | [44496760869](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44496760869), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-first-call-1-review.md) |
 | Animal construction callbacks [WILDLIFE-CREATE-CLOSURE-1](tasks/wildlife-create-closure-1.md) | ACCEPTED; bounded creation contract | `252ed66cdb5e61818f459039822d2dd8167cbd04` | [44500172507](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44500172507), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-create-closure-1-review.md) |
-| Animal creation effects [WILDLIFE-CREATE-EFFECTS-1](tasks/wildlife-create-effects-1.md) | LOCAL REVIEW APPROVED; CI pending | `25bab774208c9e610b43447e247d99cc1aba0195`; tested `37c144b1` | [44508278589](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44508278589), pending | [Review](reviews/2026-11-19-wildlife-create-effects-1-review.md) |
+| Animal creation effects [WILDLIFE-CREATE-EFFECTS-1](tasks/wildlife-create-effects-1.md) | ACCEPTED; bounded owned creation effects | `25bab774208c9e610b43447e247d99cc1aba0195`; tested `37c144b1` | [44508278589](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44508278589), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-create-effects-1-review.md) |
 | Animal end/release effects [WILDLIFE-RELEASE-EFFECTS-1](tasks/wildlife-release-effects-1.md) | LOCAL REVIEW APPROVED; P3 closed, CI pending | `901a8467f766825ae9683cb41dee33522a9aff39`; tested `33fe219c` | [44511432981](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44511432981), pending | [Review](reviews/2026-11-19-wildlife-release-effects-1-review.md) |
-| Animal species source [WILDLIFE-SPECIES-LOAD-1](tasks/wildlife-species-load-1.md) | RELEASED; source ring to owned selection plan | Corrected locally reviewed base `901a8467` | Existing selector unchanged; no coordinate/World integration | Direct reportback to Mac orchestrator |
+| Animal species source [WILDLIFE-SPECIES-LOAD-1](tasks/wildlife-species-load-1.md) | LOCAL REVIEW APPROVED; CI pending | `f5f1c9fa7f0eca4d6263147797022ff1c5e6d771`; tested `4acf5545` | [44515114872](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44515114872), pending | [Review](reviews/2026-11-19-wildlife-species-load-1-review.md) |
+| Wildlife chunk planning [WILDLIFE-CHUNK-PLAN-1](tasks/wildlife-chunk-plan-1.md) | RELEASED; locally reviewed stacked continuation | Base `f5f1c9fa7f0eca4d6263147797022ff1c5e6d771` | Owned pre-materialization record phase; no World/identity change | Direct reportback to Mac orchestrator |
 | Windows dual-edition navigation [WIN-NAV-EDITIONS-1](tasks/windows-nav-editions-1.md) | Owner-requested HANDOFF READY; Windows intake pending | Accepted diagnosis `74d50bfe`, production base `889143ba` | GOG and HE verification requested; no repair released | Owner forwards to Windows orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
@@ -1232,3 +1233,27 @@ unknown refusal and full ring order/draws remain unchanged. No new owner policy,
 packet acceptance or code review is implied.
 [Focused primary review](reviews/2026-11-19-wildlife-species-ware-review.md).
 Executor continues its existing task and returns the frozen result here.
+
+## Species approved; ordered chunk planning released
+
+SPECIES-LOAD f5f1c9fa is independently locally APPROVED by both reviewers. They
+re-derived the original 32-slot row and five selection outcomes, including the
+unsupported predator entry. Root verified all 178 closeout hashes; Debug and
+ASan/UBSan each have 29 unique passes, with five actual mutations caught. Climate-2
+selection is proved; other climates and live spawning are not claimed.
+
+CREATE-EFFECTS 25bab774 is now ACCEPTED: all 12 exact-head jobs in CI44508278589
+are successful. Corrected RELEASE-EFFECTS 901a8467 and SPECIES f5f1c9fa still await
+hosted CI (44511432981 and 44515114872). Their local approvals are not silently
+promoted. No local gate was repeated.
+
+WILDLIFE-CHUNK-PLAN-1 is independently scope-approved and RELEASED on locally
+reviewed f5f1c9fa. Implement one owned chunk's ordered retention, recycling,
+candidate collision/replenishment and cleanup before materialization. Supplied
+habitat and normal-success allocation are explicit assumptions. Full-list controls
+must distinguish collision on an unoccupied record, reverse recycling, prepend
+order and timestamp writes. Exhaustion remains noncommittable, not rollback or
+success. No World/default/state/identity/global-PRNG change and no bypass of
+Windows navigation or raster decisions. Executor pushes only its own branch and
+reports directly here for review and continuation. Main and shared boards remain
+untouched.

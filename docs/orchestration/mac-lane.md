@@ -68,7 +68,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife final tile facts [WILDLIFE-FINAL-FACTS-1](tasks/wildlife-final-facts-1.md) | LOCAL REVIEW APPROVED; exact-head CI FAIL, coordinator READY assertion | `454bc2ea96e58481d3b3b48875ef04a5f64ee449`; tested `39a5c67f` | [44533934657](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44533934657), 10 success; MSVC test and aggregate failed | [Review](reviews/2026-11-19-wildlife-final-facts-1-review.md) |
 | Wildlife habitat source [WILDLIFE-HABITAT-LOAD-1](tasks/wildlife-habitat-load-1.md) | ACCEPTED bounded source composition; landing pending | `ee67516642de3a9ff6ac1e0986f1a17c1be2ad41`; tested `5244e570` | [44538298514](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44538298514), all12 successful | [Review](reviews/2026-11-19-wildlife-habitat-load-1-review.md) |
 | Wildlife imported composition [WILDLIFE-IMPORT-PLAN-1](tasks/wildlife-import-plan-1.md) | LOCAL REVIEW APPROVED after docs correction; CI pending | `1f8d45a2c8c053ff6ddbb0b71ee9e7e891bde7bf`; tested `39b49ddc` | [44546983978](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44546983978), in progress | [Review](reviews/2026-11-19-wildlife-import-plan-1-review.md) |
-| Wildlife ordinary geometry [WILDLIFE-ORDINARY-GEOMETRY-1](tasks/wildlife-ordinary-geometry-1.md) | RELEASED; research/reference only | Base `1f8d45a2c8c053ff6ddbb0b71ee9e7e891bde7bf` | No production FP or World change | Direct reportback to Mac orchestrator |
+| Wildlife ordinary geometry [WILDLIFE-ORDINARY-GEOMETRY-1](tasks/wildlife-ordinary-geometry-1.md) | LOCAL REVIEW APPROVED after focused reference correction; CI pending | `7c91bd125cda8e1b6b43cac22688638062ea7b29`; tested `9eab0e52` | [44551404586](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44551404586), in progress | [Review](reviews/2026-11-19-wildlife-ordinary-geometry-1-review.md) |
+| Wildlife ordinary projection [WILDLIFE-ORDINARY-PROJECT-1](tasks/wildlife-ordinary-project-1.md) | RELEASED; conditional owned adapter only | Base `7c91bd125cda8e1b6b43cac22688638062ea7b29` | No native FP-policy or World change | Direct reportback to Mac orchestrator |
 | Windows dual-edition navigation [WIN-NAV-EDITIONS-1](tasks/windows-nav-editions-1.md) | Owner-requested HANDOFF READY; Windows intake pending | Accepted diagnosis `74d50bfe`, production base `889143ba` | GOG and HE verification requested; no repair released | Owner forwards to Windows orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
@@ -1391,3 +1392,23 @@ conditional numeric inputs/outputs and independently derived examples. No produc
 code, native FP-policy choice, World/default/identity/PRNG or other-lane change.
 Executor ordinary-pushes its own task branch and reports directly here. Main and
 shared TASKS/STATUS remain untouched.
+
+## Ordinary geometry corrected; owned projection released
+
+ORDINARY-GEOMETRY7c91bd12 is independently locally APPROVED. Primary review verified
+the original height receiver, triangle schedules and numeric qualification. Evidence
+review found a P2: all original height vectors used one callback profile, and omitted
+left spill also passed. Four hand-derived additions and three targeted actual-source
+mutants now distinguish callback RC, PC and the spill. Each wrong version passes old25
+and fails exactly its intended assertion among corrected29. Only two canonical checks
+were rerun, both pass. All33 original and23 correction receipts are preserved/verified.
+Two P3 address/comparison wording corrections are docs only. Exact CI44551404586 is
+pending; IMPORT1f8d45a2 CI44546983978 also remains pending at last check.
+
+WILDLIFE-ORDINARY-PROJECT-1 is independently scope-approved and RELEASED on7c91bd12.
+Build the bounded portable numeric path, bind actual prepared interior corners and
+compose owned words with creation-effects under explicit numeric/manager context.
+No native FP policy, live World, state/default/identity/PRNG or other-lane changes.
+Four-hour checkpoint; exact limitations replace any simplified arithmetic shortcut.
+Executor pushes only its task branch and reports directly here for review. Main and
+shared TASKS/STATUS stay untouched; no unrelated gate or coordinator repair.

@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string>
 #include <vector>
 
 #include <anno/formats/bytes.hpp>
@@ -63,5 +64,23 @@ struct WalkTables {
 };
 
 Result<WalkTables, WalkTablesError> read_walk_tables(Bytes dll);
+
+// Welt 0x10084670–0x10084698: selected 5x5 kernel; seven evidenced selectors,
+// NOT the table's total extent or an engine-wide climate limit.
+inline constexpr std::uint32_t kRvaGroundKernel = 0xca008;
+inline constexpr std::uint32_t kGroundKernelSelectors = 7;
+inline constexpr std::size_t kGroundKernelBytes = 25;
+struct GroundKernel {
+    std::uint32_t selector = 0, rva = 0;
+    std::uint64_t raw_offset = 0;
+    std::uint32_t time_date_stamp = 0, size_of_image = 0, image_base = 0;
+    std::array<std::uint8_t, kGroundKernelBytes> weights{};
+    std::string source_sha256;
+};
+// UNWIRED supplied-image data read, no loading/relocation/execution. Matching
+// metadata establishes layout only; SHA identifies bytes, not authenticity or
+// original city/INFO provenance. Validates a unique readable/non-writable fully
+// file-backed window, then owns all returned data; input need not outlive call.
+Result<GroundKernel, std::string> read_ground_kernel(Bytes dll, std::uint32_t selector);
 
 } // namespace anno::formats::annowelt

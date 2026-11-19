@@ -28,6 +28,7 @@ if(ANNO_BUILD_TESTS)
   add_executable(anno_formats_tests
     tests/main.cpp
     tests/annowelt_test.cpp
+    tests/annowelt_kernel_test.cpp
     tests/bigbrother_test.cpp
     tests/bigbrother_corpus_test.cpp
     tests/chunk_test.cpp

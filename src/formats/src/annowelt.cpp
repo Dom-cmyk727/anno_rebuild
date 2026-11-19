@@ -1,6 +1,7 @@
 #include <utility>
 
 #include <anno/formats/annowelt.hpp>
+#include <anno/formats/sha256.hpp>
 
 #include "pe_table_view.hpp"
 
@@ -74,6 +75,32 @@ Result<WalkTables, WalkTablesError> read_walk_tables(Bytes dll) {
             out.goal_order[r][k] = e;
         }
     }
+    return out;
+}
+
+Result<GroundKernel, std::string> read_ground_kernel(Bytes dll, std::uint32_t selector) {
+    const auto parsed = pe_tables_detail::read(dll, kGogTimeDateStamp, kGogSizeOfImage);
+    if (!parsed)
+        return std::string("ground kernel: ") + error_message(parsed.error());
+    const auto& image = parsed.value();
+    if (image.machine != 0x14c || image.base != 0x10000000)
+        return std::string("ground kernel: unsupported image identity");
+    if (selector >= kGroundKernelSelectors)
+        return std::string("ground kernel: unsupported selector");
+    const auto rva = kRvaGroundKernel + selector * static_cast<std::uint32_t>(kGroundKernelBytes);
+    const auto at = image.readonly_offset(rva, kGroundKernelBytes);
+    if (!at)
+        return std::string("ground kernel: ") + at.error();
+    GroundKernel out;
+    out.selector = selector;
+    out.rva = rva;
+    out.raw_offset = at.value();
+    out.time_date_stamp = image.stamp;
+    out.size_of_image = image.size;
+    out.image_base = image.base;
+    for (std::size_t i = 0; i < kGroundKernelBytes; ++i)
+        out.weights[i] = dll[at.value() + i];
+    out.source_sha256 = sha256_hex(dll);
     return out;
 }
 

@@ -17,6 +17,7 @@ struct Section {
     std::uint32_t va = 0;
     std::uint32_t raw_size = 0;
     std::uint32_t raw_ptr = 0;
+    std::uint32_t virtual_size = 0, characteristics = 0;
 };
 
 inline bool starts_pe(Bytes dll, std::size_t at) {
@@ -51,6 +52,38 @@ struct Image {
         if (rva > size || n > std::uint64_t{size} - rva)
             return WalkTablesError::RvaOutsideSection;
         return file_offset(bytes, sections, rva, n);
+    }
+    // Additive strict selected-data query. Legacy offset()/error ordering above
+    // deliberately stay unchanged for existing AnnoWelt/AnnoGame consumers.
+    Result<std::size_t, std::string> readonly_offset(std::uint32_t rva, std::size_t n) const {
+        if (n == 0 || rva > size || n > std::uint64_t{size} - rva)
+            return std::string("window outside image");
+        const auto end = std::uint64_t{rva} + n;
+        const Section* selected = nullptr;
+        for (const auto& s : sections) {
+            // Conservative ambiguity envelope, not a Windows loader emulator.
+            const auto extent = s.virtual_size > s.raw_size ? s.virtual_size : s.raw_size;
+            const auto section_end = std::uint64_t{s.va} + extent;
+            if (extent != 0 && s.va < end && rva < section_end) {
+                if (selected)
+                    return std::string("ambiguous section coverage");
+                selected = &s;
+            }
+        }
+        if (!selected)
+            return std::string("window outside section");
+        const auto& s = *selected;
+        const auto extent = s.virtual_size > s.raw_size ? s.virtual_size : s.raw_size;
+        if (std::uint64_t{s.va} + extent > size || rva < s.va)
+            return std::string("invalid section extent");
+        const auto rel = std::uint64_t{rva} - s.va;
+        if (rel + n > s.virtual_size || rel + n > s.raw_size)
+            return std::string("window not fully initialized and file-backed");
+        if (std::uint64_t{s.raw_ptr} + s.raw_size > bytes.size())
+            return std::string("truncated backing section");
+        if ((s.characteristics & 0x40000000U) == 0 || (s.characteristics & 0x80000000U) != 0)
+            return std::string("section must be readable and non-writable");
+        return static_cast<std::size_t>(std::uint64_t{s.raw_ptr} + rel);
     }
 };
 inline Result<Image, WalkTablesError> read(Bytes dll, std::uint32_t expected_stamp,
@@ -94,6 +127,8 @@ inline Result<Image, WalkTablesError> read(Bytes dll, std::uint32_t expected_sta
         s.va = u32_le(dll, off + 0x0c);
         s.raw_size = u32_le(dll, off + 0x10);
         s.raw_ptr = u32_le(dll, off + 0x14);
+        s.virtual_size = u32_le(dll, off + 8);
+        s.characteristics = u32_le(dll, off + 0x24);
         secs.push_back(s);
     }
 

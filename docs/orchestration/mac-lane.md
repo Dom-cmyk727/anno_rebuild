@@ -47,9 +47,10 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife graphics leaf [WILDLIFE-GFX-FINALIZE-1](tasks/wildlife-gfx-finalize-1.md) | ACCEPTED; isolated UNWIRED graphics leaf | `ad2a1a23bbc4fe877c18f0e7bf8f4ce0180270b5`; source `e9256f22` | [44449632964](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44449632964), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-gfx-finalize-1-review.md) |
 | Wildlife catalogue inputs [WILDLIFE-POSTLOAD-INPUTS-1](tasks/wildlife-postload-inputs-1.md) | ACCEPTED; bounded first-call input contract | `263958edb83daa290aeb674f5b2b30c0655c5bb4`; research source `625db996` | [44452465008](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44452465008), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-postload-inputs-1-review.md) |
 | Wildlife first-call fill [WILDLIFE-POSTLOAD-FILL-1](tasks/wildlife-postload-fill-1.md) | ACCEPTED; isolated UNWIRED fill; evidence prose corrected in NAV-INPUTS | `889143ba1485a2fed72c03bd648c9c39878c4f06`; source `db2240a6` | [44456284511](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44456284511), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-postload-fill-1-review.md) |
-| Wildlife navigation inputs [WILDLIFE-NAV-INPUTS-1](tasks/wildlife-nav-inputs-1.md) | LOCAL REVIEW APPROVED; production compatibility decision pending | `74d50bfeedf1a48ab7e140cc66e36859e0d0a9c3`; production base `889143ba` | [44458725953](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44458725953), in progress | [Review](reviews/2026-11-19-wildlife-nav-inputs-1-review.md) |
+| Wildlife navigation inputs [WILDLIFE-NAV-INPUTS-1](tasks/wildlife-nav-inputs-1.md) | ACCEPTED research; production compatibility decision pending | `74d50bfeedf1a48ab7e140cc66e36859e0d0a9c3`; production base `889143ba` | [44458725953](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44458725953), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-nav-inputs-1-review.md) |
 | Wildlife secondary raster [WILDLIFE-RASTER-CONTRACT-1](tasks/wildlife-raster-contract-1.md) | LOCAL REVIEW APPROVED; numeric runtime qualification remains | `8217e1879aead7fa3b451c155b060f0a05405874`; production base `889143ba` | [44461780207](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44461780207), in progress | [Review](reviews/2026-11-19-wildlife-raster-contract-1-review.md) |
-| Wildlife load-thread numerics [WILDLIFE-RASTER-FP-1](tasks/wildlife-raster-fp-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `8217e187` | Not started; bounded caller contract/capture card | Frozen reportback directly to Mac orchestrator |
+| Wildlife load-thread numerics [WILDLIFE-RASTER-FP-1](tasks/wildlife-raster-fp-1.md) | LOCAL REVIEW APPROVED; precise Windows capture pending | `aec8bcc8fc1a35230dffba91c8e8b34c35f31bf3`; production base `889143ba` | [44464134541](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44464134541), in progress | [Review and Windows intake](reviews/2026-11-19-wildlife-raster-fp-1-review.md) |
+| Wildlife ground preparation [WILDLIFE-PREPROCESS-CONTRACT-1](tasks/wildlife-preprocess-contract-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `aec8bcc8` | Not started; c2-zero contract, not a Tutorial prerequisite | Frozen reportback directly to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -920,3 +921,27 @@ control-word changes. If static closure reaches a genuine external/thread edge,
 stop with a precise Windows capture card rather than guessing or repeating the
 same research. No production port, route correction, compatibility allocation
 or World publication. Executor reports directly here for review and next release.
+
+
+## Latest dispatch — numeric research reviewed; ground preparation released
+
+RASTER-FP `aec8bcc8` is independently locally APPROVED. 31 manifest receipts
+and 18 published rows verified. Prior 31 controls and 19 sensitivity checks
+pass, with independently derived differences. Actual table-init and callback
+profiles remain unobserved; the precise Windows capture card is ready at
+`docs/testing/wildlife-raster-fp-capture.md` on that task head. It needs Windows
+orchestrator scheduling, not another Mac static campaign. No Windows execution
+is claimed. RASTER-CONTRACT and RASTER-FP exact CI remain in progress.
+
+NAV-INPUTS `74d50bfe` is now ACCEPTED within its diagnosis scope, with all 12
+CI44458725953 jobs green at the reviewed head. The pending owner production
+correction/compatibility decision is unchanged; acceptance does not allocate an
+identity or release that repair. Terminal receipt appended to its review.
+
+[WILDLIFE-PREPROCESS-CONTRACT-1](tasks/wildlife-preprocess-contract-1.md) is
+RELEASED after independent scope review. Resolve c2-zero metadata/kernel inputs,
+exact writes and scratch initialization/lifetime. This broadens initialization
+support while capture is pending; the selected Tutorial has completed FRUCHTBAR
+and already skips this branch. Do not make it a new Tutorial prerequisite.
+Executor ordinary-pushes its task branch and reports directly here for review
+and the next bounded task. Main, runtime behavior and other lanes untouched.

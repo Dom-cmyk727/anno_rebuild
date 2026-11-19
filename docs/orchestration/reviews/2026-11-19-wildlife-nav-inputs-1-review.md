@@ -51,3 +51,13 @@ producer, exact update and consumer/publication contract. This independent
 research can proceed while the owner decision is pending. Fill/graphics remain
 unwired; complete postload, live wildlife and hunting remain future integration.
 Executor reports directly here for review and next dispatch. Main untouched.
+
+## Terminal CI and acceptance
+
+NAV-INPUTS `74d50bfeedf1a48ab7e140cc66e36859e0d0a9c3` is now **ACCEPTED**
+within its research/reproduction scope. CI 44458725953 has all 12 jobs successful
+at that exact head, including all five C++ jobs and the aggregate gate. Hosted
+jobs receipt SHA-256:
+`68abe5d9dea8a2e213ba9612c07036cb0644bdf316a1f19a53cdb14f52a2f261`.
+No local gate repeated. This accepts the diagnosis, not a production correction
+or compatibility policy; those remain pending the owner/Windows coordination.

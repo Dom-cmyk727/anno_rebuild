@@ -41,7 +41,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife ANBAU header [WILDLIFE-ANBAU-1](tasks/wildlife-anbau-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `02111ea2139cfddf1e4018bcc229fd55d918056e`; source `d645071a` | [44436355753](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44436355753), in progress | [Review](reviews/2026-11-19-wildlife-anbau-1-review.md) |
 | Wildlife DISCOVER header [WILDLIFE-DISCOVER-1](tasks/wildlife-discover-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `8d97b6956189faf9483f6d9944b42676362d1c7d`; source `ddab0993` | [44438472504](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44438472504), in progress | [Review](reviews/2026-11-19-wildlife-discover-1-review.md) |
 | Wildlife KONTORID header [WILDLIFE-KONTORID-1](tasks/wildlife-kontorid-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `eaa61980162b1552eb7acee1553ce11fb7a8869c`; source `c199cf1f` | [44439685272](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44439685272), in progress | [Review](reviews/2026-11-19-wildlife-kontorid-1-review.md) |
-| Wildlife PROD2 boundary [WILDLIFE-PROD2-1](tasks/wildlife-prod2-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `eaa61980` | Not started | Frozen reportback directly to Mac orchestrator |
+| Wildlife PROD2 boundary [WILDLIFE-PROD2-1](tasks/wildlife-prod2-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `d7a21ac4a41975e5dd3a2afba8af84a430ed4e17`; source `8d65f385` | [44441246351](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44441246351), in progress | [Review](reviews/2026-11-19-wildlife-prod2-1-review.md) |
+| Wildlife EVENTINSEL boundary [WILDLIFE-EVENTINSEL-1](tasks/wildlife-eventinsel-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `d7a21ac4` | Not started | Frozen reportback directly to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -744,3 +745,19 @@ only that path, explicitly stop at unsupported nonempty records and continue onc
 Do not reuse GELAENDE admission/epilogue or claim full building import. No World/
 native/tag/default/other-lane changes. Executor ordinary-pushes the task branch
 and reports directly here for review/next release. Main untouched.
+
+## Latest dispatch — PROD2 reviewed; EVENTINSEL released
+
+PROD2d7a21ac4/source8d65f385 is independently locally APPROVED, no findings.
+42 hashes and unchanged fixtures verified. Retained Debug22+4required,
+ASan22+4required and original1 pass. No gates repeated. Sixteen empty blocks
+now reach HIRSCH71:156 owned spawn records, checked fields/draws/chunk links,
+4745supplied draws total; NOT live animals.72headers complete, then EVENTINSEL72.
+Exact CI44441246351 and ANBAU/DISCOVER/KONTORID remain pending at this check.
+
+[WILDLIFE-EVENTINSEL-1](tasks/wildlife-eventinsel-1.md) is RELEASED after independent
+scope review. Trace actual container delegation and empty-path effects; do not
+assume empty means inert. Project only proved local behavior and continue once to
+next boundary or local-island end. No global/script/World/native/tag/default or
+live-wildlife integration. Executor ordinary-pushes its task branch and reports
+directly here for review and next release. Main untouched.

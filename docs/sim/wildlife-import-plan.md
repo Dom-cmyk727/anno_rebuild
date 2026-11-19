@@ -74,7 +74,9 @@ Chronological global represented-node tokens: first spawns 0,1; resource nodes
 Mixed target head order [7,6,2,1,0], categories [0,6,1,0,0]; spawn subsequence
 [7,1,0], resource subsequence [6,2]. Context flags 0x8000 yield flags 0x8043.
 Prefix has 99 resource draws plus one first-spawn jitter, imported-prefix 100;
-loaded first timestamp 8, others 1, mode 1 preserves authored saved goods (0/137/0).
+loaded first timestamp 8, others 1. Raw authored goods are 0/137/0; mode 1
+replaces each with effective saved goods 255 (AnnoWelt 0x100947d3–0x100947ef).
+Mode 0 preserves the raw authored goods.
 
 Maintenance at authored time 10000 retains two imported spawns, recycles 7,
 keeps resources, desired 5 from 16 candidates. Draws [0,1,0,0,0,999] collide at

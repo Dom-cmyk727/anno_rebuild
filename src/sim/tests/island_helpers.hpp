@@ -222,7 +222,7 @@ inline std::vector<std::uint8_t> with_island_table(const sim::World& w,
     REQUIRE(from != std::string::npos);
     REQUIRE(to != std::string::npos);
     std::vector<std::uint8_t> out(flat.begin(), flat.begin() + static_cast<std::ptrdiff_t>(from));
-    const std::array<std::uint8_t, 4> version{1, 0, 0, 0};
+    const std::array<std::uint8_t, 4> version{2, 0, 0, 0}; // islands base 2 (ISLAND-CROPS-1)
     const std::array<std::uint8_t, 8> extensions{};
     out.insert(out.end(), version.begin(), version.end());
     out.insert(out.end(), table.begin(), table.end());

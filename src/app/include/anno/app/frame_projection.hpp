@@ -33,6 +33,12 @@ class FrameProjection final : public ScreenProjection {
     const OpeningView* drawn_;
 };
 
+/// What drawable pixel (`px`, `py`) of `frame` is over: the ground tile, or the sea point and the
+/// tile under it at sea level (FrameProjection::pick; UI-STATUS-1 B: the status bar's cursor tile).
+/// nullopt off the drawable or without a scene.
+[[nodiscard]] std::optional<PickedPoint> pick_point(const PointerFrame& frame, double px,
+                                                    double py);
+
 /// The pixel (drawable) at which a world point on the sea surface is drawn in `frame`: the forward
 /// rule of the pick at sea level (the inverse of FrameProjection::pick's sea point). Tests and the
 /// scripted session use it to aim at a point of the sea.

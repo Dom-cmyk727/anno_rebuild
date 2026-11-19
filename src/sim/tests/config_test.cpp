@@ -189,6 +189,14 @@ void expected_config(Stream& s) {
         s.str(n);
     s.u32(3);
     s.u32(2000);
+    // ISLAND-CROPS-1 (header base 2): CropTables, hand-written defaults (AnnoWelt 0x10089933,
+    // 0x1008cbdf, 0x10089897, 0x100898dc/0x1008992c, 0x10089954)
+    s.u32(0x38);                                  // mask_first_goods
+    s.u32(32);                                    // mask_bits
+    s.u32s({0x38, 0x3b, 0x44, 0x45, 0x46, 0x47}); // base_goods (0xF009)
+    s.u32(0x38);                                  // anbau_first_goods
+    s.u32(0x44);                                  // anbau_last_goods
+    s.u32(13);                                    // anbau_name_cap
     // Rules
     s.u8(0); // slot_policy
     s.u8(0); // spatial_order
@@ -393,6 +401,7 @@ std::vector<std::pair<const char*, ConfigMut>> config_mutations() {
     m.emplace_back("resident_cargo_slots", [](sim::SimConfig& c) { c.resident_cargo_slots += 1; });
     m.emplace_back("house_type_stride", [](sim::SimConfig& c) { c.house_type_stride += 1; });
     m.emplace_back("economy", [](sim::SimConfig& c) { c.economy.tax_count += 1; });
+    m.emplace_back("crops", [](sim::SimConfig& c) { c.crops.anbau_name_cap += 1; });
     return m;
 }
 
@@ -723,8 +732,14 @@ TEST_CASE("sim config defaults are the originals") {
     CHECK(c.links.rounds == 25);
     CHECK(c.billed_goods_first == 0x1a); // D 0x1002dac0: the billed consumer-goods range
     CHECK(c.billed_goods_last == 0x28);
-    CHECK(c.resident_cargo_slots == 3); // D 0x10057d70: cargo slots 0..2
-    CHECK(c.house_type_stride == 20);   // D 0x1002cc22: div 0x14
+    CHECK(c.resident_cargo_slots == 3);      // D 0x10057d70: cargo slots 0..2
+    CHECK(c.house_type_stride == 20);        // D 0x1002cc22: div 0x14
+    CHECK(c.crops.mask_first_goods == 0x38); // D AnnoWelt 0x10089933
+    CHECK(c.crops.mask_bits == 32);          // the dword +0xac (0x1008cbdf)
+    CHECK(c.crops.base_goods == std::vector<std::uint32_t>{0x38, 0x3b, 0x44, 0x45, 0x46, 0x47});
+    CHECK(c.crops.anbau_first_goods == 0x38); // D 0x100898dc
+    CHECK(c.crops.anbau_last_goods == 0x44);  // D 0x1008992c
+    CHECK(c.crops.anbau_name_cap == 13);      // D 0x10089954
     CHECK(c.validate().empty());
     // kOriginalWarehouseGoods and the city pass count the Seams default uses.
     CHECK(sim::kOriginalCityPassCount == 8);
@@ -732,7 +747,7 @@ TEST_CASE("sim config defaults are the originals") {
 }
 
 TEST_CASE("config digest changes with every field") {
-    static_assert(sim::field_count<sim::SimConfig>() == 61);
+    static_assert(sim::field_count<sim::SimConfig>() == 62);
     const sim::SimConfig base;
     const std::uint64_t base_digest = base.digest();
     CHECK(sim::SimConfig{}.digest() == base_digest);
@@ -1542,7 +1557,7 @@ TEST_CASE("state stream header and settings scopes") {
     // registry of one empty slot), events (count 0) and timers_monopoly (5 stopped
     // timers, 28 empty monopoly entries).
     Stream expected;
-    expected.u32(1); // header base version
+    expected.u32(2); // header base version (2 since ISLAND-CROPS-1: SimConfig::crops)
     expected.u32(sim::kStateHashVersion);
     expected.u64(0x00314b424e4f4345ULL); // ECONBK1 lineage schema
     expected.u32(sim::kPrngTimelineVersion);
@@ -1582,7 +1597,7 @@ TEST_CASE("state stream header and settings scopes") {
     expected.u16(0);                     // stamp
     expected.u32(0);                     // cursor
     expected.u64(0);                     // previous section: no extensions
-    expected.u32(1);                     // next section base version
+    expected.u32(2);                     // next section base version (islands 2)
     expected.u64(0);                     // islands: slot count
     expected.u64(0);                     // previous section: no extensions
     expected.u32(1);                     // next section base version
@@ -2219,4 +2234,36 @@ TEST_CASE("cargo rules: invalid tables are refused with their own diagnostic") {
     auto made = sim::World::create(bad_spec, sim::TypeRegistry::empty(), {}, r);
     REQUIRE_FALSE(made.ok());
     CHECK(made.error().find("dock_half_widths") != std::string::npos);
+}
+
+TEST_CASE("crop tables: validation and the constructor value (ISLAND-CROPS-1)") {
+    const sim::CropTables t;
+    CHECK(t.validate().empty());
+    // The constructor value 0xFFFFFFFF (AnnoWelt 0x1008cbdf): every goods id of the mask.
+    const std::vector<std::uint32_t> all = t.constructor_goods();
+    REQUIRE(all.size() == 32);
+    CHECK(all.front() == 0x38);
+    CHECK(all.back() == 0x57);
+    CHECK(t.in_mask(0x38));
+    CHECK(t.in_mask(0x57));
+    CHECK_FALSE(t.in_mask(0x37));
+    CHECK_FALSE(t.in_mask(0x58));
+    const auto refused = [](void (*mutate)(sim::SimConfig&), const std::string& field) {
+        sim::SimConfig c;
+        mutate(c);
+        const std::string e = c.validate();
+        INFO(e);
+        CHECK(e.find(field) != std::string::npos);
+    };
+    refused([](sim::SimConfig& c) { c.crops.mask_bits = 0; }, "crops.mask_bits");
+    refused([](sim::SimConfig& c) { c.crops.mask_bits = 33; }, "crops.mask_bits");
+    refused([](sim::SimConfig& c) { c.crops.mask_first_goods = 0xFFFFFFF0U; },
+            "crops.mask_first_goods");
+    refused([](sim::SimConfig& c) { c.crops.base_goods = {0x3b, 0x38}; }, "crops.base_goods");
+    refused([](sim::SimConfig& c) { c.crops.base_goods = {0x58}; }, "crops.base_goods");
+    refused([](sim::SimConfig& c) { c.crops.anbau_last_goods = 0x37; }, "crops.anbau_first_goods");
+    refused([](sim::SimConfig& c) { c.crops.anbau_last_goods = 0x58; }, "crops.anbau_first_goods");
+    refused([](sim::SimConfig& c) { c.crops.anbau_name_cap = 0; }, "crops.anbau_name_cap");
+    // A raw mark k is bit k of the mask (AnnoScene 0x100085bb): raw_kinds fits mask_bits.
+    refused([](sim::SimConfig& c) { c.crops.mask_bits = 19; }, "links.raw_kinds");
 }

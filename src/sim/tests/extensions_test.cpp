@@ -302,8 +302,10 @@ TEST_CASE("extensions schema: production lists are sorted unique and exclude the
     static_assert(schema[1].tag == 0xf001);
     static_assert(schema[1].name == "synthetic_extension");
     CHECK(sim::kStateHashVersion == 139);
+    // Header and islands are base 2 since ISLAND-CROPS-1 1b (world_state_test lists all ten).
     for (const auto& section : sim::kSectionVersions)
-        CHECK(section.version == 1);
+        CHECK(section.version ==
+              ((section.name == "header" || section.name == "islands") ? 2U : 1U));
     CHECK(sim::kKnownExtensions[0].name == "fisher_rules");
 }
 

@@ -92,9 +92,9 @@ class ConstructionMenu {
     [[nodiscard]] const HudLayout& hud() const { return *hud_; }
     [[nodiscard]] const ConstructionLayout& construction() const { return *construction_; }
 
-    /// The category-column tab at (`px`,`py`), or nullopt outside every tab's band. A tab's band
-    /// is its `y` field +/- half the column gadget's 46 px height (docs/re/ui.md section 2.4:
-    /// "category_column (779, click_y-23) 42 x 46" - `y` is that rectangle's vertical centre).
+    /// The category-column tab at (`px`,`py`), or nullopt outside every tab. A tab is its
+    /// category's own gadget rectangle, hud.txt `viewbautab_<index - 1>` (UI-BUILDCAT-1,
+    /// construction_category_tab; docs/re/ui.md section 2.4: x 762, y 303 + 46k, 42 x 46).
     [[nodiscard]] std::optional<std::string> category_at(double px, double py) const;
 
     /// The grid cell at (`px`,`py`) of the construction grid (construction.txt's own `grid`

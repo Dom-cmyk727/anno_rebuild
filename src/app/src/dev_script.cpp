@@ -260,7 +260,8 @@ std::string outcome_text(const std::optional<CommandOutcome>& o) {
 /// The number of arguments each verb takes (a negative count: at least that many).
 int arity(const std::string& verb) {
     if (verb == "look" || verb == "pan" || verb == "lookw" || verb == "sail" || verb == "rdown" ||
-        verb == "rup" || verb == "click-land" || verb == "hover-land" || verb == "lpan") {
+        verb == "rup" || verb == "click-land" || verb == "hover-land" || verb == "hover-sea" ||
+        verb == "lpan") {
         return 2;
     }
     if (verb == "pick-ship" || verb == "lookship") {
@@ -285,7 +286,8 @@ int arity(const std::string& verb) {
         // checked in exec(), not here (arity only bounds the count, not which counts are valid).
         return -1;
     }
-    if (verb == "click" || verb == "click_px" || verb == "ldown_px" || verb == "rclick_px") {
+    if (verb == "click" || verb == "click_px" || verb == "ldown_px" || verb == "rclick_px" ||
+        verb == "hover_px") {
         return 2;
     }
     if (verb == "local") {
@@ -628,6 +630,15 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             push_motion(act.events, at, 0);
             push_button(act.events, at, SDL_BUTTON_LEFT, true);
             push_button(act.events, at, SDL_BUTTON_LEFT, false);
+        } else if (s.verb == "hover_px") {
+            // UI-STATUS-1 B: the pointer moves to a raw drawable pixel with no button (over chrome,
+            // the status bar keeps the last map tile, OQ-700).
+            const auto x = arg(0), y = arg(1);
+            if (!x || !y) {
+                fail(s, "not a pixel position");
+                break;
+            }
+            push_motion(act.events, {static_cast<float>(*x), static_cast<float>(*y)}, 0);
         } else if (s.verb == "ldown_px" || s.verb == "ldrag_px") {
             // UI-WINDOW-1 fix round R1: a left press at a drawable pixel with no release
             // (`ldown_px`, a release lost outside the window), or a press, a motion with the button
@@ -691,7 +702,7 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             act.look_world =
                 std::pair{std::atof(x->second.c_str()) + 0.5, std::atof(y->second.c_str()) + 0.5};
         } else if (s.verb == "sail" || s.verb == "rdown" || s.verb == "rup" ||
-                   s.verb == "click-land" || s.verb == "hover-land") {
+                   s.verb == "click-land" || s.verb == "hover-land" || s.verb == "hover-sea") {
             const auto t = tile_arg(0);
             std::optional<std::pair<double, double>> px;
             if (t && st.frame != nullptr) {

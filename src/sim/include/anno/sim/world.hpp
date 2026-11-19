@@ -181,6 +181,8 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // Valid 134 to 138 native states and recordings remain historical and are refused.
 // Stream 139 (SAVE-SECTIONS-1a): ten section base versions 1 and empty extension
 // lists. The last global framing number; optional state uses §9.8 extension tags.
+// Section bases since 139: header 2 and islands 2 (ISLAND-CROPS-1 1b: SimConfig::crops, and
+// Island::crops after players_present; docs/sim/state.md §9.7).
 inline constexpr std::uint32_t kStateHashVersion = 139;
 
 /// Canonical top-level stream order (docs/sim/state.md §9.3, §9.7).
@@ -189,9 +191,9 @@ struct SectionVersion {
     std::uint32_t version;
 };
 inline constexpr std::array kSectionVersions{
-    SectionVersion{"header", 1},          SectionVersion{"clock_rng", 1},
+    SectionVersion{"header", 2},          SectionVersion{"clock_rng", 1},
     SectionVersion{"settings", 1},        SectionVersion{"ids", 1},
-    SectionVersion{"players", 1},         SectionVersion{"islands", 1},
+    SectionVersion{"players", 1},         SectionVersion{"islands", 2},
     SectionVersion{"figures", 1},         SectionVersion{"events", 1},
     SectionVersion{"timers_monopoly", 1}, SectionVersion{"script", 1}};
 

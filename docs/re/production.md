@@ -95,9 +95,11 @@ Results are stored with 16-bit moves, except the `T·128` values, which use 32-b
 | `[0x0a]` | u8 | `+0x7a` | rubble pattern (slot `+0x104`) |
 | `[0x10]` | u8 | `+0x66` | stage count `S` |
 | `[0x11]` | u8 | `+0x65` | action radius (market search radius, §3) |
+| `[0x14..0x17]` | f32 | `+0x08` | building height in world height units (slot `+0x58` = `0x10007d50`, `fld [ecx+8]`; loader `0x10009372`/`0x10009384`). Forester 1.0, sheep 1.5, grain 2.0, wine 2.4 (P). Read by the fertility indicator's anchor (`docs/re/ui.md` 4.1). |
 | `[0x18]` | u8 | `+0x6e` | shift `k` |
 | `[0x19]` | u8 | `+0x77` | fertility influence |
 | `[0x1c..0x1d]` | **u16** | `+0x12` | type flag word (`0x2000` coast, `0x1000` mountain, `0x4000` road/bridge; `0x100093bd`/`0x100093d7`, `movw`) |
+| `[0x1a]`, `[0x2a]`, `[0x28]`, `[0x26]` | u16 each | `+0x7e`, `+0x80`, `+0x82`, `+0x84` | object list, slot `+0xf8(i)` = `0x1000a4d0` (`word [+0x7e + 2i]`; loader `0x10009485`-`0x100094a6`). i = 2 (`[0x28]`) is the **crop object** a farm plants (801 → 104, 811 → 712, 822 → 716; 807, 809, 820 → 1; P). The fertility indicator reads it (`ui.md` 4.1). i = 3 (`[0x26]`) is a crop object's dry variant (712 → 714). |
 | `[0x2c..0x2d]` | u16 | `+0x70` | maximum hit points |
 | `[0x31]` | u8 | `+0x79` | can burn |
 
@@ -210,6 +212,13 @@ if ratio < 0x80 and no worker slot is set and 384 / rate0 >= raw / need0:
 
 Differences from the farm: input before capacity; "missing input" repeats after 45,000 ticks instead of 60,000; nothing is made while any trapper is out (the farm only stops for a single-worker farm); `max_figures` is not read: at most one trapper is out. Since `ratio < 0x80` with no trapper out means `raw < need0`, `raw / need0` is 0 there and the 384 test never fails in practice. 824: rate 26, need 25, 5 t (P).
 
+### 4.2b The placement fertility indicator: a reader of 4.3, not a production input (UI-PRODBAR-1, 2026-11-17)
+The bar over a farm's ghost (AnnoFrame `0x10047940`; `docs/re/ui.md` 4.1) is computed only in the build cursor's draw. It takes the type's crop object (HEAD u16 `[0x28]`) and the island's climate. It counts the tiles of a midpoint-circle disc of radius HEAD `[0x11]` around the footprint's centre cell(s), clamped to the island rectangle and without the footprint (N). A tile is good when two tests pass:
+- the crop test (island slot `+0x140` = `0x100817c0`; read in 4.3 on branch `task/UI-STATUS-1`, restated in `ui.md` 4.1 row (a)) does not answer "dry";
+- the island placement predicate (`AnnoWelt 0x1007c790`, flag word `0x29`: overlappable objects only (L, `ship-placement.md` §4), floor of the four-corner mean ≥ 32, the threshold being the runtime global 1.28f / 0.04f from `0x1007b340`/`0x1007b3a0`) accepts the crop object there.
+
+It shows frame trunc(10 · good / N) of figure 1557. Nothing stores the value (**D**: the counts are stack locals); no production tick reads it (**D** for the locals, **L**: no global xref was run). It predicts the share of tiles where a new field or tree would grow healthy. It is not the farm's output rate.
+
 ### 4.3 Growing fields and trees — island chunk scan `0x1008b5f0`
 Fields, forests and other `ROHSTWACHS`/`ROHSTDUERR` items are not buildings: they are tile objects in the island's 8-byte-per-tile grid (`+0x0c`: u16 object id at +0, phase byte at +3 = bits 0–5 counter, bit 6 parity, bit 7 kept). On every chunk visit (≥ every 2000 `t`, §1), for every tile whose object type has `P ≠ 0` (§2.3) (**confirmed**):
 
@@ -231,7 +240,7 @@ So an object advances to the next id after `S · 2^k` parity flips, i.e. after `
 
 (P) Ripe objects (713 `ROHSTOFF`, `WARE` = `GETREIDE`; 105, `WARE` = `BAUM`) are what the farm workers harvest (**likely**; harvest amount not traced, Open). `ROHSTDUERR` (714/715) is the drought variant (`k` = 0, `P` = 62 000) (P).
 
-**Fertility.** `0x10084370` rebuilds the island's fertility nibble grid (`+0x18`, low 4 bits, 0–10 — the `FRUCHTBAR` scale) from `Wachstum.dat`: per tile `p = Proz[GFXID >> 2]` (the `Wachstum.dat` table built by `AnnoGame` `0x10006a80` indexed by texture id and cell `u`, `v` — the `GFXID` bits without rotation; exposed as game property `0x2e`); if the tile holds a raw-material object (PRODTYPE 225–256) whose `HEAD[0x19]` value `v ≠ 0`, `p` is blended towards `v` (`(p + 3v)/4` if `p < v`, else `(v + 3p)/4`); then `b = (p + 5) / 10`, and the stored value is `min(10, Σ w·b / 12)` over a 5 × 5 neighbourhood with per-climate weights at `0x100ca008` (25 bytes per climate; climate byte at island `+0xc0`). **Confirmed** (code + table). Which code reads fertility for planting or growth is not traced (Open).
+**Fertility.** `0x10084370` rebuilds the island's fertility nibble grid (`+0x18`, low 4 bits, 0–10 — the `FRUCHTBAR` scale) from `Wachstum.dat`: per tile `p = Proz[GFXID >> 2]` (the `Wachstum.dat` table built by `AnnoGame` `0x10006a80` indexed by texture id and cell `u`, `v` — the `GFXID` bits without rotation; exposed as game property `0x2e`); if the tile holds a raw-material object (PRODTYPE 225–256) whose `HEAD[0x19]` value `v ≠ 0`, `p` is blended towards `v` (`(p + 3v)/4` if `p < v`, else `(v + 3p)/4`); then `b = (p + 5) / 10`, and the stored value is `min(10, Σ w·b / 12)` over a 5 × 5 neighbourhood with per-climate weights at `0x100ca008` (25 bytes per climate; climate byte at island `+0xc0`). **Confirmed** (code + table). Which code reads fertility for planting or growth is not traced (Open). **UI-STATUS-1 C (2026-11-17, corrected after the UI lane's check):** the reader is the crop test, island slot `+0x140` = `0x100817c0` (`ret 0xc`: x, y, crop object). v = nibble × 10; tile modifiers: well bit × 133/100 capped at 100, well + chunk drought flag (mask 0x2 at chunk `+4`, set at `0x1008b0cd`) × 2/3 then × 133/100 capped, drought only × 55/128 uncapped; v = 0 when the crop's HEAD[0x13] climate mask (slot `+0xd4`) lacks the island climate; **v halved when island property 11 (the `ANBAU` crop mask) lacks the crop bit** (`0x1008197f`-`0x10081997`); L = (v + 5)/10; answer = table `0x100c9c28` byte `[L][(y − y0) & 3][(x − x0) & 7]` == 0 ("1" on 32, 29, 26, 23, 20, 16, 13, 10, 7, 3, 0 of 32 cells for L = 0..10). **"1" = the crop is or becomes the dry variant** (ROHSTDUERR): 712 → 714 (S 5, k 0, P 62000) and 713 → 715 (S 1, P 0, never visited again; never harvested). Callers: placement (AnnoFrame `0x1004ab37`), AI (CompLogic `0x100353d6`), auto-plant `0x1002c6e1`, the drought tick `0x1008aeb0` (`0x1008b359`, `0x1008b462`; the "+2" at `0x1008b368` is the tile's object id + 2), a well change `0x100819f0`, EVENTINSEL `0x1008ae1e`. Recoveries: drought recedes (`0x1008b46c`-`0x1008b478`), a well change (`0x100819f0`), EVENTINSEL (`0x1008ad60`). The growth visit `0x1008b5f0` never calls the test: healthy crops grow at normal speed. **Confirmed** (code + table); the output loss of a farm with dead tiles (harvest cycle §4.5) is open, OQ-706. `docs/re/ui.md` 5.6 stage C.
 
 ### 4.4 Mine (`MINE`) — `0x1006def0` (read instruction by instruction 2026-10-18)
 Fields: `+0x18` output, `+0x1c` activity (u16), `+0x20` switched on, `+0x21` deep, `+0x24` deposit object. **Confirmed** (D, `tools/disasm.py`; the earlier decompile reading is replaced by this).
@@ -418,3 +427,21 @@ Read-only, Citizen single-player scenario, the copy through dgVoodoo2, driven by
 - `PROD3` bytes 0x42/0x43 (`+0x1fd`/`+0x1fc`); fill-level graphic stage (`+0x11c`) condition in the farm tick.
 - Kontor level ↔ city capacity (`+0x624`), and the second `t`-period (15000) island pass (slot `+0x194`).
 - `STEINBRUCH`/`EISLOCH` (base class, no own tick): where quarries produce (probably in the worker job).
+
+## HE comparison (RE-HE-PRODUCTION-1, 2026-11-17)
+The History Edition's production code was compared with this note function by function. The modules, method, labels and the full table are in `docs/re/forestry.md` §8. In short:
+- **Identical** (same logic, recompiled, D or S) in both HE modules: `AnnoWeltAddOn.dll` (x86) and the running `AnnoWelt.dll` (x64).
+  - The farm tick (§4.2, HE86 `0x1006c3e0`, HE64 `0x18007f580`), including its single world draw per eligible dispatch.
+  - The status helper (§4.1, `0x10070be0` / `0x1800847d0`).
+  - The small farm tick and line step (§4.5, `0x1006cd90` and `0x1006d030` / `0x180080280` and `0x1800800e0`), with the same kind and limit tables.
+  - The growth visit (§4.3, inlined in HE86's island update `0x10032870`, `0x18004e860` in HE64) and the island chunk scheduler (`/ 2000`, `/ 15000`).
+  - The send (§5.1, `0x1006fa10` with the entrance test inlined).
+  - The market cart's step A score, step B load and the farm-family remove (§5.2, `transport.md` §1).
+  - The `AnnoGame` building-type and figure-type getters (§2.5, §5.4).
+- **ISS-150 is in HE too:** the small farm's 75 000-tick "missing input" interval is compared signed against a 16-bit elapsed time in all three builds, so the message never comes due.
+- **Changed: the load-time conversion (§2.3, §8).** HE converts `PROD3` in SSE single precision (`AnnoGameAddOn` `0x10004111`-`0x10004209`, x64 `AnnoGame` `0x180002dab`-`0x180002e9e`): `divss`, `addss`, `mulss`, truncated with `cvttss2si`. GOG uses the x87 here and converts `need1` from `q1` stored as a float but `need0` from `q0` at full x87 precision. Over all 921 entries the integers differ only in `need1` of 1010 (HE 7, GOG 6) and 3979 (HE 4, GOG 3), the two entries OQ-032 names for 24-bit precision. Every other `rate`/`need`, and 801, 809 and 811, are equal.
+- **Data:** HE `Anlagen.addon` = GOG `Anlagen.dat` (sha256). The 801 and 809 gameplay records are equal in HE `Anlagen.dat` and `Anlagen.classic` too. In `.classic`, the potato field 709's gold cost differs (0 against 5).
+- **Small farm workers (§4.5):**
+  - Line 0's figure 106 runs the forester's route (job `0x2a`, `tRouteMaeher`) on `KARTOFFEL` fields (709 → 708). It has capacity 3 t and waits 7.0 per field, so it cuts up to three fields per trip.
+  - Line 1's animals 107, 109 and 110 run `tRouteWeide` (job `0x2e`), whose step B is the same cut on `GRAS`.
+  - Details are in `forestry.md` §8.5.

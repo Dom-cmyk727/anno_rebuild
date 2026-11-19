@@ -15,22 +15,16 @@ bool ConstructionMenu::inside(double px, double py, int x, int y, unsigned w, un
 }
 
 std::optional<std::string> ConstructionMenu::category_at(double px, double py) const {
-    // The column itself (ADR 0004 R1; docs/re/ui.md section 2.1/2.4): data/ui/hud.txt's own
-    // measured `viewbautab_0` rectangle ((779, 302) 42 x 46), not `click category_column_x`
-    // (that field is a click point for driving the Wine runner, not a rectangle - the same
-    // distinction the pickaxe/cancel-X comments below draw for their own hud.txt fields). The
-    // column x and height do not vary by category; only each tab's own `y` (construction.txt)
-    // does.
-    const auto* tab = hud_->element("viewbautab_0");
-    if (tab == nullptr || !tab->has_pos || !tab->has_size) {
-        return std::nullopt; // No measured rectangle: never guess one.
-    }
-    const double column_x = tab->pos_x, column_w = tab->size_w, half_height = tab->size_h / 2.0;
-    if (px < column_x || px >= column_x + column_w) {
-        return std::nullopt;
-    }
+    // UI-BUILDCAT-1 (OQ-714): each category's own tab gadget, hud.txt `viewbautab_<k>` (View.dll
+    // 0x1002bb4f, one 42 x 46 gadget per category; positions sprite-565 exact on the GOG shots:
+    // x 762..803, y 303 + 46k, docs/re/ui.md section 2.4). The gadget rectangle is the hit area,
+    // as for every other gadget: the column ends at x 803, so grid column 0 (x 808..857) is the
+    // grid's alone. Not `click category_column_x` or construction.txt's `y` (click points for
+    // driving the Wine runner, not rectangles). A category without a tab element is not
+    // clickable (never a guessed rectangle).
     for (const auto& cat : construction_->categories) {
-        if (py >= cat.y - half_height && py < cat.y + half_height) {
+        const UiElement* tab = construction_category_tab(*hud_, cat);
+        if (tab != nullptr && inside(px, py, tab->pos_x, tab->pos_y, tab->size_w, tab->size_h)) {
             return cat.name;
         }
     }
@@ -68,10 +62,8 @@ ConstructionMenu::click(double px, double py, const std::string& open_category, 
     if (placement_open && !open_category.empty()) {
         // UI-INFO-2: the rotate arrows - every element with a `turn` step (hud.txt rotate_left
         // -1, rotate_right +1: GOG View.dll 0x10030440 / 0x10030480; docs/re/ui.md section 2.5).
-        // Checked before the category column: rotate_left ((808, 451) 33 x 38) lies inside the
-        // column gadget's 42 px hit width (779..820), but the column is drawn clipped to 29 px
-        // (779..807, docs/re/ui.md 2.4) and the arrow is drawn over it, so a click there is the
-        // arrow's.
+        // Checked before the category column (UI-BUILDCAT-1: the column's tabs end at x 803, so
+        // rotate_left ((808, 451) 33 x 38) no longer overlaps them; the order is kept).
         for (const UiElement& el : hud_->elements) {
             if (el.turn && el.has_pos && el.has_size &&
                 inside(px, py, el.pos_x, el.pos_y, el.size_w, el.size_h)) {

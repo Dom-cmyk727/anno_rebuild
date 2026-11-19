@@ -93,7 +93,7 @@ Buf link(std::uint32_t x, std::uint32_t y, std::uint32_t size, std::uint32_t num
 /// An INSEL5 of size × size tiles (one block, size <= 32) with INFO (climate, INFO[2]
 /// special, INFO[5] capacity), HEIGHT, GFXID and FRUCHTBAR.
 Buf insel5(std::uint32_t size, std::uint8_t climate, std::uint8_t special, std::uint8_t capacity,
-           bool with_info = true) {
+           bool with_info = true, const std::optional<Buf>& anbau = std::nullopt) {
     Buf p;
     put16(p, 0);
     put16(p, 0);
@@ -116,15 +116,19 @@ Buf insel5(std::uint32_t size, std::uint8_t climate, std::uint8_t special, std::
     append(p, chunk("HEIGHT", height));
     append(p, chunk("GFXID", gfx));
     append(p, chunk("FRUCHTBAR", Buf(size * size, 2)));
+    if (anbau) {
+        append(p, chunk("ANBAU", *anbau));
+    }
     return chunk("INSEL5", p);
 }
 
 /// An island template file: root ANNO with WARETYPE, the INSEL5 and optionally a
 /// SPIELER block (the 60-byte trailer of the shipped templates is left out).
 Buf scp(std::uint32_t size, std::uint8_t climate, std::uint8_t special = 0,
-        std::uint8_t capacity = 9, bool players = false) {
+        std::uint8_t capacity = 9, bool players = false,
+        const std::optional<Buf>& anbau = std::nullopt) {
     Buf kids = chunk("WARETYPE", Buf(4, 0));
-    append(kids, insel5(size, climate, special, capacity));
+    append(kids, insel5(size, climate, special, capacity, true, anbau));
     if (players) {
         append(kids, chunk("SPIELER", Buf(8, 0)));
     }
@@ -301,12 +305,12 @@ Buf links_scene(std::uint16_t treasures = 1) {
 }
 
 /// Two nord templates of 16 x 16, "NORD/A.SCP" and "NORD/B.SCP"; B (or both) with a
-/// SPIELER block.
+/// SPIELER block; both with `anbau` as their ANBAU record if given.
 struct Templates {
     std::vector<Buf> files;
     std::vector<sim::TemplateSummary> summaries;
-    explicit Templates(bool both_players = false)
-        : files{scp(16, 2, 0, 9, both_players), scp(16, 2, 0, 9, true)} {
+    explicit Templates(bool both_players = false, const std::optional<Buf>& anbau = std::nullopt)
+        : files{scp(16, 2, 0, 9, both_players, anbau), scp(16, 2, 0, 9, true, anbau)} {
         summaries.push_back(*sim::template_summary(files[0], "NORD/A.SCP"));
         summaries.push_back(*sim::template_summary(files[1], "NORD/B.SCP"));
     }
@@ -368,8 +372,11 @@ TEST_CASE("scenario links resolve on the scenario's generator and place their te
     CHECK(warnings_of(s, Kind::LinkUnresolved) == 1);
     CHECK(warnings_of(s, Kind::LinkTreasureUnplaced) == 1);
     CHECK(warnings_of(s, Kind::LinkTemplatePlayers) == 1); // B.SCP holds a SPIELER
-    CHECK(warnings_of(s, Kind::LinkRawMaterials) == 2);    // property 11, also without marks
-    CHECK(warnings_of(s, Kind::UnknownRecord) == 1);       // WARETYPE, once
+    // Island property 11 = 0xF009 | the marks, also without marks (D 0x100085a2-0x100085cf).
+    const std::vector<sim::GoodsId> base = sim::SimConfig{}.crops.base_goods;
+    CHECK(s.spec.islands[0].crops == std::optional<std::vector<sim::GoodsId>>{base});
+    CHECK(s.spec.islands[1].crops == std::optional<std::vector<sim::GoodsId>>{base});
+    CHECK(warnings_of(s, Kind::UnknownRecord) == 1); // WARETYPE, once
     // Every tile of a link island stays neutral: no city names it (since T23 the tile
     // owners come from the cities, and TileOwnersUndecoded only from a city's ID).
     CHECK(warnings_of(s, Kind::TileOwnersUndecoded) == 0);
@@ -393,14 +400,32 @@ TEST_CASE("scenario links with raw materials and ores report what is not placed"
     Buf o(10, 0);
     o[0] = 1;
     append(kids, erze(o));
-    Templates t;
+    // The templates list one crop: the link's placement overwrites it.
+    const std::string only_grain("GETREIDE\0", 9);
+    Templates t(false, Buf(only_grain.begin(), only_grain.end()));
     sim::LinkResolution res;
     const sim::LoadedScenario s = resolve_and_place(scene(kids), t, res);
     CHECK(res.links[0].raw_marks[6] == 1);
     CHECK(res.links[0].ore_marks[0] == 1);
     CHECK(res.draws[static_cast<std::size_t>(sim::DrawSite::LinkRawMaterial)] == 1);
     CHECK(res.draws[static_cast<std::size_t>(sim::DrawSite::LinkOre)] == 1);
-    CHECK(warnings_of(s, Kind::LinkRawMaterials) == 1);
+    // Island property 11 = 0xF009 | 1 << 6: the base set and goods 0x38 + 6 (WEINTRAUBEN), the
+    // template's own ANBAU overwritten (D AnnoScene 0x100085a2-0x100085cf).
+    REQUIRE(s.spec.islands.size() == 1);
+    CHECK(s.spec.islands[0].crops ==
+          std::optional<std::vector<sim::GoodsId>>{{0x38, 0x3b, 0x3e, 0x44, 0x45, 0x46, 0x47}});
+    // The original's 16-bit word from the same input (0x100085a2-0x100085c6: 0xF009, then
+    // 1 << k for every mark k != 0 of the 20) against the word rebuilt from the sim's set.
+    std::uint32_t original = 0xF009;
+    for (std::uint32_t k = 0; k < res.links[0].raw_marks.size(); ++k) {
+        original |= res.links[0].raw_marks[k] != 0 ? 1U << k : 0U;
+    }
+    std::uint32_t rebuilt = 0;
+    for (const sim::GoodsId g : *s.spec.islands[0].crops) {
+        rebuilt |= 1U << (g - sim::SimConfig{}.crops.mask_first_goods);
+    }
+    CHECK(original == 0xF049);
+    CHECK(rebuilt == original);
     CHECK(warnings_of(s, Kind::LinkOresUnplaced) == 1);
     CHECK(s.spec.seed == 1 + 4);
 }

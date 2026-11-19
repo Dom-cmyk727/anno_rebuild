@@ -180,6 +180,7 @@ Sources abbreviated: GFA = `docs/research/game-files-analysis.md`, CL = `docs/re
 
 ## OQ-023: Unknown records and fields in `FigurenHeader.dat` and frame pixels
 - **Status:** open
+- **Update 2026-11-17 (UNITS-REF-1, D):** (a) narrowed. The loader `AnnoGame 0x1000fe00` was read for `HEAD`, `LOGIC`, `BEWOHNTYPE`, `ROUTETYPE`, `FORSCHTYPE`, `WARE`, `BAUWARE`, `OBJECTPOS`/`SCHUSSPOS`; the field map is in `docs/UNITS.md` Part B. The remaining meanings are OQ-751. `VERSION2` and the pixel questions are unchanged.
 - **Update 2026-10-16 (static analysis, `docs/re/annodisplay.md`):** (c) `z` = signed 8-bit per-pixel depth offset relative to the sprite depth, smaller = nearer (confirmed); (d) `level` 0/1/2/3 = 25/50/75 % blend / opaque, with brush-dependent exceptions (confirmed); (e) `H` = depth-tested but not depth-writing (flat decal), `V` = writing (confirmed; letter reading likely); `M` = melt blend at equal depth; `W` = every-second-column checkerboard (confirmed; decoder fixed); (f) anchors are signed 16-bit and mark the frame pixel placed on the projected object point (confirmed). Still open: (a), (b), the world point the game passes for an object.
 - **Area:** formats / figures / rendering
 - **Question:** (a) Contents of the entry records `VERSION2` (24 bytes), `HEAD` (16/20), `LOGIC` (28–44, contains `1.0f`), `SCHUSSPOS`, `OBJECTPOS`, and meaning of the strings `BEWOHNTYPE`, `ROUTETYPE`, `FORSCHTYPE`, `WARE`, `BAUWARE`. (b) The 16-byte sprite-set prefix (259 distinct values, trailing bytes look like uninitialised memory) and the records `BODY2` (44), `ANIM` (24), `SOUND2` (128), `GFXDATA` (84, holds a `.tga` source path). (c) What `z` (first byte of `Z` pixel pairs) encodes — per-pixel depth for occlusion? The sheep's values are nearly all 255. (d) What the 2-bit `level` of `A` formats encodes — 4 alpha steps? In the gondola level 3 dominates (2,195 of 2,322 pixels) and drawing all levels opaque looks right, so 3 is probably opaque; levels 0–2 are unconfirmed. (e) The `H` in `BSH_RGBH` (24 frames; also one `.tex` texture, OQ-021 d). (f) Anchor semantics: `(width/2, height−4)` for walking figures, the waterline for ships, outside the frame for 783 frames — draw origin relative to the tile?
@@ -189,6 +190,7 @@ Sources abbreviated: GFA = `docs/research/game-files-analysis.md`, CL = `docs/re
 
 ## OQ-024: What island `GFXID` values refer to, and the other island records
 - **Status:** open
+- **Update 2026-11-17 (ISLAND-CROPS-1 1a):** `ANBAU` decoded: NUL-terminated crop names (`docs/formats/insel.md`, "ANBAU"); its loader edge cases are OQ-708.
 - **Update 2026-10-16 (item `state`):** resolved — `height << 8 | phase` (`docs/formats/insel.md`, "Placed objects"). Duplicate items and the remaining 115 overlapping `PROD2` tiles stay open.
 - **Update 2026-10-16 (b) partly resolved:** `GELAENDE`/`PROD2`/`FLUESSE` items are placed `Anlagen.dat` objects: `u16 id | rotation << 14`, `u16 state`, `u8 x, u8 y` (block-relative top-left); footprint from `ANLAGEN` `HEAD` bytes 0–1 (`docs/formats/insel.md`, "Placed objects"). Open: `state` (mostly `0x3000`), why 97,041 `GELAENDE` and 485 `PROD2` items are exact duplicates, and the remaining 115 overlapping `PROD2` tiles.
 - **Update 2026-10-16 (a) resolved:** `GFXID = texture << 8 | u << 5 | v << 2 | r` — a 32 × 32 cell of a 256 × 256 `Textures/Felder.tex` texture with `r` quarter turns; texture 0 = open water. Evidence: corpus statistics and top-down rendering (`docs/formats/insel.md`, "Ground"). Still open from (a): how open water is drawn (no texture 0 exists in any `.tex`), and texture 205 (36 tiles, absent from `Felder.tex`). The `Anlagen.dat` hypothesis below was a dead end for ground; it still holds for buildings (M1.4).
@@ -294,6 +296,7 @@ Sources abbreviated: GFA = `docs/research/game-files-analysis.md`, CL = `docs/re
 - **Question:** which x87 precision control is in effect while `AnnoGame.dll` converts the `PROD3` floats (`0x10009627`–`0x10009717`): the MSVC default of 53 bits, or 24 bits if a Direct3D device was created earlier without `D3DCREATE_FPU_PRESERVE`?
 - **What we know:** exact emulation over all 921 entries shows 53- and 64-bit precision give the same integers. 24-bit precision changes two of them: `need1` of 1010 (6 → 7) and 3979 (3 → 4) (`docs/sim/production.md`, "Load-time conversion"). The rebuild uses the 53-bit values.
 - **How to resolve:** read the FPU control word at that point under a debugger (fixture F1 in `docs/re/production.md`), or check whether any `_control87` call or Direct3D device creation happens before the scenario load.
+- **History Edition (RE-HE-PRODUCTION-1, 2026-11-17, D + exact emulation):** HE has no x87 question here. `AnnoGameAddOn.dll` (`0x10004111`-`0x10004209`) and the x64 `AnnoGame.dll` (`0x180002dab`-`0x180002e9e`) convert in SSE single precision. Over all 921 entries this gives exactly the 24-bit values: `need1` of 1010 is 7 and of 3979 is 4 in HE. The open part is GOG's precision control alone. The GOG listing also shows that `need1` uses `q1` stored as a 32-bit float (`fst` at `0x1000964f`) while `need0` uses `q0` at x87 precision (`docs/re/forestry.md` §8.4).
 
 ## OQ-033: Owner check before building status icons
 - **Status:** resolved 2026-10-18 — owner slot `+0xc4(3)` returns the player's Volk (people) number (`player+0x7a`, world property `0x1c`); the icon path proceeds only for Volk 1, which human and computer-opponent seats (player kinds 8, 11, 12) have; natives, pirates and Venice have another. Rebuild: `StatusTracker::shows_icons` = owner Volk == 1, supplied by the player state (`docs/sim/state.md` §4.5, §7.1; `docs/sim/production.md`).
@@ -676,7 +679,6 @@ Source: `docs/render/rivers.md` §12 (rows D1..D16), the hydraulics stage S4 and
 - **Why it may change the feel:** fast, converging flow at every mouth, and the look of the mouth fan in the sea blend.
 - **Faithful default implemented:** the blob is part of the domain, as drawn by the shipped enhanced water (the gap fix and the mouth look are unchanged); `transition_passes` softens the speed across it (fix).
 - **Rules option:** none yet; candidates: limit the mouth-fan speed to the river speed, or drop wet cells that the depth test hides from the flow domain (raster only, nothing drawn changes). Decide with the S5/S6 sheets of `D_256x256_0045_5B` and the `Single_01` mouths in front of you.
-
 
 The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, and the decisions of stage S5 (2026-10-19). "Not built" means the feature itself comes with a later stage: its default is **off / the faithful behaviour**, so there is nothing to switch yet; the option is named here so the owner can decide before it is built.
 
@@ -1653,7 +1655,6 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Why:** `home_no_road` 1 669 / 39 161 (4.3 %) and `goal_no_road` 4 219 (per candidate per search) in `S01_07_01`'s run; `home_no_road` 3 270 / 17 059 (19 %) and `goal_no_road` 7 585 in `single36`. The owner's rule (OQ-103) says a sender needs a road to a market; the stand-in enforces nothing of the sort (a cart that leaves the home footprint tile goes straight to the first road in the area, which may be nowhere). The counts show the senders in the shipped scenarios are mostly road-connected, so a strict "road-at-the-entrance" rule from T30 step 4 would narrow unreached, not widen it, if it comes with the original's road-reaching rule.
 - **How to resolve:** T30 steps 2 and 7 (the engine's rule and the owner's three clauses); T33 inherits.
 
-
 ## OQ-175: What the layer-table reader's vtable method decides, and what the secondary table (`[this + 0x434]`) is (new, T30 2026-10-24; OQ-160)
 - **Status:** **answered** (orchestrator 2026-10-25 ax, live check in the Wine runner, `transport.md` §3.4.15; static readings §3.4.7–3.4.14): the search cell is the island tile record's 9-bit mask through the mapper `0x100c1af8` (low u16) plus the record's code byte (high u16), filled on first use from the island's records; 155 chunks matched uniquely with every cell's low word and code as predicted (fresh = the record's byte; reached = `7` / `0x80 | dir`), no other value seen; chunk coordinates are island-relative. The rule for a step is the layer block's admission byte and costs by that code with the mask's geometry bits. Left for the running original: a figure's observed route against the rule (T30b.5–7, after T33).
 - **The loop (T30b.3i, 2026-10-25, D, `transport.md` §3.4.7):** fn1 (`0x10003d90`, slot `+0x84` of `0x100c14e4`) has `this = Y + 4`. At `0x1000474f` `edi` is that `this` (loaded at `0x100046cf` from the prologue save `[esp + 0x10]`). The open list lives at `[Y + 0x41c]`. Per node: bit 10 set → `0x10003220(this = Y + 4, node)`; bit 10 clear or that call non-zero → expand through `0x10004868` with `this = Y + 8`. The only `ret` (`0x10004867`) returns `[Y + 0x43d]`. Start nodes come from the one fn2 call at `0x10003e8d`, fed by the float array at `[Y + 0x4f8]`. The pre-loop also **sets** bit 10 on some cells (`or byte [cell + 3], 4` at `0x10004068` and `0x10004256`). Expansion `[this + 0x42c]` is `[Y + 0x434]` — the byte table T30b.3j reads.
@@ -1667,7 +1668,6 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 
 **T30b.2 update (2026-10-24).** Constructor tracing: xref.py displacement `0x858` finds exactly one hit — `1000db27` (`mov ecx, [eax + 0x858]` in `0x1000daf0`), a read only, no writes. An E8 opcode sweep finds exactly one direct caller of the constructor: `0x100aabfd: call 0x1000eb40` (the real start; `0x1000ebb0` is mid-instruction). The constructor installs vtable `0x100c18b4` at `[this + 0]`, vtable `0x100c18b0` at `[this + 4]`, stores `[this + 0x85c] = eax` (caller stack value at `[esp + 0x14]`, beyond the 8 `ret` bytes), and stores `[this + 0x14] = edx` — it does **not** write `[this + 0x858]`. Vtable check: `0x100c18b0` slot +0 = `0x1000daf0` (the reader), `0x100c18b4` slot +0 = `0x100b4a20` (not the reader). Since `0x1000daf0` is slot +0 of `0x100c18b0` at offset `+4`, the reader's `this` = `original_this + 4`, so `[reader_this + 0x858] = [original_this + 0x85c]` = the constructor's `eax`, an untraceable caller-stack value statically. The vtable on `[reader_this + 0x858]` is unknown, so the method at `vtable + 0xec` cannot be read. Chain stops at caller `0x100aabfd` → constructor `0x1000eb40`. Next address: the value at `[original_this + 0x85c]` at runtime (Wine memory read, T30b.4). Only one caller exists, so there are no further callers to try.
 - 
-
 
 
 
@@ -1803,7 +1803,6 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Area:** simulation / tile record.
 - **What was read.** `0x100853b0..0x100854ca`. The new value is the low 4 bits of `cl` shifted by 25. `cl` comes from `[esp+0x20]` at `0x10085481`, and that stack slot was not traced to an argument. `0x10083a90` and the cell fill `0x1008ff70` do not read these bits.
 - **How to resolve:** the instruction that writes `[esp+0x20]` in `0x100853b0`, then a test of mask `0x1e000000`.
-
 
 ## OQ-215: Three figure-class units with another layout (T30b.5, 2026-10-26)
 - **Status:** open. Found by running; harmless for the reader, which leaves them out.
@@ -1985,7 +1984,6 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What T55 added.** `complogic.md` §11 "T55". The two callers of manager slot `+0x24` are inside city slots `+0xac` (`0x100279a0`, site `0x10027e49`) and `+0xb0` (`0x10027f70`, site `0x100282d8`), reached for PRODTYPE `0x21`..`0x23`. The receiver chain is city `+0x1c` island, island slot `+0x18` (`[island + 0x20]`, the world, stored at `0x1008c0de`), world slot `+0xa4` (the holder), holder slot `+0x18` (the manager). The record base holds word 2, the entry words, the owner's player number at `+0xc`, and the two bytes. Not excluded: a caller that gets the manager as an argument, and `CompLogicClassic.dll`. Next links: `CompLogic.dll` `0x1003e110`, the callers of city slots `+0xac` / `+0xb0`, other writers of `[city + 4]`, island-table removal. (Old resolve text follows.) **Old:** the caller of manager slot `+0x24` (`CompLogic.dll` `0x1003d7c0`, vtable `0x100634f8`, the dword at `0x1006351c`). That caller may itself forward a record. `0x1003d7c0` has no direct call. The virtual `call [reg + 0x24]` sites were not tied to this vtable. Do not treat the byte mask as proof that the pair is valid.
 
 - **Review (round ce):** T55 is accepted as bounded producer evidence. Byte +0x15 is a truncated index, not an unconditional proof of a valid slot; neither copied low byte is proved to exclude `0xff`. The manager's word-2 call lies between these writes and the subsequent word-4 send, so its checks/effects cannot be dismissed. T56 follows `0x1003e110`, `0x10014090`, and the reached word-2 dispatch before claiming that the later consumer receives unchanged, valid bytes. The constructor and insertion provenance remains conditional on table lifetime and the named callers; OQ-340 stays open.
-
 
 - **Review (round cf):** T56 accepted with the direct-store / whole-call distinction and initialization limits in complogic §11. T57 follows both `0x10014010` and `0x10013f80`: the known island vtable supplies `+0xec = AnnoWelt.dll 0x100860c0`, `+0xf8 = 0x100863e0`; non-null paths also call through returned objects' `+0x1c` then `+0x40`. Record immutability through all recipients, live-index validity and table lifetime remain unresolved. OQ-410..419 were not used.
 
@@ -2282,7 +2280,6 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Answer:** the original's UI preview computes `rec[8]` (the height `v` of the footprint window) and sends it; the apply call (`flags | 0x1000000`) skips the analysis and stores the wire byte as the building's `byte0f` and the tile height. The port computes the same `v` on the server from validated terrain and never reads the client byte (so a client cannot build on sea, which the original allows). Ordinary land: `v` (all window vertices equal, multiple of 16, `>= 32`); coast: `max & 0xf0`.
 - **Open:** nothing for the supported classes; the unsupported classes are in OQ-052.
 
-
 ## OQ-CARGO-1: Does the original disable the unload tab for a moving or otherwise busy ship? (MAP-CARGO-1 U1, 2026-11-02)
 
 - **Status:** open, **not a blocker**. The authoritative path has no such test, so the contract adds none.
@@ -2341,7 +2338,6 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Area:** simulation / harvest worker.
 - **What was read.** The farm tick sets the new worker's cargo goods to the type's input 0 (AnnoWelt `0x1006ee06`). A data-defined Farm whose type has no input gives cargo goods 0; the harvest candidate test then compares tile types' WARE[0] with 0, and step C hands nothing over (the arrival needs goods != 0, `0x10057bd0`). Every shipped PLANTAGE/UNIVERSAL harvest home has an input.
 - **How to resolve:** decide whether the registry seal should refuse a Farm-class type with a harvest-route figure and no input (a mod error), or whether the original's behaviour (a worker that may cut tiles whose WARE[0] is UNUSED and then drops the cargo) is to be kept; read the original's goods-0 handling in `0x10092320` first.
-
 
 ## OQ-463: Stands on mapper-0 tiles are never reached by the ported resident search (MAP-POP-CLOSE-2 K0, 2026-11-04)
 Stand 1314 (STOFFE/LEDER, the only seller of both) has WALKMASK rows `05/02/05`, blocked mask9 `0x155`; the original table `0x100c1af8` maps `0x155` to 0 (as the full block `0x1ff`; 21 of 512 masks map to 0). The tile entry rule `(dest.low & geometry(dir)) != 0` (`0x10006a81`; `walk_search.cpp` `expand`) and the goal test at pop time mean such a tile cannot be entered. 0 of 1198 houses in the 28 stock-qualifying towns reach a LEDER/STOFFE stand; eight 1314 stands built on open land are not reached either. This is the ported rule, not a conversion bug. Other families with free-cell mapper-0 tiles: stands 1313-1318, 3311, 3980; houses and workshops (PIONIER 503/505/509, SIEDLER 522, ...). Unknown: how the original reaches goals on them. Candidates: (a) the omitted finer-route stage `0x100054ef`..`0x100055d5`; (b) a goal callback in `0x10054240`/`0x1005a900`; (c) the stand's tile record not being the raw WALKMASK mapper input. Next: the stand placement writer feeding the walk mask (`0x10082ca5` family), the goal test `0x10003220` and callbacks, then `0x100054ef`..`0x100055d5`. Evidence: `docs/sim/population-live.md` section 22.3.
@@ -2897,7 +2893,6 @@ For the real `endless02` island-12 object 3110 at tile (322,770), walk code 4 an
 
 Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x10004070` and the key helper call/store at `0x10004137`-`0x1000414b`. The search pop loop at `0x10004749`-`0x10004794` calls the goal-test dispatcher `0x10003220`; the dispatcher loop is `0x10003708`-`0x1000373d`, whose indirect call at `0x10003737` invokes the installed callback. The home entrances and callback are installed at `0x10057ae0`-`0x10057bbe`; the installed first-goal stop callback is `0x10054240`. A no-path result takes the original failure branch at `0x10053d20` / `0x10053f50`. The former reverse-route workaround is therefore non-original: the original also performs this forward search and accepts the same ~1.5 % no-path result. No behaviour change follows from this answer. Evidence and the unchanged measured counts: `docs/sim/population-live.md` section 27.2.
 
-
 ## OQ-578: Wildlife's transitive world-draw closure and runtime type interfaces (WILDLIFE-RE-1b, 2026-11-12; OPEN)
 - **D:** animal creation handlers and the two animal/route control models have an addressed direct-draw inventory in [wildlife.md §7](re/wildlife.md#7-routes-stand-selection-and-exact-walk-draws). Selected manager creation is `AnnoWelt.dll 0x10097250`; New's searcher comes from `0x10035d50` (world class query 0xc00), path conversion is `0x10052640`, resource completion calls island +0x110 at `0x10032f68`, and motion-storage release calls manager +0x50 through `0x10030030`. These are indirect-call boundaries, not evidence of zero further draws.
 - **D/U:** AnnoGame.dll figure-type tables `0x10021d10`/`0x10021e8c`/`0x10021f58` have HP getter `0x1000fce0` and single-argument float getter `0x1000fd10` at +0x64. AnnoWelt's duration calls at `0x100513e0` and `0x10032ef0` use a different argument profile. The actual runtime receiver bindings/adapter must be established before treating equal offsets as identical APIs.
@@ -2921,7 +2916,6 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **D:** `AnnoWelt.dll 0x10050fb0` and `0x100541f0` construct float sine tables using accumulated x87 angles and fsin, then copy entries 384..511 to 512..639 (source = destination minus 0x200 bytes), not a periodic first-quarter wrap. `0x10058360` combines them with radius draws and stored float results; the facing shift wraps as a byte before the 511 mask. The moduli/order and hand-derived radius/index controls are in wildlife.md.
 - **U:** the exact reference rounding/precision needed to reproduce the original vectors on the later script's host. Reading this algorithm does not prove Python/libm or a new fixed-point approximation bit-equivalent. Before vector acceptance, choose the evidence-backed original evaluation/rounding contract; keep any adaptation separate and explicit. No reference script is introduced in 1b.
 
-
 ## OQ-583: Fresh cross-edition confirmation of the wildlife resource-walk class name (WILDLIFE-RE-1c, 2026-11-12; OPEN)
 - **D:** GOG AnnoWelt.dll table `0x100c6514` has ten slots and only its start differs from the production-resource table `0x100c44c0` (9/10 equal); start `0x100594b0` uses the animal search rectangle/goods, while `0x10058ae0` uses its home building. Old animal factory `0x10050c70` installs `0x100c6514`. This is a resource walk in the animal's route, not the hunter route's pursuit step `0x100c7060` / `0x10057690`.
 - **U:** HE86 `0x10148c84` is the supplied tJobWalkRohstWild name/base tJobWalkRohstProd label, not a fresh body-level equivalence proof. Other GOG kind-7 tables inherit the same nine slots. HE reading is NOT_RUN on this Mac. Re-check the cross-edition start profile or runtime type identity before treating the structural name as RTTI proof; the addressed GOG behavior is retained independently.
@@ -2937,7 +2931,6 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 ## OQ-586: Paused prey when a wolf's attack is interrupted (WILDLIFE-RE-1c, 2026-11-12; OPEN)
 - **D:** wolf attack start `AnnoWelt.dll 0x10053154` calls prey +0x88(4,1), stopping New-prey motion through `0x100524ae`. Wolf cancellation `0x100533a0` selects target release `0x10053260` for current state30, and claim release for26, but not attack state31. Target release +0x88(4,0) can restart stopped New prey (`0x100524db`–`0x1005250e`).
 - **U:** whether another cleanup/continuation path restores a still-living paused prey when the attacker is removed or interrupted in31, and which original ordering reaches this. Follow that lifetime path before implementing recovery; the local cancellation body alone does not authorize an invented unconditional unpause.
-
 
 ## OQ-591: Fresh HE-name confirmation of the five whaling classes (WHALE-RE-1a, 2026-11-13; OPEN)
 - **D:** GOG AnnoWelt.dll factories/constructors establish whaler building `0x100c9418` (`0x100746a0`), whale figure `0x100c5f98` (`0x1004f410`), whale route `0x100c7218` (`0x1005d9d0`), whaler route `0x100c72a8` (`0x1005df70`) and WALSYMBOL occurrence `0x100c7e70` (`0x10066f20`). Sizes, slot comparisons and call roles are in [whaler.md §2](re/whaler.md#2-gog-class-identities-and-confidence). GOG RTTI names are absent in analysis/pe_symbols.json.
@@ -2988,6 +2981,7 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 ## OQ-612: The info panel preview for scaled sprites and the stalls (UI-INFO-1, 2026-11-14; OPEN)
 - **Question:** how the original builds the 135 x 135 preview (View.dll gadget 0xb17, 0x1002fb30) for sprites larger than the box, and for the 1 x 1 stalls 1310/1314.
 - **What we know:** for unscaled sprites (2520, 104, 708) sprite set 0, group 0, frame 0, centred, with a (66,65,66) silhouette at (+5, +10), matches the whole box exactly. Larger sprites are fitted to 135 (Kontor 346 x 306 to about 135 x 119, forester 240 x 135 to about 135 x 76) and centred, but no tested scaler (nearest, bilinear, box) reproduces more than 0.7 % of the pixels; the original also composes more than set 0 (the forester's fenced garden, the Kontor's flags), draws green entrance arrows, and draws past the box onto its frame (up to x 982, y 503). The stalls sit 14 px left of centre (best 97.5 % at (855, 386) for 1310) - the centring rule is not the frame box there. The rebuild draws nearest-neighbour, set 0 only, no arrows, clipped to the box, every decoded pixel opaque (a flagged default); differing pixels per type are in docs/re/ui.md 2.5. Rotation: wired in UI-INFO-2 (rotation block r of the set; docs/re/ui.md 2.5). **Update (UI-INFO-2):** View.dll 0x1001d760 scales by `max(1, W/135, H/135)` where W x H is the largest screen rectangle of the parts over all four turns (one scale for every turn), and composes into a W x H canvas before the box (OQ-624); the placeholder still fits each turn's own frame, so a scaled type's preview size can change with the turn where the original's does not.
+- **Update (UI-INFO-2b, 2026-11-17):** the stalls are settled and the scaled size is read. The picture is the building plus its green entrance arrows (Anlagen `OBJECTPOS`/`CONPO2`, FigurenHeader entry 1573), composed in one canvas sized over all four turns (OQ-624); the stalls sat left because the arrow on their right widens that canvas. With it `f12_info_stall_1310` and `f12_info_stall_1314` match the whole box exactly (0 px), shadow included (the silhouette is the whole canvas, arrows too). A canvas larger than the box is drawn at (trunc(W / s), trunc(H / s)), s = max(1, W / 135, H / 135) kept as f32 (View.dll 0x1001db7f..0x1001dbfc), placed at trunc((135 - size) / 2) (gadget properties 0x19a/0x19b, 0x1001e3b5..0x1001e478). Still open: the scaler's pixel method (the placeholder samples nearest), and the other part lists the canvas holds (OQ-712). Every scaled GOG shot got closer (docs/re/ui.md 2.5).
 - **How to resolve:** read the 0xb17 gadget's draw path (AnnoFrame/AnnoDisplay) statically; capture the original's preview for a rotated and an animated type.
 
 ## OQ-613: The History Edition's info panel code (UI-INFO-1, 2026-11-14; OPEN)
@@ -3036,10 +3030,17 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **How to resolve:** read View.dll's tab gadget handlers (MAINTAB, the four ids 8..15) and the player panel's sub-tab switch; GOG captures: a second click on each tab, Esc from construction, the player tab after its list.
 - **Code read (UI-TABS-1, 2026-11-16; docs/re/ui.md 5.4):** a main-tab click shows its view with the sub-tab that view showed last (View.dll `0x10034ab0` -> `0x100335d0`; the views are persistent, `0x100194c0`); a click on the selected tab re-shows the same. The rule "the bust from the overview opens the list" does not hold: `r2_tab_military` was taken after key D had selected the list (`actions.jsonl` of run `d91-20261030-112532`: O, Esc, D, Esc, "?", Esc, bust). Esc from the construction grid gives the overview (AnnoFrame `0x1000bd43`, View `0x100333e3`; with a selection the "?" view, OQ-643). No "?" key in the key switch (`0x1000bfc4`). The rebuild follows the code since UI-TABS-1; the list's background, the crest index, the rows and the diplomacy cluster stay open here.
 
-## OQ-622: Which city's stock the status bar shows (UI-WINDOW-1 fix round R2, 2026-11-14; OPEN)
+## OQ-622: Which city's stock the status bar shows (UI-WINDOW-1 fix round R2, 2026-11-14; PARTLY ANSWERED 2026-11-17)
 - **Question:** the original's rule for the status bar's materials and residents: which point counts as "the view's centre", when the counters update, and what they show over open sea and over an island with only another player's city (or several cities of one player on one island).
 - **What we know:** on the GOG shots the five counters are absent before the first founding (`hud_idle_running`, gold 500000) and present on every screen after it (`r2_player_menu`, `r2_tab_military`, `r2_construction_military`, with or without the construction menu); HE shows them with the player panel open (`he_s10_hud_idle_win.png`). The owner states first-hand that they always show the stock of the island the view is centred on. No shot is taken over open sea or over a foreign island; the GOG status bar update (AnnoFrame.dll around 0x10063000..0x10064850) was not read. The rebuild (owner decision 2026-11-14, "Always show my city", fix round R4; it replaces R2's rule, which hid the counters away from the city's island): the world tile at sea level under the drawable's centre (render::pick_ray at kSeaLevel, from the last frame drawn); the local player's first city on the island whose tile rectangle holds it, otherwise the player's first city in (island, city) order; hidden only before the first founding. Updated every frame from the newest snapshot. The original's own rule over open sea and foreign islands stays open as evidence; the rebuild's default is the owner's.
 - **How to resolve:** read AnnoFrame's status bar update for the city it asks; GOG captures centred over open sea and over an AI's island after founding.
+- **2026-11-17, UI-STATUS-1 stage A (code read, `docs/re/ui.md` 5.6):** the point is not the view's centre. It is the map tile of the frame's cursor object, re-read every frame (`AnnoFrame.dll` `0x10005a10` -> `0x100052a0` -> `tStadtInfo` `0x10009920` / `0x10009770`). The counters follow the city whose **territory** holds that tile (tile owner nibble, island slot `+0xec`):
+  - an own city shows the materials and residents;
+  - a foreign city shows only the residents, and only when the city's property-0 mask has the local player;
+  - no city (open sea, sea inside an island's chunks, or island land outside every territory) shows gold only;
+  - with a building armed, the building's corners select an own city.
+  Two own cities on one island: the territory's city. The fertility row is separate: any island the player has discovered (island word `+0xa6`).
+- **Still open:** whether the cursor keeps its last map tile over the panel (OQ-700); the writers of `+0xa6` (OQ-701); the bars' source (OQ-702); the owner's choice where the code differs from his 2026-11-17 statement, which replaces "Always show my city" (OQ-703).
 
 ## OQ-623: Which way `.` and `,` turn an ordinary building (UI-INFO-2, 2026-11-14; RESOLVED by the owner 2026-11-15)
 - **Question:** do the original's keys `.` and `,` turn the ordinary placement cursor on (+1) or back (−1), and why does that differ from the Kontor cursor in the campaign (OQ-520)?
@@ -3047,11 +3048,11 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Resolution (owner, 2026-11-15, "Like original"):** the building tool's `.` turns on (+1, like the right arrow) and `,` back (−1), as the GOG captures show for the ordinary cursor; T stays this window's own key and turns on (UI-INFO-2c, `sdl_input.cpp`, test "tool keys" in `dev_tool_test.cpp`). The ship-start founding mode keeps OQ-520's Kontor direction (`,` on, `.` back; `opening_key_from_sdl`), which that run measured on the original's Kontor cursor.
 - **Still open as evidence (not blocking):** the key → command mapping (a table or `WM_KEYDOWN` handler feeding the jump table at `AnnoFrame.dll` 0x10007d14), which would explain why the campaign's Kontor cursor read the other way; whether a Kontor armed in the building tool after the first founding turns like the ordinary cursor (no capture).
 
-## OQ-624: Where the preview sits at rotations 1-3 when the four turns differ in size (UI-INFO-2, 2026-11-14; OPEN)
+## OQ-624: Where the preview sits at rotations 1-3 when the four turns differ in size (UI-INFO-2, 2026-11-14; RESOLVED UI-INFO-2b, view term open)
 - **Question:** the original's exact placement of the preview at a rotation whose sprite is smaller than the largest of the type's four turns, and the view-turn term.
 - **What we know:** View.dll 0x1001d760 measures the parts' screen rectangle for all four turns, draws into a canvas of the largest width and height with the current turn's rectangle centred in it (integer halving toward zero, 0x1001da40..0x1001da82), and scales by `max(1, W/135, H/135)` of that largest extent (0x1001db7f..0x1001dbd9). How the canvas goes into the 135 x 135 box was not read. The rebuild centres each turn's frame in the box directly (UI-INFO-1's rule); for the dirt road 2520 (84/82 x 41/40) that is exact at all four turns on the GOG shots (`info_panel_rotation_gog_compare`). Two-stage centring can differ from one-stage by one pixel when the parities of (135 − W) and (W − w) differ; no evidenced type shows it yet. The preview turn is `(view turn + cursor turn) & 3` (0x100302c0); the rebuild has no view turn, so its term is 0 (flagged default). For scaled types the single scale over all four turns is input for OQ-612.
+- **Resolved (UI-INFO-2b, 2026-11-17):** the canvas-to-box step is read: the drawn size (sw, sh) = (trunc(W / s), trunc(H / s)) goes to the gadget's position properties 0x19a = trunc((135 - sw) * 0.5) and 0x19b = trunc((135 - sh) * 0.5) (View.dll 0x1001e3b5..0x1001e478, 0.5 at 0x1009a1f0). So the placement is two-stage: the turn's rectangle centred in the W x H canvas (halving toward zero), the canvas centred in the box. The canvas includes the entrance arrows, which is what moves the stalls. The rebuild does exactly that (`info_preview::compose`); exact on both stalls at turn 0. Still open: no shot shows an unscaled type with arrows at turns 1-3 (a capture recipe is in the UI-INFO-2b report), and the view-turn term stays 0.
 - **How to resolve:** read the canvas-to-box blit after 0x1001dc30; capture an unscaled type whose four turns differ in width parity (e.g. a 1 x 1 stall, once OQ-612's stall offset is known).
-
 
 ## OQ-625: S01_02_01 normal-session canary and script object definitions (FISHER-RE-2, 2026-11-15; OPEN)
 - **T/P:** normal `load_scenario` imports the original map's 27 islands, but `World::create` refuses `script offset 0: unsupported object definitions`. `src/sim/src/script.cpp` rejects nonempty parsed object definitions explicitly. No geometry-only ActorFreeComponent projection or script suppression was used for this prerequisite measurement.
@@ -3167,8 +3168,11 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
   `VKEK_HINTERGRUND` should sit at (781, 301) on GOG 1024 x 768 (A). No capture of either edition.
 - **How to resolve:** HE recording R2 and R3 (packet), then sprite-sad of each texture on the frames.
 
-## OQ-651: Where View.dll's gadget positions come from (UI-PANELS-PREP, 2026-11-16; OPEN)
-- **Status:** open.
+## OQ-651: Where View.dll's gadget positions come from (UI-PANELS-PREP, 2026-11-16; PARTLY ANSWERED 2026-11-17)
+- **Status:** partly answered (UI-TABS-1 stage B, `docs/re/ui.md` section 5.5): for the player overview and the
+  city status page, each page's layout function (vtable slot 29; city `0x1006c4c0`, overview `0x1007fcf0`)
+  places the children with gadget slot `+0x5c` `(x, y)` at (page x + 35, page y + C - 244) from float
+  constants. Open: whether every other View.dll page uses the same layout slot (check per panel packet).
 - **Area:** UI / original code.
 - **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
 - **Question:** The View.dll builders set size, image, tooltip and handler but no position; where is
@@ -3223,8 +3227,13 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **How to resolve:** read the slider class (factory 0xb17 → 0x1000fa60) property handler and the
   formatter 0x10025110; HE recording R2 with narration of the numbers shown.
 
-## OQ-655: The city-status rows' sources and period (UI-PANELS-PREP, 2026-11-16; OPEN)
-- **Status:** open.
+## OQ-655: The city-status rows' sources and period (UI-PANELS-PREP, 2026-11-16; PARTLY ANSWERED 2026-11-17)
+- **Status:** partly answered (UI-TABS-1 stage B, `docs/re/ui.md` section 5.5, update `0x1006c0f0`): sources
+  and signs are read. Row 1 = city statistic 0, row 2 = 1 + 2, row 3 = 4, row 4 = 5, row 5 = 2, row 6 =
+  row 1 - row 2 - row 3 + row 4 - row 5 (statistic 2, military, enters twice), row 7 = city `+0x64` ->
+  `+0x20` / 256. Open: the period of the statistics (the sim's decay, `SimConfig::stat_decay_den`, is
+  the rebuild's reading, not checked against a recording), the labels of statistics 4 and 5 (OQ-693)
+  and the knowledge source (OQ-695).
 - **Area:** UI / simulation.
 - **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
 - **Question:** Which city field (and which period: per minute, running, last cycle) does each of rows
@@ -3549,6 +3558,165 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **What we know:** OQ-022's own kind=4/`Flagge01_01.PCX` finding (D: `AnnoGame.dll` `0x10004e60`); the static decode path's lack of a colour parameter (C: `iso.cpp:322`, `building.hpp`, `iso.hpp:276-277`).
 - **How to resolve:** check whether any `ANLAGEN` entry's `palette_ids` references colour table id 109 (or another `EffectsMulti`-kind table); if so, check whether the original ever renders that entry recoloured (Ghidra on the building-frame decoder/blitter in `AnnoDisplay.dll`, or a capture of a placed flag object across players in the original/History Edition).
 
+## OQ-691: Which city the "?" view's city status page shows (UI-TABS-1 stage B, 2026-11-17; OPEN)
+- **Question:** which city the city status page (the "?" view's sub-tab 0) shows in each state: after a click on an own Kontor or marketplace, after a click on a foreign one, with nothing selected, and after a main-tab press.
+- **What we know:** the page's update `0x1006c0f0` reads the city at `[page+0x634]`, which the message handler `0x1006c030` stores from a message object whose kind (slot `+0x14`) is `0x1a00` (slot `+0x18` gives the city); a click on the own Kontor (GOG `f15_kontor`) or marketplace (HE `ui_5.mp4` 6:41) opens it. HE with nothing selected shows only the castle background (OQ-642).
+- **Rebuild default (UI-TABS-1 B):** the page shows the status bar's city (docs/re/ui.md 5.2: the city on the island the view is centred on, else the player's first), because no Kontor click opens it yet; the fact `hud.counters.city` names it.
+- **How to resolve:** read who sends message `0x1a00` (the Kontor/market click path in View.dll and AnnoFrame.dll) and capture the page after clicks on two different own cities.
+
+## OQ-692: The balance rows' text placement rule, cut and refresh (UI-TABS-1 stage B, 2026-11-17; OPEN)
+- **Question:** why the text of a 195 x 15 text gadget (class `0xb1c`, alignment `0x1c6` = 1) starts 3 rows above the gadget, whether the gadget also cuts at its bottom and at its left edge, and how often the original refreshes the figures.
+- **What we know:** measured, not read: right edge on the gadget's right edge, top at gadget y - 3, the glyph rows above the gadget not drawn (glyph-match on `hud_idle_running`, `f15_kontor`, `r2_tab_help`, 0 differing pixels; the '1' and '5' lose their top outline row); digits never reach the bottom (glyph rows 2..16 of 25). The update functions run from vtable slot 40 (`0x1006c070`: every call, the deny toggle only after a 1000 ms stamp; overview `0x1007f8d0`); what calls slot 40 and how often is not read.
+- **Rebuild default (UI-TABS-1 B):** `text_dy -3`, `clip box` (cut to the whole gadget), figures refreshed every frame from the latest snapshot.
+- **How to resolve:** the text gadget's draw method (class `0xb1c`, View.dll factory `0x10019d60`) and its caller chain; a shot with a figure wider than the gadget.
+
+## OQ-693: The names of the city statistics 4 and 5 (UI-TABS-1 stage B, 2026-11-17; OPEN)
+- **Question:** which of the city statistics 4 (`+0x5fc`) and 5 (`+0x600`) holds the city's trade sales and which its trade purchases.
+- **What we know:** the sim names index 4 `trade_sales` and index 5 `trade_purchases` (`docs/re/population.md` section 8, HEAD2 0x38 / 0x3c in `scenario_formats.cpp`). The city status page prints index 4 on row 3 ("Purchase costs" / "Einkaufskosten", tooltip `TOOLTIP:INFOSTADT_STADTMAIN`) and subtracts it, index 5 on row 4 ("Sales revenue" / "Verkaufserlöse") and adds it (View.dll `0x1006c234`, `0x1006c275`, `0x1006c2ef..0x1006c2fd`); the overview does the same with the player's `+0x80` / `+0x84`. So either the sim's names are swapped or the page's labels name the other side of the trade.
+- **Rebuild default (UI-TABS-1 B):** the rows follow the original's index (row 3 = `trade_sales`, row 4 = `trade_purchases`); no sim field is renamed. Both are 0 until the sim trades (no trade stage yet).
+- **How to resolve:** the trade function `0x100ac360` (AnnoWelt), which adds to them: which one grows when a city sells.
+
+## OQ-694: The player's own terms of the overview's rows 3-5 (UI-TABS-1 stage B, 2026-11-17; OPEN)
+- **Question:** what feeds the player's statistics `+0x80` / `+0x84` and the unit upkeep sums `+0x88` / `+0x8c`, which the overview adds to the cities' purchase costs (row 3), sales revenue (row 4) and military costs (row 5).
+- **What we know:** player getter `+0x9c` (`0x1001c0f0`): 2 `+0x88`, 3 `+0x8c`, 4 `+0x80`, 5 `+0x84`, raw; the overview adds them at `0x1007f921..0x1007f96d`. The sim holds them (`Player::upkeep_a/b`, `stat_a/b`) and books and decays them (`player.cpp`), but nothing adds to them: no unit upkeep is charged for ships or soldiers, and the writers of `+0x80` / `+0x84` are not read. HE on the ship start shows 17 in row 5 (`HE_UI_1.mp4` 44.5 s), GOG `hud_idle_running` 16.
+- **Rebuild default (UI-TABS-1 B):** overview rows 3, 4, 5 and the balance row 6 stay empty.
+- **How to resolve:** the writers of player `+0x80..+0x8c` (figure creation and removal, the trade function), then a sim rule that feeds them.
+
+## OQ-695: The city's knowledge on the city status page (UI-TABS-1 stage B, 2026-11-17; OPEN)
+- **Question:** what the "Knowledge in city" figure (row 7) counts.
+- **What we know:** row 7 = city slot `+0x64` (`0x1002dfd0`: the object at city `+0x320`), its slot `+0x20`, divided by 256 toward zero (View.dll `0x1006c145..0x1006c167`); GOG `f15_kontor` 0, HE `ui_5.mp4` 6:45 9. The sim has no research sub-object for a city (OQ-157).
+- **Rebuild default (UI-TABS-1 B):** row 7 stays empty.
+- **How to resolve:** the object at city `+0x320` and its slot `+0x20` (AnnoWelt), with OQ-157.
+
+## OQ-700: Does the status bar keep the last map tile while the mouse is over the panel or the bar? (UI-STATUS-1, 2026-11-17; OPEN)
+- **Question:** the status bar reads the tile of the frame's cursor object every frame (`docs/re/ui.md` 5.6). When the mouse leaves the map for the right panel or the bar, does the cursor keep its last map tile? Or is the cursor cleared (`tViewedInfo` slot `+0x1c` then returns 0, and the island/city bytes keep their last value anyway)? Or does it move to some other tile?
+- **What we know:** D: `AnnoFrame.dll` `0x100052a0` updates the island/city bytes only when `tViewedInfo` `+0x1c` (`0x100041f0`) returns 1, from the cursor's slot `+0x68`/`+0x6c`. The cursor's own position update (for example `tCursorInfo`, vtable `0x10088b30`, x at sub-object `−0x94` via `0x10050100`) was not read. P: the HE gap 01:43.5-02:03.25 (cursor mostly on the panel, counters hidden, fertility shown) fits "keeps the last map tile".
+- **How to resolve:** the HE recipe in `ui.md` 5.6, steps 1-2; or read where the cursors write their tile word (`0x10050000..0x10051d70`) and the View.dll mouse handler that feeds them.
+- **2026-11-17, UI-STATUS-1 B (rebuild default):** the status bar keeps the last map tile while the pointer is on chrome or outside the window (`Viewer::update_status_bar`), as the HE frames suggest.
+
+## OQ-701: Which events set an island's discovery word +0xa6 besides founding? (UI-STATUS-1, 2026-11-17; ANSWERED 2026-11-17 (stage C, corrected))
+- **Question:** the status bar's fertility row shows only when bit (local player) is set in island property `0xe`, word `+0xa6` (`AnnoFrame.dll` `0x10009797`-`0x100097c2`). Which events write it?
+- **What we know:** D: founding registration ORs the founder's bit (`0x100862c5`-`0x100862dd`). The island reveal `0x10080c10` (island slot `+0x130`) stores the word directly (`ship-founding.md`). The `DISCOVER` record loads it. The world's slot `+0xcc` (`0x1009d9b0`) walks the islands of a chunk region and calls island slot `+0x130`. Its callers were not separated from other `+0xcc` calls: about 30 sites in AnnoWelt, AnnoGame and AnnoFrame, receivers not identified. The rebuild (`Island::players_present`) writes the word only at founding and on load. If ships reveal islands in the original, the rebuild would hide the fertility row over islands the player has only sailed past. P: HE shows the row over islands before the first founding (00:52.75-01:41.5). That fits either a ship reveal or non-zero `DISCOVER` words in the scenario.
+- **How to resolve:** identify the world-receiver callers of slot `+0xcc` (ship movement candidates); dump the `DISCOVER` words of the start scenario used in `HE_UI_1.mp4` and of the GOG shots' scenario; HE recipe step 3 in `ui.md` 5.6.
+
+- **2026-11-17, UI-STATUS-1 C (PARTLY ANSWERED, `docs/re/ui.md` 5.6 stage C):** the writers of `+0xa6` are the constructor, the `DISCOVER` loader (`0x100899b6`), founding registration (`0x100862c5`), a city's owner change (`0x1002e283`-`0x1002e2a1`) and the reveal with flag 4 (`0x10080c1d`-`0x10080c58`), reached only through world slot `+0xcc` (`0x1009d9b0`). Founding passes flags 1 (no write). The flag-4 caller is not found (OQ-704); the manual and the HE frames say a ship's approach shows the row.
+- **2026-11-17, stage C corrected (UI lane check, `docs/re/ui.md` 5.6 stage C, `annowelt.md`):** writers are the constructor, `DISCOVER` load, founding, two owner-change paths (`0x1002e283`, `0x100a869d`), a **moving ship** (radius 14, flags 5, `0x10042273`) and the **scout** (radius 8, flags 7, `0x100365dc`). Land units and founding pass no flag 4. Only OR-ed during play; AnnoScene clears one bit at map set-up (`0x1000898f`). Still open: the start-of-game state (OQ-704).
+
+## OQ-702: The fertility bar's 50 and 100, and where the rebuild gets island property 11 (UI-STATUS-1, 2026-11-17; ANSWERED 2026-11-17 (stage C, corrected))
+- **Question:** what does the half bar mean in play? And where should stage B take island property 11 (`+0xac`) from for islands that come from scenario, map or save files?
+- **What we know:** D: the status bar shows the crops possible in the island's climate (mask `0x10009904`, the same values as `SimConfig::raw_climate_mask`). The bar is 100 when the island's property 11 has the crop's bit, else 50 (`0x100098cb`-`0x100098da`). Property 11 is set at map placement to `0xF009 | raw marks` (`annoscene.md` §5 step 10). The sim has no field for it (`scenario_formats.hpp` `LinkRawMaterials`: "the sim has no field for it yet"). Islands loaded from files (for example the `ANBAU` save record, or island templates) were not traced. "Half bar = the crop grows here at a reduced rate, or not at all" is a guess: the production rule for non-fertile crops was not read here.
+- **How to resolve:** a sim field for property 11 (a separate sim packet; stage B must not invent it, so with no source it draws no bars and raises a QUESTION); read the farm's fertility test; a GOG or HE capture of an island with a half bar.
+- **2026-11-17, UI-STATUS-1 B:** the rebuild draws the icons without bars: a named placeholder (`data/ui/hud.txt` comment above `rosh_0`, `data/ui/masks.txt` `balken_0..3` with reason `fertility-bar-not-drawn`).
+
+- **2026-11-17, UI-STATUS-1 C (answered in part):** two levels, 100 = the crop bit is in property 11, 50 = not; no 0 % in the bar (a crop the climate forbids has no icon). Property 11 comes from the `ANBAU` record (loader `0x10089871`; every shipped template lists every crop) and, in a new game, from the link placement (`0xF009 | raw marks`). The crop-growth test (island slot `+0x140` = `0x100817c0`) halves the tile's fertility value for a crop missing from property 11 (`0x1008197f`-`0x10081997`); the effect on a farm is OQ-706. The sim still has no field: stage D.
+- **2026-11-17, stage C corrected:** 100 / 50 = the island's property-11 crop bit set / not; no 0 %. The source is `ANBAU` (base `0xF009` OR the listed crops; 6 templates lack herbs) or, on INSELLNK links only, `0xF009 | random raw marks`. The segments come from the raw-climate table, not the crops' own climate masks (OQ-707). The farm effect is OQ-706. Still open: the sim field (stage D1).
+
+## OQ-703: Owner decision: what the status bar shows over islands and cities that are not his (UI-STATUS-1, 2026-11-17; RESOLVED by the owner 2026-11-17)
+- **Question:** the original's code (`docs/re/ui.md` 5.6) differs from the owner's 2026-11-17 statement in three places. Which default does the rebuild take?
+  1. Goods and citizens over his island: the code shows them only inside his city's territory, and gold and fertility elsewhere on the island; the owner said "island".
+  2. Fertility icons over another island, with or without a city: the code shows them on every island the player has discovered; the owner said "only gold".
+  3. Residents over another player's city that knows him (city property 0): the code shows the residents figure; the owner said "only gold".
+- **What we know:** the code read is D; HE frames agree with points 1 and 2 (`ui.md` 5.6 HE table). Point 3 has no capture (HE recipe step 4).
+- **How to resolve:** owner choice per point; any departure from the code becomes a `rules` option with the original as the faithful behaviour (owner rule: bugs vs feeling changes).
+- **Answer (owner, 2026-11-17, asked in the UI lane's session with the code read and the HE frames in front of him):** "Like original" on all three points. (1) Goods and citizens only while the cursor tile is inside the local player's city's territory; gold and the fertility row elsewhere on the island. (2) The fertility row over every island the local player has discovered, with or without a city; an undiscovered island shows gold only. (3) Over another player's city whose player knows him, its residents figure; never its goods. No `rules` option: the rebuild's default is the original's rule, and it replaces the 2026-11-14 "Always show my city" default (OQ-622). UI-STATUS-1 stage B builds it.
+
+## OQ-704: Which game action reveals an island to a player (the reveal with flag 4)? (UI-STATUS-1 C, 2026-11-17; ANSWERED 2026-11-17, partly open)
+- **Question:** who calls world slot `+0xcc` (AnnoWelt `0x1009d9b0`: x, y, radius, flags, player) with flag bit 4, the only path that ORs a player into an island's discovery word `+0xa6` (island slot `+0x130`, `0x10080c1d`-`0x10080c58`) besides founding, ownership change and loading? Ship movement (which ships, what radius, how often), the scout, the start?
+- **What we know:** D: founding calls the island reveal directly with flags 1. A sweep of every module for `call [reg+0xcc]` with five pushed arguments finds only the event handler `0x1007f960`'s two calls (`0x1008041f`, `0x100804ca`), with flags 0 and a radius of an object's slot `+0xf0` value × 60/100 or × 30/100. The flag argument may come from a register or a struct not caught by the sweep. P: the manual (p. 11) says the bar shows the climate and the crops as the ship nears an island; HE shows the row over islands before any founding.
+- **How to resolve:** read the ship's tick and the scout's actions for a world `+0xcc` call (a register-held flag); the HE recipe in `docs/re/ui.md` 5.6 stage C steps 1, 2 and 5.
+
+- **Answer (2026-11-17, UI lane check, verified):** ships: ship slot `+0x17c` = `0x10042210`, while `(state & 7) == 1`, world `+0xcc` at `0x10042273` with radius 14 and flags 5, every movement step. Scout: `0x10036570`, island `+0x130` at `0x100365dc`, radius 8, flags 7, its own island. Land units: flags 1 only. The earlier "two calls with flags 0" were island SetHitPoints calls, not world calls. **Still open:** the exact reach edge (chunk-map builder world `+0x130` = `0x100a59f0` not read; about 14-21 tiles); which islands are discovered at tick 0 of a new game (HE recipe step 1); what the scout's deposit pass (flag 2) shows.
+
+## OQ-705: What a click on an undiscovered island shows (UI-STATUS-1 C, 2026-11-17; ANSWERED 2026-11-17, partly open)
+- **Question:** does a left click on an island the player has not discovered show anything in the status bar or the right panel?
+- **What we know:** the status bar is hover-driven and its fertility row tests the discovery word (`0x10009797`); the click's panel path was not read. The owner remembers "nothing".
+- **How to resolve:** HE recipe step 3 (`docs/re/ui.md` 5.6 stage C); read the island click handler.
+
+- **Answer (2026-11-17):** nothing island-specific. No click path tests the discovery bit; island id `0x1300` has no "?" page (`0x10039ae0`); bare land selects nothing (`0x1001ae10`, `0x1001977e`, `0x100197eb`): the "?" tab shows its empty page `0x1a`, any other tab stays (View `0x1003388a`-`0x10033899`); the status bar shows gold only. **Still open:** what a click on a foreign building on an undiscovered island shows.
+
+## OQ-706: What the crop-growth test's answer does to a farm (UI-STATUS-1 C, 2026-11-17; ANSWERED 2026-11-17, partly open)
+- **Question:** island slot `+0x140` (`0x100817c0`) answers "1" on a fraction of tiles that falls with the tile's fertility (all 32 of 32 dither cells at 0 %, 16 at 50 %, none at 100 %), and a crop missing from island property 11 has its fertility halved. Does "1" mean the plant does not grow (or withers) on that sweep, and how does that translate into a farm's output?
+- **What we know:** D: the arithmetic and the table `0x100c9c28` (`docs/re/production.md` 4.3). On "1" the field sweep (`0x1008b359`) adds 2 to a counter word and posts redraw 0xce; the counter's meaning and the two scaling flag cases (× 2/3, × 55/128) were not read. P/L: the owner's 1602 memory, 50 % = clearly less efficient.
+- **How to resolve:** read the sweep around `0x1008b2f0`-`0x1008b3a0` and the counter's reader; HE recipe step 4.
+- **Answer (2026-11-17):** "1" = the tile's crop is or becomes the dry variant (712 → 714, 713 → 715; never harvested). Callers: placement, AI, auto-plant, the drought tick `0x1008aeb0` (the "+2" is the object id), a well change, EVENTINSEL. Healthy crops grow at normal speed (the growth visit `0x1008b5f0` never calls the test). Modifiers: well × 133/100, well + drought × 2/3 × 133/100, drought × 55/128; table index `[L][(y − y0) & 3][(x − x0) & 7]`. **Still open:** the farm-output loss (harvest cycle, production.md 4.5); a farm built after a well (well bitmap); the other crop objects 749/753/757.
+
+## OQ-707: The status bar shows wine on desert islands that cannot grow it (UI-STATUS-1 C, 2026-11-17; OPEN)
+- **Question:** on a WUESTE island the fertility row shows spices and wine (AnnoFrame climate table `0x10009904`, WUESTE `0xf04d` includes bit 6), but wine's own climate mask (HEAD[0x13] of 716/717 and plantation 822 = 0x2c: NORD, PRAERIE, STEPPE) excludes WUESTE, so the crop test gives v = 0 and every wine field is dry. Is that what the original shows and does, and can a wine plantation be built there at all?
+- **What we know:** D: both tables (`docs/re/ui.md` 5.6 stage C); every other shown crop/climate pair agrees. The placement check against HEAD[0x13] was not read. Other crop objects 749 (KRÄUTER 0x7e), 753 (TABAKBAUM 0x7c), 757 (GEWUERZBAUM 0x7f) carry other masks and no plantation plants them (purpose not read).
+- **How to resolve:** HE recipe step 5 (`docs/re/ui.md` 5.6 stage C); read the plantation placement test for HEAD[0x13].
+
+## OQ-708: How the original loads a malformed ANBAU record (ISLAND-CROPS-1 1a, 2026-11-17; MOSTLY ANSWERED 1b)
+- **Update 2026-11-17 (ISLAND-CROPS-1 1b, AnnoWelt read):** the loader `0x10089871`-`0x10089965` stops at the payload's end (`0x100898d2`) or after 13 names (`0x10089954`, unknown and empty names counted); an unknown name is skipped silently (`0x10089931` -> `0x10089943`); a second record re-stores the base at `0x1008988f`/`0x10089897` and ORs its own names, so the last record wins (D). An empty name matches no ware and is skipped (L: no ware name is empty); a payload without a final `0x00` makes the inline compare (`0x100898fe`-`0x10089920`) and `repne scasb` (`0x1008994a`) read past the payload into the stack buffer at `esp+0xdc` (L, undefined). The rebuild keeps refusing all three as an ADAPTATION (`docs/sim/state.md` §3.2), since the corpus shows none. Open: only the exact bytes an unterminated payload would read.
+- **Question:** what does the AnnoWelt `ANBAU` loader (`0x10089871`-`0x1008995f`) do with a payload whose last byte is not `0x00`, with an empty name (two `0x00` in a row, or a leading `0x00`), with more than 13 names, and with a second `ANBAU` record on the same island?
+- **What we know:** the corpus shows none of these: all 1,133 islands have exactly one record, every payload ends with `0x00`, no empty name, at most 13 names (P, `insel_corpus` "ANBAU corpus"). The loader looks names up among wares `0x38..0x44` and stops after 13 (D, task/UI-STATUS-1 `0ee20000`, `docs/re/ui.md` 5.6 stage C); how it splits the payload was not read instruction by instruction.
+- **Rebuild default (`anno::formats::insel::CropList`, `Island::crops`):** refuse the first three with "name not terminated", "empty name", "twice"; an empty payload is an empty list; no limit on the name count in `formats` (the 13-name cap of the loader, if it matters, is the sim's, from config).
+- **How to resolve:** read the loader's split loop at `0x10089871`-`0x1008995f` (GOG AnnoWelt.dll) and, if it accepts these cases, load them like the original instead of refusing.
+
+## OQ-709: What the readers of island property 11 make of bits 13-31 (ISLAND-CROPS-1 1b, 2026-11-17; OPEN)
+- **Question:** island property 11 (`+0xac`) is a dword; bit b is goods `0x38 + b`. The ANBAU loader names only bits 0-12 (GETREIDE..KARTOFFEL, wares `0x38..0x44`), but the base `0xF009` sets bits 13-15 (goods `0x45..0x47`: GRAS, BAUM, FISCH by the goods table), the island constructor stores `0xFFFFFFFF` (bits 16-31 too, goods `0x48..0x57`, several of them UNUSED), and an INSELLNK raw mark k sets bit k for k up to 19 (`0x100085c3`, `cmp ecx, 0x14`; the polar raw climate mask `0x18000` has bits 15 and 16, i.e. FISCH and EISFISCH). Which of these bits does any reader test, and as what?
+- **What we know:** readers are the status bar (AnnoFrame `0x100097ef`, `0x100098cb`-`0x100098da`: one bar per crop), the crop test (AnnoWelt `0x10081986`-`0x10081997`, the crop object's class `0x38..0x44`) and ten places in CompLogic/CompLogicClassic (purpose not read). Whether the raw-material kinds are the same goods as the bits (kind k = goods `0x38 + k`) is L from the shift.
+- **Rebuild default (ISLAND-CROPS-1 1b):** `Island::crops` keeps every set bit as goods id `crops.mask_first_goods + b` (the faithful value); `CropTables::base_goods` lists `0x45..0x47` as goods ids from config. Readers decide: the status bar (D2) draws no bar for a goods it cannot name.
+- **How to resolve:** read the CompLogic readers and the status bar's loop bounds; check whether any rule tests bits 13-19 (fish, grass, trees) on an island.
+
+## OQ-710: Whether the History Edition's single-precision figure tick ends waits and walks at other ticks than GOG's x87 one (RE-HE-PRODUCTION-1, 2026-11-17; OPEN)
+- **Area:** simulation / editions.
+- **Question:** GOG's figure tick (`AnnoWelt.dll` `0x10034760`, `docs/re/transport.md` §4.3) does its time and remaining-amount arithmetic on the x87 (13 `fld`, 5 `fmul`, 4 `fcomp`). HE's (`AnnoWeltAddOn.dll` `0x10007d20`, figure class slot `+0x74`; the x64 module likewise) uses SSE single precision (`movss`, `mulss`, `subss`, `comiss`). Does a wait such as the forester's 13.0 at rate 0.01, or a walk, end in the same figure visit in both editions for every advance pattern, or can the last-bit difference move it by one visit?
+- **What we know:** the production, worker and cart logic around it is identical (`docs/re/forestry.md` §8.2). The tick's only float constant read from memory, the 0.2 per tick, is the same in both. The wait's duration and rate come from the identical step B start. The GOG x87 precision control is itself open (OQ-032). The rebuild models waits as integer ticks (6 500 for 13.0; `docs/sim/forestry.md`), so it follows neither float path exactly.
+- **Guess (not stated as fact):** with the advance lengths a game uses, the sums are exact or nearly so, and the visit rarely or never changes. This is not checked.
+- **How to resolve:** emulate both bodies (`tools/emu_forester.py` style: GOG with unicorn's x87, HE86 with SSE) over a sweep of advance patterns and compare the visit at which `remaining` reaches 0. Or measure a forester's cut tick in both editions on the runner (HE for live behaviour, owner rule 2026-11-16). OQ-711..719 were not used.
+
+## OQ-711: How many view directions the entrance-arrow figure has (UI-INFO-2b, 2026-11-17; RESOLVED BUILDINGS-REF-1)
+- **Question:** the arrow figure (FigurenHeader 1573, `Strassenanschluss01`, 8 frames of one step each) picks its frame by `((dir16 >> shift) & mask) * frames_per_direction` (AnnoDisplay.dll tHausFigur slot +0x6c 0x100055b0); mask = directions - 1 and shift come from a property setter (0x100052c7: shift 0 for 16 or more directions, 1 for 8..15, 2 below). Where the direction count of this figure is set was not traced.
+- **What we know:** the rebuild takes directions = the frame count (8): direction d gives frame 2d, the arrows point out of their side (frame 0 up-right for side 0, -x). Both stall shots are exact with it (one arrow each side for 1314, frames 0, 2, 4, 6).
+- **Resolved (BUILDINGS-REF-1, BUILDINGSOBJECTS part C 5, recorded in UI-INFO-2d):** 8 directions, the `tHausFigur` constructor default (AnnoDisplay.dll `0x10005cb0`: mask `+0x19` = 7, shift `+0x1a` = 1; frames per direction `+0x18` = 1 from the base `0x10005390`). Frame for arrow direction d = 2d, what the rebuild draws.
+- **How to resolve:** trace the property 0x13x writes for figure sets (the ANIM/BODY2 records) into tHausFigur.
+
+## OQ-712: The preview's other parts - further sprite sets, the a4 list and the type height (UI-INFO-2b, 2026-11-17; RESOLVED UI-INFO-2d, offsets: OQ-750)
+- **Question:** View.dll 0x1001d000 walks three part lists of the type: slot 0xa0 and 0xa4 (AnnoGame 0x1000b8c0 / 0x1000ba10: the type's up to four sprite sets at +0x244, split by the set object's slot 0x60, each at the footprint centre plus the set prefix's (x, height, y) offset at prefix bytes 4..15, height plus the type's +0x288) and 0xa8 (the arrows). The rebuild draws set 0 and the arrows only.
+- **What we know:** among the GOG shots, 1301 and 1302 (a flag, set kind 9), 1023 (kind 9) and 801 (a second kind-2 set) have more sets; all four are scaled (OQ-612), so no exact check exists yet. Whether set 0 is always in the 0xa0 list and what +0x288 holds was not read.
+- **Resolved (UI-INFO-2d, 2026-11-17):** the slots, the split into 0xa0 (still) and 0xa4 (animated: the display object's slot 0x60, tHausAnim 0x100046f0) and the turn of the offsets are read (docs/re/ui.md 2.5); the 'type height' is the point's own height (0x1000b9b2 adds the caller's point y, 0 in the picture), not a type field. The rebuild composes every set. Which file bytes are the offsets is OQ-750.
+- **How to resolve:** read slot 0x60 of tHausGebaude/tHausAnim and the writer of type +0x288; compose the extra sets and compare the scaled shots once OQ-612's sampler is known, or capture an unscaled type with a second set.
+
+## OQ-713: Whether the map ghost draws the same entrance arrows (UI-INFO-2b, 2026-11-17; CLOSED BUILDINGS-REF-1: no)
+- **Question:** the HE video (`he_01`, 3:32-4:21, `s3_market.png`, `s4_ghost_times.png`) shows green arrows on the placement ghost that turn with it. Does the ghost use the same type slot 0xa8 list (CONPO2, figure 1573) as the preview?
+- **What we know:** the preview's path is read (docs/re/ui.md 2.5); the ghost's draw path was not read in UI-INFO-2b, so the rebuild draws no arrows on the ghost.
+- **Closed (BUILDINGS-REF-1, BUILDINGSOBJECTS part C 2, recorded in UI-INFO-2d):** the map ghost draws **no** arrows, in GOG and HE. The only producer of arrow parts (AnnoGame `0x1000bb60`, type slot `0xa8`) is consumed only by View `0x1001d000`, the info-picture composer (D, a sweep of all modules); a GOG market ghost and HE tanner and market ghosts show no green arrows (P). Every building picture made by `0x1001d760` carries them (part C 4). The rebuild draws none on the ghost.
+- **How to resolve:** find the callers of type slot 0xa8 in AnnoWelt/AnnoFrame (the cursor's draw) and compare with 0x1001d000.
+
+## OQ-714: The category column's hit width over grid column 0 (UI-INFO-2b, 2026-11-17; OPEN)
+- **Question:** the eight `VIEWBAUTAB` gadgets (class 0xb0d, 42 x 46 at x 779, View.dll 0x1002bb4f: `push 0x2e; push 0x2a`) are drawn clipped to the 29 px column (779..807), but the rebuild hits them over the whole 42 px (779..820), so a click on grid column 0's first 13 px (808..820) switches the category instead of arming the cell (UI-INFO-2 QUESTION 2). Does the original's gadget hit test use the clipped rectangle?
+- **What we know:** only the gadget size and the drawn clip; the gadget class's hit test and the parent's clip were not read in UI-INFO-2b (time went to the entrance arrows). The rebuild is unchanged.
+- **How to resolve:** read class 0xb0d's hit-test slot and how the parent window clips child gadgets; or capture the original after a left click at (815, y) on grid column 0 of the public tab (a Wine-runner recipe is in the UI-INFO-2b report).
+
+## OQ-715: What the rebuild draws for the fertility indicator before the sim can answer its two tile tests (UI-PRODBAR-1, 2026-11-17; OPEN, orchestrator/owner)
+- **Question:** the bar over a farm's ghost (`docs/re/ui.md` 4.1) counts tiles with two sim rules the rebuild does not have yet: the crop test (`0x100817c0`, which needs the fertility nibble grid from `Wachstum.dat`, island property 11 and the well bits) and the placement predicate for single-quad tile objects (flag word `0x29`, `Unsupported` in `placement.cpp`). Should stage B draw nothing until those exist, or draw a named stand-in?
+- **What we know:** D: the whole rule (`ui.md` 4.1). The sprite (figure 1557) and the area are app-side reads. A stand-in made of the raw `FRUCHTBAR` column plus a height ≥ 32 test would show a bar that is not the original's value. The evidence contract asks for an explicit adaptation, never a silent one.
+- **Dependencies:** island property 11 comes from ISLAND-CROPS-1 1b (in flight), not a new packet. The full draw gates stage B must reproduce: `B+0x2e4` (preview valid), `[B+0x48] < [B+0x50]`, the registry lookup non-null, and the projection non-zero (`ui.md` 4.1).
+- **Moved:** when the original rebuilds the fertility nibble grid (`0x10084370`) is now OQ-726.
+- **How to resolve:** orchestrator: schedule the sim queries (REPORTS entry, UI-PRODBAR-1 stage A: the split); owner: decide whether a marked stand-in may show in the meantime. Default proposal: stage B draws no bar and records the named placeholder `fertility-indicator-needs-sim` until the sim queries land.
+
+## OQ-716: The exact HE values at known tiles (UI-PRODBAR-1, 2026-11-17; OPEN)
+- **Question:** the rule explains 10/10 inland and 6/10 near the coast in `he_01.mp4` only qualitatively: the map of that game is not known. Which exact values does the HE show at tiles of a map the rebuild loads?
+- **What we know:** D: value = trunc(10 · good / N) over the radius disc. P: `Wachstum.dat` Proz for meadow (99-100) and beach (0-47) textures.
+- **How to resolve:** the HE recipe below. Stage B's test computes the same spots from the scenario file and must agree segment by segment.
+- **HE recipe (owner, about 10 minutes, video only):** (1) Start a shipped scenario or endless map whose `.sze` the rebuild reads (for example the one used for the fixed map), on the same island as the founding tests; game speed slow. (2) Found the Kontor as usual, open Farms, arm the **forester** (801). (3) Without clicking, hold the ghost still for 2 s at each of: an inland meadow tile in the middle of the island; a tile 2 tiles from the beach; a tile touching the beach; a spot half in a forest. Say each spot's position aloud (or hover the minimap). (4) Repeat steps 2-3 with the **grain farm** (811, r = 3) and the **sheep farm** (807, object 1). (5) If an island shows a crop at 50 % in the status bar, arm that crop's plantation there and hold it on an inland meadow. Expected about 4-6/10: up to 6/10 for grain or herbs (r = 3), 4-5/10 for r 4 plantations. As a control, hold a halved r = 4 plantation on the same spot. Record at the HE's native window size, zoom step unchanged. Send the video and the map name.
+
+## OQ-717: Do the farms harvest in the same disc that the indicator counts? (UI-PRODBAR-1, 2026-11-17; OPEN)
+- **Question:** the indicator counts a midpoint-circle disc of radius HEAD[0x11] around the footprint (`ui.md` 4.1). The forester's worker searches an 11 × 11 square (`forestry.md` §1.1). Which area do the grain farm, the plantations and the sheep and cattle farms harvest and plant in?
+- **What we know:** D: the indicator's disc (`0x10047a5b`-`0x10047d1a`, emulated in `cache/prodbar/disc.py`); r = 5 drops the square's 24 corner tiles. The other farms' field search was not read.
+- **How to resolve:** read the farm worker's target search (farm family `0x1006ea90` dispatch, the worker job's search routine) for the area shape. If one routine draws this disc, the sim can share it with the indicator.
+
+## OQ-718: The bar's exact screen offset and the drawer's arguments (UI-PRODBAR-1, 2026-11-17; OPEN)
+- **Question:** figure 1557's slot `+0x7c`(&point, 0, 0, &record) and the drawer's slot `+0xbc`(record, 0, frame, `0xc0`, …) were not read. What do `0xc0` and the record carry (alpha, layer, screen offset), and where exactly does the 54 × 12 sprite land relative to the ghost at each zoom step?
+- **What we know:** D: the world point (footprint centre at height byte 8 × 0.04 + HEAD f32 [0x14]) and that the value is the drawer's third argument; that the drawer uses it as the frame index is unread. The bar is drawn only if the projection returns non-zero (`0x10047de0`). P: the sprite anchor (27, 12), the same size in all three zoom groups; HE shows the bar over the roof.
+- **How to resolve:** read the two slots (AnnoGame figure type vtable, AnnoDisplay drawer). Or measure stage B's first draw against `c4_bar_a.png` / `c4_bar_b.png` (scaled HE crops) and a GOG capture at 1024 × 768.
+
+## OQ-719: The pasture object 1 for the sheep farm, the cattle farm and the small farm (UI-PRODBAR-1, 2026-11-17; OPEN)
+- **Question:** 807 sheep, 820 cattle and 809 small farm name object 1 (`ROHSTWACHS`, climate mask `0xfe`) as their crop object. The small farm's input is `KARTOFFEL`, but its indicator tests object 1 / `GRAS`, not a potato field. Is that what the original shows? And on a POLAR island (climate 0, not in `0xfe`), is the bar always 0?
+- **What we know:** D: registry slot `+0x7c` returns object 1 unchanged (its next id 2 yields `GRAS`, not `BAUM`); the crop test sets v = 0 when the object's climate mask lacks the climate. P: `Anlagen.dat` HEAD[0x28] = 1 for 807, 809 and 820. The small farm's own field object and its planting were not read (`production.md` 4.5).
+- **Partly answered (fix round 1, D):** on a POLAR island (climate 0) object 1's mask `0xfe` gives v = 0, L = 0, and table row 0 has no healthy cell (`cache/wf/tbl.py`), so the sheep, cattle and small-farm bars read 0/10 there. The forester on a polar island is halved when the island was loaded from `ANBAU` (property 11 starts at 0 for climate 0 and cannot list `BAUM`), and not halved when it was link-placed (`0xF009 | marks`). Only the HE confirmation is open.
+- **How to resolve:** HE: arm the small farm on a meadow (expected the same bar as the sheep farm). Read the small farm's planting routine for the object it places.
+
 ## OQ-720: What the "no road" tests `0x10071f40` and `0x10072390` check (UI-HARVEST-ICON-1, 2026-11-17; NARROWED by stage C, OPEN)
 - **Question:** when a "raw material missing" report falls due for a building whose input is not a crop or an animal, `AnnoWelt` `0x10072ed0` calls `0x10071f40(input, 0)`; for "storage full" it calls `0x10072390(input, 0)`. A zero result turns the status into code 3 and shows figure 1571 `KeineStrasse` instead (`docs/re/ui.md` §11.2). What exactly do the two functions test?
 - **What we know (D):** `0x10071f40` returns 1 when the building has no such input (`0x10071f61`-`0x10071f76`). Otherwise it builds the building's work rectangle from its footprint, rotation (`+0x0c & 3`, jump table `0x100722bc`) and the type's radius (slot `+0x78`), and runs the city's enumerator (city slot `+0x60` → slot `+4`, kind `0xa`, callback `0x10071ee0`) with the goods; when nothing is found it returns `-1` (non-zero: the status stays code 1, `0x100720cf`-`0x100720de`). The rest (`0x100720e1`-`0x10072382`) and all of `0x10072390` are unread. The figure name and the help page (`help/IH_Betrieb_Strasse_Fehlt.htm`: a workshop "has no connection to a road, or an incorrect one") make "a supplier or a store exists but cannot be reached by road" **likely**.
@@ -3580,3 +3748,159 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **What we know:** the bits are part of the building (`+0x0d`); the sim saves `StatusTracker`. Whether a building's `Load` calls `0x10073010` was not checked (the three direct callers of `0x10073010` are the switch helper, the status helper and the clear; none is a loader).
 - **Rebuild default (stage B):** derive the icons from the saved state each frame, so they show at once after a load (the icon is display only; no sim state depends on the object).
 - **How to resolve:** HE: save with a Zzz icon on a building and load; and read whether the island object loader keeps objects with `BEWOHNTYPE` `PRODSYMBOL`.
+
+## OQ-726: When the original rebuilds the fertility nibble grid (UI-PRODBAR-1, 2026-11-17; OPEN)
+- **Question:** the island's fertility nibble grid (`+0x18`, 0..10) is rebuilt by `0x10084370` (`production.md` 4.3). When does that run? Only at load, or also when a raw object changes (planting, felling, a well)?
+- **What we know:** D: `0x10084370` has no direct caller. It is reached only through vtables: island vtable `0x100cac2c` slot `+0x1a4`, data refs at `0x100cadd0`, `0x100ca340` and `0x100ca6d4`. The fertility indicator (`ui.md` 4.1) and the crop test read the grid. The sim split's S2b ("rebuilt on load and when a raw object changes") rests on an assumption, not on D. Moved here from OQ-715.
+- **How to resolve:** find the virtual call sites of island slot `+0x1a4` (`call [reg + 0x1a4]` with an island `this`) in AnnoWelt, AnnoScene and AnnoFrame, and read what triggers each one.
+
+## OQ-727: Whether the Radeon iGPU's 384 MiB integrated atlas budget (OQ-096b, DECIDED) needs a smaller default, given a real single-resource allocation ceiling well under that figure (RENDER-DIRECT-1d, 2026-11-17; OPEN)
+- **Question:** OQ-096b decided the non-discrete atlas budget default at 384 MiB (`atlas_budget_bytes_before_sprite`, `gpu.hpp`) on the facts known at the time (CPU-side packed-page byte counts only). RENDER-DIRECT-1c review F1/F2 then found that a real, in-budget allocation (`endless02.sze`'s resident pair, 356,515,840 bytes, under the 402,653,184-byte budget with the sprite atlas's own footprint subtracted) was refused by the real Radeon device anyway. RENDER-DIRECT-1d measured why, on this PC's Radeon: (1) it is a **single-resource allocation ceiling**, not the heap's total capacity - splitting `endless02.sze`'s pair into two separate per-group textures let one of them (the smaller, 83,886,080 bytes) allocate while the other (293,601,280 bytes) still refused on its own; (2) bisecting the layer count of a single 2048×2048 texture array found the real ceiling at **12 layers (251,658,240 bytes, 240.0 MiB) allocating, 13 layers (272,629,760 bytes, 260.0 MiB) refused** - well under even DXGI's own `DedicatedVideoMemory` figure for this adapter (3); (3) DXGI's own `DXGI_ADAPTER_DESC` for this Radeon reports `DedicatedVideoMemory` 488,390,656 bytes (465.8 MiB), `DedicatedSystemMemory` 0, `SharedSystemMemory` 16,704,471,040 bytes (15,930.6 MiB) - the 240 MiB single-resource ceiling found is about **52% of the reported dedicated VRAM**, not the whole of it, and far below `SharedSystemMemory`. **(4) A follow-up (orchestrator, same day):** does splitting under the per-resource ceiling actually hold the real worst case's full bytes, and where does the TOTAL heap stop? `endless02.sze`'s real 17-layer pair split 12+5 (an arbitrary layer boundary, not either group's own layer count) **both allocated, both held resident at once, both byte-exact** (356,515,840 bytes/340.0 MiB total); adding more 12-layer (240 MiB) dummy blocks on top found **29 more fit** before a further whole block refused (and a further partial block found 0 more layers fit) - **the largest total found: 7,654,604,800 bytes (≈7.3 GiB)**, far above both `DedicatedVideoMemory` and even approaching half of `SharedSystemMemory`. Does OQ-096b's 384 MiB default need lowering for non-discrete adapters (to under the real per-resource ceiling, which may itself vary by adapter/driver), or does the upload path need to split any single resident set above some size into multiple texture resources (a stage 2/3 upload-granularity design, not touched by RENDER-DIRECT-1c/1d), or both? Question 4's own finding favours keeping the 384 MiB total and splitting at the per-resource level, since the total heap was nowhere close to binding. Prepared, not decided (RENDER-DIRECT-1d's own scope: "don't change the default").
+- **What we know:** the exact numbers above, all measured on this PC's AMD Radeon(TM) Graphics iGPU (Vulkan backend, wgpu-native) in the `msvc` Release build (`src/render/tests/atlas_upload_test.cpp`'s `worst_pair_scene`, `src/render/tests/adapter_memory_diag_test.cpp`'s four cases). The RTX 4090 (discrete) uploaded `endless02.sze`'s full 18-layer, 360 MiB all-three-group set with no issue - this finding is Radeon/integrated-specific, consistent with OQ-096b's own 384 MiB default already being integrated-specific. The 240 MiB per-resource ceiling and the ≈7.3 GiB total-heap figure are both specific to this PC's driver/Vulkan version at the time of measurement (2026-11-17) and may not transfer to another Radeon iGPU or driver update unchanged - RENDER-DIRECT-1d's own bisection method (`layers_allocate`/`try_hold_another`, binary search with the error scope RENDER-DIRECT-1c added) is the reusable part, not the specific numbers.
+- **How to resolve:** the owner decides whether to (a) **keep the 384 MiB non-discrete default as the total budget, and split any single resident set above a configured per-resource size (around the measured ~240 MiB ceiling, with a safety margin) into multiple textures at upload time** (the option question 4's own finding has the least evidence against, since the total heap has enormous headroom above 384 MiB), (b) lower the non-discrete default itself below the real per-resource ceiling instead (question 4 suggests this is not necessary on the total-capacity evidence alone), (c) measure the per-resource ceiling at runtime per-adapter (bisect once at startup/cache) rather than hardcode a guessed number that may not hold on other hardware, or (d) some combination. None of these is implemented here; this entry exists to carry the numbers to that decision.
+
+## OQ-728: Does the build menu arm tCursorAnlageBergwerk (kind 0xe) for MINE and STEINBRUCH (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** Does the build menu arm `tCursorAnlageBergwerk` (kind `0xe`) for `MINE` and `STEINBRUCH`? If it does, a player mine can only stand on a site record whose mask holds its ore bit (`0x10046300`). That is a UI-level deposit restriction OQ-552 did not consider, because OQ-552 read the Default cursor `0x10047170`. Next: the View.dll cell callback (from `0x1002c260`) and the source of the 6-byte records (island `+0x24`, object slot `+0xc`).
+- **Where:** `docs/BUILDINGSOBJECTS.md` part B (placement rules); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-729: Which kind arms which cell: the per-cell rule in View.dll (PRODTYPE, flag class, or a table) (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** Which kind arms which cell: the per-cell rule in View.dll (PRODTYPE, flag class, or a table). Also which cursor places bridges, ramps and piers.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part B (placement rules); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-730: The writer of the draw-context byte +0x140c (the blink phase) and its period (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** The writer of the draw-context byte `+0x140c` (the blink phase) and its period. Not in AnnoWelt, AnnoFrame, AnnoGame, View, AnnoScene or AnnoDisplay by direct offset; likely a struct copy or an indexed store.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part B (placement rules); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-731: The neighbour table of the road/wall autotiler 0x1007cc40 (ids 2500-2537, 2672/2673, PRODTYPE 0x181, flag 0x80 (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** The neighbour table of the road/wall autotiler `0x1007cc40` (ids 2500-2537, 2672/2673, PRODTYPE `0x181`, flag `0x800`).
+- **Where:** `docs/BUILDINGSOBJECTS.md` part B (placement rules); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-732: The meaning of event codes 1, 2 and 4 and of flag bit 8 in the cursor input handlers (L: press, release, right (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** The meaning of event codes 1, 2 and 4 and of flag bit 8 in the cursor input handlers (L: press, release, right click, CTRL). One Wine capture would settle it.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part B (placement rules); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-733: The dry-tile swap in the field commit: what type slot +0xf8(3) returns (dry variant), and whether a tree on a  (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** The dry-tile swap in the field commit: what type slot `+0xf8(3)` returns (dry variant), and whether a tree on a dry tile is really dropped (id 0, `0x1004ab61`-`0x1004ab68`).
+- **Where:** `docs/BUILDINGSOBJECTS.md` part B (placement rules); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-734: Whether a multi-record Default drag can overspend: each record is checked against the live stock at release, b (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** Whether a multi-record Default drag can overspend: each record is checked against the live stock at release, before the earlier records are applied.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part B (placement rules); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-735: the Ctrl auto-align (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** the Ctrl auto-align. Which routine turns the cursor building to meet a street, and what does it test: ENTRANCE plus walk mask, or CONPO2? CONPO2 is ruled out (1.3), so it must use ENTRANCE/WALKMASK or the road layer. Resolve: find the key-state path in the cursor's input handler (`tCursorAnlageDefault` slots `0x5c` `0x10047010`, `0x60` `0x10047e40`, `0x6c` `0x10047470`); no `GetKeyState` import use in AnnoFrame/AnnoWelt, so the flag arrives with the input message.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part C (entrance/exit arrows); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-736: which 0x1001d760 caller is which info gadget (placed production panel, market, house, ...) and whether any of  (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** which `0x1001d760` caller is which info gadget (placed production panel, market, house, ...) and whether any of them hides the arrows by its own drawing. Resolve: RTTI of the classes owning `0x1003e475` ... `0x10074b03`, plus a GOG capture of a placed producer's panel.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part C (entrance/exit arrows); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-737: the ghost's own draw path (the object that renders the building at the cursor, its tint, and the blink when un (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** the ghost's own draw path (the object that renders the building at the cursor, its tint, and the blink when unaffordable in HE; GOG not checked). Part B.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part C (entrance/exit arrows); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-738: the owner's "mine 1 front + 2 back" (ui_9 4:31-4:50) was spoken over the whaler panel (821, 4 arrows) and just (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** the owner's "mine 1 front + 2 back" (`ui_9` 4:31-4:50) was spoken over the whaler panel (821, 4 arrows) and just before the salt mine panel (1203, 3 arrows). Resolve: confirm with the owner; the data fit 1203.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part C (entrance/exit arrows); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-739: the semantics of the four edge scans in 0x1000d2a0 (0x1000cf80/d000/d080/d190), for an exact statement "arrow  (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** the semantics of the four edge scans in `0x1000d2a0` (`0x1000cf80`/`d000`/`d080`/`d190`), for an exact statement "arrow = border cell of the entrance's walkable region". Only needed if the rebuild ever regenerates arrows; the game uses the stored data.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part C (entrance/exit arrows); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-740: city-creation.md E12 says the Kontor counter runs "only for PRODTYPE exactly 0x21"; 0x10027b32–0x10027b62 comp (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** `city-creation.md` E12 says the Kontor counter runs "only for PRODTYPE exactly 0x21"; `0x10027b32`–`0x10027b62` compares the **group** (`((p-1)&~0x1f)+1`), so every market-block building (33..64, including markets 1301…) takes a KONTID and bumps the counter. Re-check and correct the contract.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part D (what placing does to the world); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-741: Building slot +0x108 = 0x10071d10 with argument 0 leaves flag bit 3 set and posts island +0x168: is a new prod (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** Building slot `+0x108` = `0x10071d10` with argument 0 leaves flag bit 3 set and posts island `+0x168`: is a new production/military building really "blocked" until its first step, and what clears it? (read the class ticks' `+0x108` callers; one capture in the original of a fresh workshop's status).
+- **Where:** `docs/BUILDINGSOBJECTS.md` part D (what placing does to the world); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-742: Well hooks 0x1002cf60 / 0x1002d090 → island slot +0x138: which tile bits does +0x138 write (the crop test's we (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** Well hooks `0x1002cf60` / `0x1002d090` → island slot `+0x138`: which tile bits does `+0x138` write (the crop test's well bit), and with which radius (farm radius `type+0x78(1)`)?
+- **Where:** `docs/BUILDINGSOBJECTS.md` part D (what placing does to the world); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-743: City slot +0xb8 = 0x100286c0 after a market-block removal: which tiles revert to neutral, which objects are re (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** City slot `+0xb8` = `0x100286c0` after a market-block removal: which tiles revert to neutral, which objects are removed by the nested RemoveAt, and are other cities' buildings affected?
+- **Where:** `docs/BUILDINGSOBJECTS.md` part D (what placing does to the world); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-744: Island slot +0x80 (0x1007cc40) with {id 1} records: what the tower/gate fill (flags 0x10) and the demolish bor (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** Island slot `+0x80` (`0x1007cc40`) with `{id 1}` records: what the tower/gate fill (flags `0x10`) and the demolish border strip (flags `0xe`) write — wall/road variant re-fit?
+- **Where:** `docs/BUILDINGSOBJECTS.md` part D (what placing does to the world); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-745: RemoveAt R9 for 197/257/258: figure slot +0x9c(slot+0x90(3,0)) — what happens to units on a removed wall or pi (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** RemoveAt R9 for 197/257/258: figure slot `+0x9c(slot+0x90(3,0))` — what happens to units on a removed wall or pier?
+- **Where:** `docs/BUILDINGSOBJECTS.md` part D (what placing does to the world); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-746: Hooks P8c (0x1002c920, 0x1002ca80, 0x1002d2a0) and R6 handlers: what state they keep (L: research/infrastructu (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** Hooks P8c (`0x1002c920`, `0x1002ca80`, `0x1002d2a0`) and R6 handlers: what state they keep (L: research/infrastructure counters for goods `0x51..0x56`).
+- **Where:** `docs/BUILDINGSOBJECTS.md` part D (what placing does to the world); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-747: The player "plant" action (fields/trees around a farm): which cursor and records it sends (tCursorAnlageRohsto (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** The player "plant" action (fields/trees around a farm): which cursor and records it sends (`tCursorAnlageRohstoff`?), and whether the apply path is mode 6 Build/Place (charge, footprint claim) as the code allows.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part D (what placing does to the world); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-748: The demolish callback [tNetClient+0x124]: who installs it and is it the "enemy units near" rule (M 27) (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** The demolish callback `[tNetClient+0x124]`: who installs it and is it the "enemy units near" rule (M 27)? It aborts the whole remaining command.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part D (what placing does to the world); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-749: Type property 0x479 played by AnnoFrame 0x10046020: confirm it is BAUSAMPLE and whether demolish has its own s (BUILDINGS-REF-1, 2026-11-17; OPEN)
+- **Question:** Type property `0x479` played by `AnnoFrame 0x10046020`: confirm it is `BAUSAMPLE` and whether demolish has its own sample.
+- **Where:** `docs/BUILDINGSOBJECTS.md` part D (what placing does to the world); raised by the owner-requested buildings reference.
+- **How to resolve:** as the question states; code reads by address in the GOG DLLs, HE pixels for behaviour.
+
+## OQ-750: Where a sprite set's offset in the picture comes from (UI-INFO-2d, 2026-11-17; OPEN)
+- **Question:** the type's set slots hold (display object, x, height, y) (AnnoGame property 0x17, 0x1000c13b); who sends property 0x17 when Anlagen.dat is loaded, and from which bytes?
+- **What we know:** the set prefix's f32 at bytes 4, 8, 12 read as (x, height, y) gives the fewest differing pixels against the GOG preview shots of 801, 1301, 1302 and 1023 among eight orders and signs (27 417 px against 28 266 for the next); the prefix's bytes 0-1 are the set index and byte 2 the display kind (docs/re/annodisplay.md 7). The rebuild uses that reading (P, measured). The loader path from the prefix to property 0x17 was not read.
+- **How to resolve:** find the senders of property 0x17 (`push 0x17` before a type slot call) in AnnoGame's HAEUSER loader; or an unscaled GOG capture of a type with a second set.
+
+## OQ-751: The consumers of the figure-type fields whose meanings are only inferred (UNITS-REF-1, 2026-11-17; OPEN)
+- **Area:** figures / combat / economy.
+- **Question:** which code reads each of these, and what does it do with them?
+  - the type fields filled from `LOGIC`: `[0x12]`/`[0x27]` → `+0x14`/`+0x18` (reach), `[0x13]`/`[0x14]`/`[0x26]` → `+0xf6..+0xf8`, `[0x15]` → `+0x101`, `[0x16]` → `+0xf4`, `[0x18]` → `+0xe4` (flags; why bit 10 is cleared), `[0x1c]` → `+0xec`, `[0x1e]` → `+0xea`, `[0x20..0x22]` → `+0xf9..+0xfb`, `[0x24]` → `+0x1c`, `[0x29]` → `+0x103`, and the f32 `[0]`, `[8]`, `[0xc]`;
+  - the `HEAD` fields: f32 `[0]`, `[0x08]`, and `[0x10]` where it holds `0xCCCCCCCC`.
+- **What we know:** the loader and the getters are read (D, `docs/UNITS.md` Part B). The value patterns over all 368 types suggest maximum hit points (`[0x1e]`), attack strength (`[0x1c]`), reach and minimum reach (`[0x12]`, `[0x24]`, in eighths of a tile), gold price (`[0x16]`) and the `BAUWARE` tons (`[0x20..0x22]`). These are L, not stated as fact. Some are read already: the scout's hit-point reader `0x100498e0` and the founding range from `[0x25]`.
+- **How to resolve:** callers of the type getters `+0x68`, `+0x88`, `+0x90`, `+0x94`, `+0x9c`, `+0xb0` (AnnoGame vtable `0x10021d10`) in `AnnoWelt.dll`, first in the soldier class (`0x100c561c`) and the ship class (`0x100c4da4`).
+
+## OQ-752: The bird perch on ships: the ship state bits and the bird's action length (UNITS-REF-1, 2026-11-17; OPEN)
+- **Area:** figures / view.
+- **Question:** a type-513 bird lets go of its ship when the ship's slot `+0x8c(0)` has bit 1 or 2 set (`0x1004cb87`). What are those bits: moving, fighting, loading? How long does one bird action last, given that each new decision drops the perch? And why does only type 513 perch, of the eight VOGEL types?
+- **What we know:** the search, the 1-in-10 draw and the follow are read (D, `docs/UNITS.md` Part D8). HE86 has the same constants and branches (S). The logic uses CRT `rand()`, so it is cosmetic.
+- **How to resolve:** read the ship class's slot `+0x8c` (`0x100c4da4`) and the bird's action setter in `0x1004cf20` after `0x1004d2d2`. Or observe a bird on an idle ship in HE.
+
+## OQ-753: The land army's command path and tick (UNITS-REF-1, 2026-11-17; OPEN)
+- **Area:** figures / combat / UI / AI.
+- **Question:** how does a player's (or the AI's) order become a walk, an attack, healing or theft for the `tBewohnerSoldat` family (codes 98-111 and 19)? This covers selection and group commands, formation, the soldier tick (vtable `0x100c561c` and its subclasses `0x100c59e8`, `0x100c5bd8`, `0x100c5804`), attack and damage, death, and boarding a ship.
+- **What we know:** the classes and the data are in `docs/UNITS.md` Parts C and D2-D3. Every military type has `ROUTETYPE UNUSED`, so orders do not come from a data job. Scenario `SOLDAT` records place them (`docs/formats/sze.md`).
+- **How to resolve:** the soldier vtable's overridden slots against `tBewohnerBoden` (`0x100c35a8`), the command handlers in `AnnoFrame.dll`, and `CompLogic.dll`'s army code. HE86 names: `tBewohnerSoldat*`, `tRouteFight`, `tJobFightBewohner`, `tJobWalkFightBewohner`.
+
+## OQ-754: How free traders', pirates' and natives' ships and figures are created and controlled (UNITS-REF-1, 2026-11-17; OPEN)
+- **Area:** figures / AI.
+- **Question:** these sides are AI players (player kinds 14-16), not figure types. Which ships do they get and when (the pirate hulls 1507/1508; the trader's ship), what orders do they give, and do natives have any moving figure? Code 129 VERKAEUFER has a name but no class and no data entry.
+- **What we know:** `docs/re/complogic-ai-behavior.md` part B (the pirate class `0x10063a00`, its attack walk `0x10055a30`), `docs/re/annoscene.md` (player kinds), and `docs/UNITS.md` D11.
+- **How to resolve:** CompLogic's pirate and trader state machines, and the scenario player records of HE's multiplayer maps.
+
+## OQ-759: Where the category column's position and stride come from (UI-BUILDCAT-1, 2026-11-17; OPEN)
+- **Question:** View.dll `0x1002bb4f` creates the eight `VIEWBAUTAB` gadgets (class `0xb0d`, 42 x 46) without a position in that loop. Which code or resource places tab k at (762, 303 + 46k), and does the gadget class's hit test use the full gadget rectangle?
+- **What we know:** the positions are measured, sprite-565 exact on nine GOG shots (docs/re/ui.md 2.4); the other views' sub-tab columns sit at the same place (section 5.4), so a shared tab-column parent probably stacks them. The rebuild's hit area is the drawn rectangle; every GOG shot is consistent with it, and OQ-714's overlap with grid column 0 is gone because the tabs end at x 803.
+- **How to resolve:** read class `0xb0d`'s layout and hit-test slots (the parent passed at `0x1002bba3`, `[ecx]+0x7c`), or a GOG capture of a press at (805, 330).

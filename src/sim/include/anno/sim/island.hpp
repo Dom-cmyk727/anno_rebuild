@@ -456,6 +456,12 @@ struct Island {
     /// (the original's 16-bit word; saved in the DISCOVER record). The derived word +0xaa is
     /// computed on demand (island_complete), not stored.
     std::vector<PlayerId> players_present;
+    /// ISLAND-CROPS-1 (islands section base 2): island property 11 (+0xac), the crop list, as
+    /// ascending unique goods ids inside SimConfig::crops' mask (the original's u32 word, bit b =
+    /// goods crops.mask_first_goods + b; docs/sim/state.md §3.2). Set at load: the constructor
+    /// value (every id of the mask) when the island has no ANBAU record, else the ANBAU set; a
+    /// new game's INSELLNK island gets the base set and its raw marks. Nothing reads it yet.
+    std::vector<GoodsId> crops;
     /// Append-only (production.hpp): the ore objects of the island.
     std::vector<Deposit> deposits;
     /// MAP-2 (stream 120): the island's ore objects (BEWOHNTYPE ERZSYMBOL figures of the OCCUR

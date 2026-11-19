@@ -159,8 +159,9 @@ onto the island (`scenario_formats.cpp`, the assignment from
 island polar. The call does not draw.
 
 `raw` and `ore` are not written to `IslandSpec::deposits` and are not passed
-as link marks. The gap is unchanged: a `.sze` already warns `LinkRawMaterials`
-and `LinkOresUnplaced` and fills no deposit (`scenario_formats.cpp`).
+as link marks. So a fixed map's islands get island property 11 = the base set
+only (`SimConfig::crops.base_goods`, the INSELLNK rule with no marks; state.md §3.2), and a
+`.sze` still warns `LinkOresUnplaced` and fills no deposit (`scenario_formats.cpp`).
 
 ## 5. Players, cities, the developer start
 

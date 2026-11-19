@@ -260,9 +260,43 @@ std::string EconomyConfig::validate() const {
     return {};
 }
 
+std::string CropTables::validate() const {
+    if (mask_bits == 0 || mask_bits > 32) {
+        return "SimConfig.crops.mask_bits: must be 1..32 (a shift count into the u32 mask)";
+    }
+    if (std::uint64_t{mask_first_goods} + mask_bits > std::uint64_t{0xFFFFFFFF}) {
+        return "SimConfig.crops.mask_first_goods: the mask's last goods id overflows u32";
+    }
+    for (std::size_t i = 0; i < base_goods.size(); ++i) {
+        if (!in_mask(base_goods[i]) || (i > 0 && base_goods[i] <= base_goods[i - 1])) {
+            return "SimConfig.crops.base_goods: not an ascending unique set inside the mask";
+        }
+    }
+    if (anbau_first_goods > anbau_last_goods || !in_mask(anbau_first_goods) ||
+        !in_mask(anbau_last_goods)) {
+        return "SimConfig.crops.anbau_first_goods..anbau_last_goods: not an ordered range inside "
+               "the mask";
+    }
+    if (anbau_name_cap == 0) {
+        return "SimConfig.crops.anbau_name_cap: must be non-zero";
+    }
+    return {};
+}
+
+std::vector<std::uint32_t> CropTables::constructor_goods() const {
+    std::vector<std::uint32_t> out;
+    out.reserve(mask_bits);
+    for (std::uint32_t b = 0; b < mask_bits; ++b) {
+        out.push_back(mask_first_goods + b);
+    }
+    return out;
+}
+
 std::string SimConfig::validate() const {
     constexpr const char* kOwner = "SimConfig";
     if (auto problem = economy.validate(); !problem.empty())
+        return problem;
+    if (auto problem = crops.validate(); !problem.empty())
         return problem;
     // Divisors, moduli and periods that are divisors of visit_count, operands
     // of `%` or of `ceil(w / chunk_edge)`.
@@ -464,6 +498,11 @@ std::string SimConfig::validate() const {
     }
     if (std::string p = links.validate(); !p.empty()) {
         return "SimConfig.links: " + p;
+    }
+    if (links.raw_kinds > crops.mask_bits) {
+        // A raw mark k becomes bit k of island property 11 (AnnoScene 0x100085bb).
+        return bad(kOwner, "links.raw_kinds",
+                   "must be at most crops.mask_bits (a raw mark is a bit of the crop mask)");
     }
     if (city_pass_count > 64) {
         // A sanity bound for the seam vector (Seams::city_pass is sized from it).

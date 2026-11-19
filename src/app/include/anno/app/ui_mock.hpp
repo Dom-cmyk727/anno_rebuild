@@ -9,6 +9,7 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -99,11 +100,25 @@ struct UiMockSpec {
 /// population, `PlaySnapshot::population`/`World::city_population`) is drawn only on a
 /// construction screen too - docs/re/ui.md 2.1's own note on `STATUSBAR_EINWOHNER`: "absent from
 /// pass-2 idle", same visibility as the materials.
+///
+/// UI-STATUS-1 B (docs/re/ui.md 5.6): the materials' icons show when any of the four is given,
+/// the residents' icon when `residents` is (another player's city shows only that), on every
+/// screen; `fertility` is the fertility row's segments, slot by slot (hud.txt `rosh_<k>`, drawn
+/// as the slot's tex_id + the segment), empty when the row is hidden.
 struct HudCounters {
     std::optional<std::int64_t> gold;
     std::optional<std::uint32_t> tools, wood, bricks, marble;
     std::optional<std::int64_t> residents;
+    std::vector<std::uint32_t> fertility;
+    /// UI-TABS-1 stage B: the balance pages' figures by hud.txt `value` name
+    /// (balance_rows.hpp balance_row_values); a row whose name is absent draws nothing.
+    std::map<std::string, std::int64_t> rows;
 };
+
+/// UI-STATUS-1 B: the name of the fertility row's slot `k` in hud.txt ("rosh_<k>") and how many
+/// consecutive slots hud.txt has (0 without any).
+[[nodiscard]] std::string fertility_slot_name(std::size_t k);
+[[nodiscard]] std::size_t fertility_slot_count(const HudLayout& hud);
 
 /// UI-INFO-1: what the building info panel shows for the armed type, already in displayed units
 /// (docs/re/ui.md section 2.5). The original's panel update, View.dll 0x10030140, asks the type

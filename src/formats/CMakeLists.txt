@@ -10,6 +10,7 @@ add_library(anno_formats
   src/inc.cpp
   src/fixed_map.cpp
   src/insel.cpp
+  src/objectpos.cpp
   src/json.cpp
   src/sha256.cpp
   src/ship_manifest.cpp
@@ -37,7 +38,9 @@ if(ANNO_BUILD_TESTS)
     tests/figuren_test.cpp
     tests/fixed_map_test.cpp
     tests/insel_corpus_test.cpp
+    tests/insel_test.cpp
     tests/json_test.cpp
+    tests/objectpos_test.cpp
     tests/ship_manifest_test.cpp
     tests/sze_test.cpp
     tests/sze_corpus_test.cpp

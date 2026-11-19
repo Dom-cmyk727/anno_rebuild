@@ -2,17 +2,21 @@
 # the window-independent parts (scene loading, PNG output) so tests can use
 # them; the window needs SDL3 (ANNO_BUILD_VIEWER).
 add_library(anno_app_core
+  src/balance_rows.cpp
   src/building_delta.cpp
   src/command_outcome.cpp
   src/commands_file.cpp
   src/construction_menu.cpp
   src/selection.cpp
+  src/status_bar.cpp
   src/dev_feedback.cpp
   src/dev_session.cpp
   src/dev_input.cpp
   src/dev_tool.cpp
+  src/fertility_indicator.cpp
   src/frame_projection.cpp
   src/hud_tabs.cpp
+  src/info_preview.cpp
   src/legal_workload.cpp
   src/minimap.cpp
   src/cli.cpp
@@ -91,7 +95,9 @@ if(ANNO_BUILD_TESTS)
     tests/opening_ui_test.cpp tests/opening_test.cpp tests/ship_motion_test.cpp
     tests/ui_layout_test.cpp tests/ui_transform_test.cpp tests/ui_construction_eligibility_test.cpp
     tests/construction_menu_test.cpp tests/inspect_building_test.cpp tests/selection_test.cpp
-    tests/minimap_test.cpp tests/hud_tabs_test.cpp tests/status_icons_test.cpp)
+    tests/minimap_test.cpp tests/hud_tabs_test.cpp tests/status_bar_test.cpp
+    tests/balance_rows_test.cpp tests/atlas_pages_lan5_test.cpp tests/info_preview_test.cpp
+    tests/fertility_indicator_test.cpp tests/status_icons_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   target_compile_definitions(anno_app_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic"
@@ -263,6 +269,26 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_ui_minimap_player PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-MINIMAP-2: the magnifier's - reaches the wheel's furthest zoom-out in the continuous
+      # zoom (ui_magnifier_range) and keeps the original's clamp at level 2 in the stepped one
+      # (ui_magnifier_range_stepped). Both in the GPU window (--gpu): the continuous zoom needs the
+      # GPU renderer, and on it --zoom-mode stepped itself must pick the stepped zoom.
+      if(ANNO_HAVE_WGPU)
+        foreach(case ui_magnifier_range ui_magnifier_range_stepped)
+          set(zoom_mode_args)
+          if(case STREQUAL "ui_magnifier_range_stepped")
+            set(zoom_mode_args --app-arg --zoom-mode --app-arg stepped)
+          endif()
+          add_test(NAME viewer_wiring_${case}
+            COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                    $<TARGET_FILE:anno1503> ${case} --gpu
+                    --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                    --app-arg --construction-menu --app-arg on
+                    --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui ${zoom_mode_args})
+          set_tests_properties(viewer_wiring_${case} PROPERTIES
+            SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4 LABELS gpu RESOURCE_LOCK gpu)
+        endforeach()
+      endif()
       # UI-WINDOW-1 fix round R1 (F6, F7): a chrome drag starts no pan; a lost UI press is dropped.
       add_test(NAME viewer_wiring_ui_chrome_press
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
@@ -281,6 +307,16 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_ui_tabs PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-BUILDCAT-1: the construction menu's eight category tabs, each selected by a press on
+      # its own gadget (also left of the column), and the column/grid boundary (OQ-714).
+      add_test(NAME viewer_wiring_ui_buildcat
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_buildcat
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_buildcat PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # UI-TABS-1: every sub-tab of the three views, the keys S, C, D, O, each view keeping its own.
       add_test(NAME viewer_wiring_ui_subtabs
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
@@ -290,16 +326,46 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_ui_subtabs PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
-      # UI-WINDOW-1 fix round R2/R4: the status bar counters (centred city, else the first).
-      add_test(NAME viewer_wiring_ui_counters_centred
+      # UI-TABS-1 stage B: the balance pages' figures as facts (docs/re/ui.md 5.5): with the
+      # accounts kept (--rules living), under the original rules, and before the first founding.
+      add_test(NAME viewer_wiring_ui_balance_rows
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
-                $<TARGET_FILE:anno1503> ui_counters_centred
+                $<TARGET_FILE:anno1503> ui_balance_rows
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --rules --app-arg living
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_balance_rows PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      add_test(NAME viewer_wiring_ui_balance_rows_original
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_balance_rows_original
                 --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
                 --app-arg --construction-menu --app-arg on
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
-      set_tests_properties(viewer_wiring_ui_counters_centred PROPERTIES
+      set_tests_properties(viewer_wiring_ui_balance_rows_original PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
-      # UI-WINDOW-1 fix round R4: no city yet (the ship-start opening): the counters are hidden.
+      add_test(NAME viewer_wiring_ui_balance_rows_no_city
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_balance_rows_no_city
+                --app-arg --ship-start
+                --app-arg ${PROJECT_SOURCE_DIR}/data/maps/candidates/ship-start-v2/lan5-ship-a.json
+                --app-arg --seat --app-arg 0
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_balance_rows_no_city PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-STATUS-1 B: the status bar shows the island under the cursor (docs/re/ui.md 5.6;
+      # replaces UI-WINDOW-1 R2/R4's ui_counters_centred, the view-centre rule).
+      add_test(NAME viewer_wiring_ui_status_island
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_status_island
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_status_island PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-WINDOW-1 fix round R4, UI-STATUS-1 B: no city yet (the ship-start opening): gold only.
       add_test(NAME viewer_wiring_ui_counters_before_founding
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
                 $<TARGET_FILE:anno1503> ui_counters_before_founding
@@ -408,6 +474,14 @@ if(ANNO_BUILD_TESTS)
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/ui_subtabs_compare.py
                 $<TARGET_FILE:anno_ui_mock> $<TARGET_FILE:anno1503>)
       set_tests_properties(ui_subtabs_compare PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-TABS-1 stage B: the balance rows, the GPU layer's composer against the GOG shots
+      # (ANNO_UI_ORACLE_SHOTS, never in git; skips without it) with four negative controls, and
+      # the window's CPU path against that composer.
+      add_test(NAME ui_balance_rows_compare
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/ui_balance_rows_compare.py
+                $<TARGET_FILE:anno_ui_mock> $<TARGET_FILE:anno1503>)
+      set_tests_properties(ui_balance_rows_compare PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # UI-INFO-2: the preview at rotations 0..3 after clicks on the rotate arrows, through the
       # real window, pixel-exact against compose_info_panel(rotation) (info_panel_rotation_check.py),

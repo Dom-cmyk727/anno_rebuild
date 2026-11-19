@@ -123,13 +123,13 @@ TEST_CASE("fixed map: the loader builds the seated world from the base scenario"
     CHECK(spare->cities.empty());
     CHECK(spare->owner_runs.empty());
 
-    bool raw_warned = false;
-    for (const auto& warning : loaded.value().warnings) {
-        if (warning.kind == anno::sim::ScenarioWarningKind::LinkRawMaterials) {
-            raw_warned = true;
-        }
-    }
-    CHECK(raw_warned);
+    // Island property 11 of a placed link: SimConfig::crops' base set (0xF009); the layout's raw
+    // marks are not passed as link marks (docs/sim/fixed-map.md section 4).
+    const std::vector<anno::sim::GoodsId> base = anno::sim::SimConfig{}.crops.base_goods;
+    REQUIRE(nord->crops.has_value());
+    CHECK(*nord->crops == base);
+    REQUIRE(jungle->crops.has_value());
+    CHECK(*jungle->crops == base);
 
     auto first = anno::sim::World::create(spec, types.value().registry);
     auto second = anno::sim::World::create(spec, types.value().registry);

@@ -191,6 +191,7 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
     out.lock = is.lock;
     out.kontor_counter = is.kontor_counter;
     out.players_present = is.players_present;
+    out.crops = is.crops ? *is.crops : cfg.crops.constructor_goods();
     out.ore_objects = is.ore_objects;
     out.terrain = is.terrain;
     const std::uint64_t tiles = out.tiles.tile_count();

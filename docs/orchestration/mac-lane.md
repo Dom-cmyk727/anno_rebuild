@@ -53,9 +53,10 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife ground preparation [WILDLIFE-PREPROCESS-CONTRACT-1](tasks/wildlife-preprocess-contract-1.md) | ACCEPTED bounded preprocessing contract | `54798a4b5f5bc8a2c65874ea375441b7cca9e21f`; production base `889143ba` | [44467047682](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44467047682), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-preprocess-contract-1-review.md) |
 | Wildlife numerical preparation [WILDLIFE-GROUND-PREPARE-1](tasks/wildlife-ground-prepare-1.md) | ACCEPTED; isolated UNWIRED numerical leaf | `5bdfd92ac01a70656a718cea4f7c7405445b41d5`; tested `92c17db` | [44469519552](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44469519552), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-ground-prepare-1-review.md) |
 | Wildlife growth source [WILDLIFE-GROWTH-LOAD-1](tasks/wildlife-growth-load-1.md) | ACCEPTED; focused P2 closed | `fe4355fd719fad0ecafbe9322788f4b7d885a7af`; tested `464e4935` | [44478146499](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44478146499), all 12 successful; earlier failed run preserved | [Review](reviews/2026-11-19-wildlife-growth-load-1-review.md) |
-| Wildlife climate kernel [WILDLIFE-KERNEL-LOAD-1](tasks/wildlife-kernel-load-1.md) | LOCAL REVIEW APPROVED; UNWIRED reader, CI pending | `c9259c1612863def493dcb47f455a018b8e110c0`; tested `fb6c7f52` | [44483388631](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44483388631), pending | [Review](reviews/2026-11-19-wildlife-kernel-load-1-review.md) |
+| Wildlife climate kernel [WILDLIFE-KERNEL-LOAD-1](tasks/wildlife-kernel-load-1.md) | ACCEPTED; UNWIRED owned reader | `c9259c1612863def493dcb47f455a018b8e110c0`; tested `fb6c7f52` | [44483388631](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44483388631), all 12 successful | [Review](reviews/2026-11-19-wildlife-kernel-load-1-review.md) |
 | Candidate 10 display [MAC-GPU-WINDOW-1](tasks/mac-gpu-window-1.md) | CLOSED, diagnostic approved; candidate remains FAIL | Unchanged `95897a55bc939a185766b7207e69d098997cdb1d` | 4/4 post-script failures; 7287 successful acquire/present returns; original no-frame cause unresolved | [Review / Windows handoff](reviews/2026-11-19-mac-gpu-window-1-review.md) |
-| Wildlife object facts [WILDLIFE-GROUND-FACTS-1](tasks/wildlife-ground-facts-1.md) | RELEASED; bounded whole-object/common-HEAD binding, UNWIRED | Locally reviewed kernel `c9259c16` | Focused gates/CI at handover; kernel CI pending separately | Direct reportback to Mac orchestrator |
+| Wildlife object facts [WILDLIFE-GROUND-FACTS-1](tasks/wildlife-ground-facts-1.md) | LOCAL REVIEW APPROVED; CI pending | `4054d93aa42f777c49c9c4dd035bd3cdce23f64b`; tested `f443ed12` | [44490451270](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44490451270), pending | [Review](reviews/2026-11-19-wildlife-ground-facts-1-review.md) |
+| Wildlife source provenance [WILDLIFE-PREP-PROVENANCE-1](tasks/wildlife-prep-provenance-1.md) | RELEASED; INFO/fresh-city preparation contract | Locally reviewed `4054d93a` | Read-only original evidence and bounded probes; no engine wiring | Direct reportback to Mac orchestrator |
 | Windows dual-edition navigation [WIN-NAV-EDITIONS-1](tasks/windows-nav-editions-1.md) | Owner-requested HANDOFF READY; Windows intake pending | Accepted diagnosis `74d50bfe`, production base `889143ba` | GOG and HE verification requested; no repair released | Owner forwards to Windows orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
@@ -1093,3 +1094,21 @@ Kernel exact-head CI remains pending independently. Executor pushes only its tas
 branch and reports directly here for review/continuation. Main and Windows-owned
 boards/source remain untouched; the short UI investigation does not grow into
 another Mac repair campaign.
+
+
+## Latest review — metadata binding approved; source contract released
+
+GROUND-FACTS 4054d93a passed both independent reviews with no blocking findings.
+Original factory/getter proof and all 921 source properties were independently
+re-derived; zero-success, full IDs and source/registry ownership hold. Root verified
+106 manifest and 38 published hashes. Debug/ASan each18+1+1 passes; its exact CI
+remains pending. Old reconstructed kernel binary is labelled accurately and old
+receipts unchanged. No repeated gate or runtime integration claim.
+
+Kernel c9259c16 is now ACCEPTED: all12 jobs in CI44483388631 successful at exact
+head. PREP-PROVENANCE is RELEASED on locally reviewed4054d93a to establish final
+INFO selection and the prewalk city state for the supported fresh-island path,
+then specify the next owned composition boundary. No fabricated FRUCHTBAR or
+city-absence certificate. Windows UI and navigation/FP work remain separate.
+Executor ordinary-pushes its task branch and reports directly here for review and
+next release. Main and other lanes remain untouched.

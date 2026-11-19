@@ -54,3 +54,12 @@ Whole-object/common-HEAD binding is the next coherent gameplay input slice, queu
 behind this short packet; INFO selection and empty-city proof remain explicit
 separate dependencies. Never fabricate FRUCHTBAR completion or use prefix structural
 completion as city-absence proof. Main and current task refs remain untouched.
+
+
+## Terminal CI — accepted kernel reader
+
+Kernel `c9259c1612863def493dcb47f455a018b8e110c0` is now **ACCEPTED** in its
+reviewed UNWIRED scope. CI 44483388631 has all 12 jobs successful at this exact
+head, including all five C++ lanes and aggregate gate. Terminal jobs receipt:
+`8202407d2f03870e71046700b04f8cbf64c98ee11236696c91451dfe8ce553db`.
+No local gate repeated, no scene/World claim or identity decision added.

@@ -110,3 +110,27 @@ in Debug/ASan; the other 16 checks/profile reuse their original frozen evidence.
 Production implementation is unchanged across the two tested epochs. No expected
 fixture, reference, golden or pin value changed. The independent 29 JSON vectors
 remain the accepted geometry reference input.
+
+### Source-bound profile forwarding — focused evidence correction
+
+2026-11-19. Primary/code review approved the declared conditional implementation;
+evidence review found that source batches only exercised nearest/nearest. Add an
+authored legitimate flat raw HEIGHT patch [248,248,248,248] and three source-bound
+contexts. At world33/49 low/low, a*2^18=43690+171/256, so nearest chooses fractional
+43691/2^18 and downward43690/2^18. Table248 is166429979/2^24; nearest stores
+0x411eb852, downward0x411eb851. Flat positive H interpolates to H exactly, so
+callback-down does not introduce a zero endpoint or change an already stored H.
+
+Through bind_wildlife_ordinary_source/project, expected XYZ words:
+- table53/nearest, callback53/nearest: [0x4204aaab,0x411eb852,0x4244aaab];
+- table53/nearest, callback53/down: [0x4204aaaa,0x411eb852,0x4244aaaa];
+- table53/down, callback53/nearest: [0x4204aaab,0x411eb851,0x4244aaab].
+
+Adapter-only actual mutants force nearest at both callback forwarding calls or
+substitute a freshly generated nearest table at the table usage seam. Leaves and
+returned metadata remain unchanged. Each fails exactly its intended source XYZ
+assertion while the other two profile combinations pass. Flat height itself is
+callback-RC invariant; the callback mutation is detected by horizontal words.
+This is the explicit three-context wiring proof, not a claim that this flat patch
+independently distinguishes every height-only forwarding error. Existing nonflat
+and leaf-profile evidence remains unchanged and reused.

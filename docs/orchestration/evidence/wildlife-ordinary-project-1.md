@@ -161,3 +161,80 @@ cave/border/live corner mutations, navigation/animal actions/World/scheduler/def
 full/heavy/opening/pins/renderer/raster, LeakSanitizer. Source geometry is conditional, not original runtime parity.
 Next seam: actual runtime profile provenance and supplied manager context must be resolved before native creation/
 World integration. No QUESTION within approved conditional admission. STOP for independent review.
+
+## Focused evidence-review P2 correction — source-batch profile forwarding
+
+2026-11-19. READY FOR REVIEW; primary/code review approved conditional implementation,
+focused evidence re-review approved source 4f323b5e (orchestrator report). Prior source batches used nearest/nearest only;
+leaf tests did not prove the adapter's forwarding. Production/reference/fixture/pin
+code is unchanged. Add one source-batch test with three explicitly authored contexts.
+Corrected tested pin `4f323b5e2edb2da10c8c38c9804c55660a27be87`, tree `8c948cd3684dc9549229cb946fe0810df650110e`;
+publication delta docs/report only. No next implementation or manager research.
+
+Independent hand derivation BEFORE adding expected words (hand-derivations.log):
+a*2^18=11184811/256=43690+171/256. Both33/49 use f32 ULP2^-18, so fractional
+43691 nearest,43690 down. X words4204aaab/4204aaaa, Z4244aaab/4244aaaa.
+248*c=166429979/2^24; binary32 grid16 numerator units gives nearest166429984
+(word411eb852), downward166429968(word411eb851). Flat positive stored H survives
+all edge/interpolation zero deltas exactly; callback-down preserves H and avoids
+the downward-zero result endpoint. Original table/context policies remain conditional.
+
+Legitimate ImportRig raw HEIGHT[248,248,248,248] at local9,9 remains admitted;
+all resource quad means>=32, imported-prefix100/maintenance5/selector10 unchanged.
+Through bind_wildlife_ordinary_source/project, low/low selected world33/49:
+- table53/nearest, callback53/nearest ->[4204aaab,411eb852,4244aaab];
+- table53/nearest, callback53/down ->[4204aaaa,411eb852,4244aaaa];
+- table53/down, callback53/nearest ->[4204aaab,411eb851,4244aaab].
+Legal new case50 assertions passes first run; no expectation corrected. Caller terrain
+and named draw domains unchanged, four actual reads. Assertions compare XYZ, not metadata.
+
+Two private applied production-adapter mutations, unchanged numeric leaves/metadata:
+1. Force nearest callback at BOTH project forwarding calls (position and height).
+   Only nearest-table/down-callback XYZ fails: actual1107602091/1092532306/1111796395,
+   expected1107602090/1092532306/1111796394. Other two combinations pass.
+2. At adapter usage seam replace table with a context-generated nearest table of same PC,
+   while returned supplied table metadata remains down. Only down-table/nearest-callback
+   fails: actual1107602091/1092532306/1111796395,
+   expected1107602091/1092532305/1111796395. Other two combinations pass.
+Both execute all50 assertions,49 pass/1 intended XYZ failure. No compile/schema/fault
+failure counted. Application counts asserted once per replacement; canonical hashes unchanged.
+Initial mutation logs with opaque array formatting preserved; diagnostic-only INFO added,
+then only these controls rerun with concrete words (causal-final/). Clean canonical build/
+control follows; actual mutant sources/binaries and legal control retained.
+Flat H is invariant to callback RC: the common callback override is detected by X/Z,
+not claimed as independent detection of a height-only callback override on this flat patch.
+
+Only the new source-batch case gated, Debug and ASan/UBSan,50 assertions each:
+
+`cache/wildlife-ordinary-project-1-fix1/debug.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+`cache/wildlife-ordinary-project-1-fix1/asan.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+
+SHA256 Debug `1af71fb4bae969460a327b3c960ddc483c23f3f89da2d1055dd207cd23d4e044`, ASan `983bc5ddd66887dafe0953ff8e541cb4e0a0d16dc36a5c783814a91b5d6de62b`.
+No skips/refusals/timeouts/empty/incomplete/sanitizer diagnostics. Prior17 unique/profile
+checks reused at documented30b1e8a5/0cd6320e pins; this adds one unique/profile,18 unique
+in the packet evidence. No broad/reference/arithmetic/original source/full gate repeated.
+Asset environment retained, but this NEW case is authored, not new original-game coverage.
+
+Changed test TU only: strict AppleClang21/GCC15.3 O3/Werror pass after final diagnostics;
+format/diff pass. Existing compiler shadow/lint/source checks reused unchanged.
+New1034 frozen identities verified, actual binaries retained. Debug
+cb8b88ef1c89d6269e34fbef9071e015cfe05d3c59b7c1d8d683a795b54c86e2;
+ASan ac13fb6e94f087ba737e74403d67bf88b96dd0497a3b295fea200051d86c6676.
+All140 prior sealed receipts intact; all old expectations/failures retained.
+Corrected closeout87 artifacts, manifest SHA256 `9cda1908fc4820449d11c88d6e1ebdc848adc5dcffc517fe793de511db75ca84`; CI read saved after seal.
+NOT_RUN boundaries unchanged (original runtime/CW/native manager/World/Windows/LSan/full).
+No new production behavior, original-CW policy or manager investigation. STOP for re-review.
+
+Final reconciliation: orchestrator reports independent focused evidence APPROVED source
+4f323b5e, both real adapter mutants and canonical1/1 per profile,1034 identities and140
+prior receipts verified. Publication changes docs only; no further code/test edits or gates.

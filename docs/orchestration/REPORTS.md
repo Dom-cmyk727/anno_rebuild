@@ -18163,3 +18163,41 @@ Decisions and reasoning:
 - Bind once, project 4 corners; generated numeric context is explicitly supplied and not observed original state.
 - Keep literal expected words separate from reference; retain first failures and reuse unchanged frozen checks.
 QUESTIONs: none within conditional profile. Next seam is native context/manager integration, not started. STOP for review.
+
+### WILDLIFE-ORDINARY-PROJECT-1 — source-batch P2 correction — READY FOR REVIEW
+
+Primary/code review approved declared implementation; evidence P2 asked for adapter profile forwarding proof.
+Corrected tested `4f323b5e2edb2da10c8c38c9804c55660a27be87`, tree `8c948cd3684dc9549229cb946fe0810df650110e`; later delta docs/report only.
+One new legitimate authored flat 248 source test; production/reference/fixtures/pins unchanged.
+Independent prior hand derivation: a*2^18=43690+171/256; nearest 43691/down 43690; table 248 stores852/851.
+Source-bound XYZ: nearest/nearest[4204aaab,411eb852,4244aaab]; nearest/down[4204aaaa,411eb852,4244aaaa];
+down/nearest[4204aaab,411eb851,4244aaab]. Flat positive H is preserved, not a downward-zero endpoint.
+50 assertions first pass, exact XYZ through bind/project; terrain/draw counts 100/5/10 unchanged.
+Adapter-only callback-nearest override fails X/Z in second combo; nearest-table contents substitution fails Y in third.
+Each actual mutant executes 50 assertions,49 pass/1 intended XYZ failure; other combos pass, leaves/metadata unchanged.
+Concrete actual/expected integer words logged; initial opaque-array logs preserved; clean controls rebuilt after mutants.
+Only changed source-bound case, Debug:
+`cache/wildlife-ordinary-project-1-fix1/debug.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+ASan/UBSan:
+`cache/wildlife-ordinary-project-1-fix1/asan.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+Prior 17 unique/profile reused at exact recorded pins; adds 1 unique/profile, no whole/reference/arithmetic gate rerun.
+Debug SHA256 `1af71fb4bae969460a327b3c960ddc483c23f3f89da2d1055dd207cd23d4e044`; ASan `983bc5ddd66887dafe0953ff8e541cb4e0a0d16dc36a5c783814a91b5d6de62b`.
+Changed test TU strict AppleClang21/GCC15.3/format/diff pass; 1034 new identities verified, prior 140 receipts intact.
+Fix 87 artifacts SHA256 `9cda1908fc4820449d11c88d6e1ebdc848adc5dcffc517fe793de511db75ca84`; no expected values adjusted after execution.
+Hosted exact-head CI read after ordinary task push; orchestrator reports independent focused evidence re-review approved source 4f323b5e.
+NOT_RUN remains original/CW/HE/Windows/World/native manager/LSan/full. No next implementation or manager research.
+Decisions and reasoning:
+- Distinguish supplied table versus callback context at actual adapter output; metadata-only checks cannot establish forwarding.
+- Use positive flat 248 to isolate table-Y and callback-X/Z words without underflow/zero ambiguity.
+- Preserve all prior evidence, and rerun only the new source-bound case under both profiles.
+QUESTIONs: none within correction. STOP for orchestrator re-review; ordered batch waits for release.

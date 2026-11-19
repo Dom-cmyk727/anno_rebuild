@@ -96,7 +96,7 @@ prepare_wildlife_chunk(const WildlifeChunkInputs& input, std::span<const std::ui
             work.candidates[index] = work.candidates.back();
             work.candidates.pop_back();
             // Welt 0x10093684 /0x100936b2: these writes precede collision lookup.
-            work.reserved->goods = 255;
+            work.reserved->goods = std::uint16_t{255};
             work.reserved->position = position;
             std::optional<std::uint64_t> collision;
             if ((work.chunk.flags & 1U) != 0)

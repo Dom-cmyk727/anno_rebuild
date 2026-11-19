@@ -21,9 +21,9 @@ Record nonspawn() {
     r.token = 90;
     r.category = 3;
     r.high_bit = true;
-    r.timestamp = 33;
-    r.goods = 999;
-    r.byte11 = 1;
+    r.timestamp = std::uint8_t{33};
+    r.goods = std::uint16_t{999};
+    r.byte11 = std::uint8_t{1};
     return r;
 }
 Record fresh(std::uint64_t token, std::uint8_t position, std::uint8_t timestamp) {
@@ -32,7 +32,7 @@ Record fresh(std::uint64_t token, std::uint8_t position, std::uint8_t timestamp)
     r.position = position;
     r.occupied = false;
     r.timestamp = timestamp;
-    r.goods = 255;
+    r.goods = std::uint16_t{255};
     return r; // Unknown saved ID/high bit/byte11 remain absent.
 }
 load::WildlifeChunkInputs empty_input() {
@@ -49,10 +49,10 @@ void candidates(load::WildlifeChunkInputs& in, unsigned count) {
 load::WildlifeChunkInputs main_input() {
     auto in = empty_input();
     in.chunk.flags = 0x8101;
-    in.chunk.records = {record(10, 2, false, true, 11, 101, 7, 9), nonspawn(),
+    in.chunk.records = {record(10, 2, false, true, 11, 101, 7, std::uint8_t{9}), nonspawn(),
                         record(20, 9, false, false, 12, 202, 8),
-                        record(30, 4, false, true, 13, 303, 9, 204),
-                        record(40, 18, true, false, 14, 404, 10, 77)};
+                        record(30, 4, false, true, 13, 303, 9, std::uint8_t{204}),
+                        record(40, 18, true, false, 14, 404, 10, std::uint8_t{77})};
     candidates(in, 14);
     in.time = 259000;
     in.fresh_tokens = {50};
@@ -60,10 +60,10 @@ load::WildlifeChunkInputs main_input() {
 }
 load::WildlifeChunkSnapshot final_snapshot() {
     return {0x8101,
-            {fresh(50, 57, 3), record(10, 11, false, true, 3, 101, 255, 9),
-             record(30, 59, false, true, 3, 303, 255, 204), nonspawn(),
+            {fresh(50, 57, 3), record(10, 11, false, true, 3, 101, 255, std::uint8_t{9}),
+             record(30, 59, false, true, 3, 303, 255, std::uint8_t{204}), nonspawn(),
              record(20, 9, false, false, 12, 202, 8),
-             record(40, 18, true, false, 14, 404, 10, 77)}};
+             record(40, 18, true, false, 14, 404, 10, std::uint8_t{77})}};
 }
 constexpr std::array<std::uint32_t, 5> draws{0, 0, 1, 0, 999};
 } // namespace
@@ -85,18 +85,20 @@ TEST_CASE("wildlife chunk: complete ordered maintenance matches literal records 
     CHECK(out.reuse.empty());
     CHECK(out.discarded.empty());
     CHECK_FALSE(out.reserved);
-    CHECK(out.inserted == std::vector<Record>{record(30, 59, false, true, 3, 303, 255, 204),
-                                              record(10, 11, false, true, 3, 101, 255, 9),
-                                              fresh(50, 57, 3)});
+    CHECK(out.inserted ==
+          std::vector<Record>{record(30, 59, false, true, 3, 303, 255, std::uint8_t{204}),
+                              record(10, 11, false, true, 3, 101, 255, std::uint8_t{9}),
+                              fresh(50, 57, 3)});
     Record before_fresh_insert;
     before_fresh_insert.token = 50;
-    before_fresh_insert.position = 57;
-    before_fresh_insert.goods = 255;
-    CHECK(out.attempts == std::vector<load::WildlifeChunkAttempt>{
-                              {0, 14, 9, 20, record(30, 9, false, true, 13, 303, 255, 204)},
-                              {0, 13, 59, {}, record(30, 59, false, true, 13, 303, 255, 204)},
-                              {1, 12, 11, {}, record(10, 11, false, true, 11, 101, 255, 9)},
-                              {0, 11, 57, {}, before_fresh_insert}});
+    before_fresh_insert.position = std::uint8_t{57};
+    before_fresh_insert.goods = std::uint16_t{255};
+    CHECK(out.attempts ==
+          std::vector<load::WildlifeChunkAttempt>{
+              {0, 14, 9, 20, record(30, 9, false, true, 13, 303, 255, std::uint8_t{204})},
+              {0, 13, 59, {}, record(30, 59, false, true, 13, 303, 255, std::uint8_t{204})},
+              {1, 12, 11, {}, record(10, 11, false, true, 11, 101, 255, std::uint8_t{9})},
+              {0, 11, 57, {}, before_fresh_insert}});
     CHECK_FALSE(out.chunk.records[0].saved_id);
     CHECK_FALSE(out.chunk.records[0].high_bit);
     CHECK_FALSE(out.chunk.records[0].byte11);
@@ -130,8 +132,8 @@ TEST_CASE(
             CHECK(partial.fresh_used == 0);
             auto expected = input.chunk.records[3];
             if (count == 1) {
-                expected.position = 9;
-                expected.goods = 255;
+                expected.position = std::uint8_t{9};
+                expected.goods = std::uint16_t{255};
             }
             CHECK(*partial.reserved == expected);
             CHECK(partial.candidates == (count == 0
@@ -141,8 +143,8 @@ TEST_CASE(
                                                                          31, 41, 43, 45, 47, 57}));
         } else if (count == 2) {
             CHECK(partial.chunk.records ==
-                  std::vector<Record>{record(30, 59, false, true, 3, 303, 255, 204), nonspawn(),
-                                      input.chunk.records[2], input.chunk.records[4]});
+                  std::vector<Record>{record(30, 59, false, true, 3, 303, 255, std::uint8_t{204}),
+                                      nonspawn(), input.chunk.records[2], input.chunk.records[4]});
             CHECK(*partial.reserved == input.chunk.records[0]);
             CHECK(partial.reuse.empty());
             CHECK(partial.retained == 3);
@@ -151,9 +153,9 @@ TEST_CASE(
                   std::vector<std::uint8_t>{57, 11, 13, 15, 25, 27, 29, 31, 41, 43, 45, 47});
         } else {
             CHECK(partial.chunk.records ==
-                  std::vector<Record>{record(10, 11, false, true, 3, 101, 255, 9),
-                                      record(30, 59, false, true, 3, 303, 255, 204), nonspawn(),
-                                      input.chunk.records[2], input.chunk.records[4]});
+                  std::vector<Record>{record(10, 11, false, true, 3, 101, 255, std::uint8_t{9}),
+                                      record(30, 59, false, true, 3, 303, 255, std::uint8_t{204}),
+                                      nonspawn(), input.chunk.records[2], input.chunk.records[4]});
             Record expected;
             expected.token = 50;
             CHECK(*partial.reserved ==
@@ -170,8 +172,8 @@ TEST_CASE(
 TEST_CASE("wildlife chunk: excess records zero candidates and successful leftover discard") {
     auto input = empty_input();
     input.chunk.flags = 0xf001;
-    const auto a = record(10, 2, false, true, 11, 101, 7, 9);
-    const auto b = record(30, 4, false, true, 13, 303, 9, 204);
+    const auto a = record(10, 2, false, true, 11, 101, 7, std::uint8_t{9});
+    const auto b = record(30, 4, false, true, 13, 303, 9, std::uint8_t{204});
     input.chunk.records = {a, nonspawn(), b};
     auto result = load::prepare_wildlife_chunk(input, {});
     REQUIRE(result);
@@ -186,7 +188,7 @@ TEST_CASE("wildlife chunk: excess records zero candidates and successful leftove
     CHECK(cleared.attempts.empty());
     CHECK(cleared.candidates.empty());
     CHECK_FALSE(cleared.reserved);
-    input.chunk.records = {record(40, 18, true, false, 14, 404, 10, 77),
+    input.chunk.records = {record(40, 18, true, false, 14, 404, 10, std::uint8_t{77}),
                            record(41, 20, true, true, 15, 405, 11), nonspawn()};
     input.chunk.flags = 0xab01;
     candidates(input, 1);
@@ -258,7 +260,7 @@ TEST_CASE(
         if (variant == 3)
             bad.fresh_tokens.push_back(50);
         if (variant == 4)
-            bad.chunk.records[0].position = 64;
+            bad.chunk.records[0].position = std::uint8_t{64};
         if (variant == 5)
             bad.chunk.records[0].occupied.reset();
         if (variant == 6)

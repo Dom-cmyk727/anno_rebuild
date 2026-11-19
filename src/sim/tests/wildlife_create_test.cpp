@@ -1095,7 +1095,7 @@ load::WildlifeChunkRecord ready_record(std::uint64_t token, std::uint8_t pos,
     record.token = token;
     record.position = pos;
     record.occupied = false;
-    record.timestamp = 0;
+    record.timestamp = std::uint8_t{0};
     record.goods = goods;
     return record;
 }
@@ -1125,7 +1125,7 @@ load::WildlifeChunkPlan mixed_materialize_chunk() {
     load::WildlifeChunkRecord delayed;
     delayed.token = 80;
     delayed.occupied = false;
-    delayed.timestamp = 1;
+    delayed.timestamp = std::uint8_t{1};
     return authored_chunk({category, occupied, delayed, ready_record(70, 1), ready_record(60, 2),
                            ready_record(50, 3, 137)});
 }
@@ -1342,7 +1342,7 @@ TEST_CASE("wildlife materialize: reached missing ambiguous and known zero facts 
     REQUIRE(known_null);
     CHECK(known_null.value().completed.entries[0].disposition == MatD::NullType);
     auto goods_zero = original;
-    goods_zero.completed.chunk.records[0].goods = 0;
+    goods_zero.completed.chunk.records[0].goods = std::uint16_t{0};
     const auto no_match = load::prepare_wildlife_materialization(goods_zero, 0, original_facts,
                                                                  source_view(source, welt), raw);
     REQUIRE(no_match);

@@ -50,9 +50,9 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife navigation inputs [WILDLIFE-NAV-INPUTS-1](tasks/wildlife-nav-inputs-1.md) | ACCEPTED research; production compatibility decision pending | `74d50bfeedf1a48ab7e140cc66e36859e0d0a9c3`; production base `889143ba` | [44458725953](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44458725953), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-nav-inputs-1-review.md) |
 | Wildlife secondary raster [WILDLIFE-RASTER-CONTRACT-1](tasks/wildlife-raster-contract-1.md) | ACCEPTED conditional research; runtime numeric qualification remains | `8217e1879aead7fa3b451c155b060f0a05405874`; production base `889143ba` | [44461780207](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44461780207), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-raster-contract-1-review.md) |
 | Wildlife load-thread numerics [WILDLIFE-RASTER-FP-1](tasks/wildlife-raster-fp-1.md) | ACCEPTED research/capture card; Windows observation pending | `aec8bcc8fc1a35230dffba91c8e8b34c35f31bf3`; production base `889143ba` | [44464134541](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44464134541), all 12 jobs successful | [Review and Windows intake](reviews/2026-11-19-wildlife-raster-fp-1-review.md) |
-| Wildlife ground preparation [WILDLIFE-PREPROCESS-CONTRACT-1](tasks/wildlife-preprocess-contract-1.md) | LOCAL REVIEW APPROVED; conditional numerical implementation released | `54798a4b5f5bc8a2c65874ea375441b7cca9e21f`; production base `889143ba` | [44467047682](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44467047682), in progress | [Review](reviews/2026-11-19-wildlife-preprocess-contract-1-review.md) |
-| Wildlife numerical preparation [WILDLIFE-GROUND-PREPARE-1](tasks/wildlife-ground-prepare-1.md) | LOCAL REVIEW APPROVED; isolated UNWIRED numerical leaf | `5bdfd92ac01a70656a718cea4f7c7405445b41d5`; tested `92c17db` | [44469519552](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44469519552), in progress | [Review](reviews/2026-11-19-wildlife-ground-prepare-1-review.md) |
-| Wildlife growth source [WILDLIFE-GROWTH-LOAD-1](tasks/wildlife-growth-load-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `5bdfd92a` | Not started; one typed source loader, UNWIRED | Frozen reportback directly to Mac orchestrator |
+| Wildlife ground preparation [WILDLIFE-PREPROCESS-CONTRACT-1](tasks/wildlife-preprocess-contract-1.md) | ACCEPTED bounded preprocessing contract | `54798a4b5f5bc8a2c65874ea375441b7cca9e21f`; production base `889143ba` | [44467047682](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44467047682), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-preprocess-contract-1-review.md) |
+| Wildlife numerical preparation [WILDLIFE-GROUND-PREPARE-1](tasks/wildlife-ground-prepare-1.md) | ACCEPTED; isolated UNWIRED numerical leaf | `5bdfd92ac01a70656a718cea4f7c7405445b41d5`; tested `92c17db` | [44469519552](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44469519552), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-ground-prepare-1-review.md) |
+| Wildlife growth source [WILDLIFE-GROWTH-LOAD-1](tasks/wildlife-growth-load-1.md) | IN PROGRESS; executor sanitizer gate running | Accepted base `5bdfd92a` | Executor reports focused Debug passed; new source not yet reviewed | Frozen reportback directly to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -996,3 +996,16 @@ unchanged, use nonzero retained-staging controls and a real-source/authored-leaf
 integration test. No kernel extraction, city proof, FRUCHTBAR capability, fill
 composition, World/state/default or other-lane change. Executor ordinary-pushes
 its task branch and reports directly here for review and next release.
+
+
+## Terminal acceptance — preparation contract and integer leaf
+
+PREPROCESS-CONTRACT `54798a4b` / CI44467047682 and GROUND-PREPARE `5bdfd92a` /
+CI44469519552 are now ACCEPTED within their independently reviewed scopes. Root
+verified all 12 successful jobs at each full head. Receipt hashes and limitations
+are appended to both reviews. No retries, source changes or repeated gates.
+
+GROWTH-LOAD remains the active released task at accepted base `5bdfd92a`. The
+executor reports focused Debug complete and its sanitizer gate running. That
+progress is not reviewed acceptance. Continue unchanged; no interruption, new
+assignment, board merge or main push is requested.

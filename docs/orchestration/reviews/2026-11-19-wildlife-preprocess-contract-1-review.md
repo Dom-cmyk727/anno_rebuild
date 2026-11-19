@@ -58,3 +58,15 @@ Do not relax the present-FRUCHTBAR validator, add a fake completion header or
 change the already-supported Tutorial path. No World, default, identity or
 routing change is released. Pending Windows raster capture and owner navigation
 compatibility decision remain separate. Executor reports directly for review.
+
+## Terminal CI and acceptance
+
+**ACCEPTED** at `54798a4b5f5bc8a2c65874ea375441b7cca9e21f` within the bounded preprocessing research contract.
+CI [44467047682](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44467047682)
+has all 12 jobs completed successfully at that exact head, including all five
+C++ jobs and the aggregate gate. Root verified every full head/status/conclusion.
+Hosted jobs receipt SHA-256:
+`86af4c4d3bceb89bd5dabf3e8fa8a32cd842a3f03a84588fe67180bacf1495aa`.
+No retry, new source commit or repeated local gate. Original runtime, full
+initialization/World integration and live wildlife remain outside this acceptance.
+Windows orchestrator owns landing; main untouched.

@@ -55,3 +55,15 @@ Unsafe or unresolved domains must be explicit refusals, not guessed behavior.
 No kernel extraction, city proof, fake FRUCHTBAR, fill composition, World or
 identity change is released. Pending Windows capture and owner navigation policy
 remain separate. Executor reports directly here for review; main untouched.
+
+## Terminal CI and acceptance
+
+**ACCEPTED** at `5bdfd92ac01a70656a718cea4f7c7405445b41d5` within the supplied-fact, UNWIRED numerical leaf.
+CI [44469519552](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44469519552)
+has all 12 jobs completed successfully at that exact head, including all five
+C++ jobs and the aggregate gate. Root verified every full head/status/conclusion.
+Hosted jobs receipt SHA-256:
+`dd31d8843b45da2d02935b2d5155c406669abb7a1aaa4c3da09456cee08283bc`.
+No retry, new source commit or repeated local gate. Original runtime, full
+initialization/World integration and live wildlife remain outside this acceptance.
+Windows orchestrator owns landing; main untouched.

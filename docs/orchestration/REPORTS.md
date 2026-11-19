@@ -17167,3 +17167,58 @@ Decisions and reasoning:
 
 NOT_RUN: original/HE execution, other editions/full table extent, original scene/city/INFO/HEAD selection, World/native integration, full pins/heavy/long/warnings, Windows/WSL, LeakSanitizer.
 QUESTIONs: none blocking this bounded review; future source/caller integration needs a separate contract. Navigation decision/Windows raster observations unchanged.
+
+
+## 2026-11-19 — WILDLIFE-GROUND-FACTS-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-GROUND-FACTS-1` from reviewed kernel `c9259c16`; exact dispatch `542e55e3e36f42f590a4b84162b5304518386858`, no main/board merge/rebase.
+- Contract/authored expected fixtures FIRST `a8ec9025`; frozen tested source `f443ed12d28f3281b190ad6096939df61fb4ee05`, tree `ae41e55e3d463ead70356e322fc43d387f1cc80c`.
+- Final publication report/evidence only; exact pushed head/tree and CI URL accompany direct handoff before terminal; independent orchestrator review pending.
+- [Contract](../sim/wildlife-ground-facts.md) / [acceptance and complete receipt evidence](evidence/wildlife-ground-facts-1.md); listings/original rows private.
+- F1 re-read: Welt `0x1008452b–0x10084565` full word lookup/kind/group/byte query; Game `0x1000a979–0x1000a991` returns success 1 including zero.
+- HEAD `0x10009348–0x100093ed` zeroes 56 bytes, loads byte 0x19 into +0x77; payload reader `0x10015ab0` unbounded, modern >56 refuses; short PRESENT records zero-extend.
+- Standard catalogue `0x100215a4` +4 factory `0x100063a0` ->kind 0x700 / ctor `0x1000c240` ->table `0x10021a88`; +0x48 resource forwarder `0x1000c0c0` specializes only 0x17.
+- Kind +0x5c ->`0x10007d20`, lookup +0x70 ->`0x100037e0`; fresh zero pointer array at `0x10003834`. Entry reuse and ordered stores re-read; needed duplicates conservatively REFUSE here.
+- `bind_wildlife_ground_facts(profile, words, entries, registry)` returns owned sorted/distinct facts; only explicit `GogAnlagen` source profile supported, unknown profile refuses.
+- Registry RuntimeClass/digest is NOT original descriptor dispatch proof. Source id/kind/full normalized HEAD and width/height/flags cross-checked; no mutation or new registry field.
+- V(0) differs from N/A/F; this profile emits V(actual byte), N only for paired absent source/registry zero; defined zero binds ordinarily, unknown nonzero refuses.
+- Out-of-blend kinds get proved pure common byte facts; unchanged numerical leaf short-circuits; no extra dynamic getter call or RNG.
+- One source index/distinct-word lookup per call, no per-tile whole-registry scans, no id mask/asset whitelist; new id 90001 and colliding pairs use same seam.
+- Authored lifetime/order/duplicates/short HEAD/metadata mismatch/unsupported cases pass; source and registry unchanged on refusal, no partial facts.
+- Authored numerical composition covers p<v and p>=v, V(0), outside kind; complete hand bytes a4,b4,c1,d1 asserted.
+- Independent pre-C++ Python figuren/PE name-table parse: all 921 fields, supported standard profile 921/unsupported source 0, raw blend kinds 291/nonzero properties 214.
+- Oracle SHA `f8206d019710ce4baf4c0765dcfae1508deb3bad04978d1f1e5f73c90c7aaf30`; both gates compare actual private rows, not only digest; original module/data hashes pinned.
+- Cheap first 5 cases/1131 assertions and final 6/1138 pass. Empty COLORS container fixed by parser reading before first run; no failing binder compile/test/gate attempt.
+- Legal actual-TU control 6/1138 passes; wrong offset 4 failures, whole-mask 1, missing->null 1, zero->failed 3; valid semantic comparisons/refusals, canonical source/binary unchanged.
+
+```text
+# cache/wildlife-ground-facts-1/debug-final.log — main
+COUNTS: selected=18 executed=18 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-ground-facts-1/asan-final.log — main
+COUNTS: selected=18 executed=18 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# Two separately required cases PER profile, each exact receipt:
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- Required: whole-word/defined-zero and original catalogue. Evidence reproduces all six receipts and both GATE_END status 0 / ctest_rc 0; no double counting.
+- Main scope includes numerical leaf, registry HEAD/name/lookup, role HEAD and resource metadata consumers; kernel/growth/fill long/render evidence reused, no broad campaign.
+- No memory refusal, timeout, empty, skip, incomplete or sanitizer line; no passing gate repeated; no commit during gates.
+- Four relevant TUs strict O3/Werror Apple Clang 21/GCC 15.3 clean, GCC shadow control rejected; format 23.1.3/lint/diff-check pass; inherited duplicate-library link warning retained.
+- All 292 synthetic working files byte-identical to predecessor receipts, including inherited CRLF; no fixture/pin rebaseline or full pins.py claim. Original files rehashed unchanged.
+- Original descriptor/oracle/source/test/binary/log/command SHA receipts in evidence; manifest `0d4ab61ba9974398bc5359a08a113d31e754fa4f833ac3d5f677d7f1b4a730bb`.
+- Kernel histories distinct: three binaries COPIED exact; old Debug sim RECONSTRUCTED BYTE-IDENTICAL SHA 664c0ab9..., not uninterrupted retention/gate rerun. First differently named output mismatch retained; 148 actual relink-input hashes/command/caveat recorded, no old receipt rewritten.
+- Candidate-10/GPU diagnostics untouched; no UI repair, navigation identity, World/native/Rules/default/tag/state/pin change or production binder caller.
+- Host M5 Max/18 logical/48 GiB/macOS 27.0.1, jobs 1/threads 2, admission enabled; coordinator/owner awake unchanged. GPU unused; ASan leaks disabled/NOT_RUN.
+- Kernel CI remains separate orchestrator closeout; new task CI read after ordinary branch push, pending never called green.
+
+Decisions and reasoning:
+- Bind the exact standard factory/getter profile before code; do not infer polymorphic semantics from matching HEAD bytes or modern RuntimeClass alone.
+- Preserve successful zero and full ids; source metadata is authoritative, normalized registry is a cross-check, unknown metadata is an error.
+- Keep decoder facts separate from original city/INFO/common-HEAD scene provenance and the conditional numerical result; no invented prepared FRUCHTBAR/fill capability.
+- Use one indexed owned binder, finite causal probes and focused existing consumer checks; stop at F4 without UI or whole-suite expansion.
+
+NOT_RUN: original/HE execution, substituted concrete profiles, city/INFO/source-scene pipeline, prepared FRUCHTBAR/fill/World, Windows/WSL/full/heavy/long/pins/full warnings, LeakSanitizer.
+QUESTIONs: none blocking bounded review; future live caller/provenance bindings need a separate contract. Independent review pending.

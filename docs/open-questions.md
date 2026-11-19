@@ -3913,3 +3913,15 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Question:** View.dll `0x1002bb4f` creates the eight `VIEWBAUTAB` gadgets (class `0xb0d`, 42 x 46) without a position in that loop. Which code or resource places tab k at (762, 303 + 46k), and does the gadget class's hit test use the full gadget rectangle?
 - **What we know:** the positions are measured, sprite-565 exact on nine GOG shots (docs/re/ui.md 2.4); the other views' sub-tab columns sit at the same place (section 5.4), so a shared tab-column parent probably stacks them. The rebuild's hit area is the drawn rectangle; every GOG shot is consistent with it, and OQ-714's overlap with grid column 0 is gone because the tabs end at x 803.
 - **How to resolve:** read class `0xb0d`'s layout and hit-test slots (the parent passed at `0x1002bba3`, `[ecx]+0x7c`), or a GOG capture of a press at (805, 330).
+
+## OQ-773: Where the info panel's gadget group goes when a category tab is clicked (UI-CATNAV-1, 2026-11-19; OPEN)
+- **Question:** View.dll `0x1002bf90` (the tab strip's handler, registered at `0x1002bb23`; the tab index is property `0x1b3`) removes the gadget groups in the vector at `[this+0x5e4]` from the container `[this+0x56c]`, adds the clicked tab's group, stores the index at `[this+0x5f0]` and sends the tab a message (`vfunc 0x9c`). Is the placement/info panel one of those groups, or a separate layer a later message hides?
+- **What we know:** the handler touches no cursor (AnnoFrame) code and posts no cancel message, so an armed type stays armed (read, GOG). That the grid then shows instead of the info panel is HE-observed (ui_10 10:03-10:13, "switch to roads": the road grid on the right, the building still armed); the GOG panel switch itself was not read to its end.
+- **Rebuild:** `after_category_click` (`construction_menu.cpp`) shows the grid and leaves the armed type alone.
+- **How to resolve:** read the message sent at `0x1002c0d9` and the panel's handler for it; or a GOG capture with a house armed and a tab clicked.
+
+## OQ-774: A click on the category tab that is already open, with a building armed (UI-CATNAV-1, 2026-11-19; OPEN)
+- **Question:** With the info panel showing for a building of category X, does a click on tab X show X's grid?
+- **What we know:** the handler `0x1002bf90` has no comparison with the stored index `[this+0x5f0]` (read), so the second click takes the same path as any other. HE was only observed switching to another category.
+- **Rebuild:** the grid shows (the same path), the type stays armed.
+- **How to resolve:** a HE or GOG capture of that click.

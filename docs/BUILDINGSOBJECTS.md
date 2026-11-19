@@ -292,6 +292,7 @@ Every cursor ends in `City::Build` (`AnnoWelt 0x100276a0`). That calls the islan
 | ESC | one step back: info panel → grid with nothing armed; demolish → off (an armed building stays); grid → menu closed with the building put away | UI-PLACE-2 | P |
 | Right click | on the map or the panel, everything is put away and the grid shows; on the grid, the menu closes | UI-PLACE-1/2 | P |
 | Cancel-X | closes the panel only; the building **stays armed** (ghost and orange cell frame) | UI-PLACE-1 | P |
+| Category tab | shows that category's grid in place of the info panel; the building **stays armed** until another cell is picked (no cancel, no cursor call in the handler `0x1002bf90`; HE ui_10 10:03-10:13). A tab already open: the same path (OQ-774) | View.dll `0x1002bf90` (read); HE pixels | D (no cursor call); P (grid replaces panel, OQ-773) |
 | Pickaxe | toggles demolish with or without an armed building; a cell chosen while demolishing ends it | UI-PLACE-1 | P |
 | CTRL | auto-align the entrance to a road (manual p15); code path `0x10047e80` | OQ-546 | D (logic); P (manual); not captured |
 

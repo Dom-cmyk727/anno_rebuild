@@ -2114,9 +2114,14 @@ bool Viewer::construction_handle(const SDL_Event& e) {
     switch (result.kind) {
     case ConstructionClickKind::None:
         return true;
-    case ConstructionClickKind::SwitchCategory:
-        construction_open_category_ = result.category;
+    case ConstructionClickKind::SwitchCategory: {
+        // UI-CATNAV-1: the tab shows its category's grid; an armed type stays armed (no Cancel).
+        const ConstructionPanelState next = after_category_click(
+            {construction_open_category_, construction_placement_open_}, result.category);
+        construction_open_category_ = next.category;
+        construction_placement_open_ = next.placement_open;
         return true;
+    }
     case ConstructionClickKind::Empty:
     case ConstructionClickKind::Locked:
         return true;
@@ -3130,6 +3135,11 @@ void Viewer::script_tick() {
         st.facts["ui.category"] = category;
         st.facts["ui.category_tab"] = category_tab;
     }
+    // UI-CATNAV-1: the panel the open menu shows (grid / info), and the armed type (tool.armed:
+    // the Anlagen id, or none) - the two are independent, as the original's.
+    st.facts["ui.panel"] = !construction_menu_open_       ? std::string("none")
+                           : construction_placement_open_ ? std::string("info")
+                                                          : std::string("grid");
     st.facts["hud.view"] = hud_tabs_ ? hud_tabs_->view().name : std::string("none");
     st.facts["hud.subtab"] = hud_tabs_ ? std::to_string(hud_tabs_->subtab()) : std::string("none");
     // UI-TABS-1 stage B: each balance row's figure as drawn (balance_text) while its page shows,
@@ -3150,6 +3160,8 @@ void Viewer::script_tick() {
     st.facts["ui.info.rotation"] = construction_placement_open_ && tool_armed
                                        ? std::to_string(dev_->input().rotation())
                                        : std::string("none");
+    st.facts["tool.armed"] =
+        tool_armed ? std::to_string(dev_->input().selected()->v) : std::string("none");
     st.facts["tool.turn"] = tool_armed ? std::to_string(dev_->turn()) : std::string("none");
     // UI-PRODBAR-1 B1: the fertility indicator over the ghost (fertility_indicator.hpp,
     // docs/re/ui.md 4.1). Named placeholder `fertility-indicator-needs-sim` (OQ-715): the window

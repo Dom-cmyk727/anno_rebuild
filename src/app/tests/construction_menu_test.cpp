@@ -488,3 +488,29 @@ TEST_CASE("info panel: the rotate arrows turn the armed type's rotation, left -1
     CHECK(tool.input().rotation() == 3);
     CHECK(tool.turn() == 3); // a plain type: the ghost's and the build's turn is the cursor's
 }
+
+// UI-CATNAV-1: a click on a category tab while the info/placement panel shows resolves to
+// SwitchCategory (the tab column is live on both panels), and the state after it is the new
+// category's grid; the armed type is not part of this state, so nothing here can disarm it.
+TEST_CASE("construction menu: a category tab click with the info panel open shows that "
+          "category's grid") {
+    const Layouts l = load();
+    const app::ConstructionMenu menu(l.hud, l.construction);
+
+    const auto roads = menu.click(770.0, 372.0, "public", /*placement_open=*/true, nullptr);
+    REQUIRE(roads.kind == app::ConstructionClickKind::SwitchCategory);
+    CHECK(roads.category == "roads");
+
+    const app::ConstructionPanelState armed_info{"public", true};
+    const app::ConstructionPanelState next = app::after_category_click(armed_info, roads.category);
+    CHECK(next.category == "roads");
+    CHECK_FALSE(next.placement_open);
+
+    // The tab already open: the same path, the grid shows (OQ-774).
+    const app::ConstructionPanelState same = app::after_category_click(armed_info, "public");
+    CHECK(same.category == "public");
+    CHECK_FALSE(same.placement_open);
+
+    // With the grid already showing, a tab click leaves it a grid.
+    CHECK_FALSE(app::after_category_click({"farms", false}, "mines").placement_open);
+}

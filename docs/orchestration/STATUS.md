@@ -170,6 +170,13 @@ says who is doing what, where the work is, and what it waits on.
   order?", the owner answered "Yes". They run in the UI lane, then UI-RANGE-1. Also, asked "Delete the public
   task branch with the data table after landing, and recreate it clean?", the owner answered "Yes, clean it
   up": `task/BUILDINGS-REF-1` is recreated as one clean commit.
+- **FLAKE-RESIZE-1 ACCEPTED** 2026-11-19, head `11dd877a` (fix `b3304fd1`; CI 44493276095 green). The live-resize
+  case leaked SDL's per-thread error buffer (LeakSanitizer at exit) when its raw `std::thread` pusher hit
+  SDL's 65,535-event queue cap. Now the pusher always crosses the cap (70,000 pushes) and calls
+  `SDL_CleanupTLS`. Proof: CI with the cleanup removed fails every run (44177906209), with it all 12 jobs
+  pass (44190066591). msvc 50 loops 50/50 and `viewer_wiring_r4_occupancy` 50/50 (alongside another lane's
+  build); WSL clean. The local WSL ASan run is NOT_RUN (no compiler-rt runtime). It goes into the next
+  candidate.
 - **WIN-NAV-EDITIONS-1 taken in** 2026-11-19 (owner: "independently verify the coarse navigation height
   discrepancy against BOTH the original GOG and History Edition game files and executable code"). The
   packet is `docs/orchestration/tasks/windows-nav-editions-1.md` at `orch/mac-lane` `56ff354a` (Mac

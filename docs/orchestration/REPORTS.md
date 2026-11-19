@@ -17222,3 +17222,63 @@ Decisions and reasoning:
 
 NOT_RUN: original/HE execution, substituted concrete profiles, city/INFO/source-scene pipeline, prepared FRUCHTBAR/fill/World, Windows/WSL/full/heavy/long/pins/full warnings, LeakSanitizer.
 QUESTIONs: none blocking bounded review; future live caller/provenance bindings need a separate contract. Independent review pending.
+
+## 2026-11-19 — WILDLIFE-PREP-PROVENANCE-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-PREP-PROVENANCE-1`, exact base `4054d93aa42f777c49c9c4dd035bd3cdce23f64b`.
+- Dispatch `b5e00e2a54723c33d2437121518750c6bbc88fce`; no main/board merge or rebase.
+- [Addressed contract/provenance ledger](../sim/wildlife-prep-provenance.md); [source hashes, acceptance table and receipts](evidence/wildlife-prep-provenance-1.md).
+- Docs/private probes only. No source/CMake/tools/fixtures/native state/default/identity change.
+- P1: actual fresh INSEL5 reader `0x100a2ea0`, missing-slot factory at `0x100a2f5e`, ordered local loop `0x100a2f88–0x100a2fbc`.
+- First wrapper `0x100a2fc8 ->0x100a1810`; navigation/graphics afterward, not executed here.
+- Existing-slot arm is outside fresh constructor proof; filename/template/reused-world profiles remain separate.
+- Factory `0x100a2545–0x100a2584` subtracts x%8/y%8 from both corresponding rectangle edges; extent unchanged.
+- Tutorial aligned source matches `[24,24,152,152)`; authored `(7,11,3,2)` becomes `[0,8,3,10)`.
+- No silent PreparedIsland patch or arbitrary unaligned full-call claim is proposed.
+- INFO `0x100897b6–0x100897ee`: local 12-byte zero fill, payload-length copy, byte 0 to c0; last local INFO wins.
+- Original safe present lengths 0–12, absent fresh default 0; >12 unbounded copy not certified.
+- Modern explicit leading 12-byte INFO domain/missing or late refusal is conservative adaptation, not original behavior.
+- c2 constructor zero `0x1008cbc7`; completed FRUCHTBAR sets 1 `0x10089565`; INFO does not reset it.
+- Wrapper `0x100a1815–0x100a1834`: nonzero skips prep, always fill. Completed all-zero differs from absent.
+- Raw fertility and effective variation remain separate: authored raw 0x20/old 0xa7 ->effective 0xa0, raw 0x20.
+- P2: ctor chain `0x10094c60 ->0x1008f460 ->0x1008cb30 ->0x10096da0` initializes sixteen zero ring pointers.
+- Init `0x1008c090` ring binder `0x100967b0` does not clear them; reset/reused states are distinct.
+- STAEDTE local `0x10089c45` ->ring `0x10096a60`; ENTRY `0x10096bae` ->creation `0x100967e0`.
+- Ring insertion `0x100968a4`, city load +0x54 `0x10096bd8`; zero-building removal `0x10096be3–0x10096c0b`.
+- Name selection can draw at `0x10096910`; no source city construction erased as an optimization.
+- WARETYP `0x10096c20–0x10096d28` is mapping-only, not city ENTRY creation.
+- Prewalk `0x1008438f–0x100843ed` concrete city/index/first-building/getter chain not fully certified.
+- Constructor zero, public complete flag, source SHA and modern empty vector do not prove empty ring at prep.
+- Remaining absent edge: close init-manager/admitted-local callback ring effects, then concrete nonempty ENTRY load/getters if admitted.
+- That gap does NOT block the selected completed Tutorial: its c2 branch skips the prewalk entirely.
+- P3 minimal next proposal: internally reconstruct exact selected prefix/source, match original full geometry, use existing precomputed validator/apply unchanged.
+- Keep stamp/mode provenance explicit; no World/navigation/UI wiring or invented original draw-history claim.
+- Separate future absent capability would own kernel/growth/facts/effective plane and require proved prewalk provenance first.
+- Never fabricate FRUCHTBAR, raw Terrain fertility or c2; existing completed-source validator must continue refusing absent input.
+- Sharing only a narrow fill body is a future independently reviewed proposal, not implemented or released here.
+- Legal/refusal siblings specify INFO order/missing/late, zero/absent/malformed ground, ordinal/slot/geometry/stale prefix, city profile, full/partial and lifetime.
+- Future C++ capability checks are all NOT_RUN; private arithmetic is not a passing placeholder.
+- P4 fixed sample 24 files/24 islands: 24 completed FRUCHTBAR, 0 absent, 0 all-zero; complete HEIGHT/GFX 24, one INFO each.
+- No sample expansion/corpus absence inference. First selection failed before payload reads on missing Tundra DUMMY; preserved, corrected fallback explicit.
+- Five sampled DUMMY STAEDTE contain WARETYP only (543 bytes), zero ENTRY; no city-positive witness claimed.
+- Tutorial source SHA `225ed50b005743e00d8d3ffe18667d4565dc781ef45bd6d9b767fd2fe056c0f6`.
+- Ordinal 0/slot 11, 73 headers; INFO ordinal 0/offset 1943/length 12/climate 2; FRUCHTBAR ordinal 49/offset 80739/length 16384.
+- Low-plane SHA `02c939bcca166d877f5656556510d88afbeea6fd6bff31eba348c40bcd598334`.
+- Original Welt SHA `f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`; listings and parsed payloads private.
+- Actual private receipt: `PRIVATE_PROBES field_order_geometry=12 passed=12 failed=0 future_cpp=NOT_RUN original_execution=NOT_RUN`.
+- No suite COUNTS/VERDICT is manufactured; docs packet reruns no accepted C++ campaign.
+- Frozen manifest SHA `647fcdf59447db3d25c0f26bded80c4421bf9624bf6272f07bcfe6ce3a7534ba`; full private artifact/source sample hashes published.
+- Preservation: 12 predecessor source/doc checks and 2 binaries match; 292 tracked synthetic working-file hashes frozen; code/tools/fixtures diff empty.
+- No original modification; candidate/GPU evidence, coordinator and owner awake assertion preserved.
+- Link/diff checks recorded at publication; exact head/tree/CI link sent directly after ordinary push, CI pending never described as green.
+- GROUND-FACTS exact-head CI remains separate orchestrator closeout; stacked research waives nothing.
+
+Decisions and reasoning:
+- Preserve constructor -> ordered handlers -> wrapper causality; do not infer a whole-scene city-free state from one chunk or modern representation.
+- Advance the evidenced completed-header composition independently; do not turn an unwitnessed absent branch into an invented prerequisite.
+- Keep original source geometry adjustment explicit; reject unsupported pairing rather than silently change PreparedIsland.
+- Stop the sample at 24 and publish its actual zero-hit absent result; synthetic siblings remain authored.
+- Return a precise partial contract and bounded next static edge, not an owner adaptation request or a new generic loader.
+
+NOT_RUN: future C++ composition/capability, original/HE execution, absent-ground shipped positive witness, full corpus, World/native integration, substituted city getters/reused worlds, Windows navigation/raster, repeated pins/heavy/long/C++ gates.
+QUESTIONs: none requiring owner policy for this bounded handoff. Absent-path provenance remains a static dependency; independent orchestrator review pending before implementation release.

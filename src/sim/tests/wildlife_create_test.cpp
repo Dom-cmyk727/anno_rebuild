@@ -9,9 +9,12 @@
 
 #include <doctest/doctest.h>
 
+#include <anno/formats/anlagen.hpp>
 #include <anno/formats/annogame.hpp>
 #include <anno/formats/sha256.hpp>
+#include <anno/sim_load/original_registry.hpp>
 #include <anno/sim_load/wildlife_create.hpp>
+#include <anno/sim_load/wildlife_final_facts.hpp>
 #include <anno/sim_load/wildlife_materialize.hpp>
 #include <anno/sim_load/wildlife_release.hpp>
 #include <anno/sim_load/wildlife_species.hpp>
@@ -1557,4 +1560,372 @@ TEST_CASE("wildlife materialize: original climate two batch matches independent 
           out.entries[0].selection->selected.source_sha256);
     CHECK(out.entries[1].selection->creation->source_sha256() ==
           out.entries[1].selection->selected.source_sha256);
+}
+
+namespace {
+constexpr auto final_profile = load::GroundDescriptorProfile::GogAnlagen;
+struct FinalRig {
+    Source source;
+    std::shared_ptr<const sim::TypeRegistry> types;
+    FinalRig() {
+        const auto name = [&](std::uint32_t number, std::uint32_t base, std::uint32_t rva,
+                              std::string_view text) {
+            put32(source.image, base + number * 4 - 0x24000 + 0x200, 0x10000000 + rva);
+            std::copy(text.begin(), text.end(), source.image.begin() + rva - 0x24000 + 0x200);
+        };
+        name(70, 0x251f8, 0x262a0, "BAUM");
+        name(42, 0x25178, 0x262c0, "HOLZ");
+        sim::TypeRegistry::Builder builder;
+        const auto add = [&](std::uint32_t id, std::string_view kind,
+                             std::optional<std::string> ware, std::vector<sim::GoodsId> output) {
+            fmt::figuren::Entry e;
+            e.id = id;
+            Buffer head(56, 0);
+            head[0] = head[1] = 1;
+            head[0x19] = 99; // NOT output 0; wrong-property mutant must differ.
+            head[0x1c] = 0x29;
+            e.records.push_back(source.record("HEAD", head));
+            Buffer k(kind.begin(), kind.end());
+            k.push_back(0);
+            e.records.push_back(source.record("PRODTYPE", std::move(k)));
+            if (ware)
+                e.records.push_back(source.record("WARE", Buffer(ware->begin(), ware->end())));
+            source.entries.push_back(e);
+            sim::BuildingType t;
+            t.id = sim::TypeId{id};
+            t.width = t.height = 1;
+            t.prodtype = *sim::prodtype_by_name(kind);
+            t.flags_word = 0x29;
+            t.head_raw = head;
+            t.output_goods = std::move(output);
+            builder.add(t);
+        };
+        add(104, "ROHSTWACHS", std::string("UNUSED\0BAUM\0", 12), {0, 70});
+        add(105, "ROHSTOFF", std::string("BAUM\0HOLZ\0", 10), {70, 42});
+        add(16384, "ROHSTOFF", {}, {});
+        add(16488, "ROHSTOFF", std::string("BAUM\0", 5), {70});
+        add(90001, "TIERHOEHLE", std::string{}, {});
+        const auto built = builder.build();
+        REQUIRE_MESSAGE(built, (built ? "" : built.error()));
+        types = built.value();
+    }
+    auto bind(std::vector<std::uint32_t> words) const {
+        return load::bind_wildlife_final_types(final_profile, words, source.entries, source.image,
+                                               *types);
+    }
+    void edit_registry(std::uint32_t word, const auto& edit) {
+        sim::TypeRegistry::Builder builder;
+        for (const auto& old : types->types()) {
+            auto t = old;
+            if (t.id.v == word)
+                edit(t);
+            builder.add(t);
+        }
+        const auto built = builder.build();
+        REQUIRE(built);
+        types = built.value();
+    }
+    load::WildlifeFirstCallResult prepared() const {
+        load::WildlifeFirstCallResult out;
+        auto& island = out.fill.island;
+        island.complete_local_records = true;
+        island.resource.tiles = sim::TileLayer(24, 40, 24, 16, 8);
+        // Authored completed-view fixture, not proof the original load ran.
+        island.terrain = sim::make_terrain(Buffer(384, 32), std::vector<std::uint16_t>(384, 105),
+                                           Buffer(384, 6));
+        island.resource.tiles.set_object(9U * 24U + 9U, 104);     // local position 9.
+        island.resource.tiles.set_object(9U * 24U + 10U, 105);    // position 10.
+        island.resource.tiles.set_object(15U * 24U + 15U, 90001); // position 63.
+        out.source_sha256 = "authored completed view";
+        return out;
+    }
+};
+} // namespace
+TEST_CASE("wildlife final facts: actual source getter defaults whole words and owned values") {
+    std::optional<load::WildlifeFinalTypes> owned;
+    std::optional<load::WildlifeFinalChunkFacts> owned_chunk;
+    {
+        FinalRig rig;
+        const auto before = rig.types->digest();
+        const auto result = rig.bind({90001, 104, 105, 0, 16384, 16488, 104});
+        REQUIRE_MESSAGE(result, (result ? "" : result.error()));
+        CHECK(result.value().null_words == std::vector<std::uint32_t>{0});
+        CHECK(result.value().types == std::vector<load::WildlifeFinalTypeFact>{
+                                          {104, sim::GoodsId{0}, std::uint32_t{226}},
+                                          {105, sim::GoodsId{70}, std::uint32_t{225}},
+                                          {16384, sim::GoodsId{0}, std::uint32_t{225}},
+                                          {16488, sim::GoodsId{70}, std::uint32_t{225}},
+                                          {90001, sim::GoodsId{0}, std::uint32_t{325}}});
+        REQUIRE(result.value().provenance.size() == 6);
+        CHECK(result.value().provenance[0].null_descriptor);
+        CHECK_FALSE(result.value().provenance[3].ware_present); // Absent WARE -> fresh 0.
+        CHECK(result.value().provenance[5].ware_present);       // Present empty -> fresh 0.
+        CHECK(result.value().game_sha256 == fmt::sha256_hex(rig.source.image));
+        CHECK(rig.types->digest() == before);
+        owned = result.value();
+        const auto view = rig.prepared();
+        const auto chunk = load::bind_wildlife_final_chunk(
+            view, 1, 1, final_profile, rig.source.entries, rig.source.image, *rig.types);
+        REQUIRE(chunk);
+        owned_chunk = chunk.value();
+    }
+    REQUIRE(owned_chunk);
+    CHECK(owned_chunk->facts.tiles[63].object_word == 90001);
+    CHECK(owned_chunk->source.provenance.back().source_sha256.size() == 64);
+    REQUIRE(owned);
+    CHECK(owned->types[1].output0 == 70);
+    CHECK(owned->types[4].prodtype == 325);
+    CHECK(owned->provenance[1].source_sha256.size() == 64);
+}
+TEST_CASE(
+    "wildlife final facts: source admission rejects unavailable ambiguous and mismatched inputs") {
+    for (unsigned variant = 0; variant < 13; ++variant) {
+        FinalRig rig;
+        REQUIRE(rig.bind({105}));
+        auto profile = final_profile;
+        if (variant == 0)
+            rig.source.entries.erase(rig.source.entries.begin() + 1);
+        if (variant == 1)
+            rig.source.entries.push_back(rig.source.entries[1]);
+        if (variant == 2)
+            rig.source.entries[1].records.push_back(rig.source.entries[1].records.back());
+        if (variant == 3)
+            rig.edit_registry(105, [](auto& t) { t.output_goods = {42, 70}; });
+        if (variant == 4)
+            rig.edit_registry(105, [](auto& t) { t.prodtype = 0; });
+        if (variant == 5)
+            rig.edit_registry(105, [](auto& t) { t.head_raw[0x19] = 8; });
+        if (variant == 6)
+            rig.source.entries[1].records.back() = rig.source.record("WARE", {'B', 'A', 'U', 'M'});
+        if (variant == 7)
+            rig.source.entries[1].records.back() = rig.source.record("WARE", {'X', 0});
+        if (variant == 8)
+            rig.source.entries[1].records.back() = rig.source.record("WARE", Buffer(1089, 0));
+        if (variant == 9)
+            profile = static_cast<load::GroundDescriptorProfile>(99);
+        if (variant == 10) {
+            sim::TypeRegistry::Builder builder;
+            for (const auto& t : rig.types->types())
+                if (t.id.v != 105)
+                    builder.add(t);
+            const auto built = builder.build();
+            REQUIRE(built);
+            rig.types = built.value();
+        }
+        if (variant == 11)
+            rig.source.image[0] = 'X';
+        if (variant == 12) {
+            Buffer oversized(81, 0);
+            const std::string known = "ROHSTOFF";
+            std::copy(known.begin(), known.end(), oversized.begin());
+            rig.source.entries[1].records[1] = rig.source.record("PRODTYPE", oversized);
+        }
+        const std::array<std::uint32_t, 1> word{105};
+        const auto result = load::bind_wildlife_final_types(profile, word, rig.source.entries,
+                                                            rig.source.image, *rig.types);
+        CHECK_FALSE(result);
+    }
+    FinalRig rig;
+    CHECK_FALSE(rig.bind({77777})); // Never a fabricated Null descriptor.
+    auto zero = rig.source.entries[2];
+    zero.id = 0;
+    rig.source.entries.push_back(zero);
+    sim::TypeRegistry::Builder builder;
+    for (const auto& old : rig.types->types())
+        builder.add(old);
+    auto t = *rig.types->find(sim::TypeId{16384});
+    t.id = sim::TypeId{0};
+    builder.add(t);
+    const auto types = builder.build();
+    REQUIRE(types);
+    const std::array<std::uint32_t, 1> word{0};
+    const auto present = load::bind_wildlife_final_types(final_profile, word, rig.source.entries,
+                                                         rig.source.image, *types.value());
+    REQUIRE(present);
+    CHECK(present.value().null_words.empty());
+    CHECK(present.value().types[0].output0 == 0);
+}
+TEST_CASE(
+    "wildlife final facts: checked final chunk addressing and ordered selection composition") {
+    FinalRig rig;
+    const auto prepared = rig.prepared();
+    const auto before = prepared.fill.island.resource.tiles;
+    const auto bound = load::bind_wildlife_final_chunk(
+        prepared, 1, 1, final_profile, rig.source.entries, rig.source.image, *rig.types);
+    REQUIRE_MESSAGE(bound, (bound ? "" : bound.error()));
+    const auto& value = bound.value();
+    CHECK(value.world_x == 32);
+    CHECK(value.world_y == 48);
+    REQUIRE(value.facts.tiles.size() == 64);
+    for (std::size_t i = 0; i < 64; ++i) {
+        const auto expected = i == 9 ? 104U : i == 10 ? 105U : i == 63 ? 90001U : 0U;
+        CHECK(value.facts.tiles[i].object_word == expected);
+        CHECK(value.facts.tiles[i].resolution == (expected == 0 ? TileR::Null : TileR::Present));
+    }
+    Source species;
+    species_source(species);
+    const auto welt = species_pe();
+    auto wrong_category = ready_record(100, 0);
+    wrong_category.category = 3;
+    auto chunk = authored_chunk(
+        {wrong_category, ready_record(20, 9), ready_record(30, 10), ready_record(40, 63)});
+    const std::array<std::uint32_t, 3> draws{6, 33, 999};
+    const auto result = load::prepare_wildlife_materialization(chunk, 0, value.facts,
+                                                               source_view(species, welt), draws);
+    REQUIRE_FALSE(result);
+    CHECK(result.error().stage == MatS::Cave);
+    const auto& partial = result.error().diagnostic_only;
+    REQUIRE(partial.entries.size() == 3);
+    CHECK(partial.entries[0].disposition == MatD::WrongCategory);
+    CHECK(partial.entries[1].disposition == MatD::NonqualifyingType);
+    REQUIRE(partial.entries[2].selection);
+    CHECK(partial.entries[2].selection->selected.id.v == 127);
+    CHECK(partial.entries[2].selection->choice.value.index == 1);
+    CHECK(partial.selector_consumed == 2);
+    CHECK(partial.unused_draws == std::vector<std::uint32_t>{999});
+    CHECK(partial.unchanged_chunk == chunk);
+    auto facts = value.facts;
+    facts.caves = {{63, std::size_t{0}}}; // Supplied outcome, no entrance provider claim.
+    const auto no_entrance =
+        load::prepare_wildlife_materialization(chunk, 0, facts, source_view(species, welt), draws);
+    REQUIRE_FALSE(no_entrance);
+    REQUIRE(no_entrance.error().selection_error);
+    CHECK(no_entrance.error().selection_error->selector.fault ==
+          sim::WildlifeFault::Oq574CaveWithoutEntrance);
+    CHECK(no_entrance.error().diagnostic_only.selector_consumed == 2);
+    const auto again = load::prepare_wildlife_materialization(chunk, 0, value.facts,
+                                                              source_view(species, welt), draws);
+    REQUIRE_FALSE(again);
+    CHECK(materialize_summary(again.error().diagnostic_only) == materialize_summary(partial));
+    for (std::uint64_t i = 0; i < before.tile_count(); ++i)
+        CHECK(prepared.fill.island.resource.tiles.object(i) == before.object(i));
+    auto missing = prepared;
+    missing.fill.island.resource.tiles.set_object(8U * 24U + 8U, 77777);
+    CHECK_FALSE(load::bind_wildlife_final_chunk(missing, 1, 1, final_profile, rig.source.entries,
+                                                rig.source.image, *rig.types));
+    const auto skipped =
+        load::prepare_wildlife_materialization(authored_chunk({wrong_category}), 0, {}, {}, draws);
+    REQUIRE(skipped);
+    CHECK(skipped.value().completed.entries[0].disposition == MatD::WrongCategory);
+    for (unsigned variant = 0; variant < 5; ++variant) {
+        auto bad = prepared;
+        auto cx = 1U, cy = 1U;
+        if (variant == 0)
+            cx = 3;
+        if (variant == 1)
+            cy = 2;
+        if (variant == 2)
+            bad.fill.island.complete_local_records = false;
+        if (variant == 3)
+            bad.fill.island.terrain.reset();
+        if (variant == 4)
+            REQUIRE(bad.fill.island.resource.tiles.reset(25, 40, 24, 16, 8));
+        CHECK_FALSE(load::bind_wildlife_final_chunk(bad, cx, cy, final_profile, rig.source.entries,
+                                                    rig.source.image, *rig.types));
+    }
+}
+TEST_CASE("wildlife final facts: original completed Tutorial chunk and metadata match independent "
+          "oracle") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        std::cout << "SKIPPED: ANNO1503_GAME_DIR not set (original final facts unavailable)\n";
+        return;
+    }
+    const auto read = [](const std::filesystem::path& path) {
+        std::ifstream input(path, std::ios::binary);
+        REQUIRE(input);
+        return Buffer(std::istreambuf_iterator<char>(input), {});
+    };
+    const auto scene = read(*dir / "Scenes/Tutorial/01Discover01.sze");
+    CHECK(fmt::sha256_hex(scene) ==
+          "225ed50b005743e00d8d3ffe18667d4565dc781ef45bd6d9b767fd2fe056c0f6");
+    const auto bytes = read(*dir / "Anlagen.dat");
+    const auto entries = fmt::anlagen::AnlagenFile::parse(bytes);
+    REQUIRE(entries);
+    const auto game = read(*dir / "AnnoGame.dll");
+    const auto registry = load::load_original_registry(*dir, load::FigureEntries::Required);
+    REQUIRE_MESSAGE(registry.types, registry.error);
+    load::PrefixInputs supplied;
+    supplied.sampled_stamps = {500};
+    supplied.stamp_provenance = "authored stamp 500, not original time";
+    supplied.mode_provenance = "authored mode 0";
+    const std::vector<std::uint32_t> prefix_draws(20000, 7);
+    const auto prepared = load::prepare_wildlife_first_call(
+        scene, {0, 11}, entries.value().entries, game, *registry.types, supplied, prefix_draws);
+    REQUIRE_MESSAGE(prepared, (prepared ? "" : prepared.error().reason));
+    const auto& tiles = prepared.value().fill.island.resource.tiles;
+    std::vector<std::uint32_t> before;
+    for (std::uint64_t i = 0; i < tiles.tile_count(); ++i)
+        before.push_back(tiles.object(i));
+    const auto bound = load::bind_wildlife_final_chunk(
+        prepared.value(), 10, 2, final_profile, entries.value().entries, game, *registry.types);
+    REQUIRE_MESSAGE(bound, (bound ? "" : bound.error()));
+    CHECK(bound.value().world_x == 104);
+    CHECK(bound.value().world_y == 40);
+    REQUIRE(bound.value().facts.tiles.size() == 64);
+    std::string rows;
+    for (const auto& cell : bound.value().facts.tiles) {
+        REQUIRE(cell.object_word);
+        REQUIRE(cell.resolution == TileR::Present);
+        const auto it =
+            std::find_if(bound.value().facts.types.begin(), bound.value().facts.types.end(),
+                         [&](const auto& t) { return t.object_word == *cell.object_word; });
+        REQUIRE(it != bound.value().facts.types.end());
+        REQUIRE(it->prodtype);
+        REQUIRE(it->output0);
+        rows += std::to_string(cell.position) + " " + std::to_string(*cell.object_word) + " " +
+                std::to_string(*it->prodtype) + " " + std::to_string(*it->output0) + "\n";
+    }
+    // Independent raw GELAENDE footprint + HEIGHT/FRUCHTBAR fill and direct
+    // Game field/name decoding, not recorded C++ output. No world/state pin.
+    CHECK(fmt::sha256_hex(Buffer(rows.begin(), rows.end())) ==
+          "b6533b5d020db1d48d0c9bb41b1a84e319d5f9031fd061806e50cb74da9a29ed");
+    if (const char* path = std::getenv("ANNO_WILDLIFE_FINAL_ORACLE")) {
+        std::ifstream input(path, std::ios::binary);
+        REQUIRE(input);
+        CHECK(rows == std::string(std::istreambuf_iterator<char>(input), {}));
+    }
+    const auto figure_bytes = read(*dir / "FigurenHeader.dat");
+    const auto figures = fmt::figuren::FigurenHeader::parse(figure_bytes);
+    REQUIRE(figures);
+    const auto welt = read(*dir / "AnnoWelt.dll");
+    const load::WildlifeSpeciesSource species{
+        welt, game, figures.value().entries, fmt::annowelt::WildlifeSpeciesProfile::GogClimate2, 2};
+    const auto chunk =
+        authored_chunk({ready_record(10, 0), ready_record(20, 2), ready_record(30, 63)});
+    const std::array<std::uint32_t, 3> raw{6, 33, 999};
+    const auto plan =
+        load::prepare_wildlife_materialization(chunk, 0, bound.value().facts, species, raw);
+    REQUIRE(plan);
+    REQUIRE(plan.value().completed.entries.size() == 3);
+    const auto& out = plan.value().completed;
+    CHECK(out.entries[0].disposition == MatD::NonqualifyingType);
+    CHECK(out.entries[1].disposition == MatD::Selected);
+    CHECK(out.entries[2].disposition == MatD::NonqualifyingType);
+    REQUIRE(out.entries[1].selection);
+    CHECK(out.entries[1].selection->selected.id.v == 501);
+    CHECK(out.entries[1].selection->choice.value.index == 1);
+    CHECK(out.entries[1].selector_consumed == 2);
+    CHECK(out.selector_consumed == 2);
+    CHECK(out.unused_draws == std::vector<std::uint32_t>{999});
+    CHECK(out.unchanged_chunk == chunk);
+    // Tutorial contains no cave in this independent raw census. Original cave
+    // metadata is a labelled synthetic-tile companion, not a real cave provider.
+    const std::array<std::uint32_t, 1> cave_word{1542};
+    const auto cave = load::bind_wildlife_final_types(
+        final_profile, cave_word, entries.value().entries, game, *registry.types);
+    REQUIRE(cave);
+    REQUIRE(cave.value().types.size() == 1);
+    CHECK(cave.value().types[0].prodtype == 325);
+    CHECK(cave.value().types[0].output0 == 0);
+    load::WildlifeMaterializeFacts companion;
+    companion.types = cave.value().types;
+    companion.tiles = {{0, TileR::Present, std::uint32_t{1542}}};
+    const auto unresolved = load::prepare_wildlife_materialization(
+        authored_chunk({ready_record(40, 0)}), 0, companion, species, raw);
+    REQUIRE_FALSE(unresolved);
+    CHECK(unresolved.error().stage == MatS::Cave);
+    CHECK(unresolved.error().diagnostic_only.selector_consumed == 0);
+    for (std::uint64_t i = 0; i < tiles.tile_count(); ++i)
+        REQUIRE(tiles.object(i) == before[i]);
 }

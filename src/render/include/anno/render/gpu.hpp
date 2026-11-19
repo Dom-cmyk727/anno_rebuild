@@ -366,6 +366,12 @@ struct GpuLimits {
     /// sink in at their base, with foam at the sea (gpu.wgsl
     /// object_in_water; needs chunks with Chunk::base).
     bool object_waterline = true;
+    /// The sea drawn once more over every per-pixel submerged object pixel
+    /// (gpu.wgsl sea_submerged_fs, docs/render/depth.md §2.3), in both water styles
+    /// (WATER-SUBMERGED-1). Off: per-pixel submersion is skipped entirely in both
+    /// styles - a test/diagnostic switch for the failure proof, not something a
+    /// player picks (there is no faithful reason to run Original without it).
+    bool submerged_over_objects = true;
     /// Run the coastal wave simulation for enhanced water (false: the
     /// shader's analytic waves, as the Rust compositor without it).
     bool wave_simulation = true;

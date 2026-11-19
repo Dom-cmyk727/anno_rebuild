@@ -2421,3 +2421,25 @@ viewer's chunks do not need, and the per-pixel test was not measured).
 NOT measured (the owner was using the PC for a game, 2026-11-04): the chunk build per stage (`bench_frame
 --chunk-profile ... --depth on|off`), the GPU frame time of the extra pass (`bench_frame --renderer gpu --depth
 on|off`), the atlas growth. To be measured on an idle host before the package is accepted for performance.
+
+### 2026-11-19 — WATER-SUBMERGED-1: sea_submerged_fs in Enhanced water too, Windows 11, Ryzen 9 9800X3D, RTX 4090 (Vulkan), MSVC Release
+
+Change: the per-pixel submerged-object pass (`sea_submerged_fs`, docs/render/depth.md §2.3) now also runs in
+Enhanced water, not just Original - one extra full-chunk draw call (`sea_over_pipe`) per frame when the chunk has
+a submerged mask, same as Original already pays.
+
+**Memory: no increase.** `Chunk::submerged` is built whenever a chunk has depth-tested objects
+(`ChunkDraws::depth_test`, `Scene::depth_test`, default on), independent of `WaterStyle` -
+confirmed in code (`src/app/src/main.cpp:417`, `src/render/src/scene.cpp`, `src/render/src/gpu.cpp:1364`): the mask
+this pass reads was already being built and uploaded in Enhanced water before this change, only never drawn with.
+
+**GPU time: not reliably measured on this host.** `GpuFrame::pass_gpu_ms()`'s GPU-timestamp path returned no
+reading in the `gpu_test.cpp` harness (headless context, no window surface) even with `GpuLimits::gpu_timing` on -
+not chased further (NOT_RUN: a `bench_frame --renderer gpu` run with `--check`/timestamps on an idle host, as the
+2026-11-04 depth-test entry above already asks for and has not had either). A CPU-side wall-clock measurement
+around `GpuFrame::render()` (30 frames, Kontor view, `GpuLimits::submerged_over_objects` on vs off) gave 0.16 ms
+vs 0.75 ms - backwards and within GPU-submission noise (this call does not block on the GPU), so not reported as
+a real number. Cost class: one more full-screen chunk draw with a simple fragment shader (same pipeline Original
+water already runs every frame for this pass), not a new texture or a new compute pass - expect it to cost about
+what Original's existing `sea_over_pipe` draw already costs there, not measured as a separate line before this
+change either.

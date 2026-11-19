@@ -87,3 +87,14 @@ materialization, with supplied habitat facts and normal-success allocation state
 as assumptions. Independent scope review approved it after correcting timestamp
 wording: successful insertion updates time; reuse does not preserve that field.
 No World or unresolved Windows navigation/numeric policy is bypassed.
+
+## Hosted acceptance update — 2026-11-19
+
+ACCEPTED within the independently reviewed bounded scope above; landing remains
+with Windows. All 12 exact-head hosted jobs passed in
+[44515114872](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44515114872).
+Published head `f5f1c9fa7f0eca4d6263147797022ff1c5e6d771`.
+Public jobs-response SHA256:
+`8bd62acfb65fa2128a90e12b15f39c0a511fd4f141219c45d305ec3ca7822591`.
+Earlier pending statements describe the original review checkpoint. No local
+gate was repeated and no original-runtime or broader acceptance is implied.

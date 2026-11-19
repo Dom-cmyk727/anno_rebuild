@@ -74,3 +74,14 @@ facts and supplied-draw accounting. A non-shipped60001 synthetic ID stays within
 the original u16 format;90001 remains only a wider-binder test. Stop before
 coordinate generation, live animals, World or identity changes. Pending hosted CI
 remains orchestrator-owned; this is an explicit locally approved continuation.
+
+## Hosted acceptance update — 2026-11-19
+
+ACCEPTED within the independently reviewed bounded scope above; landing remains
+with Windows. All 12 exact-head hosted jobs passed in
+[44511432981](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44511432981).
+Published head `901a8467f766825ae9683cb41dee33522a9aff39`.
+Public jobs-response SHA256:
+`822337a1e759bdf729ac9ca08a27213cc1d11501c8bcdac81fe33174ab2da3da`.
+Earlier pending statements describe the original review checkpoint. No local
+gate was repeated and no original-runtime or broader acceptance is implied.

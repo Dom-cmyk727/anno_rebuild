@@ -1,7 +1,7 @@
 # WILDLIFE-IMPORT-PLAN-1 — independent review
 
-2026-11-19. LOCAL REVIEW APPROVED at the corrected publication. Exact-head CI
-is still running; this is not hosted acceptance or permission for World integration.
+2026-11-19. ACCEPTED at the corrected publication for bounded owned planning;
+Windows landing pending. This is not permission for World integration.
 
 - Corrected publication `1f8d45a2c8c053ff6ddbb0b71ee9e7e891bde7bf`, tree
   `d17302ba156b7c78ed036328354b9c28ce64bf21`.
@@ -80,3 +80,12 @@ on this locally reviewed corrected head while hosted CI finishes. It resolves on
 the actual ordinary creation coordinates and height-provider contract, with explicit
 conditional FP profiles and independent examples. No production implementation or
 owner-policy selection is authorized. The executor reports directly here for review.
+
+## Exact-head hosted acceptance update
+
+All12 jobs, including aggregate, succeeded at `1f8d45a2c8c053ff6ddbb0b71ee9e7e891bde7bf` in
+[CI44546983978](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44546983978).
+Root verified public jobs receipt SHA256
+`4f370956634499406634237fc17e620dd8bc14aec82279539a15e3b944704f7f`.
+Together with the independent reviews this closes the bounded packet acceptance.
+No original-runtime or World claim is added, and no local gate was repeated.

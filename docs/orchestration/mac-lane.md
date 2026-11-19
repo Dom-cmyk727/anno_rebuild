@@ -67,9 +67,10 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife planning portability [WILDLIFE-PLAN-CI-CLOSE-1](tasks/wildlife-plan-ci-close-1.md) | ACCEPTED; bounded type-only correction | `86e24940256d2cadf17a585b31b836b02701ae9e`; tested `1b078d95` | [44530293046](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44530293046), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-plan-ci-close-1-review.md) |
 | Wildlife final tile facts [WILDLIFE-FINAL-FACTS-1](tasks/wildlife-final-facts-1.md) | LOCAL REVIEW APPROVED; exact-head CI FAIL, coordinator READY assertion | `454bc2ea96e58481d3b3b48875ef04a5f64ee449`; tested `39a5c67f` | [44533934657](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44533934657), 10 success; MSVC test and aggregate failed | [Review](reviews/2026-11-19-wildlife-final-facts-1-review.md) |
 | Wildlife habitat source [WILDLIFE-HABITAT-LOAD-1](tasks/wildlife-habitat-load-1.md) | ACCEPTED bounded source composition; landing pending | `ee67516642de3a9ff6ac1e0986f1a17c1be2ad41`; tested `5244e570` | [44538298514](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44538298514), all12 successful | [Review](reviews/2026-11-19-wildlife-habitat-load-1-review.md) |
-| Wildlife imported composition [WILDLIFE-IMPORT-PLAN-1](tasks/wildlife-import-plan-1.md) | LOCAL REVIEW APPROVED after docs correction; CI pending | `1f8d45a2c8c053ff6ddbb0b71ee9e7e891bde7bf`; tested `39b49ddc` | [44546983978](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44546983978), in progress | [Review](reviews/2026-11-19-wildlife-import-plan-1-review.md) |
-| Wildlife ordinary geometry [WILDLIFE-ORDINARY-GEOMETRY-1](tasks/wildlife-ordinary-geometry-1.md) | LOCAL REVIEW APPROVED after focused reference correction; CI pending | `7c91bd125cda8e1b6b43cac22688638062ea7b29`; tested `9eab0e52` | [44551404586](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44551404586), in progress | [Review](reviews/2026-11-19-wildlife-ordinary-geometry-1-review.md) |
-| Wildlife ordinary projection [WILDLIFE-ORDINARY-PROJECT-1](tasks/wildlife-ordinary-project-1.md) | RELEASED; conditional owned adapter only | Base `7c91bd125cda8e1b6b43cac22688638062ea7b29` | No native FP-policy or World change | Direct reportback to Mac orchestrator |
+| Wildlife imported composition [WILDLIFE-IMPORT-PLAN-1](tasks/wildlife-import-plan-1.md) | ACCEPTED bounded owned planning; landing pending | `1f8d45a2c8c053ff6ddbb0b71ee9e7e891bde7bf`; tested `39b49ddc` | [44546983978](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44546983978), all12 successful | [Review](reviews/2026-11-19-wildlife-import-plan-1-review.md) |
+| Wildlife ordinary geometry [WILDLIFE-ORDINARY-GEOMETRY-1](tasks/wildlife-ordinary-geometry-1.md) | ACCEPTED bounded conditional reference; landing pending | `7c91bd125cda8e1b6b43cac22688638062ea7b29`; tested `9eab0e52` | [44551404586](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44551404586), all12 successful | [Review](reviews/2026-11-19-wildlife-ordinary-geometry-1-review.md) |
+| Wildlife ordinary projection [WILDLIFE-ORDINARY-PROJECT-1](tasks/wildlife-ordinary-project-1.md) | LOCAL REVIEW APPROVED after adapter coverage correction; CI pending | `41f6cf99e49832a1f5f925683a089360bc60a33a`; corrected test `4f323b5e` | [44559755712](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44559755712), pending | [Review](reviews/2026-11-19-wildlife-ordinary-project-1-review.md) |
+| Wildlife ordered creation [WILDLIFE-CREATE-BATCH-1](tasks/wildlife-create-batch-1.md) | RELEASED; owned success/null and bounded release composition | Base `41f6cf99e49832a1f5f925683a089360bc60a33a` | No native manager or World policy | Direct reportback to Mac orchestrator |
 | Windows dual-edition navigation [WIN-NAV-EDITIONS-1](tasks/windows-nav-editions-1.md) | Owner-requested HANDOFF READY; Windows intake pending | Accepted diagnosis `74d50bfe`, production base `889143ba` | GOG and HE verification requested; no repair released | Owner forwards to Windows orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
@@ -1412,3 +1413,26 @@ No native FP policy, live World, state/default/identity/PRNG or other-lane chang
 Four-hour checkpoint; exact limitations replace any simplified arithmetic shortcut.
 Executor pushes only its task branch and reports directly here for review. Main and
 shared TASKS/STATUS stay untouched; no unrelated gate or coordinator repair.
+
+## Owned geometry corrected; ordered creation batch released
+
+ORDINARY-PROJECT41f6cf99 is independently locally APPROVED. Primary code review
+found no defect in the bounded portable arithmetic or source binding. Evidence review
+found missing adapter-level profile controls; one source-bound case and two actual
+forwarding mutants now distinguish callback/table context usage with literal XYZ
+outputs. Only that case reran in Debug/ASan, both pass. Earlier17 unique checks remain
+scoped reuse; combined18 unique/profile is not a full corrected-head rerun. Original
+failures,140 initial receipts and corrected evidence remain retained. Exact CI44559755712
+is pending, so hosted acceptance is not claimed.
+
+IMPORT1f8d45a2 and corrected ORDINARY-GEOMETRY7c91bd12 are now ACCEPTED with all12
+exact-head hosted jobs successful in44546983978 and44551404586 respectively. Their
+review files record hashes and bounds. No passing local campaign repeated.
+
+WILDLIFE-CREATE-BATCH-1 is independently scope-approved and RELEASED on41f6cf99:
+join ordered imported records, owned geometry and existing creation effects under
+supplied manager outcomes. Preserve known/unknown fields on null, derive prior/home
+from source, distinguish admission from reached failure and retain its completed
+prefix. Prove bounded end/release without allocator, World/state/default/identity,
+original-CW or global-PRNG changes. Four-hour checkpoint. Executor pushes only its
+own branch and reports directly here; main/shared boards and other lanes untouched.

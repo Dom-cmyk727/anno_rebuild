@@ -1,6 +1,6 @@
 # WILDLIFE-ORDINARY-GEOMETRY-1 — contract and evidence review
 
-2026-11-19. LOCAL REVIEW APPROVED after focused correction; exact-head CI pending.
+2026-11-19. ACCEPTED after focused correction; Windows landing pending.
 Research/reference only, not production numeric policy or native animal creation.
 
 - Initial publication `13509f10733e13eaf98502fe8f95d87379d5675a`, tree
@@ -118,3 +118,12 @@ unsupported endpoints and provenance. No native CW choice, global draw-history c
 manager implementation or World/default/identity change. At four active hours report
 any precise remaining arithmetic work rather than substitute simpler interpolation.
 Windows retains original-runtime observations and any production policy decisions.
+
+## Exact-head hosted acceptance update
+
+All12 jobs, including aggregate, succeeded at `7c91bd125cda8e1b6b43cac22688638062ea7b29` in
+[CI44551404586](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44551404586).
+Root verified public jobs receipt SHA256
+`373c7bcd83289e688c00caab84f1bdb954bbf325bffac43e2ad67932352ffabc`.
+Together with the independent reviews this closes the bounded packet acceptance.
+No original-runtime or World claim is added, and no local gate was repeated.

@@ -13,10 +13,12 @@
 #include <anno/formats/anlagen.hpp>
 #include <anno/formats/annogame.hpp>
 #include <anno/formats/sha256.hpp>
+#include <anno/formats/tagged.hpp>
 #include <anno/sim_load/original_registry.hpp>
 #include <anno/sim_load/wildlife_create.hpp>
 #include <anno/sim_load/wildlife_final_facts.hpp>
 #include <anno/sim_load/wildlife_habitat_load.hpp>
+#include <anno/sim_load/wildlife_import_plan.hpp>
 #include <anno/sim_load/wildlife_materialize.hpp>
 #include <anno/sim_load/wildlife_release.hpp>
 #include <anno/sim_load/wildlife_species.hpp>
@@ -2307,4 +2309,505 @@ TEST_CASE("wildlife habitat load: original Tutorial halo property and maintenanc
     CHECK(repeat.value().completed.chunk == plan.value().completed.chunk);
     for (std::uint64_t i = 0; i < tiles.tile_count(); ++i)
         REQUIRE(tiles.object(i) == before[i]);
+}
+
+namespace {
+struct ImportRig {
+    FinalRig metadata;
+    Buffer scene;
+    load::WildlifeFirstCallResult prepared;
+    ImportRig(std::uint8_t mode = 1, std::uint16_t stamp = 500) {
+        // Authored resource-table section, disjoint from the name-table section.
+        auto& image = metadata.source.image;
+        image.resize(0x4600, 0);
+        put16(image, 0x46, 2);
+        const auto section = 0x58U + 0xe0U + 40U;
+        put32(image, section + 8, 0x400);
+        put32(image, section + 12, 0x21000);
+        put32(image, section + 16, 0x400);
+        put32(image, section + 20, 0x4200);
+        put32(image, section + 36, 0x40000040);
+        for (unsigned climate = 0; climate < 7; ++climate) {
+            for (unsigned i = 0; i < 16; ++i)
+                put16(image, 0x4200 + 0x14c + climate * 32 + i * 2, 105);
+            for (unsigned base : {0x22cU, 0x29cU, 0x30cU})
+                for (unsigned i = 0; i < 8; ++i)
+                    put16(image, 0x4200 + base + climate * 16 + i * 2, 105);
+        }
+        const auto name = [&](std::uint32_t ordinal, std::uint32_t rva, std::string_view text) {
+            put32(image, 0x251f8 + ordinal * 4 - 0x24000 + 0x200, 0x10000000 + rva);
+            std::copy(text.begin(), text.end(), image.begin() + rva - 0x24000 + 0x200);
+        };
+        name(69, 0x262e0, "GRAS");
+        name(71, 0x26300, "FISCH");
+        metadata.source.entries.erase(metadata.source.entries.begin() + 2,
+                                      metadata.source.entries.end());
+        sim::TypeRegistry::Builder builder;
+        builder.add(*metadata.types->find(sim::TypeId{104}));
+        builder.add(*metadata.types->find(sim::TypeId{105}));
+        for (const auto id : {2U, 11U}) {
+            auto entry = metadata.source.entries[1];
+            entry.id = id;
+            const std::string ware = id == 2 ? "GRAS" : "FISCH";
+            Buffer bytes(ware.begin(), ware.end());
+            bytes.push_back(0);
+            entry.records[2] = metadata.source.record("WARE", bytes);
+            metadata.source.entries.push_back(entry);
+            auto type = *metadata.types->find(sim::TypeId{105});
+            type.id = sim::TypeId{id};
+            type.output_goods = {id == 2 ? 69U : 71U};
+            builder.add(type);
+        }
+        sim::FigureType ore;
+        ore.id = 501;
+        ore.bewohntype = 145;
+        ore.ware = "EISENERZ";
+        builder.figure_type(ore);
+        const auto types = builder.build();
+        REQUIRE(types);
+        metadata.types = types.value();
+        const auto packed = [](std::string_view tag, const Buffer& bytes) {
+            fmt::chunk::Chunk c;
+            c.name_field = *fmt::chunk::name_field(tag);
+            c.payload = bytes;
+            Buffer out;
+            REQUIRE(fmt::chunk::write_chunk(c, out));
+            return out;
+        };
+        const auto append = [](Buffer& dst, const Buffer& src) {
+            dst.insert(dst.end(), src.begin(), src.end());
+        };
+        const auto block = [&](Buffer bytes) {
+            Buffer out;
+            fmt::put_u16_le(out, 0);
+            fmt::put_u16_le(out, 0);
+            out.push_back(32);
+            out.push_back(24);
+            append(out, bytes);
+            return out;
+        };
+        Buffer body;
+        for (const auto value : {24U, 40U, 32U, 24U})
+            fmt::put_u16_le(body, static_cast<std::uint16_t>(value));
+        fmt::put_u32_le(body, 9);
+        Buffer info(12, 0);
+        info[0] = 2;
+        append(body, packed("INFO", info));
+        append(body, packed("HEIGHT", block(Buffer(768, 32))));
+        append(body, packed("GFXID", block(Buffer(1536, 0))));
+        Buffer objects;
+        for (std::uint8_t y = 7; y <= 16; ++y)
+            for (std::uint8_t x = 7; x <= 16; ++x) {
+                if (x == 13 && y == 8)
+                    continue; // Nonqualifying final grass at spawn position 5.
+                fmt::put_u16_le(objects, 105);
+                fmt::put_u16_le(objects, 0);
+                objects.push_back(x);
+                objects.push_back(y);
+            }
+        append(body, packed("GELAENDE", block(objects)));
+        append(body,
+               packed("HIRSCH", fmt::insel::encode_hirsch(std::vector<fmt::insel::HirschRecord>{
+                                    {9, 9, 0x80, 7, 0}, {11, 9, 1, 17, 137}})));
+        Buffer berg;
+        Buffer value;
+        fmt::put_u32_le(value, 15U | (14U << 12) | (1U << 24));
+        REQUIRE(fmt::tagged::write_record("ENTRY", false, value, berg));
+        append(body, packed("BERGWERK2", berg));
+        const auto ore_entry = [](std::uint16_t tons, std::uint32_t discovery) {
+            Buffer v;
+            fmt::put_u32_le(v, 501U << 14);
+            fmt::put_u32_le(v, 0x41680000); // Authored local 14.5.
+            fmt::put_u32_le(v, 0x41580000); // Authored local 13.5.
+            fmt::put_u32_le(v, 0x3fc00000);
+            fmt::put_u16_le(v, tons);
+            fmt::put_u16_le(v, 0);
+            fmt::put_u32_le(v, discovery);
+            Buffer out;
+            REQUIRE(fmt::tagged::write_record("ENTRY2", false, v, out));
+            return out;
+        };
+        Buffer occur = ore_entry(400, 7);
+        append(occur, ore_entry(1601, 99)); // Same target; no allocation OR state reload.
+        append(body, packed("OCCUR", occur));
+        append(body,
+               packed("HIRSCH", fmt::insel::encode_hirsch(
+                                    std::vector<fmt::insel::HirschRecord>{{13, 8, 1, 33, 0}})));
+        append(body, packed("FRUCHTBAR", Buffer(768, 6)));
+        scene = packed("ANNO", packed("SCENE", packed("INSEL5", body)));
+        load::PrefixInputs inputs;
+        inputs.mode_bit = mode;
+        inputs.sampled_stamps = {stamp};
+        inputs.mode_provenance = "authored import mode";
+        inputs.stamp_provenance = "authored import stamp";
+        const auto result = load::prepare_wildlife_first_call(
+            scene, {0, 9}, metadata.source.entries, image, *metadata.types, inputs,
+            std::vector<std::uint32_t>(200, 7));
+        REQUIRE_MESSAGE(result, (result ? "" : result.error().reason));
+        prepared = result.value();
+    }
+    auto reconstruct(load::WildlifeImportFlags flags = {std::uint16_t{0x8000},
+                                                        "authored omitted flags"}) const {
+        return load::reconstruct_wildlife_import(prepared, scene, 1, 1, flags);
+    }
+};
+std::vector<std::uint64_t> import_tokens(const load::WildlifeChunkSnapshot& snapshot) {
+    std::vector<std::uint64_t> out;
+    for (const auto& r : snapshot.records)
+        out.push_back(r.token);
+    return out;
+}
+load::WildlifeImportRuntime import_runtime() {
+    load::WildlifeImportRuntime runtime;
+    runtime.time = 10000;
+    runtime.fresh_tokens = {1000, 1001};
+    runtime.flags = {std::uint16_t{0x8000}, "authored omitted native flags, not recovered"};
+    runtime.provenance = "authored sweep time and successful allocation tokens";
+    return runtime;
+}
+} // namespace
+TEST_CASE("wildlife import plan: mixed prepend chronology projections flags and owned sidecars") {
+    std::optional<load::WildlifeImportedChunk> owned;
+    {
+        ImportRig rig;
+        const auto result = rig.reconstruct();
+        REQUIRE_MESSAGE(result, (result ? "" : result.error().reason));
+        const auto& out = result.value();
+        CHECK(import_tokens(out.snapshot) == std::vector<std::uint64_t>{7, 6, 2, 1, 0});
+        CHECK(out.source_token_count == 8);
+        CHECK(out.prefix_draws == 100);
+        CHECK(out.derived_presence == 0x43);
+        CHECK(out.snapshot.flags == 0x8043);
+        CHECK(out.supplied_flags.non_presence == 0x8000);
+        REQUIRE(out.order.size() == 5);
+        CHECK(out.order[0].source.header == 7);
+        CHECK(out.order[1].source.header == 6);
+        CHECK(out.order[2].source.header == 5);
+        CHECK(out.order[3].source.header == 4);
+        CHECK(out.order[4].source.header == 4);
+        CHECK(out.order[4].source.record == 0);
+        CHECK(out.snapshot.records[0].timestamp == 1);
+        CHECK(out.snapshot.records[4].timestamp == 8);
+        for (const auto& r : out.snapshot.records) {
+            CHECK_FALSE(r.saved_id);
+            CHECK_FALSE(r.high_bit);
+            CHECK_FALSE(r.byte11);
+            if (r.category == 0) {
+                REQUIRE(r.position);
+                CHECK(r.occupied == false);
+                CHECK(r.goods == 255);
+            } else {
+                CHECK_FALSE(r.position);
+                CHECK_FALSE(r.timestamp);
+                CHECK_FALSE(r.occupied);
+                CHECK_FALSE(r.goods);
+            }
+        }
+        REQUIRE(out.sidecars.size() == 2);
+        const auto& berg = std::get<load::WildlifeBergwerkSidecar>(out.sidecars.at(2));
+        CHECK(berg.entry.local_x == 15);
+        CHECK(berg.entry.local_y == 14);
+        CHECK(berg.node_projection.offsets == 0x67);
+        CHECK(berg.node_projection.rotation == 1);
+        CHECK(berg.node_projection.mask == 0x11);
+        CHECK(out.order[2].insertion_ordinal == 0);
+        const auto& ore = std::get<load::WildlifeOccurrenceSidecar>(out.sidecars.at(6));
+        CHECK(ore.occurrence.type == 501);
+        CHECK(ore.occurrence.world_x_bits == 0x421a0000);
+        CHECK(ore.occurrence.world_y_bits == 0x42560000);
+        CHECK(ore.occurrence.quantity_88 == 512000);
+        CHECK(ore.occurrence.discovery == 7);
+        CHECK(ore.occurrence.file_tons == 400);
+        REQUIRE(ore.loads.size() == 2);
+        CHECK(ore.loads[0].created);
+        CHECK_FALSE(ore.loads[1].created);
+        CHECK(ore.loads[1].source.record == 1);
+        const auto repeat = rig.reconstruct();
+        REQUIRE(repeat);
+        CHECK(repeat.value().snapshot == out.snapshot);
+        CHECK(rig.prepared.fill.island.spawns.size() == 3);
+        CHECK(rig.prepared.fill.island.resource_list_nodes.size() == 5);
+        owned = out;
+    }
+    REQUIRE(owned);
+    CHECK(import_tokens(owned->snapshot) == std::vector<std::uint64_t>{7, 6, 2, 1, 0});
+    CHECK(std::get<load::WildlifeOccurrenceSidecar>(owned->sidecars.at(6)).loads[1].source.header ==
+          6);
+    ImportRig zero(0, 0);
+    const auto result = zero.reconstruct({std::uint16_t{0}, "explicit zero omitted flags"});
+    REQUIRE(result);
+    CHECK(result.value().snapshot.flags == 0x43);
+    REQUIRE(result.value().snapshot.records[0].goods);
+    CHECK(result.value().snapshot.records[0].goods == 0);
+    REQUIRE(result.value().snapshot.records[0].timestamp);
+    CHECK(result.value().snapshot.records[0].timestamp == 0);
+    CHECK_FALSE(result.value().snapshot.records[0].saved_id);
+}
+TEST_CASE(
+    "wildlife import plan: staged maintenance selection and failure draw domains stay distinct") {
+    ImportRig rig;
+    Source animals;
+    species_source(animals);
+    const auto welt = species_pe();
+    const load::WildlifeSpeciesSource species{welt, rig.metadata.source.image, animals.entries,
+                                              fmt::annowelt::WildlifeSpeciesProfile::GogClimate2,
+                                              2};
+    const auto runtime = import_runtime();
+    const std::array<std::uint32_t, 6> maintenance{0, 1, 0, 0, 0, 999};
+    const std::array<std::uint32_t, 11> selectors{6, 0, 6, 0, 6, 0, 6, 0, 6, 0, 999};
+    const auto run = [&](std::span<const std::uint32_t> m, std::span<const std::uint32_t> s,
+                         const load::WildlifeImportRuntime& context) {
+        return load::prepare_wildlife_import_plan(
+            rig.prepared, rig.scene, 1, 1, context, final_profile, rig.metadata.source.entries,
+            rig.metadata.source.image, *rig.metadata.types, species, m, s);
+    };
+    const auto result = run(maintenance, selectors, runtime);
+    REQUIRE_MESSAGE(result, (result ? "" : result.error().reason));
+    const auto& out = result.value();
+    CHECK(import_tokens(out.imported.snapshot) == std::vector<std::uint64_t>{7, 6, 2, 1, 0});
+    CHECK(import_tokens(out.maintenance.completed.chunk) ==
+          std::vector<std::uint64_t>{1001, 1000, 7, 6, 2, 1, 0});
+    CHECK(out.draws.imported_prefix == 100);
+    CHECK(out.draws.maintenance == 5);
+    CHECK(out.draws.selector_only == 10);
+    CHECK(out.unused_maintenance == std::vector<std::uint32_t>{999});
+    CHECK(out.materialization.completed.unused_draws == std::vector<std::uint32_t>{999});
+    REQUIRE(out.materialization.completed.entries.size() == 7);
+    const std::array<MatD, 7> expected{MatD::Selected,      MatD::Selected,      MatD::Selected,
+                                       MatD::WrongCategory, MatD::WrongCategory, MatD::Selected,
+                                       MatD::Selected};
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        const auto& step = out.materialization.completed.entries[i];
+        CHECK(step.disposition == expected[i]);
+        if (step.selection) {
+            CHECK(step.selection->selected.id.v == 60001);
+            CHECK(step.selection->choice.value.index == 0);
+            CHECK(step.selector_consumed == 2);
+        }
+    }
+    CHECK(out.imported.sidecars.size() == 2);
+    CHECK(
+        std::get<load::WildlifeBergwerkSidecar>(out.imported.sidecars.at(2)).node_projection.mask ==
+        17);
+    CHECK(std::get<load::WildlifeOccurrenceSidecar>(out.imported.sidecars.at(6))
+              .occurrence.discovery == 7);
+    const auto partial =
+        run(std::span<const std::uint32_t>(maintenance).first(1), selectors, runtime);
+    REQUIRE_FALSE(partial);
+    CHECK(partial.error().stage == load::WildlifeImportPlanStage::Maintenance);
+    CHECK(partial.error().draws.imported_prefix == 100);
+    CHECK(partial.error().draws.maintenance == 1);
+    CHECK(partial.error().draws.selector_only == 0);
+    REQUIRE(partial.error().imported);
+    REQUIRE(partial.error().maintenance_error);
+    CHECK(partial.error().imported->snapshot == out.imported.snapshot);
+    CHECK(partial.error().supplied.flags.provenance == runtime.flags.provenance);
+    CHECK(partial.error().maintenance_error->diagnostic_only.reserved->token == 7);
+    CHECK(partial.error().maintenance_error->diagnostic_only.reserved->timestamp == 1);
+    const std::array<std::uint32_t, 3> unsupported{6, 31, 999};
+    const auto stopped = run(maintenance, unsupported, runtime);
+    REQUIRE_FALSE(stopped);
+    CHECK(stopped.error().stage == load::WildlifeImportPlanStage::Materialization);
+    CHECK(stopped.error().draws.maintenance == 5);
+    CHECK(stopped.error().draws.selector_only == 2);
+    REQUIRE(stopped.error().materialization_error);
+    CHECK(stopped.error().materialization_error->failing_record.token == 1001);
+    REQUIRE(stopped.error().materialization_error->failing_record.selection);
+    CHECK(stopped.error().materialization_error->failing_record.selection->selected.id.v == 503);
+    CHECK(stopped.error().materialization_error->diagnostic_only.unused_draws ==
+          std::vector<std::uint32_t>{999});
+    const auto again = run(maintenance, selectors, runtime);
+    REQUIRE(again);
+    CHECK(again.value().maintenance.completed.chunk == out.maintenance.completed.chunk);
+    CHECK(materialize_summary(again.value().materialization.completed) ==
+          materialize_summary(out.materialization.completed));
+    auto collision = runtime;
+    collision.fresh_tokens = {3}; // Off-target source node is still in source token namespace.
+    const auto refused = run(maintenance, selectors, collision);
+    REQUIRE_FALSE(refused);
+    CHECK(refused.error().stage == load::WildlifeImportPlanStage::Runtime);
+    CHECK(refused.error().supplied.flags.provenance == runtime.flags.provenance);
+    CHECK(rig.prepared.fill.prefix_consumed == 100);
+    CHECK(rig.prepared.fill.island.spawns.size() == 3);
+    CHECK(rig.prepared.fill.island.resource_list_nodes[0].mask == 17);
+    CHECK(rig.prepared.fill.island.occurrences[0].discovery == 7);
+    auto no_provenance = runtime;
+    no_provenance.provenance.clear();
+    const auto no_context = run(maintenance, selectors, no_provenance);
+    REQUIRE_FALSE(no_context);
+    CHECK(no_context.error().stage == load::WildlifeImportPlanStage::Runtime);
+    CHECK(no_context.error().supplied.flags.provenance == runtime.flags.provenance);
+    const auto short_selector =
+        run(maintenance, std::span<const std::uint32_t>(selectors).first(1), runtime);
+    REQUIRE_FALSE(short_selector);
+    CHECK(short_selector.error().draws.selector_only == 1);
+    REQUIRE(short_selector.error().materialization_error);
+    CHECK(short_selector.error().materialization_error->failing_record.token == 1001);
+    auto different = species;
+    different.climate = 5;
+    const auto mismatch = load::prepare_wildlife_import_plan(
+        rig.prepared, rig.scene, 1, 1, runtime, final_profile, rig.metadata.source.entries,
+        rig.metadata.source.image, *rig.metadata.types, different, maintenance, selectors);
+    REQUIRE_FALSE(mismatch);
+    CHECK(mismatch.error().stage == load::WildlifeImportPlanStage::Materialization);
+    CHECK(mismatch.error().draws.selector_only == 0);
+    CHECK(mismatch.error().imported->sidecars.size() == 2);
+}
+TEST_CASE(
+    "wildlife import plan: malformed projections chronology and unknown flag context refuse") {
+    ImportRig rig;
+    REQUIRE(rig.reconstruct());
+    const auto original = rig.prepared;
+    for (unsigned variant = 0; variant < 17; ++variant) {
+        rig.prepared = original;
+        auto& is = rig.prepared.fill.island;
+        if (variant == 0)
+            is.chunk_heads[5] = std::uint64_t{0}; // Omits later spawns.
+        if (variant == 1)
+            is.spawns[2].next_in_chunk = std::uint64_t{2}; // Cycle, never recursively walked.
+        if (variant == 2)
+            is.spawns[0].source.header = 5; // Not a HIRSCH header.
+        if (variant == 3)
+            is.spawns[0].chunk = 6;
+        if (variant == 4)
+            is.spawns[1].source = is.spawns[0].source; // Duplicate token/source mapping.
+        if (variant == 5)
+            is.resource_list_nodes[4].next = std::uint64_t{4};
+        if (variant == 6)
+            is.resource_list_nodes[0].entry = 99;
+        if (variant == 7)
+            is.resource_list_nodes[4].kind = 2;
+        if (variant == 8)
+            is.occurrence_loads[1].created = true;
+        if (variant == 9)
+            is.resource_list_nodes[1].chunk = 5; // Wrong multi-chunk insertion ordinal.
+        if (variant == 10)
+            is.occurrence_loads[1].occurrence = 99;
+        if (variant == 11)
+            is.resource_list_chunks[5].resource_flags = 0;
+        if (variant == 12)
+            is.spawns[0].source.island = 1;
+        if (variant == 13)
+            ++is.spawns[0].source.header_offset;
+        if (variant == 14)
+            is.spawns[2].next_in_chunk = std::uint64_t{999};
+        if (variant == 15)
+            is.spawns.pop_back();
+        if (variant == 16)
+            is.spawns[0].source.record = 99;
+        const auto result = rig.reconstruct();
+        REQUIRE_FALSE(result);
+        CHECK(result.error().supplied_flags.non_presence == 0x8000);
+        CHECK(result.error().supplied_flags.provenance == "authored omitted flags");
+        CHECK(result.error().prefix_draws == 100);
+    }
+    rig.prepared = original;
+    for (const auto& flags :
+         std::vector<load::WildlifeImportFlags>{{{}, "unknown omitted flags"},
+                                                {std::uint16_t{0}, ""},
+                                                {std::uint16_t{1}, "overlaps spawn bit"},
+                                                {std::uint16_t{2}, "overlaps BERG bit"},
+                                                {std::uint16_t{0x40}, "overlaps occurrence bit"}}) {
+        const auto result = rig.reconstruct(flags);
+        REQUIRE_FALSE(result);
+        CHECK(result.error().stage == load::WildlifeImportStage::Flags);
+        CHECK(result.error().supplied_flags.non_presence == flags.non_presence);
+        CHECK(result.error().supplied_flags.provenance == flags.provenance);
+    }
+    const auto valid = rig.reconstruct({std::uint16_t{0}, "explicitly supplied zero"});
+    REQUIRE(valid);
+    CHECK(valid.value().snapshot.flags == 0x43);
+    CHECK(rig.prepared.fill.island.spawns[2].next_in_chunk == std::uint64_t{1});
+}
+TEST_CASE(
+    "wildlife import plan: original Tutorial nonempty spawn chunk matches source chronology") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        std::cout << "SKIPPED: ANNO1503_GAME_DIR not set (original import plan unavailable)\n";
+        return;
+    }
+    const auto read = [](const std::filesystem::path& path) {
+        std::ifstream in(path, std::ios::binary);
+        REQUIRE(in);
+        return Buffer(std::istreambuf_iterator<char>(in), {});
+    };
+    const auto scene = read(*dir / "Scenes/Tutorial/01Discover01.sze");
+    const auto bytes = read(*dir / "Anlagen.dat");
+    const auto entries = fmt::anlagen::AnlagenFile::parse(bytes);
+    REQUIRE(entries);
+    const auto game = read(*dir / "AnnoGame.dll");
+    const auto welt = read(*dir / "AnnoWelt.dll");
+    const auto figure_bytes = read(*dir / "FigurenHeader.dat");
+    const auto figures = fmt::figuren::FigurenHeader::parse(figure_bytes);
+    REQUIRE(figures);
+    const auto registry = load::load_original_registry(*dir, load::FigureEntries::Required);
+    REQUIRE_MESSAGE(registry.types, registry.error);
+    load::PrefixInputs inputs;
+    inputs.sampled_stamps = {500};
+    inputs.stamp_provenance = "authored stamp 500";
+    inputs.mode_provenance = "authored mode 0";
+    const auto prepared = load::prepare_wildlife_first_call(scene, {0, 11}, entries.value().entries,
+                                                            game, *registry.types, inputs,
+                                                            std::vector<std::uint32_t>(20000, 7));
+    REQUIRE_MESSAGE(prepared, (prepared ? "" : prepared.error().reason));
+    const load::WildlifeImportFlags flags{std::uint16_t{0x8000},
+                                          "authored non-presence flags, not recovered"};
+    const auto imported = load::reconstruct_wildlife_import(prepared.value(), scene, 10, 2, flags);
+    REQUIRE_MESSAGE(imported, (imported ? "" : imported.error().reason));
+    const auto& out = imported.value();
+    REQUIRE(out.snapshot.records.size() == 1); // ACTUAL imported spawn, never empty-chunk proof.
+    CHECK(out.source_token_count == 177);
+    CHECK(out.prefix_draws == 4745);
+    CHECK(out.snapshot.flags == 0x8001);
+    CHECK(out.derived_presence == 1);
+    CHECK(out.sidecars.empty());
+    const auto& record = out.snapshot.records[0];
+    CHECK(record.token == 21); // 20 BERG nodes + one occurrence precede first source spawn.
+    CHECK(record.position == 47);
+    CHECK(record.timestamp == 8);
+    CHECK(record.goods == 0);
+    CHECK_FALSE(record.saved_id);
+    CHECK_FALSE(record.high_bit);
+    CHECK_FALSE(record.byte11);
+    REQUIRE(out.order.size() == 1);
+    CHECK(out.order[0].source.header == 71);
+    CHECK(out.order[0].source.record == 0);
+    std::string row = std::to_string(out.order[0].token) + " " +
+                      std::to_string(out.order[0].category) + " " +
+                      std::to_string(out.order[0].source.header) + " " +
+                      std::to_string(out.order[0].source.record) + " " +
+                      std::to_string(out.order[0].insertion_ordinal) + "\n";
+    if (const char* path = std::getenv("ANNO_WILDLIFE_IMPORT_ORACLE")) {
+        std::ifstream in(path, std::ios::binary);
+        REQUIRE(in);
+        CHECK(row == std::string(std::istreambuf_iterator<char>(in), {}));
+    }
+    load::WildlifeImportRuntime runtime;
+    runtime.time = 10000;
+    runtime.flags = flags;
+    runtime.provenance = "authored sweep time, no new allocation expected";
+    const load::WildlifeSpeciesSource species{
+        welt, game, figures.value().entries, fmt::annowelt::WildlifeSpeciesProfile::GogClimate2, 2};
+    const std::array<std::uint32_t, 1> maintenance{999};
+    const std::array<std::uint32_t, 3> selectors{6, 0, 999};
+    const auto plan = load::prepare_wildlife_import_plan(
+        prepared.value(), scene, 10, 2, runtime, final_profile, entries.value().entries, game,
+        *registry.types, species, maintenance, selectors);
+    REQUIRE_MESSAGE(plan, (plan ? "" : plan.error().reason));
+    CHECK(plan.value().draws.imported_prefix == 4745);
+    CHECK(plan.value().draws.maintenance == 0);
+    CHECK(plan.value().draws.selector_only == 2);
+    CHECK(plan.value().maintenance.completed.chunk == out.snapshot);
+    CHECK(plan.value().unused_maintenance == std::vector<std::uint32_t>{999});
+    const auto& selected = plan.value().materialization.completed;
+    REQUIRE(selected.entries.size() == 1);
+    REQUIRE(selected.entries[0].selection);
+    CHECK(selected.entries[0].token == 21);
+    CHECK(selected.entries[0].selection->choice.value.index == 2);
+    CHECK(selected.entries[0].selection->choice.value.inspected == 3);
+    CHECK(selected.entries[0].selection->selected.id.v == 528);
+    CHECK(selected.unused_draws == std::vector<std::uint32_t>{999});
+    CHECK(selected.unchanged_chunk.completed.chunk == out.snapshot);
+    CHECK(prepared.value().fill.island.spawns.size() == 156);
+    CHECK(prepared.value().fill.island.resource_list_nodes.size() == 21);
 }

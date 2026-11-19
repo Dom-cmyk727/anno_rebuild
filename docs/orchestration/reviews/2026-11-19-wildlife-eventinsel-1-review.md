@@ -47,3 +47,13 @@ receivers/effects and the existing fisher/navigation dependencies, then deliver
 an implementation-ready continuation plan. No new src/World/native/default/identity
 changes are released. Executor reports directly for review and next implementation
 packet. Main untouched.
+
+
+## Exact-head CI closeout — 2026-11-19
+
+**ACCEPTED within the reviewed bounded scope.** Run [44443163952](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44443163952)
+has all12 jobs successful at `218b838eb543782c60629f51288005fdd699c492`.
+Independent review remains applicable; no gate repeated. Jobs API receipt SHA-256:
+`ec9177b6a50892f92751bde036fd4d7e305303f2c9acc8ef0f429e1b07e678a4`.
+Only pending-CI status is superseded. Local-record limits remain; Windows owns
+stacking/landing and main is untouched.

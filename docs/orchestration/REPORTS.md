@@ -16015,3 +16015,65 @@ Decisions and reasoning:
 
 NOT_RUN: original/HE runtime, Windows/WSL game-file runs, whole suites/full pins/warnings, LeakSanitizer, allocator-failure emulation, World/cache/fauna/global initialization.
 QUESTIONs: none blocking bounded review. Next finite task: the reached OCCUR header 51 handler/factory/state/draw contract before one continuation.
+
+## 2026-11-19 — WILDLIFE-OCCUR-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-OCCUR-1` from BERGWERK `03fff3c6`; fetched dispatch `2dfe4950d1510cc5a6756cb2dcdf9c6b409f897b`, read without merge.
+- Frozen tested source `8c2de16cc9a18baf942203b3c7ccb39e44f55383`, tree `7f097916f45c2a2f933e2ff274821be4b39f35eb`.
+- Publication adds report/evidence only; head/tree/exact CI accompany direct handoff. No main/board merge, rebase or other-lane intake.
+- [Prewritten primary contract](../sim/wildlife-occur.md); [frozen evidence](evidence/wildlife-occur-1.md) includes acceptance, direct spans and source/input/binary/log hashes.
+- D: OCCUR `0x10089714` -> island +0x28/table `0x100caf34` reader `0x10095eb0–0x10096201`; small tagged ENTRY2, not BERGWERK/ore tonnage conflation.
+- Type bits 14–25 resolve figure descriptor; bounded class 145 / parsed goods 1–8. Unknown types/classes/goods stop at the exact record.
+- First 16 bytes hold packed word/local binary32 X,Z,height; origin adds at scale 1.0, stored bits retained, integer tiles drive reached queries.
+- Ore +0x4c is no-op `0x10001020`; packed property 16/creation property 23 add no ore state. No float enters World/saved/checksummed state.
+- D: factory ore arm `0x10094e34–0x10094e68`, ctor `0x100637a0`, attach `0x10063750`, state loader `0x100634e0–0x100635c6` checked through return.
+- Default stored Q 512000 / R 1; id 1661 attach sets Q 102400 / R 0 before load; eight state bytes give tons << 8 plus discovery, pad ignored.
+- Strict Q < 409600 with R != 0 resets to 512000; equality retained. State lengths 0/1/9 skip and retain defaults; reserve is not loaded.
+- Stored Q is not shallow availability or later Scene assignment; accepted ore research consulted without importing/rerunning its unrelated survey.
+- Candidate `0x10095770–0x10095ac4` returns first occupied chunk/head, not every matching object; same class/truncated tile skips load, different head can hide older duplicate.
+- Create `0x10095100–0x100952a0` prepends kind 6 into SAME list as kind 1, unsigned mod-8 offsets, presence 0x40, count/occupancy represented.
+- Existing typed list seam named generically; no separate unrelated list model, raw stash, original pointers, native/tag/version/default or registry change.
+- D: after load, `0x10096124–0x10096171` -> visitor `0x100785a0` -> callback `0x1007c0d0–0x1007c27a` -> query `0x10095480–0x100956a7`.
+- Callback resets mask 0x10, ORs eligible goods bits, ignores Q/R/discovery; zero-Q deep source still contributes. No world draw/tile/variation write reached.
+- Authored goods 1/3 yield 0x15; row-distance 2 admits dx 7, row 3 rejects; visitor leaves right duplicate nodes untouched; u16 tile-0 edge wraps, never clamps.
+- Framing/base/unknown/nonfinite/out-of-matrix errors retain prior diagnostic entries without completing header; input destruction/owned values and surrounding draw order covered.
+- Actual adapter-TU < to <= mutant: legal 426 assertions; exactly 1 intended equality failure / 425 pass; canonical source and legal binary unchanged/rebuilt.
+- Same original continuation: 1 ore created, 1 kind-6 node added, 21 shared nodes; all 20 BERGWERK masks 16 -> 17; stored Q 512000/R 1, no new draw.
+- Terrain 4,760 accepted/0 refused; resource-class/draws 4,589; 84 stones/63 cliffs/24 rocks; 16 terrain epilogues and fertility completion remain.
+- BERGWERK 9 entries/20 nodes/8 chunks retained; total cursor 4,589, spawns 0; 52 completed headers, boundary before ANBAU header 52/record 0/island 0/slot 11.
+- HIRSCH 71 unreached; no complete mineral economy, full factory/global cursor or post-island initialization claim.
+
+```text
+# cache/wildlife-occur-1/debug-final.log (main)
+COUNTS: selected=12 executed=12 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-occur-1/asan-final.log (main)
+COUNTS: selected=12 executed=12 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# Three separately required controls per profile; all six receipts reproduced in evidence
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-occur-1/original-final.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- Totals Debug 15 / ASan 15 executed passes including required controls, plus original Debug 1; failed/empty/skipped/incomplete/sanitizer 0.
+- Required: threshold causal case, OCCUR malformed/unknown/unsafe adapter contract, existing prefix prerequisite contract; excluded from main counts.
+- No memory refusal, timeout, canonical/build failure or whole-gate rerun; direct authored 782 + 70 assertions kept separate from gate counts.
+- Two affected TUs strict O3/Werror Apple Clang 21/GCC 15.3 pass; shadow control rejected; format 23.1.3/lint/diff/links pass.
+- Compiler warnings 0; inherited duplicate-library Apple linker warning retained; targeted checks are not the full warning sweep.
+- All 276 tracked fixtures/pins/recordings byte-identical; unchanged tagged/metadata/selector/PE/HHbb/HIRSCH/reference/resource modes/long campaigns reused with reasons.
+- Normal scenario/deposit loader, World, mining, Scene assignment, other occurrence classes, registry/native/tags/defaults and other lanes untouched.
+- Existing omitted derived caches/other flag categories retain future-consumer rebuild obligation; actual ore/list/resource-mask effects are represented.
+- Host Apple M5 Max / 18 logical / 48 GiB / macOS 27.0.1, jobs 1/threads 2, normal admission; awake assertion/coordinator preserved.
+- Exact-head CI read after ordinary push and reported directly; pending jobs are not green and do not delay frozen submission.
+
+Decisions and reasoning:
+- Close ctor/attach/state/load order and actual list/callback effects first; distinguish file tons, stored Q, reserve and later assignment.
+- Reuse the shared typed list, preserve candidate chronology and full reached mask effect instead of omitting it as metadata/cache.
+- Keep binary32 at the established content boundary with owned bits/integers; add no World/persistence contract or capacity limit.
+- Prove threshold equality causally and radius/unsigned boundaries, run focused gates once, stop before the next unknown header.
+
+NOT_RUN: original/HE runtime, Windows/WSL game-file runs, full suites/pins/warnings, LSan, allocator failures, other classes/goods 0x84, World/cache/Scene/mining/fauna/global initialization.
+QUESTIONs: none blocking bounded review. Next finite task: reached ANBAU header 52 and its actual state/callback contract; no other-lane crop/fertility policy implied.

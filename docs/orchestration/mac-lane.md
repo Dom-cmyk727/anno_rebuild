@@ -62,11 +62,12 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Animal creation effects [WILDLIFE-CREATE-EFFECTS-1](tasks/wildlife-create-effects-1.md) | ACCEPTED; bounded owned creation effects | `25bab774208c9e610b43447e247d99cc1aba0195`; tested `37c144b1` | [44508278589](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44508278589), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-create-effects-1-review.md) |
 | Animal end/release effects [WILDLIFE-RELEASE-EFFECTS-1](tasks/wildlife-release-effects-1.md) | ACCEPTED; P3 closed, bounded release effects | `901a8467f766825ae9683cb41dee33522a9aff39`; tested `33fe219c` | [44511432981](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44511432981), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-release-effects-1-review.md) |
 | Animal species source [WILDLIFE-SPECIES-LOAD-1](tasks/wildlife-species-load-1.md) | ACCEPTED; bounded source-backed species plan | `f5f1c9fa7f0eca4d6263147797022ff1c5e6d771`; tested `4acf5545` | [44515114872](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44515114872), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-species-load-1-review.md) |
-| Wildlife chunk planning [WILDLIFE-CHUNK-PLAN-1](tasks/wildlife-chunk-plan-1.md) | LOCAL SEMANTICS APPROVED; CI FAIL, correction released | `95d2eb0f4bf09c559413ef380fba3fd4281939ff`; tested `ef8fcb48` | [44522148816](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44522148816), MSVC build and Linux dependency setup fail | [Review](reviews/2026-11-19-wildlife-chunk-plan-1-review.md) |
-| Wildlife materialization planning [WILDLIFE-MATERIALIZE-PLAN-1](tasks/wildlife-materialize-plan-1.md) | LOCAL SEMANTICS APPROVED; portability blocked | `1c027079fd0d431fae1613df839f1bde9c38d2bc`; tested `49c9ddb3` | [44528637255](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44528637255), pending | [Review](reviews/2026-11-19-wildlife-materialize-plan-1-review.md) |
-| Wildlife planning portability [WILDLIFE-PLAN-CI-CLOSE-1](tasks/wildlife-plan-ci-close-1.md) | LOCAL REVIEW APPROVED; hosted target proof pending | `86e24940256d2cadf17a585b31b836b02701ae9e`; tested `1b078d95` | [44530293046](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44530293046), pending | [Review](reviews/2026-11-19-wildlife-plan-ci-close-1-review.md) |
+| Wildlife chunk planning [WILDLIFE-CHUNK-PLAN-1](tasks/wildlife-chunk-plan-1.md) | ACCEPTED via corrected descendant86e24940; old CI remains FAIL | `95d2eb0f4bf09c559413ef380fba3fd4281939ff`; tested `ef8fcb48` | [44522148816](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44522148816), MSVC build and Linux dependency setup fail | [Review](reviews/2026-11-19-wildlife-chunk-plan-1-review.md) |
+| Wildlife materialization planning [WILDLIFE-MATERIALIZE-PLAN-1](tasks/wildlife-materialize-plan-1.md) | ACCEPTED via corrected descendant86e24940; old CI failure retained | `1c027079fd0d431fae1613df839f1bde9c38d2bc`; tested `49c9ddb3` | [44528637255](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44528637255), inherited MSVC failure; corrected descendant accepted | [Review](reviews/2026-11-19-wildlife-materialize-plan-1-review.md) |
+| Wildlife planning portability [WILDLIFE-PLAN-CI-CLOSE-1](tasks/wildlife-plan-ci-close-1.md) | ACCEPTED; bounded type-only correction | `86e24940256d2cadf17a585b31b836b02701ae9e`; tested `1b078d95` | [44530293046](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44530293046), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-plan-ci-close-1-review.md) |
 | Wildlife final tile facts [WILDLIFE-FINAL-FACTS-1](tasks/wildlife-final-facts-1.md) | LOCAL REVIEW APPROVED; CI pending | `454bc2ea96e58481d3b3b48875ef04a5f64ee449`; tested `39a5c67f` | [44533934657](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44533934657), pending | [Review](reviews/2026-11-19-wildlife-final-facts-1-review.md) |
-| Wildlife habitat source [WILDLIFE-HABITAT-LOAD-1](tasks/wildlife-habitat-load-1.md) | RELEASED; locally reviewed stacked continuation | Base `454bc2ea96e58481d3b3b48875ef04a5f64ee449` | Interior chunk/halo source facts and maintenance composition | Direct reportback to Mac orchestrator |
+| Wildlife habitat source [WILDLIFE-HABITAT-LOAD-1](tasks/wildlife-habitat-load-1.md) | LOCAL REVIEW APPROVED; CI pending | `ee67516642de3a9ff6ac1e0986f1a17c1be2ad41`; tested `5244e570` | [44538298514](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44538298514), pending | [Review](reviews/2026-11-19-wildlife-habitat-load-1-review.md) |
+| Wildlife imported composition [WILDLIFE-IMPORT-PLAN-1](tasks/wildlife-import-plan-1.md) | RELEASED; locally reviewed stacked continuation | Base `ee67516642de3a9ff6ac1e0986f1a17c1be2ad41` | Mixed imported records through source-backed local planning | Direct reportback to Mac orchestrator |
 | Windows dual-edition navigation [WIN-NAV-EDITIONS-1](tasks/windows-nav-editions-1.md) | Owner-requested HANDOFF READY; Windows intake pending | Accepted diagnosis `74d50bfe`, production base `889143ba` | GOG and HE verification requested; no repair released | Owner forwards to Windows orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
@@ -1347,3 +1348,24 @@ property-7 getter, resolve growing successors and compose the accepted habitat
 and maintenance functions. Border behavior, cave geometry, World/default/identity/
 PRNG/navigation/FP remain outside scope. Executor ordinary-pushes its task branch
 and reports directly here for review. Main, shared boards and other jobs untouched.
+
+## Habitat reviewed; correction accepted; imported composition released
+
+HABITAT ee675166 is independently locally APPROVED by both reviewers. Primary
+review proved property7 from original table/getter/INFO, and independently rebuilt
+all100 source rows and64 outcomes. Root verified113 receipt hashes; Debug/ASan
+each19 unique passes. Native border/runtime assumptions remain explicit.
+
+CI-CLOSE86e24940 is now ACCEPTED with all12 hosted jobs green in44530293046,
+including MSVC and aggregate. This accepts the reviewed corrected descendant of
+CHUNK/MATERIALIZE; their old failed runs remain failed. No local gate repeated.
+FINAL-FACTS454bc2ea and HABITATee675166 still await their exact-head hosted CI.
+
+WILDLIFE-IMPORT-PLAN-1 is independently scope-approved and RELEASED on ee675166.
+The original HIRSCH/BERGWERK/OCCUR records share chunk+0xc; existing separate
+lists are projections, not a reason to concatenate categories. Reconstruct and
+validate mixed prepend order from retained source chronology, preserve typed
+resource sidecars and supplied non-presence flags, then compose source-backed
+habitat maintenance and materialization planning. No native flag-zero invention,
+World/default/state/identity/FP or global-draw claim. Executor ordinary-pushes only
+its own branch and reports directly here. Main/shared boards/other jobs untouched.

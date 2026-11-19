@@ -67,3 +67,16 @@ scope-approved and released as a locally reviewed stacked continuation from this
 corrected head while hosted CI is pending. Bind actual prepared tile/type facts to
 the existing planner; preserve unresolved cave inputs and numeric/World boundaries.
 Any new hosted blocker is reported separately and not silently waived.
+
+## Hosted acceptance — 2026-11-19
+
+ACCEPTED at `86e24940256d2cadf17a585b31b836b02701ae9e` within the bounded
+reviewed scope. All12 jobs, including MSVC, Linux Release and aggregate, passed in
+[44530293046](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44530293046).
+Public jobs-response SHA256:
+`34f2b9372639220d1d73bff9056f919d5267f1a1f97ece6b3277036275e0e67a`.
+This closes the reviewed descendant's portability blocker. The predecessor's
+failed CHUNK/MATERIALIZE CI receipts remain failures; no old head is relabelled.
+The previously approved semantics and scoped local evidence apply with the reviewed
+type-only delta. No local gate was repeated and no broader runtime claim is made.
+Windows remains responsible for integration/landing; main is untouched.

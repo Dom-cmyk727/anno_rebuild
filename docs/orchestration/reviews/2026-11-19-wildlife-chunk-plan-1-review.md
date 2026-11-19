@@ -90,3 +90,11 @@ succeeded and the aggregate failed. Public jobs response SHA256:
 Independent bounded semantic/evidence approval remains, but the portability
 correction is required. [Finite correction](../tasks/wildlife-plan-ci-close-1.md)
 will run on the reviewed descendant; no old failed receipt is rewritten.
+
+## Correction accepted on descendant
+
+The type-only portability correction is independently reviewed and accepted at
+`86e24940256d2cadf17a585b31b836b02701ae9e`, with all12 exact-head CI jobs green.
+See [correction review](2026-11-19-wildlife-plan-ci-close-1-review.md).
+This does not rewrite this packet's original failed CI result or claim its old
+head passed. No further semantic correction was needed in the reviewed scope.

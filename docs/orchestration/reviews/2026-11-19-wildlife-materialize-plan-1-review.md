@@ -85,3 +85,11 @@ No original/HE runtime, live creation, geometry/provider, full sweep, native
 manager, first action, World/state/default/identity/global PRNG or graphics parity
 is claimed. Local Windows/WSL, LeakSanitizer and broad/full/heavy/pins were NOT_RUN.
 Main and other lanes remain untouched.
+
+## Correction accepted on descendant
+
+The type-only portability correction is independently reviewed and accepted at
+`86e24940256d2cadf17a585b31b836b02701ae9e`, with all12 exact-head CI jobs green.
+See [correction review](2026-11-19-wildlife-plan-ci-close-1-review.md).
+This does not rewrite this packet's original failed CI result or claim its old
+head passed. No further semantic correction was needed in the reviewed scope.

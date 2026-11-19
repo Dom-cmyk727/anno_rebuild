@@ -1221,3 +1221,14 @@ Use supported synthetic60001 rather than impossible90001 in a u16 source ring.
 Stop at owned selection/creation plan; no fractional positions, live manager,
 World, default/tag/identity/PRNG change. Executor pushes its own branch and reports
 directly here for review. Main, shared boards and Windows/UI work untouched.
+
+## Species source clarification during implementation
+
+WILDLIFE-SPECIES-LOAD-1 remains in progress. A focused independent original-byte
+review approves safe unmatched WARE retaining constructor yield0 only for fresh
+generic selector descriptors, with explicit absent/matched/unmatched provenance.
+Reused/overlay catalogues are excluded; the New creation binder's conservative
+unknown refusal and full ring order/draws remain unchanged. No new owner policy,
+packet acceptance or code review is implied.
+[Focused primary review](reviews/2026-11-19-wildlife-species-ware-review.md).
+Executor continues its existing task and returns the frozen result here.

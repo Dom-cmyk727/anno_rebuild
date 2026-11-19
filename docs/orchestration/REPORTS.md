@@ -17069,3 +17069,45 @@ Decisions and reasoning:
 NOT_RUN: original executable/HE/Windows runtime, unsupported grammar/reload profiles, sidecar outputs, city/kernel/header
 binding, fill/World wiring, LeakSanitizer, broad/full gates or full pins/warnings. No original bytes/arrays in git.
 QUESTIONs: none blocking this bounded loader; broader grammar/source composition needs a separate release. Independent review pending.
+
+
+### WILDLIFE-GROWTH-LOAD-1 fix round 1 — READY FOR FOCUSED RE-REVIEW
+
+- Existing branch from `e89409e17b6173c442fddfa959f70de781689678`; exact dispatch `8861a9e245b757700e2be0599e17e0823634cd60`.
+- Frozen correction `464e49350a8a6208469d34bd03630c515e7e5335`, tree `0b96d804eb799e4d543b7e00c47a9d71744a3d46`.
+- [Focused evidence](evidence/wildlife-growth-load-1-fix.md); prior reports/refs/raw evidence unchanged.
+- Before-edit public CLI: legal max/min/multi tails exit 0; over 2147483648, under -2147483649 and later bad token wrongly exit 0.
+- Raw statuses/stdout and whole-map/source hashes retained; this is reference evidence, not original-runtime behavior.
+- One line reuses the bounded parser for every discarded token; result discarded, never appended to row/staging.
+- After fix: four legal controls exit 0 with identical full maps; three standalone bad cases exit 2, source/output preserved.
+- Public contract now 39 controls, including later invalid positive/negative tokens; C++ new boundary case covers the same limits.
+- Exact old reference fails intended new tail_over control after legal boundaries execute; no generic mutant campaign.
+- All 13 authored maps unchanged. Fresh original reference read gives same 146 records and byte-identical 16 KiB map, SHA 760314eb…42608a7.
+- Production loader/header, generic text::ints, data, fixtures, leaf/fill and state/default/pins unchanged; no new kernel work.
+
+```text
+# cache/wildlife-growth-load-1-fix/debug-final.log: required contract, affected main selection
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=3 executed=3 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-growth-load-1-fix/asan-final.log: required contract, affected main selection
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=3 executed=3 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- No canonical failure, skip, memory refusal, timeout, empty/incomplete result or sanitizer diagnostic; no whole matrix repeated.
+- Reuse original-file C++ comparison, broader ownership/ground/text results and five mutants: their code/data/expected bytes are unchanged.
+- Strict changed-test O3/Werror Apple Clang 21 / GCC 15.3 pass; shadow control rejects; format 23.1.3/lint/diff pass.
+- Compiler warnings 0, inherited duplicate-library linker diagnostic retained; exact pushed head/tree/CI sent directly.
+- Closeout: 6 files, 6 local links, 62 manifest/27 published hashes verified; checksum of docs-check.log in evidence.
+
+Decisions and reasoning:
+- Match the existing bounded C++ domain; do not widen production to follow an oracle mistake.
+- Check the entire ignored tail, while preserving comma-stop output and validating legal boundaries through real computation.
+- Preserve real counterexamples and strengthen only affected controls; reuse reviewed unchanged evidence.
+
+NOT_RUN: broad/full gates, old mutants/original C++ rerun, original executable/HE/Windows runtime, new kernel/World/fill work,
+full pins/warnings and LeakSanitizer. QUESTIONs: none. Independent focused re-review pending; no reviewer agents.

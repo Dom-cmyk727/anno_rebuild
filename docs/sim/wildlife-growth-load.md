@@ -149,3 +149,27 @@ No whole gate repeats, original data changes or recreated historical failures.
 The production loader, vector testcase and generic text library are unchanged
 by this test-reporting correction. Exact counts/identities/hashes are in the
 handoff evidence. No local independent approval is claimed.
+
+### Focused discarded-tail correction (2026-11-19)
+
+Independent review found that the Python reference's ignored-tail branch checked
+syntax but missed int32 bounds. Before fixing it, the public source command
+accepted one-over/one-under and a bad later comma token with exit 0. These actual
+results are retained; no original-runtime or production defect is inferred.
+The corrected reference invokes its bounded numeric parser on the tail and
+DISCARDS the resulting values. Every ignored token must fit int32, matching the
+existing C++ refusal domain; production/generic text/data are unchanged.
+
+Legal INT32_MIN/MAX and a multi-token legal tail produce the same complete map
+as the no-tail control. One-over/under and a bad later positive/negative token
+refuse, preserving source and output. The updated public contract has 39
+controls (initial candidate: 32), and the exact old check fails its new tail-over
+control after the legal boundaries execute. C++ uses its existing generic
+unsupported-numeric-tail diagnostic for these nested failures.
+
+Only the boundary/refusal cases and authored agreement rerun: canonical Debug
+3/3 and ASan/UBSan 3/3, plus the changed required reference contract each 1/1.
+All 13 authored maps and the unchanged original lookup digest remain identical.
+Previously reviewed production, original-file, ownership/ground/text and five
+causal controls are reused: their source, data and expected results are unchanged.
+See the [focused evidence](../orchestration/evidence/wildlife-growth-load-1-fix.md).

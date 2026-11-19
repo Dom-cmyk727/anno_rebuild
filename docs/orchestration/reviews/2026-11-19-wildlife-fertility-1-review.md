@@ -72,3 +72,13 @@ Release WILDLIFE-BERGWERK-1 after independent dispatch review, on corrected81026
 Establish the actual container/handler and reached effects before implementing;
 keep OCCUR ore objects, extraction and post-island initialization separate.
 No numeric-tag/default/native/registry change. Main untouched; Windows owns landing.
+
+
+## Exact-head CI closeout — 2026-11-19
+
+**ACCEPTED within the reviewed bounded scope.** GitHub run [44425779949](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44425779949)
+now has all12 jobs successful, each identifying `81026d1b451955d9167649cb3b8b2e3f5648d120`.
+Independent review above remains applicable; no gate repeated. Jobs API receipt
+SHA-256: `83caa6b6099d41a33950ee514e5c20d64833daf5afe46bfadbd92891f327750a`. This supersedes earlier pending-CI
+status only; limitations and preserved failures remain. Windows owns stacking
+and landing; no main push or full-original-world claim.

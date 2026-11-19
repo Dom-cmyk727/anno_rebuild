@@ -76,3 +76,13 @@ Release WILDLIFE-ANBAU-1 after independent dispatch review, on5bcd50c5. Establis
 its actual reached handler and effects before implementing; preserve source order
 and stop at the next unsupported direct dependency. No other-lane crop policy or
 World integration. Main untouched; Windows retains stacking/landing ownership.
+
+
+## Exact-head CI closeout — 2026-11-19
+
+**ACCEPTED within the reviewed bounded scope.** GitHub run [44432068823](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44432068823)
+now has all12 jobs successful, each identifying `5bcd50c5b22be0d134fb63473680f321a7870ba4`.
+Independent review above remains applicable; no gate repeated. Jobs API receipt
+SHA-256: `b37e829560a0750f4329be2097d6d1dcca264dcd8e0ac253f90659a10e9e18c2`. This supersedes earlier pending-CI
+status only; limitations and preserved failures remain. Windows owns stacking
+and landing; no main push or full-original-world claim.

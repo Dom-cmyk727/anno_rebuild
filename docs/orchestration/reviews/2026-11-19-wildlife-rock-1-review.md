@@ -101,3 +101,13 @@ Corrected-head CI [44422288006](https://github.com/Dom-cmyk727/anno_rebuild/acti
 remains in progress at this review. No pending job counted as passed. Release
 WILDLIFE-FERTILITY-1 on this locally reviewed dependency, with independent dispatch
 review, while exact-head acceptance stays separate. No World/native/tag policy change.
+
+
+## Exact-head CI closeout — 2026-11-19
+
+**ACCEPTED within the reviewed bounded scope.** GitHub run [44422288006](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44422288006)
+now has all12 jobs successful, each identifying `6c6554a23a7e637f2c88fb360cf050aff643c613`.
+Independent review above remains applicable; no gate repeated. Jobs API receipt
+SHA-256: `2c12e70bf434599d9c87f9835440f4328702a0f79f19af3472cfd7340a4e812d`. This supersedes earlier pending-CI
+status only; limitations and preserved failures remain. Windows owns stacking
+and landing; no main push or full-original-world claim.

@@ -68,3 +68,13 @@ Release WILDLIFE-OCCUR-1 after independent dispatch review, on03fff3c6. Trace th
 actual next reader/factory/state/callback slice before choosing representation;
 reuse existing ore research, distinguish these two containers and stop at the
 first unsupported direct dependency. Main untouched; Windows owns landing.
+
+
+## Exact-head CI closeout — 2026-11-19
+
+**ACCEPTED within the reviewed bounded scope.** GitHub run [44428107745](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44428107745)
+now has all12 jobs successful, each identifying `03fff3c6ffc2e3c0bbd52f5e8f24c0fc083afb94`.
+Independent review above remains applicable; no gate repeated. Jobs API receipt
+SHA-256: `3a61303e5f49f16a384525e07e3533d7e03a60fb3cd616e6d79b9cf33d04357b`. This supersedes earlier pending-CI
+status only; limitations and preserved failures remain. Windows owns stacking
+and landing; no main push or full-original-world claim.

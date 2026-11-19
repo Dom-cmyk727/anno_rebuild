@@ -33,12 +33,13 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife composition [WILDLIFE-PREFIX-1](tasks/wildlife-prefix-1.md) | LOCAL REVIEW APPROVED; two macOS CI jobs cancelled without runner | `1441183a74be4745415c23c399f80648bf886314` | [44385455810](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44385455810), terminal FAIL:9 success,2 no-runner cancellations, aggregate failure | [Review](reviews/2026-11-18-wildlife-prefix-1-review.md) |
 | Wildlife stone [WILDLIFE-STONE-1](tasks/wildlife-stone-1.md) | ACCEPTED bounded import; Windows landing pending | `18473cf4b1d44cadfa564636f56b889bdcabe146`; source `f3e18bdf` | [44390015763](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44390015763), all12 jobs successful | [Review](reviews/2026-11-18-wildlife-stone-1-review.md) |
 | Wildlife cliff [WILDLIFE-CLIFF-1](tasks/wildlife-cliff-1.md) | ACCEPTED bounded projection; Windows landing pending | `11bc3be60acc71a4c9fbf03dff077e908b4c8204`; source `eb3ea560` | [44417567937](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44417567937), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-cliff-1-review.md) |
-| Wildlife rock [WILDLIFE-ROCK-1](tasks/wildlife-rock-1.md) | LOCAL REVIEW APPROVED after FIX-1; exact-head CI pending | `6c6554a23a7e637f2c88fb360cf050aff643c613`; source `26899502` | [44422288006](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44422288006), in progress | [Review](reviews/2026-11-19-wildlife-rock-1-review.md) |
-| Wildlife rock correction [WILDLIFE-ROCK-FIX-1](tasks/wildlife-rock-fix-1.md) | LOCAL REVIEW APPROVED; P2 closed, prose-only | `6c6554a2` | Frozen-source gates reused; exact CI pending | [Focused review](reviews/2026-11-19-wildlife-rock-1-review.md) |
-| Wildlife fertility header [WILDLIFE-FERTILITY-1](tasks/wildlife-fertility-1.md) | LOCAL REVIEW APPROVED; publication cleanup verified, CI pending | `81026d1b451955d9167649cb3b8b2e3f5648d120`; source `12586595` | [44425779949](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44425779949), in progress at handoff | [Review](reviews/2026-11-19-wildlife-fertility-1-review.md) |
-| Wildlife BERGWERK2 [WILDLIFE-BERGWERK-1](tasks/wildlife-bergwerk-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `03fff3c6ffc2e3c0bbd52f5e8f24c0fc083afb94`; source `7e4ac88f` | [44428107745](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44428107745), in progress | [Review](reviews/2026-11-19-wildlife-bergwerk-1-review.md) |
-| Wildlife occurrences [WILDLIFE-OCCUR-1](tasks/wildlife-occur-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `5bcd50c5b22be0d134fb63473680f321a7870ba4`; source `8c2de16c` | [44432068823](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44432068823), in progress | [Review](reviews/2026-11-19-wildlife-occur-1-review.md) |
-| Wildlife ANBAU header [WILDLIFE-ANBAU-1](tasks/wildlife-anbau-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `5bcd50c5` | Not started | Frozen reportback directly to Mac orchestrator |
+| Wildlife rock [WILDLIFE-ROCK-1](tasks/wildlife-rock-1.md) | ACCEPTED after FIX-1; bounded projection | `6c6554a23a7e637f2c88fb360cf050aff643c613`; source `26899502` | [44422288006](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44422288006), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-rock-1-review.md) |
+| Wildlife rock correction [WILDLIFE-ROCK-FIX-1](tasks/wildlife-rock-fix-1.md) | ACCEPTED; P2 closed, prose-only | `6c6554a2` | Frozen-source gates reused; exact CI all12 successful | [Focused review](reviews/2026-11-19-wildlife-rock-1-review.md) |
+| Wildlife fertility header [WILDLIFE-FERTILITY-1](tasks/wildlife-fertility-1.md) | ACCEPTED; bounded transient header | `81026d1b451955d9167649cb3b8b2e3f5648d120`; source `12586595` | [44425779949](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44425779949), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-fertility-1-review.md) |
+| Wildlife BERGWERK2 [WILDLIFE-BERGWERK-1](tasks/wildlife-bergwerk-1.md) | ACCEPTED; bounded transient container | `03fff3c6ffc2e3c0bbd52f5e8f24c0fc083afb94`; source `7e4ac88f` | [44428107745](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44428107745), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-bergwerk-1-review.md) |
+| Wildlife occurrences [WILDLIFE-OCCUR-1](tasks/wildlife-occur-1.md) | ACCEPTED; bounded occurrence slice | `5bcd50c5b22be0d134fb63473680f321a7870ba4`; source `8c2de16c` | [44432068823](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44432068823), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-occur-1-review.md) |
+| Wildlife ANBAU header [WILDLIFE-ANBAU-1](tasks/wildlife-anbau-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `02111ea2139cfddf1e4018bcc229fd55d918056e`; source `d645071a` | [44436355753](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44436355753), in progress | [Review](reviews/2026-11-19-wildlife-anbau-1-review.md) |
+| Wildlife DISCOVER header [WILDLIFE-DISCOVER-1](tasks/wildlife-discover-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `02111ea2` | Not started | Frozen reportback directly to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -687,3 +688,25 @@ then extend only that transient slice and continue once to the next boundary.
 No assumption that crop-named metadata is inert, no other-lane crop policy,
 World/native/tag/default changes or extra header expansion. Executor ordinary-pushes
 its branch and reports frozen results directly here. Main/other lanes untouched.
+
+
+## Latest dispatch — ANBAU reviewed; DISCOVER released
+
+ANBAU02111ea2/source d645071a is independently locally APPROVED with no blocking
+findings.42 evidence hashes and unchanged fixtures verified. Both reviewers checked
+primary instructions, name lookup and bounds, chronology and retained gates:
+Debug16+3required, ASan16+3required, original1. A citation endpoint correction goes
+in the next documentation edit, without runtime change or repeated gates. Exact
+CI44436355753 remains running; local approval is not acceptance.
+
+ROCK corrected6c6554a2, FERTILITY81026d1b, BERGWERK03fff3c6 and OCCUR5bcd50c5 now
+have all12 successful jobs at their respective exact reviewed heads. They are
+ACCEPTED within their independently reviewed transient scopes. Terminal receipts
+and limitations are appended to their individual reviews; no tests repeated.
+
+[WILDLIFE-DISCOVER-1](tasks/wildlife-discover-1.md) is RELEASED after independent
+scope review. Establish the actual header53 load and complete finite effects,
+separate scalar decoding from player-slot/visibility policy, implement only that
+transient slice and continue once. No World/native/tag/default or other-lane
+changes. Executor ordinary-pushes its task branch and reports directly here for
+review and next release. Main untouched.

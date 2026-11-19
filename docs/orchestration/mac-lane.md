@@ -54,7 +54,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife numerical preparation [WILDLIFE-GROUND-PREPARE-1](tasks/wildlife-ground-prepare-1.md) | ACCEPTED; isolated UNWIRED numerical leaf | `5bdfd92ac01a70656a718cea4f7c7405445b41d5`; tested `92c17db` | [44469519552](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44469519552), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-ground-prepare-1-review.md) |
 | Wildlife growth source [WILDLIFE-GROWTH-LOAD-1](tasks/wildlife-growth-load-1.md) | ACCEPTED; focused P2 closed | `fe4355fd719fad0ecafbe9322788f4b7d885a7af`; tested `464e4935` | [44478146499](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44478146499), all 12 successful; earlier failed run preserved | [Review](reviews/2026-11-19-wildlife-growth-load-1-review.md) |
 | Wildlife climate kernel [WILDLIFE-KERNEL-LOAD-1](tasks/wildlife-kernel-load-1.md) | LOCAL REVIEW APPROVED; UNWIRED reader, CI pending | `c9259c1612863def493dcb47f455a018b8e110c0`; tested `fb6c7f52` | [44483388631](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44483388631), pending | [Review](reviews/2026-11-19-wildlife-kernel-load-1-review.md) |
-| Candidate 10 display [MAC-GPU-WINDOW-1](tasks/mac-gpu-window-1.md) | RELEASED; owner priority, no code changes | Existing candidate `95897a55bc939a185766b7207e69d098997cdb1d` | Four bounded original-build case invocations; no whole gate | Report directly to Mac orchestrator |
+| Candidate 10 display [MAC-GPU-WINDOW-1](tasks/mac-gpu-window-1.md) | CLOSED, diagnostic approved; candidate remains FAIL | Unchanged `95897a55bc939a185766b7207e69d098997cdb1d` | 4/4 post-script failures; 7287 successful acquire/present returns; original no-frame cause unresolved | [Review / Windows handoff](reviews/2026-11-19-mac-gpu-window-1-review.md) |
+| Wildlife object facts [WILDLIFE-GROUND-FACTS-1](tasks/wildlife-ground-facts-1.md) | RELEASED; bounded whole-object/common-HEAD binding, UNWIRED | Locally reviewed kernel `c9259c16` | Focused gates/CI at handover; kernel CI pending separately | Direct reportback to Mac orchestrator |
 | Windows dual-edition navigation [WIN-NAV-EDITIONS-1](tasks/windows-nav-editions-1.md) | Owner-requested HANDOFF READY; Windows intake pending | Accepted diagnosis `74d50bfe`, production base `889143ba` | GOG and HE verification requested; no repair released | Owner forwards to Windows orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
@@ -1072,3 +1073,23 @@ Kernel c9259c16 has both independent reviews APPROVED, 45+45 hash receipts verif
 and focused Debug/ASan 17+1+1 each; exact-head CI 44483388631 pending. No gate
 repeated. Common-HEAD gameplay binding remains queued after the small GPU packet.
 Executor reports directly here for review and continuation. Main untouched.
+
+
+## GPU diagnostic closed; gameplay source binding resumed
+
+MAC-GPU-WINDOW-1's four authorized investigations are complete and independently
+reviewed. All four drew frames and reached script, then failed their zoom checks;
+no original no-frame failure reproduced. All 7287 recorded acquire/present returns
+succeeded. Root verified 85 retained hashes. Candidate 95897a55 remains FAIL;
+original hidden-versus-back-off attribution stays unresolved. Owner unlocked/awake
+facts and unknown focus/coverage remain separate. The review is a forwardable
+Windows handoff for two distinct investigations: first-frame observation and
+high-DPI click-to-hit/zoom behavior. No cause, repair or display policy is invented.
+
+WILDLIFE-GROUND-FACTS-1 is RELEASED on locally reviewed c9259c16 after independent
+scope review: bind whole-object/common-HEAD properties to owned facts, then check
+the existing numerical leaf. No INFO/city/FRUCHTBAR/fill/World or navigation change.
+Kernel exact-head CI remains pending independently. Executor pushes only its task
+branch and reports directly here for review/continuation. Main and Windows-owned
+boards/source remain untouched; the short UI investigation does not grow into
+another Mac repair campaign.

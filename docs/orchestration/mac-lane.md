@@ -62,7 +62,7 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Animal creation effects [WILDLIFE-CREATE-EFFECTS-1](tasks/wildlife-create-effects-1.md) | ACCEPTED; bounded owned creation effects | `25bab774208c9e610b43447e247d99cc1aba0195`; tested `37c144b1` | [44508278589](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44508278589), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-create-effects-1-review.md) |
 | Animal end/release effects [WILDLIFE-RELEASE-EFFECTS-1](tasks/wildlife-release-effects-1.md) | LOCAL REVIEW APPROVED; P3 closed, CI pending | `901a8467f766825ae9683cb41dee33522a9aff39`; tested `33fe219c` | [44511432981](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44511432981), pending | [Review](reviews/2026-11-19-wildlife-release-effects-1-review.md) |
 | Animal species source [WILDLIFE-SPECIES-LOAD-1](tasks/wildlife-species-load-1.md) | LOCAL REVIEW APPROVED; CI pending | `f5f1c9fa7f0eca4d6263147797022ff1c5e6d771`; tested `4acf5545` | [44515114872](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44515114872), pending | [Review](reviews/2026-11-19-wildlife-species-load-1-review.md) |
-| Wildlife chunk planning [WILDLIFE-CHUNK-PLAN-1](tasks/wildlife-chunk-plan-1.md) | RELEASED; locally reviewed stacked continuation | Base `f5f1c9fa7f0eca4d6263147797022ff1c5e6d771` | Owned pre-materialization record phase; no World/identity change | Direct reportback to Mac orchestrator |
+| Wildlife chunk planning [WILDLIFE-CHUNK-PLAN-1](tasks/wildlife-chunk-plan-1.md) | IN PROGRESS; C0 clarification approved | Base `f5f1c9fa7f0eca4d6263147797022ff1c5e6d771`; contract `4253dfbc` | Owned pre-materialization record phase; no World/identity change | Direct reportback to Mac orchestrator |
 | Windows dual-edition navigation [WIN-NAV-EDITIONS-1](tasks/windows-nav-editions-1.md) | Owner-requested HANDOFF READY; Windows intake pending | Accepted diagnosis `74d50bfe`, production base `889143ba` | GOG and HE verification requested; no repair released | Owner forwards to Windows orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
@@ -1257,3 +1257,16 @@ success. No World/default/state/identity/global-PRNG change and no bypass of
 Windows navigation or raster decisions. Executor pushes only its own branch and
 reports directly here for review and continuation. Main and shared boards remain
 untouched.
+
+## Chunk C0 — exhaustion test boundary clarified
+
+At contract4253dfbc, independent focused review approves the consistent-input
+reachability proof: counted colliders and D(N) <= N leave enough distinct
+noncolliding samples for every positive deficit. The packet no longer requires
+an impossible full-chunk exhaustion example. The defensive guard and lower-level
+exhaustion test remain, with their scopes explicit; reachable draw exhaustion
+still requires precise partial-state checks. Original whole-game OQ-572 remains
+open. Attempt writes precede lookup; timestamp waits for successful insertion.
+[Focused disposition](reviews/2026-11-19-wildlife-chunk-plan-c0-review.md).
+Executor continues C1–C5 and reports directly here; no policy decision, source
+change, World integration or repeated gate is authorized by this clarification.

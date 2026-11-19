@@ -108,7 +108,10 @@ Hand-derive complete record lists/fields and draw traces before C++. Include:
 - Category-0 collision with occupancy clear, wrong-category sibling, no candidates,
   all rejected, leftover recycle discard and unrelated flag preservation.
 - Timestamp wrap, missing supplied facts, partial draw exhaustion and OQ-572
-  exhaustion with exact counts/stage, never a success or fabricated rollback.
+  exhaustion at the accepted lower-level replenish boundary with exact counts;
+  do not claim this as full-chunk branch coverage. The consistent complete-chunk
+  profile cannot reach early candidate exhaustion (see C0 disposition below).
+  Keep the defensive noncommittable guard; no fabricated rollback or success.
 - Complete ownership, immutability, deterministic repeat and unchanged draw suffix.
 
 Use literal independently derived outputs or a small independent reference. Comparing
@@ -136,3 +139,33 @@ and precise limits. No executor reviewer agents. At 6 hours report concrete rema
 work rather than silently expanding scope. No World/scheduler/save/Rules/tag/default/
 identity/PRNG/navigation/raster/graphics change. Preserve other jobs/coordinators,
 original files and the owner's keep-awake assertion.
+
+## C0 disposition — consistent-input exhaustion is unreachable
+
+Approved after independent focused review, 2026-11-19, at contract checkpoint
+`4253dfbc0b4b7fff1418baf24f520c27a711bc02`. This clarifies C3/C4; implementation
+continues without a new public seam, inconsistent input or density override.
+
+For N unique eligible candidates, R retained category-0 records and C distinct
+candidate positions colliding with retained records: C <= R and D(N) <= N.
+Positive need K = D(N) - R is therefore <= N - R <= N - C. Swap-pop consumes
+each candidate once, and a successful insertion is at an already removed position.
+Thus consistent immutable habitat and complete records leave enough noncolliding
+positions. Duplicate records only increase R; a missing category flag can only
+suppress collisions. Counter overflow is outside the supported projection.
+
+Keep the defensive typed, noncommittable exhaustion guard. Retain the existing
+independent lower-level exhaustion test and explicitly distinguish its API scope.
+Check the admitted density domain and a tight legal collision case; do not invent
+a costly redundant matrix to exercise an unreachable full-profile branch. Draw
+exhaustion remains reachable and must exercise real partial-state diagnostics.
+This proof is limited to this supplied-facts, normal-success profile. It does not
+close whole-game OQ-572 or establish mutable callback/allocator behavior.
+
+The new instruction reads also correct attempt-stage effects: goods and low-six
+position bits are written BEFORE collision lookup; timestamp changes only on
+successful insertion. A collision diagnostic must include those prior writes.
+Fresh packed high bits are unknown; clearing occupancy 0x40 does not initialize
+bit 0x80. Reused IDs and other unwritten fields retain their values.
+
+[Independent C0 review](../reviews/2026-11-19-wildlife-chunk-plan-c0-review.md).

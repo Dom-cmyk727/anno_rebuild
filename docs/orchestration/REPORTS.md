@@ -14878,3 +14878,62 @@ READY FOR REVIEW.
 5. Write the final REPORTS.md entry only once all of the above is in, per the task's own acceptance criteria.
 
 No question for the orchestrator right now; this entry is the status record the halt instruction asked for.
+
+## FLAKE-RESIZE-1 — resumed, all steps done — READY FOR REVIEW (task/FLAKE-RESIZE-1, from origin/main `4dfdd9b7`, head `0835d2c5`)
+
+Resumed from the PAUSED entry above after the owner's "Yes, resume both." Root cause, fix (commits
+`333b6035`/`b3304fd1`) and the fix commit's head are unchanged from that entry; this entry closes
+out the five items the pause left open, in the order the orchestrator asked for them.
+
+**1. CI on `b3304fd1` (the fix commit) — green.** All 12 jobs `"conclusion":"success"`: `changes`,
+`lint`, `build-macos`, `test (ubuntu-latest)`, `test (windows-latest)`, `cpp (windows-msvc)`,
+`cpp (linux-gcc)`, `cpp (linux-gcc-release)`, `cpp (macos-clang)`, `cpp-format`,
+`cpp (linux-clang-asan)`, `gate` (run `44190066591`).
+
+**2. msvc 50-loop stability proof, `anno_app_input_tests`/`live_resize`.** Built fresh at head
+`0835d2c5` (the worktree's prior msvc build was stale, from 2026-11-17). `ctest --preset msvc -j 2
+-R "anno_app_input_tests\." --repeat until-fail:50`: all 50 distinct test cases in the binary
+(`#88`-`#137`, including `#130`, the ZOOM-SMOOTH-2b F1 case this task is about, and `#135`/`#136`,
+the other live-resize-labeled cases) passed every one of their up-to-50 repeats -
+**"100% tests passed out of 50"**, 60.61 s total. Ran serially (`-j 2`) alongside another lane's
+own msvc build, per the orchestrator's explicit go-ahead once the owner's "Yes, resume both"
+landed (stability, not timing, is what this loop checks, so shared-PC contention does not
+invalidate it - if anything it is closer to the conditions the original flake needed).
+
+**3. `viewer_wiring_r4_occupancy`, 50 loops.** First attempt (`-j 1 --repeat until-fail:50`, no env)
+skipped outright (`SKIP_RETURN_CODE 77`, 0.12 s) - `ANNO1503_GAME_DIR` was not set in that shell.
+Reran with `ANNO1503_GAME_DIR` pointed at `game/app`: **50/50 passed**, ~7 s per run, 353.51 s
+total, 0 failures, 0 skips. Also ran serially alongside the other lane's build.
+
+**4. `tools/check_unix_warnings.sh`.** Ran via WSL once WSL itself was free (it does not contend
+with Windows-side `cl`/`MSBuild`). All four configurations clean: GCC viewer+GPU on (416 files),
+GCC viewer without GPU (83 files), Clang 18 viewer+GPU on (416 files), Clang 18 viewer without GPU
+(83 files). Both negative controls ("failed as expected (shadowed variable caught)") confirmed the
+check itself is live.
+
+**5. Local WSL ASan loop proof — NOT_RUN.** The standalone Clang 18 install at
+`/home/altin/clang18/root/usr/lib/llvm-18/bin/clang++` can compile (used for item 4 above) but has
+no compiler-rt sanitizer runtime archives (`libclang_rt.asan-x86_64.a` and variants) to **link** an
+ASan-instrumented binary - confirmed by `/usr/bin/ld: cannot find .../libclang_rt.asan-x86_64.a`
+when linking `anno_budget_coord`, a dependency built before `anno_app_input_tests` in the same
+ninja graph. Per the orchestrator's explicit instruction this is left as a toolchain gap - no
+toolchain installed to work around it. Substitute evidence, per the same instruction: CI run
+**44177906209** (commit A, the forced-deterministic trigger without the fix) failed
+`linux-clang-asan` with the identical leak signature (214 bytes, 4 allocations, `SDL_GetErrBuf`),
+and CI run **44190066591** (commit B, the fix, item 1 above) passed the same job clean - together
+the deterministic failure/fix proof the task's own acceptance criterion asks for, just run on CI's
+Clang rather than this host's.
+
+**Decisions and reasoning:**
+- Ran items 2 and 3 while another lane's msvc build was active, on the orchestrator's explicit
+  instruction once the owner's halt lifted: these are stability proofs (the test's own assertions
+  holding over N repeats), not timing measurements, so PC contention does not weaken the result -
+  the original flake (CI run `44076929673`) surfaced under contention in the first place.
+- Did not attempt to fix or install a compiler-rt runtime for the standalone Clang 18 (item 5):
+  explicitly out of scope per the orchestrator's instruction, and that install exists only for
+  `check_unix_warnings.sh`'s compile-only use, not for linking sanitized binaries.
+- Used CI runs 44177906209/44190066591 as the substitute two-commit deterministic proof rather
+  than re-deriving it locally, since the commits, the trigger (70,000 forced pushes) and the leak
+  signature are already pinned and auditable from those run logs.
+
+READY FOR REVIEW.

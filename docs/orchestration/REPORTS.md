@@ -16883,3 +16883,67 @@ Decisions and reasoning:
 
 NOT_RUN: original GOG/HE/Windows/Wine/emulation, actual CW/thread capture, CTest/dev/ASan/full pins/warnings, general FP/reader/save closure, World/live implementation.
 Independent review pending Orchestrator II Mac; no reviewer subagents. QUESTION: coordinate the bounded Windows capture before selecting an integer profile.
+
+
+## 2026-11-19 — WILDLIFE-PREPROCESS-CONTRACT-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-PREPROCESS-CONTRACT-1`; exact base `aec8bcc8fc1a35230dffba91c8e8b34c35f31bf3`.
+- Exact reviewed dispatch `2da44e19b6602aaebc0c328cdaddbc0d71103b03`; no board/main merge or rebase.
+- [Contract and acceptance](../sim/wildlife-preprocess.md); [primary/probe receipts](evidence/wildlife-preprocess-contract-1.md).
+- Research/docs only; source, fixtures, pins, state/native/tags/defaults and World/routing unchanged.
+- P1 D: wrapper Welt a1810–a183c gates preparation on island +c2=0, then always calls fill.
+- Complete preparation body 84370–84818; final ret-4, not just epilogue start 8480e.
+- FRUCHTBAR loader 89565 sets completion even for all-zero data; constructor/reset clear it.
+- Preparation does not set +c2; the selected completed-FRUCHTBAR Tutorial still skips it.
+- City prewalk precedes W*H allocation; allocation null returns without plane writes, wrapper still fills.
+- Normal path releases scratch; low nibble +18 only changes, high nibble and all other planes stay intact.
+- Save 8a3b0–8a3f0 prepares the full island before FRUCHTBAR output when +c2=0.
+- Three resolved world load-call sites use header rectangles; fresh matching islands give full coverage.
+- Area clear uses fill directly, not preparation; stack displacement matches excluded from caller scan.
+- P2 D: city +60 -> 2dfc0; ordered building list 23af0/23a90, first nonnull entry per city.
+- Six production tables' +74 -> a3cb0 returns type +14; common property 1c -> a8d8 copies +1d8.
+- Its numerical result is overwritten by catalogue property 2e before use; do not erase unknown getter effects.
+- Game catalogue 7530/7566 exposes owned lookup +640c; 73c4–73e4 loads Wachstum through 6a80.
+- Producer zeroes 16 KiB, packs Id/row/column without rotation, stores low parsed byte; holes stay zero.
+- File has 146 Id records; one short row, line 765, parses 3 values and retains 3 staging cells.
+- OQ-029(g) narrowed with dated evidence; the other data-text questions remain open.
+- Resource group 225–256, byte HEAD[0x19] / type +77, successful nonzero property 2e controls blending.
+- Climate is unsigned INFO[0], load 897a6–897ee, not a filename inference; default 0.
+- Kernel ca008 is image .rdata, 25 unsigned bytes per selected profile; total table extent unproved.
+- P3 D: two row-major passes; scratch initialized only inside the clipped rectangle.
+- Nonzero centres read 5×5 clipped to island bounds, preserving kernel alignment, no normalization.
+- Sum is sum(floor(weight*b/12)), NOT floor(sum(weight*b)/12); corrected production.md with dated note.
+- Zero centre skips the write, retaining old low nibble; nonzero centre with zero contributions writes zero.
+- Standard byte arithmetic is integer and has no world draw; unknown dynamic/CRT hooks are not certified.
+- Proper partial rectangle may read uninitialized neighbours; no fabricated zero halo or original deterministic answer.
+- P4 H before C: 17 positive rows plus 6 actual wrong-rule controls; no original execution claim.
+- Initial width control was insensitive because both outputs saturated; retained failed probe, added distinguishing S10.
+- Final private outputs:
+
+```text
+INTEGER_MODEL executed=23 failed=0 original_execution=NOT_RUN
+GROWTH_FILE ids=146 short_rows=1 line=765 parsed=3 retained_staging_cells=3 original_execution=NOT_RUN
+FILE_PROBE checks=2 failed=0 original_execution=NOT_RUN
+```
+
+- Logs: cache/wildlife-preprocess-contract-1/model-final.log and file-probe.log; hashes in evidence.
+- Docs receipt cache/wildlife-preprocess-contract-1/docs-check.log, checked before push:
+  `DOC_CHECK files=6 new_local_links=13 manifest_hashes=67 published_hashes=25 missing=0 scope=docs-only status=PASS`
+- No CTest COUNTS/VERDICT invented; gate-log SHA256 is published in the evidence note.
+- P5 proposal: distinct full-island preparation capability, owned output, pre-mutation refusal; share fill only via typed composition.
+- Current fill validator requires FRUCHTBAR; no fake header or bypass. Transactional refusal differs from original allocation failure then fill.
+- Exact pushed head/tree/CI sent directly to assigning orchestrator before CI completion; terminal CI separately.
+- Host M5 Max / 18 logical / 48 GiB / macOS 27.0.1; no heavy gate, coordinator or awake-assertion changes.
+
+Decisions and reasoning:
+- Preserve per-term truncation and zero-centre skip; aggregate division or writing zero silently changes fertility.
+- Trace lookup staging and INFO/kernel ownership instead of fabricating tables or copying original weights into git.
+- Support full matching load/save rectangles; refuse arbitrary partials until their initialization contract is proved.
+- Bind nonempty city/type profiles explicitly even when a getter's numerical output is overwritten.
+- Keep Windows raster capture and owner navigation compatibility separate; neither is reopened by this read.
+
+NOT_RUN: CTest/build/sanitizers/full corpus/full pins, original/HE execution, unknown dynamic providers,
+unsafe partial callbacks, Windows FP capture, production integration. No original tables/listings in git.
+QUESTIONs: before broader implementation, bind other city/type providers and unmatched climate profiles;
+otherwise the proposal explicitly refuses them. No policy decision or production change made here.
+Independent orchestrator review pending; stop at this bounded handoff.

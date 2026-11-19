@@ -68,7 +68,11 @@ It does not write the corner grid. It frees scratch at 84801–8480b and actuall
 returns at 84818, later than the previously quoted 8480e epilogue start.
 Property 0x1c/0x2e providers, climate kernel provenance and their caller data are
 not newly closed here. Partial-rectangle scratch-neighbour initialization is
-also not established. Unsupported c2-zero must stop, not manufacture fertility.
+also not established. Unsupported c2-zero must stop, not manufacture fertility. The dated
+[preprocessing read](wildlife-preprocess.md) now supplies the standard integer
+formulas, direct lookup/kernel producers and full-caller scratch boundary;
+unknown profiles and arbitrary partial rectangles remain explicit refusals.
+This does not change the reached Tutorial branch.
 
 D: fill 928a0–92b32 clips the half-open world rectangle to the island and visits
 rows then columns. It resolves catalogue types 2 and 11 before cell iteration.

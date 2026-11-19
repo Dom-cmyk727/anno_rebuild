@@ -274,6 +274,8 @@ Sources abbreviated: GFA = `docs/research/game-files-analysis.md`, CL = `docs/re
 - **What we know:** the line grammar, counts and record layouts (P), `docs/formats/data-text.md`, `crates/formats/tests/text_corpus.rs`; `[ANLAGEN]` maps `Anlagen.dat` ids to names (P); `Wachstum.dat` ids are `Felder.tex` texture ids and its 6 × 6 grids match the 6 × 6 ground cells per texture (P), which makes (b) a per-cell value.
 - **How to resolve:** Ghidra: the text-file reader (strings `Preis`, `Proz`, `WALKMASK`, `BGRUPPE`, `[ANLAGEN]`, `SHIPS`) and its callers; differential saves (PLAN M2.1) for prices and growth.
 
+- **Update (2026-11-19, WILDLIFE-PREPROCESS-CONTRACT-1, D):** part (g) narrows to a comma-only list: AnnoGame `0x10016360–0x100163b9`, with integer parser `0x10016300` and whitespace scanner `0x100161e0`, stops the list after the third integer on line 765. It does not parse the later whitespace-separated token. Growth staging is cleared once per section (`0x10006b4b–0x10006b6b`), not per Id (`0x10006be3–0x10006bfd`); missing entries retain earlier staging values. This is a static reading, not original execution. See [preprocessing](sim/wildlife-preprocess.md); the other parts of OQ-029 remain open.
+
 ## OQ-030: 16-bit colour of the original
 - **Status:** resolved 2026-10-17 — owner decision: the 24-bit palette colours are the reference; the 16-bit quantisation is not reproduced.
 - **Area:** rendering / fidelity

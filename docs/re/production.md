@@ -232,6 +232,13 @@ So an object advances to the next id after `S · 2^k` parity flips, i.e. after `
 
 **Fertility.** `0x10084370` rebuilds the island's fertility nibble grid (`+0x18`, low 4 bits, 0–10 — the `FRUCHTBAR` scale) from `Wachstum.dat`: per tile `p = Proz[GFXID >> 2]` (the `Wachstum.dat` table built by `AnnoGame` `0x10006a80` indexed by texture id and cell `u`, `v` — the `GFXID` bits without rotation; exposed as game property `0x2e`); if the tile holds a raw-material object (PRODTYPE 225–256) whose `HEAD[0x19]` value `v ≠ 0`, `p` is blended towards `v` (`(p + 3v)/4` if `p < v`, else `(v + 3p)/4`); then `b = (p + 5) / 10`, and the stored value is `min(10, Σ w·b / 12)` over a 5 × 5 neighbourhood with per-climate weights at `0x100ca008` (25 bytes per climate; climate byte at island `+0xc0`). **Confirmed** (code + table). Which code reads fertility for planting or growth is not traced (Open).
 
+**Dated correction, 2026-11-19:** the fertility formula above must read
+`min(10, sum(floor(w*b/12)))`: AnnoWelt `0x10084721–0x10084741`
+divides each product before adding it. A zero scratch centre skips the write
+entirely (`0x10084661–0x10084666`); it does not force fertility to zero.
+See the [ground-preparation contract](../sim/wildlife-preprocess.md) for producer,
+clipping and partial-scratch boundaries. This does not change crop rules.
+
 ### 4.4 Mine (`MINE`) — `0x1006def0` (read instruction by instruction 2026-10-18)
 Fields: `+0x18` output, `+0x1c` activity (u16), `+0x20` switched on, `+0x21` deep, `+0x24` deposit object. **Confirmed** (D, `tools/disasm.py`; the earlier decompile reading is replaced by this).
 

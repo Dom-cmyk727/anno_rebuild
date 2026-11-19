@@ -17744,3 +17744,58 @@ Decisions and reasoning:
 - Keep selector-only accounting explicit; supplied immutable facts cannot establish native mutable callbacks.
 - Retain failing prefix diagnostically, never invent rollback/success; no World/state/tag/default/identity/PRNG changes.
 QUESTIONs: none in this bounded profile. STOP pending orchestrator source/evidence review.
+
+## WILDLIFE-PLAN-CI-CLOSE-1 — 2026-11-19 — READY FOR REVIEW
+
+Branch `task/WILDLIFE-PLAN-CI-CLOSE-1`, base `1c027079fd0d431fae1613df839f1bde9c38d2bc`.
+Dispatch `d6cc1cb2` read in full with both accepted-scope contracts/evidence; no board/main merge/rebase.
+Tested source `1b078d95b5a84dd42bc80b4f6e314e7bb80238af`, tree `3c4f8ca2071399c8e122922a796017b2816703f4`.
+Publication adds docs only; independent focused review and exact-head MSVC acceptance pending orchestrator.
+[Evidence, exact predecessor failure extracts, hashes](evidence/wildlife-plan-ci-close-1.md).
+P0: CHUNK95d2 CI44522148816 stays terminal FAIL; MSVC135553390406 C2220/C4244 through optional int→uint16_t.
+Public annotations omit source backtrace: goods literal is matching instantiation, not claimed proven sole site.
+Release135553390583 apt dependency-install exit 100 precedes any configure/build/test; root cause unestablished.
+Public annotations and full job-step receipts retained; no authenticated detailed log claim or invented outage.
+MATERIALIZE44528637255 untouched: its MSVC135575879320 now fails with the same mechanism; other jobs pending.
+Neither old run cancelled/rerun/relabelled green; no warning suppression, broad repair or semantics change.
+P1: production one expression `work.reserved->goods = std::uint16_t{255}`; write value/order retained.
+Same-cause unambiguous tests: 26 narrow optional literals in chunk tests (9 assignments, 17 byte-11 arguments),
+3 in materialization tests; only explicit uint8_t/uint16_t wrappers, expectations/knownness unchanged.
+Type-wrapper erasure restores base token/value sequence exactly in all 3 changed files (receipt retained).
+No storage widening, predicate/API change, new field, schema, pin, state or default.
+P2: cheap 13 synthetic cases/537 assertions pass. Reuse existing controls, no cast-mirror test/mutation rerun.
+Apple Clang 21/GCC 15.3 strict O3/Werror: 3 affected TUs each pass; GCC shadow negative rejects.
+Format 23.1.3/lint/diff pass; affected dev/ASan builds pass, 0 compiler warnings.
+Inherited duplicate anno_sim archive linker warning disclosed; local compiler pass is not MSVC proof.
+1022 frozen source/fixture/tool/binary identities verified. Required exact source name inventoried first.
+Canonical Debug `cache/wildlife-plan-ci-close-1/debug.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=13 executed=13 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+ASan/UBSan `cache/wildlife-plan-ci-close-1/asan.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=13 executed=13 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+14 unique/profile: 7 chunk + 7 materialize, one bounded original case separately required then 13 main.
+Game directory/independent oracle set; jobs 1, test threads 2, timeout 180, host admission enabled.
+No memory refusal/timeout/rerun/cancellation; no skipped/empty/incomplete/sanitizer report; first attempts pass.
+Species/create APIs untouched: approved predecessor proof reused, no adjacent source gates repeated.
+292 tracked synthetic fixture hashes unchanged; prior CHUNK 110/MATERIALIZE 114 artifacts intact.
+Private closeout 50 artifacts; SHA256 `eebf8fc8008fbc2f1e6674a9f492378740c6335b011eed54bd85e476cb67d49d`.
+Actual Debug/ASan binaries and compile commands retained; host Apple M5 Max/48 GiB/macOS 27.0.1.
+P3: ordinary own-branch push; exact-head CI read after push, terminal 12-job/MSVC closeout belongs to orchestrator.
+NOT_RUN: local MSVC/Windows/WSL, full/heavy/opening/pins, repeated mutant matrix, LeakSanitizer, original/HE runtime.
+Decisions and reasoning:
+- Match the optional's stored type at the RHS; keep original goods 255 write before position/collision.
+- Fix demonstrably identical narrow-optional test instantiations in the same finite correction.
+- Keep setup and source failures separate; preserve old receipts rather than inferring root cause or acceptance.
+- Freeze tiny delta and run existing focused controls only; target proof comes from exact-head hosted MSVC.
+QUESTIONs: none. STOP pending orchestrator focused review/hosted acceptance; no gameplay continuation started.

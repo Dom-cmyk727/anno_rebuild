@@ -14936,4 +14936,57 @@ Clang rather than this host's.
   than re-deriving it locally, since the commits, the trigger (70,000 forced pushes) and the leak
   signature are already pinned and auditable from those run logs.
 
+## UI-TABS-1 stage B — READY FOR REVIEW (Windows, 2026-11-17)
+
+- Continued on `task/UI-TABS-1` from `ae5164d9` (no rebase, no origin/main merge). Commits
+  `253947b2` (figures), `814796d1` (drawing), `de514933` (tests), `e0ad1234` (re + OQs),
+  `662e5c83` (selected-house test), this entry. No `src/sim`/`src/render`/`src/formats` change;
+  no pixels, frames or strings in git.
+- Code read, GOG static ([ui.md 5.5](../re/ui.md#55-the-balance-pages-ui-tabs-1-stage-b-2026-11-17)):
+  rows are text gadgets `0xb1c` 195 x 15, align `0x1c6` = 1, font `[+0x5c0]` (as the info boxes);
+  positions come from the pages' layout functions (city `0x1006c4c0`, overview `0x1007fcf0`):
+  (page x + 35, page y + C - 244), C = 323..533, 633; page (779, 244), so gadgets at (814, C).
+  `_itoa` radix 10 (`0x1008d919`), no separator; balance `0x1c5` = `0xff0000` below 0. City
+  `0x1006c0f0`: pop, stat0, stat1+stat2, stat4, stat5, stat2, r1-r2-r3+r4-r5 (military twice),
+  knowledge/256. Getter `0x1002dc70`: stats 0/4/5 shown 15x/105. Overview `0x1007f8f0`: sums over
+  the cities plus player `+0x9c` (`0x1001c0f0`) 4, 5, 2+3. Answers OQ-655 signs, OQ-651 positions.
+- Measured: glyph-match 0 differing px on every row of `hud_idle_running` (0 0 15 0 0 16 -31),
+  `f15_kontor`, `r2_tab_help` (0 0 15 0 0 0 -15 0): right edge = gadget edge 1009, top = gadget
+  y - 3, cut to the gadget, red (255,0,0). HE `HE_UI_1.mp4` 44.5 s (0 0 0 0 0 17 -17), `ui_5.mp4`
+  405 s (120 91 248 0 0 0 -157 9): GOG positions x 0.75 within 1 px (`cache/ui-tabs-1b/sbs_*.png`).
+- Built: hud.txt `player_row_0..6`, `city_row_0..7` (`value`, `page`, `align right`, `text_dy`,
+  `clip box`, `negative_rgb`); `balance_rows.hpp`; `draw_balance_rows` in both UI paths; snapshot
+  copies (city accounts, `accounts_live` = `Rules::city_booking`, scale from SimConfig); facts
+  `hud.row.<value>`; masks `balance_row_0..7`; `anno_ui_mock --rows`.
+- Drawn: overview 0 (sum of populations), 1-2 (sums) with live accounts or no city; city page 0,
+  1-6 with live accounts. EMPTY: overview 3-6 (player terms the sim does not feed, OQ-694), city 7
+  (no knowledge object, OQ-695), every account row while `city_booking` is off.
+- QUESTIONS: (1) a sim feed for `Player::upkeep_a/b` (unit upkeep; HE shows 17 for the start
+  ship) and `stat_a/b`; (2) a city knowledge object (city `+0x320`, slot `+0x20`); (3) frozen
+  accounts with booking off: show or keep empty (now empty); (4) the "?" page shows the status
+  bar's city until a Kontor click opens it (OQ-691).
+- OQs: 691 which city, 692 text rule/cut/refresh, 693 stat 4/5 names vs labels (sim
+  `trade_sales` prints as "Purchase costs"), 694, 695.
+- Tests: `balance_rows_test.cpp` 10 cases (itoa incl. int64 limits, HE 6:45, doubled military,
+  rows 3/4 by index, 15/105, empty rows, overflow, hud.txt rows, parser); wiring
+  `ui_balance_rows` (lan5 living), `_original`, `_no_city`; `ui_balance_rows_compare` (composer
+  vs 3 GOG shots exact; controls wrong figure / text_dy -2 / no red / no cut fail on the expected
+  rows; window CPU vs composer 0 of 43875 px).
+- Changed existing test: `selected_house_pixel_check` failed in gate B-01 on the deselected
+  overview's live "0" (72 px); it now skips masks.txt `live-digits` rects as
+  `live_screen_compare.py` does. A's tests and the oracle-shot tests are unchanged.
+- Failure proof: figures not passed on -> 3 wiring scripts FAIL (`hud.row.player.0 is 'empty'`),
+  `ui_balance_rows_compare` FAIL; mutants (military once; stat 4/5 swapped) -> 2 unit cases FAIL;
+  restored (`cache/ui-tabs-1b/failure-proof*.log`).
+- Gate `run_selected.py` msvc Release, game dir, GOG shots, HE captures, rotation shots, head
+  `662e5c83`, `cache/gates/ui-tabs-1-B-02.log` (sha256 `11b0b238...f864`): 9 required contracts
+  PASS, selection `COUNTS: selected=85 executed=85 failed=0 empty=0 skipped=0 ... incomplete=0
+  sanitizer_lines=0` `VERDICT: PASS`. B-01 (head `e0ad1234`) FAIL on the selected-house check.
+- Test names ok; clang-format 23.1.3; `ui_layout.py validate` ok. WSL: GCC/Clang without GPU
+  clean; with GPU only the known `extensions_test.cpp` (ANNO_EXTENSION_ORACLE_FILE).
+- NOT_RUN: GPU window live (composer checked), Linux/Mac CI, HE live run, origin/main merge.
+- Decisions: account rows only with live accounts; rows by statistic index, not sim name;
+  64-bit, empty on overflow (no 32-bit wrap); "?" page = status bar city; a fact is the row's
+  text even while its page is hidden.
+
 READY FOR REVIEW.

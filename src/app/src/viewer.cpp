@@ -17,6 +17,7 @@
 #include <thread>
 #include <vector>
 
+#include <anno/app/balance_rows.hpp>
 #include <anno/app/dev_feedback.hpp>
 #include <anno/app/dev_script.hpp>
 #include <anno/app/frame_projection.hpp>
@@ -813,6 +814,9 @@ class Viewer {
     std::optional<sim::CityRef> hud_counters_city_;
     /// Whether any frame drew the HUD yet (the fact says "not drawn" until then, R4).
     bool hud_counters_drawn_ = false;
+    /// UI-TABS-1 stage B: the balance pages' figures the last frame had (HudCounters::rows; the
+    /// `hud.row.<value>` facts).
+    std::map<std::string, std::int64_t> hud_rows_;
     /// Shows view `view` at the sub-tab it showed last (a main-tab press), closing the
     /// construction menu first.
     void select_hud_view(const std::string& view);
@@ -3079,6 +3083,17 @@ void Viewer::script_tick() {
                                                  : std::string("none");
     st.facts["hud.view"] = hud_tabs_ ? hud_tabs_->view().name : std::string("none");
     st.facts["hud.subtab"] = hud_tabs_ ? std::to_string(hud_tabs_->subtab()) : std::string("none");
+    // UI-TABS-1 stage B: each balance row's figure as drawn (balance_text) while its page shows,
+    // or "empty" (no source), for every hud.txt element with a `value` (docs/re/ui.md 5.5).
+    if (construction_menu_ != nullptr) {
+        for (const UiElement& el : construction_menu_->hud().elements) {
+            if (el.value.empty())
+                continue;
+            const auto it = hud_rows_.find(el.value);
+            st.facts["hud.row." + el.value] =
+                it != hud_rows_.end() ? balance_text(it->second) : std::string("empty");
+        }
+    }
     // UI-INFO-2: the rotation the info panel's preview shows (DevInput's, the one the keys and
     // the rotate arrows turn), and the turn the map ghost is drawn and a click builds at
     // (DevTool::turn: the same, or the coast's turn for a coast kind such as the Kontor).
@@ -3770,6 +3785,7 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
         const auto in = construction_hud_inputs();
         hud_counters_shown_ = in.counters.tools.has_value() || in.counters.residents.has_value();
         hud_counters_city_ = in.counters_city;
+        hud_rows_ = in.counters.rows;
         hud_counters_drawn_ = true;
         // UI-INFO-1: the armed type's name, preview, costs and upkeep (live registry).
         auto info = construction_placement_open_ && dev_ != nullptr && dev_->setup().registry &&
@@ -3998,7 +4014,18 @@ Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
                          whole_tons(goods_wood_),
                          whole_tons(goods_bricks_),
                          whole_tons(goods_marble_),
-                         centred != nullptr ? centred->population : std::nullopt};
+                         centred != nullptr ? centred->population : std::nullopt,
+                         {}};
+    // UI-TABS-1 stage B (docs/re/ui.md 5.5): the balance pages' figures. The player overview sums
+    // over every city of the local player (none yet: the sums are 0, as the original's loop over
+    // an empty list); the "?" view's city page shows the status bar's city (`centred`, the
+    // owner's R4 rule) - the original shows the city whose Kontor or marketplace was clicked,
+    // which the rebuild does not open yet (OQ-691).
+    if (snapshot != nullptr) {
+        counters.rows = balance_row_values(
+            BalanceInputs{snapshot->cities.get(), centred, snapshot->accounts_live,
+                          snapshot->stat_shown_num, snapshot->stat_shown_den});
+    }
     // ADR 0004 row 18 (W4-NEXT-2 K): draw only once the sim's own answer for the selected
     // building, not the click itself, confirms it is a house - selection.hpp's own doc comment
     // ("the answer selects it... every later answer re-checks the building's id").
@@ -4070,6 +4097,7 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         const auto in = construction_hud_inputs();
         hud_counters_shown_ = in.counters.tools.has_value() || in.counters.residents.has_value();
         hud_counters_city_ = in.counters_city;
+        hud_rows_ = in.counters.rows;
         hud_counters_drawn_ = true;
         // UI-INFO-1: the armed type's name, preview, costs and upkeep (live registry).
         auto info = construction_placement_open_ && dev_ != nullptr && dev_->setup().registry &&

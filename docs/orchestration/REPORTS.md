@@ -16139,3 +16139,91 @@ Decisions and reasoning:
 
 NOT_RUN: original/HE runtime, Windows/WSL game-file runs, full suites/pins/warnings, LSan, allocator failures, World/cache/native integration, farming policy/post-island/fauna/UI.
 QUESTIONs: none blocking bounded review. Next finite task: reached DISCOVER header 53 and actual loaded scalar/callback contract before another continuation.
+
+
+## 2026-11-19 — WILDLIFE-DISCOVER-1 — READY FOR REVIEW
+
+Tested source `ddab0993589f04524c61bdc329f58a401e9f24c6`, tree `83ff22247f4f9207083e5606047a5b8c9d1b9177`.
+Base `02111ea2`; dispatch `74e978be`, no board/main merge.
+[Contract](../sim/wildlife-discover.md) and
+[frozen evidence / acceptance / hashes](evidence/wildlife-discover-1.md).
+Independent orchestrator review pending; exact publication head/tree/CI in handoff.
+
+D1: AnnoWelt 0x10089977–0x100899cb, tag0x100dcec8, exact comparison.
+Payload helper 0x100b4c40–0x100b4c5f, declared length getter 0x100b4b10.
+Low WORD0x100899ab REPLACES island+0xa6 at 0x100899b6; no union/clamp.
+Saver 0x1008a669–0x1008a6a0 emits4 bytes; adjacent upper word ignored on load.
+Reset 0x1008c740–0x1008c7c0 clears+0xa6; not a header-completion claim.
+Unchecked original short I/O is not safely emulated; wrong lengths refuse.
+No direct tile/resource/occurrence mutation, gameplay callback or world draw.
+INFO citation corrected through 0x10089802/store 0x100897ee; no old gate repeated.
+
+D2: optional owned widened scalar plus per-header completion, no World member.
+Absence versus zero, source ordinals and prior effects remain distinct.
+D3: two direct cases342/342 assertions; max65535/no player cap, asymmetric words,
+zero, absent, duplicates, malformed lengths0/1/2/3/5/8 and owned chronology.
+Actual-TU union mutant applied exactly once; legal63/63, wrong62 pass/1intended
+final-mask assertion failure. Canonical source untouched and rebuilt.
+Raw Python parse independently derives header53 length4/low0/upper0.
+Same original Debug once: DISCOVER 53 completes, stops KONTORID 54.
+54 completed headers,55 evidence rows including boundary; HIRSCH 71 unreached.
+Prior4760 accepts/4589 draws/16 epilogues/fertility8160 changes retained.
+BERGWERK9 entries/20 nodes + OCCUR1 ore/1node, Q512000/R1/20masks17 unchanged.
+ANBAU135 bytes/13 tokens/seed61449/mask65535,0 spawns, DISCOVER0 draws.
+Supplied500/mode0/draw7 does not prove original global initialization/cursor.
+
+D4: Debug18 main+3 required=21passes, ASan18 main+3 required=21passes,
+original Debug1/1; zero failures/skips/empty/incomplete/sanitizer/refusal/timeout.
+Raw gate lines, repeated required rows included verbatim:
+
+`cache/wildlife-discover-1/debug-final.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=18 executed=18 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+
+`cache/wildlife-discover-1/asan-final.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=18 executed=18 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+
+`cache/wildlife-discover-1/original-final.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+
+Apple 21/GCC 15.3 O3 strict Werror, 2 TUs pass; shadow control rejects.
+clang-format 23.1.3, sim lint, links and diff check pass.
+Inherited duplicate-library linker warning disclosed; no whole-build zero-warning claim.
+276 fixture files byte-equal base,0 pin/fixture changes; not full pins.py.
+Host M5 Max/18 logical/48 GiB/macOS 27.0.1, jobs1/admission enabled,1.5 TiB free.
+
+Decisions and reasoning:
+- Widen original16 bits without importing normal-loader player-slot policy.
+- Preserve optional zero/completion and prior diagnostic state, not unsafe stack I/O.
+- Reuse unchanged resource algorithms/long campaigns; rerun affected prefix paths.
+- Stop at KONTORID, no silent skip to HIRSCH; keep derived-cache rebuild obligation.
+- Historical frozen source receipts preserved; citation correction only in live contract.
+
+NOT_RUN: full suite/pins.py, Windows/WSL, original runtime/HE, World/native/save,
+visibility/diplomacy, post-island/global callbacks, later wildlife, derived consumers.
+Hosted CI pending at publication; direct review handoff proceeds per packet.
+QUESTIONs: none for this finite header. No new defaults/state/tags/registry identity.
+Status: READY FOR REVIEW; source-to-publication changes report/evidence only.

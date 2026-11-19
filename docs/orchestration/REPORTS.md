@@ -17924,3 +17924,76 @@ Decisions and reasoning:
 - Admit interior halo separately from original retention; unavailable metadata refuses instead of invented false.
 - Reuse unchanged habitat/maintenance/type binders; compose explicit local context, no live-fauna claim.
 QUESTIONs: none within this bounded profile. STOP pending orchestrator review; no gameplay continuation started.
+
+## WILDLIFE-IMPORT-PLAN-1 — 2026-11-19 — READY FOR REVIEW
+
+Branch `task/WILDLIFE-IMPORT-PLAN-1`, reviewed base ee675166, dispatch 7f448187 I0–I5.
+Tested `39b49ddca0759715cc38b1e7e7e5b2393350605c`, tree `c390e0ca96444e46ebdabed1c5d618606801aab5`; publication docs only.
+[Contract](../sim/wildlife-import-plan.md), [raw evidence and hashes](evidence/wildlife-import-plan-1.md).
+I0: GOG HIRSCH 0x10094744–0x10094797, prepend 0x1007bd50, BERG 0x10077f74–0x10077f87,
+OCCUR 0x10095242–0x10095255 share chunk+0xc head; category presence bits 1/2/0x40 proved separately.
+I1: `reconstruct_wildlife_import` validates source identities/counts/geometry and both projections.
+Sort source header/record/footprint ordinal, then prepend; never concatenate categories or sort positions.
+Local source tokens reserve [0,N) including off-chunk insertions, never World/Figure IDs.
+Owned typed BERG/occurrence sidecars retain full accepted payload and ignored-load provenance.
+Only spawn known fields populated; unknown saved ID/high bit/byte 11 stay optional/unknown.
+I2: supplied non-presence optional u16/provenance required; zero valid; overlapping 0x43 refused.
+Source-derived represented bits combine with supplied disjoint flags; context retained through errors.
+I3: `prepare_wildlife_import_plan`: imported -> source habitat -> maintenance -> final facts -> selection.
+Existing algorithms unchanged; source-admission errors separate from original effect order.
+Runtime time/allocation/tokens/flags explicit; species climate/Game identity cross-checked.
+Owned completed artifacts + precise child failure retained; no successful partial sweep/rollback fiction.
+Three named draw domains stay separate: authored example prefix 100/maintenance 5/selector-only 10.
+I4: actual prepared synthetic interleaving [7,6,2,1,0], footprint across 4 chunks, ignored duplicate OCCUR.
+Maintenance final [1001,1000,7,6,2,1,0], collisions reuse same node, exact suffixes/unsupported selection.
+3 authored cases/318 assertions, malformed links/sources/indices, flags, known zero, owners/repeat/input preservation.
+Five actual semantic mutants reject (group order 13 assertions, chronology 15, duplicate 3, zero-ID 4, replay 1).
+First replay control compiler-unused failure preserved/not counted; corrected only that private control.
+Original Tutorial chunk (10,2) has imported token 21/header 71/record 0/position 47/time 8/goods 0.
+177 represented insertions independently raw-decoded; target 1 actual spawn, no original interleaving claimed.
+Original runtime authored time 10000/flags 0x8000; prefix 4745/maintenance 0/selector-only 2; 44 assertions.
+First original expectation wrong: goods 0 matches slot 2/type 528 after 3 inspections, independently proved.
+Only three expectations corrected; actual failed source/binary/logs retained. Compiler/edit failures in evidence.
+I5 Debug `cache/wildlife-import-plan-1/debug.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=25 executed=25 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+ASan/UBSan `cache/wildlife-import-plan-1/asan.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=25 executed=25 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+29 unique/profile; four required original cases + 25 main, game/oracle paths set, admission on/jobs 1/threads 2.
+No refused/timeout/skip/empty/incomplete/sanitizer result, no whole-gate rerun. Actual binaries retained.
+Strict Apple Clang 21/GCC 15.3 O3/Werror two TUs pass; shadow control rejects; format/lint/diff/links pass.
+0 compiler warnings; inherited duplicate-library linker warning disclosed. No broad/heavy/opening/pins campaign.
+1027 frozen identities/292 fixture working bytes unchanged; prior owned113/128/50/114/110 receipts intact.
+Initial fixture-vs-Git check exposed pre-existing CRLF; exact predecessor working-byte check passes, no edit.
+116 closeout artifacts, manifest SHA256 `1f27ae66f95ca48b4feb8460185440b72e84b05cdd0ac38c6519e8c3ca69787d`; see evidence for binary/log hashes.
+Hosted exact-head CI read after own-branch push; pending hosted closeout and independent review belong to orchestrator.
+NOT_RUN: native manager/allocation/omitted categories/flags, whole sweep/global draws, geometry/caves/creation/actions,
+World/save/default/identity/navigation/FP, original/HE, Windows/WSL, full/heavy/opening/pins, LeakSanitizer.
+Decisions and reasoning:
+- Reconstruct shared chronology from original provenance; validate both category projections without recursive graph walks.
+- Keep resource payloads typed and unknown spawn fields unknown; explicit disjoint flag context prevents invented zeroes.
+- Reuse reviewed local stages, with three draw domains and completed failure artifacts; no native-runtime completeness claim.
+QUESTIONs: none within this bounded profile. STOP for orchestrator review; no gameplay continuation started.

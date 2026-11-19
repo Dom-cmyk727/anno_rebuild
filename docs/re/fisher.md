@@ -732,6 +732,16 @@ was not newly closed here: retain [OQ-202](../open-questions.md).
 The zero-draw claim applies to the named standard getter bodies and fish
 projection, not an arbitrary substituted catalogue or transitive load session.
 
+**2026-11-19, D/P — first-call binding narrowed:** the earlier caller/array
+limitation above is now followed for the fresh standard catalogue and type 2/11
+profile in [the producer read](wildlife-postload-inputs.md). Frame
+`0x10020108–0x100201d7` ->Game `0x10013776–0x10013789` constructs table
+`0x100215a4`; ENTRY insertion `0x1000329d–0x100032af` populates its array.
+Actual descriptor table is `0x10021a88`, whose relevant getters match those
+named above. Both loaded HEADs select the mean branch and code 2. This closes
+that finite first-call getter binding, not arbitrary reuse, catalogue mutation,
+global initialization or full postload execution; no new runtime test is claimed.
+
 | Position | Modulus | Selection | Condition |
 |---|---|---|---|
 | none | none | no draw consumed | Fish fill, complete `0x100928a0`–`0x10092b32`, with the standard catalogue/type getters named above |

@@ -31,7 +31,7 @@ indirect consumers succeeded. The rectangle lives on the caller's stack only.
 
 | Order / site | Receiver, concrete target and arguments | Proved writes / next edge | Closure |
 |---|---|---|---|
-| 1 / `0x100a2fc8` | WORLD +0x1d4 -> `0x100a1810–0x100a183c`, `(rect, island)` | If island byte +0xc2 is zero: island +0x1a4 -> `0x10084370–0x10084818`; ALWAYS island +0x1a0 -> `0x100928a0–0x10092b32`, same rect | Wrapper closed; reached Tutorial preprocessing skip proved. Fill closed for the addressed standard catalogue profile; actual catalogue binding remains U |
+| 1 / `0x100a2fc8` | WORLD +0x1d4 -> `0x100a1810–0x100a183c`, `(rect, island)` | If island byte +0xc2 is zero: island +0x1a4 -> `0x10084370–0x10084818`; ALWAYS island +0x1a0 -> `0x100928a0–0x10092b32`, same rect | Wrapper closed; reached Tutorial preprocessing skip proved. Fill closed for the addressed standard catalogue profile; fresh first-call catalogue binding narrowed in §10 |
 | 2 / `0x100a2fd7` | WORLD +0x1d0 -> `0x100aba70–0x100aba9b`, `(rect)` | WORLD +0xf8 -> `0x100aae00–0x100ab9ed`; then WORLD +0xbc getter, if nonnull object +0xc `(2, rect)` | Concrete standard-world bodies identified; coarse-map/secondary-raster equivalence is not supplied by current prefix |
 | 3 / `0x100a2fdf` | ISLAND direct `0x10085290–0x100853a9`, no rectangle argument | Whole-island graphics cleanup, conditional u16 writes at island +0x10 | Complete leaf; no callees or draws |
 
@@ -236,7 +236,7 @@ not rerun or presented as new passes.
 |---|---|---|---|
 | c2 predicate, valid completed FRUCHTBAR | PrefixHeader fertility completion and raw low nibble available | Model precomputed-ground presence separately from data nonzero. Do not run absent branch with fabricated metadata | Capability input contract |
 | c2-zero preprocessing | None established for complete 84370–84818 | City/type properties 0x1c/0x2e, GFXID lookup, climate kernel and full-rectangle scratch preconditions; reads/writes fertility used by grass/farms | Separate bounded read, NOT silently folded into current Tutorial |
-| Full grass/fish fill, named standard 2/11 profile | fisher::fill_fish_resources and fisher_ref runtime_fish cover ONLY fish; fisher_corner/VertexGrid cover border geometry | Bind catalogue/type facts; grass threshold/code/mask writes missing. Existing code/draw defaults are not whole callback proof | Transient first-call apply, stop before navigation |
+| Full grass/fish fill, named standard 2/11 profile | fisher::fill_fish_resources and fisher_ref runtime_fish cover ONLY fish; fisher_corner/VertexGrid cover border geometry | §10 closes the fresh 2/11 profile; immutable fact validation and grass threshold/code/mask implementation remain. Existing fish helper is not whole callback proof | Transient first-call apply, stop before navigation |
 | Original +0x94 extrema | WorldTileSource::block_range is a candidate reconstruction | V9 sum-width mismatch AND separate min(mx,255) clamp require audit with exact extrema bytes; Game height metadata and anchor semantics before CoastIndex reads | Focused navigation-input verification/correction contract |
 | Coarse sea index | CoastIndex rebuild_rect, WorldTileSource, existing builder vectors | Whole world dimensions/island lookup, consistent lifetime and exact extrema/overlay inputs. Rebuild before route_plan's first read and after reload | Navigation adapter composition after input closure |
 | Additional +0x120 raster +generation | No equivalent proven here | Exact byte mask ->round ->OR can set bit 4 for converted bytes >=248; numeric profile/bound and consumers unread. Preserve/rebuild before readers, no cache exemption | Bounded secondary-raster contract |
@@ -359,3 +359,94 @@ is claimed. Catalogue binding, c2-zero ground preprocessing, full first-call fil
 second-call navigation/raster inputs and consumers, V9's sum-mask/clamp obligations,
 original aggregate draw closure and actual publication order remain unresolved
 and unchanged. See the [isolated leaf evidence](../orchestration/evidence/wildlife-gfx-finalize-1.md).
+
+## 10. First-call input capability — WILDLIFE-POSTLOAD-INPUTS-1
+
+2026-11-19, D/P/C/H. [Addressed producer/lifetime read](../re/wildlife-postload-inputs.md).
+This supersedes §3's store-only limitation for the **fresh standard first-call
+2/11 mean profile only**. It does not close OQ-202 globally or bind arbitrary
+reuse receivers. No fill implementation, catalogue rewrite or pipeline wiring is
+added. The §9 graphics helper remains UNWIRED.
+
+D: Frame 0x10020108–0x100201d7 creates kind 0x101 through AnnoGame's factory,
+checks initialization, and later supplies the global pointer as Scene factory
+argument 3 at 0x10020792–0x100207a6. Game constructors install catalogue
+0x100215a4 and descriptor 0x10021a88, not an assumed base descriptor. Anlagen.dat
+ENTRY keys populate +0x214+4*id through 0x1000329d–0x100032af. The type setter
+stores the low u16 id; lookup itself has no bounds/null defense. Keys 2 and 11
+and all relevant concrete slots are independently checked. The existing Scene
+->world->island chain then binds fill's two lookups. Reuse/injected catalogues
+remain a separate validated-input domain, not automatically the same object.
+
+### Capability and ownership boundary (proposed, not implemented)
+
+| Input / fact | Required validation before any effect | Lifetime / modern source |
+|---|---|---|
+| Precomputed ground | Completed local-header sequence and successful FRUCHTBAR completion trace, including a zero update count; no inference from nonzero bytes. Missing completion refuses c2-zero as unsupported | PrefixHeader::fertility_updates plus PreparedIsland::complete_local_records; retained raw Terrain and owned effective variation |
+| Ground geometry/identity | Effective variation exactly W*H; low nibble agrees with last completed raw FRUCHTBAR plane. Raw payload/high nibble is NOT interchangeable with the effective plane | Session's owned variation preserves prior high variant bits; Terrain retains raw fertility. Fill reads low nibble only and preserves the entire effective plane |
+| Catalogue/profile binding | Explicit original role ids 2/11 resolved from unique loaded entries, validated source/profile identity; no null or missing lookup fallback | Copy small validated id/flags/mean-profile/walk facts, or retain shared const registry for every query; never borrow local parser buffers |
+| HEAD and returned values | Present unique supported HEAD, original zero-extension to 56 bytes, registry flags/head/id agree with parsed facts; flags&3==1. Grass walk code from addressed HEAD encoder/getter at rotation 0 | TypeRegistry owns head_raw, flags_word and TypeId after loader's temporary bytes die. Builder-created arbitrary values are not automatically original-profile evidence |
+| HEIGHT and tile geometry | Positive validated dimensions, widened W*H length arithmetic, exact HEIGHT length, matching Terrain digest, identical TileLayer rectangle/origin; clipped half-open signed rectangle | Retain shared const Terrain through all borrowed VertexGrid use; logical W/H border zero, no arbitrary padding interface |
+| Occupancy and tile fields | Whole nonzero object word/id skips; no low-14-bit mask. Unknown occupied ids need no descriptor lookup for this callback. Existing per-cell channel lengths must be valid | Owned TileLayer output from one copy; input object/aux/phase/offset/anchor fields untouched on refusal |
+| Optional supplied draw suffix | Named concrete profile only; no draw source invoked and consumed count unchanged | No global RNG or pointer to a mutable generator; no aggregate initialization claim |
+
+C: `load_original_registry` owns its temporary raw buffers only during parsing;
+`TypeRegistry::build` copies HEAD into owned head_raw and seals immutable types.
+The relevant metadata already exists: TypeId, flags_word, head_raw and the
+existing walk_code(type, 0). **walk_class is not this walk-code getter**. Existing
+resource_metadata validates WARE/selector facts for another purpose and does
+not establish these HEAD/registry cross-checks. A small explicit immutable fact
+view/capability must add that validation; a bare TypeRegistry reference is not
+sufficient evidence. Neither goods lookup nor descriptor float height is needed
+by the selected mean branch. No original catalogue array or 4000-type engine cap
+is copied into the rebuild.
+
+D/C: original role selectors are addressed constants; their values and metadata
+are resolved against loaded entries, not a compiled copy of those entries or a
+search for any WARE named grass/fish. Data-defined alternate descriptors can use
+the existing parsed-entry / TypeRegistry::Builder seam only with explicit role
+binding and the same validated mean/getter semantics. This does not introduce a
+mod API or authorize changing the original default selectors. Other height
+profiles or unbound concrete behavior are Unsupported, not guessed zero-draw
+fallbacks. TypeId/geometry stay widened; original file u16/u32 widths are recorded
+at the boundary rather than imposed as engine content limits.
+
+The future apply is one synchronous owned transaction. It validates the complete
+capability before writes, clones the tile output once, retains HEIGHT backing,
+and exposes no partially successful output on refusal. Terrain/ground/variation
+bytes and Terrain digest remain unchanged: this first-call fill writes tile
+objects/offsets/phase/aux/code/mask, not raw terrain. Existing TileLayer setters
+must maintain dirty chunk digests; compare to independently rebuilt tile fields.
+Successful result owns the tile output and retains any referenced immutable
+inputs. No borrowed query may survive its owner. No persistent state/tag/version
+or default change is decided by this contract.
+
+### Acceptance and next implementation
+
+| Decisive fact | Primary + independent positive / nearest wrong case | Current disposition |
+|---|---|---|
+| Concrete array/slots | Game 0329d/037e4, table 215a4/21a88; keys 2/11 select offsets 21c/240, not consecutive slots | 8 PE binding checks pass; static, original runtime NOT_RUN |
+| Loaded mean profile | HEAD flags 0x29; Game 08fae–08fdf; corners 1,18,53,255 ->81, not 1/255/82 | Existing Python reference checks both raw profiles; forcing mode 0 produces actual 0 instead of 81 |
+| Walk producer/default | Game 0940b/091f0/07dc0; shipped first/shape 2/3 ->2, authored 3/0 ->3, 0/0 ->constructor 4 | 8 rotation predictions and 2 authored existing-helper controls pass; not C++ or runtime execution |
+| Presence before fill (V1) | Welt 89565/a1815: all-zero completed FRUCHTBAR still skips preprocessing; absent completion refuses modern capability | Prior addressed completion proof reused; new capability rejection test NOT_EXECUTED |
+| Occupancy/strict means (V2) | Whole object 0x4000 skips. Means 15/16/31/32 ->fish/empty/empty/grass-eligible | Four scalar height boundaries checked; full fill/occupied write checks NOT_EXECUTED here |
+| Unsigned fertility (V3) | Welt 929ee–929f6: low nibbles 5/6/13 ->50/60/130, only latter two >50; high nibble ignored | H; full branch/write model NOT_EXECUTED |
+| Different grass/fish writes (V4/V5) | Bound grass code 2: old aux abcdefaa, mean 32 ->aa000220. Fish mean 15 ->abcdef0f and phase ff->80 | H, rechecked against bound getter values; future full-field causal controls, NOT_EXECUTED here |
+
+Next finite implementation files: a focused `wildlife_postload_fill.hpp/.cpp` in
+sim_load, its sim test translation unit and CMake source entry; extend a bounded
+postload reference/vector/contract only for this proved first-call domain.
+Do not wire prepare_wildlife_prefix, normal loader or World in that unit. Controls:
+all-zero completed/missing ground; malformed/inconsistent facts rejected before
+effects; occupied whole-word preservation; asymmetric quad and 15/16/31/32;
+unsigned fertility 5/6/13 including high-bit ground; distinct grass/fish full-word
+writes with nonzero old mask/code/phase/anchor; exact draw suffix; owned lifetime,
+immutable success/failure and correct dirty digests. An authored grass code 3
+and pre-existing fish code/mask must distinguish wrong constant-2 or grass-style
+fish writes even though both shipped descriptors' own codes happen to be 2.
+
+Original wrapper ordering remains preprocessing-if-needed ->fill; this capability
+admits only the branch with proved precomputed ground. Stop before the separate
+navigation/raster callback and whole-island graphics cleanup. c2-zero preprocessing,
+V9 sum/clamp, raster consumers, broader catalogue mutation/reuse, global draw
+initialization and eventual World/native publication are NOT newly closed.

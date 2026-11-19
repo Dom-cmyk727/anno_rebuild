@@ -285,7 +285,7 @@ DevToolSetup dev_tool_setup(const PlayLoad& load, sim::PlayerId player) {
         std::vector<sim::BuildingId> ids;
         world.rect_query(*s.city, sim::TileRect{s.island.x0, s.island.y0, s.island.w, s.island.h},
                          ~0U, ids);
-        const auto& warehouses = world.config().cargo.warehouse_prodtypes;
+        const auto& warehouses = world.rules().cargo.warehouse_prodtypes;
         for (const sim::BuildingId id : ids) {
             const sim::Building* b = world.find_building(id);
             const sim::BuildingType* type =

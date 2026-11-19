@@ -1,6 +1,6 @@
 # WILDLIFE-FINAL-FACTS-1 — independent review
 
-2026-11-19. LOCAL REVIEW APPROVED; exact-head hosted CI pending.
+2026-11-19. LOCAL REVIEW APPROVED; exact-head hosted CI FAILED. See update below.
 
 - Publication `454bc2ea96e58481d3b3b48875ef04a5f64ee449`, tree
   `fd730ccd73ae28daa29223a40ebe37bc4ff314af`.
@@ -95,3 +95,18 @@ one interior chunk plus halo, prove the actual property-7 getter and growing
 substitution, then feed the existing habitat leaf and ordered maintenance planner.
 No original boundary policy or missing metadata is guessed. Main and other lanes
 remain untouched, and new hosted failures must be reported rather than waived.
+
+## Hosted failure retained — Windows intake
+
+Run44533934657 at454bc2ea ended with10 successful jobs, failed MSVC test job and
+failed aggregate. Compilation passed. The public MSVC annotation names:
+`anno_test_support_tests.C2: a coordinator that stops answering ends a blocked wait within the bound`,
+`budget_f2_test.cpp:450`, `REQUIRE(has(holder_line,"READY 1"))` false;
+6 assertions,5 passed,1 failed, case duration0.21s. Root cause is UNKNOWN.
+This is not evidence that the wildlife implementation caused the failure, nor proof
+that the coordinator failure is benign. No coordinator repair or rerun is authorized
+inside the wildlife packet. The later HABITAT all12 green run does not waive or
+explain this exact-head failure. Windows orchestration owns landing disposition.
+Root's public jobs receipt SHA256:
+`719ba6874dc6219bb4829f46688ec7b96db5fe5f55da3a5e451acf6ea0d6e019`.
+This is a forwardable intake record, not a claim of delivery to a Windows chat.

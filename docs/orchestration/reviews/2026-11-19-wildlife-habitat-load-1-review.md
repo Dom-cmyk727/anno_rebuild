@@ -1,6 +1,6 @@
 # WILDLIFE-HABITAT-LOAD-1 — independent review
 
-2026-11-19. LOCAL REVIEW APPROVED; exact-head hosted CI pending.
+2026-11-19. ACCEPTED for the bounded source-composition scope; Windows landing pending.
 
 - Publication `ee67516642de3a9ff6ac1e0986f1a17c1be2ad41`, tree
   `420a9c437bba140b6c8229fb352ab564ebce9222`.
@@ -85,3 +85,12 @@ original mixed chunk list from retained imported-source chronology, validate bot
 projected sublists and preserve resource payloads and explicit flag context. Then
 compose existing habitat maintenance and materialization planning. This replaces
 authored records, not the still-supplied native runtime/allocation/geometry context.
+
+## Hosted acceptance update
+
+All12 jobs, including MSVC and the aggregate gate, succeeded at exact publication
+`ee67516642de3a9ff6ac1e0986f1a17c1be2ad41` in CI44538298514. Root verified the
+public jobs receipt (SHA256
+`d075df0b143efe8b3e807a9d92e8c714a533644795e0fe780f0bdc8304cea3d3`).
+Together with the independent reviews this closes bounded acceptance. No local gate
+was repeated. The older FINAL-FACTS failure remains separately recorded and unexplained.

@@ -37,7 +37,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife rock correction [WILDLIFE-ROCK-FIX-1](tasks/wildlife-rock-fix-1.md) | LOCAL REVIEW APPROVED; P2 closed, prose-only | `6c6554a2` | Frozen-source gates reused; exact CI pending | [Focused review](reviews/2026-11-19-wildlife-rock-1-review.md) |
 | Wildlife fertility header [WILDLIFE-FERTILITY-1](tasks/wildlife-fertility-1.md) | LOCAL REVIEW APPROVED; publication cleanup verified, CI pending | `81026d1b451955d9167649cb3b8b2e3f5648d120`; source `12586595` | [44425779949](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44425779949), in progress at handoff | [Review](reviews/2026-11-19-wildlife-fertility-1-review.md) |
 | Wildlife BERGWERK2 [WILDLIFE-BERGWERK-1](tasks/wildlife-bergwerk-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `03fff3c6ffc2e3c0bbd52f5e8f24c0fc083afb94`; source `7e4ac88f` | [44428107745](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44428107745), in progress | [Review](reviews/2026-11-19-wildlife-bergwerk-1-review.md) |
-| Wildlife occurrences [WILDLIFE-OCCUR-1](tasks/wildlife-occur-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `03fff3c6` | Not started | Frozen reportback directly to Mac orchestrator |
+| Wildlife occurrences [WILDLIFE-OCCUR-1](tasks/wildlife-occur-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `5bcd50c5b22be0d134fb63473680f321a7870ba4`; source `8c2de16c` | [44432068823](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44432068823), in progress | [Review](reviews/2026-11-19-wildlife-occur-1-review.md) |
+| Wildlife ANBAU header [WILDLIFE-ANBAU-1](tasks/wildlife-anbau-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `5bcd50c5` | Not started | Frozen reportback directly to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -668,3 +669,21 @@ scene assignment. Implement only the proved transient slice and stop at unsuppor
 classes/effects or next header. No whole factory, World/native/tag/default changes.
 Executor ordinary-pushes its task branch and reports frozen results directly here
 for independent review and next release. Main/other lanes untouched.
+
+
+## Latest dispatch — OCCUR reviewed; ANBAU released
+
+OCCUR5bcd50c5/source8c2de16c is independently locally APPROVED, no blocking
+findings. Primary and tests/evidence reviews verify the bounded class145/goods1–8
+constructor/attach/load, shared lists, duplicate selection and reached mask callbacks.
+Original one ore/Q512000/R1/node21/all20 masks16→17 independently reproduced.
+57 hashes and276 unchanged fixtures checked. Debug12+3required, ASan12+3required
+and original1 pass; no corrective work or repeated gates. ExactCI44432068823 and
+predecessor BERGWERK CI remain pending, not acceptance.
+
+[WILDLIFE-ANBAU-1](tasks/wildlife-anbau-1.md) is RELEASED after independent dispatch
+review. Establish actual header52 fields, ordering and reached effects/callbacks,
+then extend only that transient slice and continue once to the next boundary.
+No assumption that crop-named metadata is inert, no other-lane crop policy,
+World/native/tag/default changes or extra header expansion. Executor ordinary-pushes
+its branch and reports frozen results directly here. Main/other lanes untouched.

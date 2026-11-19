@@ -65,7 +65,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife chunk planning [WILDLIFE-CHUNK-PLAN-1](tasks/wildlife-chunk-plan-1.md) | LOCAL SEMANTICS APPROVED; CI FAIL, correction released | `95d2eb0f4bf09c559413ef380fba3fd4281939ff`; tested `ef8fcb48` | [44522148816](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44522148816), MSVC build and Linux dependency setup fail | [Review](reviews/2026-11-19-wildlife-chunk-plan-1-review.md) |
 | Wildlife materialization planning [WILDLIFE-MATERIALIZE-PLAN-1](tasks/wildlife-materialize-plan-1.md) | LOCAL SEMANTICS APPROVED; portability blocked | `1c027079fd0d431fae1613df839f1bde9c38d2bc`; tested `49c9ddb3` | [44528637255](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44528637255), pending | [Review](reviews/2026-11-19-wildlife-materialize-plan-1-review.md) |
 | Wildlife planning portability [WILDLIFE-PLAN-CI-CLOSE-1](tasks/wildlife-plan-ci-close-1.md) | LOCAL REVIEW APPROVED; hosted target proof pending | `86e24940256d2cadf17a585b31b836b02701ae9e`; tested `1b078d95` | [44530293046](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44530293046), pending | [Review](reviews/2026-11-19-wildlife-plan-ci-close-1-review.md) |
-| Wildlife final tile facts [WILDLIFE-FINAL-FACTS-1](tasks/wildlife-final-facts-1.md) | RELEASED; locally reviewed stacked continuation | Base `86e24940256d2cadf17a585b31b836b02701ae9e` | Source-backed actual tile/type inputs; cave facts remain explicit | Direct reportback to Mac orchestrator |
+| Wildlife final tile facts [WILDLIFE-FINAL-FACTS-1](tasks/wildlife-final-facts-1.md) | LOCAL REVIEW APPROVED; CI pending | `454bc2ea96e58481d3b3b48875ef04a5f64ee449`; tested `39a5c67f` | [44533934657](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44533934657), pending | [Review](reviews/2026-11-19-wildlife-final-facts-1-review.md) |
+| Wildlife habitat source [WILDLIFE-HABITAT-LOAD-1](tasks/wildlife-habitat-load-1.md) | RELEASED; locally reviewed stacked continuation | Base `454bc2ea96e58481d3b3b48875ef04a5f64ee449` | Interior chunk/halo source facts and maintenance composition | Direct reportback to Mac orchestrator |
 | Windows dual-edition navigation [WIN-NAV-EDITIONS-1](tasks/windows-nav-editions-1.md) | Owner-requested HANDOFF READY; Windows intake pending | Accepted diagnosis `74d50bfe`, production base `889143ba` | GOG and HE verification requested; no repair released | Owner forwards to Windows orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
@@ -1328,3 +1329,21 @@ fabricated cave geometry. A bounded real-source case and distinguishing controls
 replace authored tile/type assumptions without claiming live fauna or full load.
 No World/state/default/identity/PRNG/navigation/FP changes. Executor pushes only
 its own branch and reports directly here; main and shared boards untouched.
+
+## Final facts reviewed; habitat source composition released
+
+FINAL-FACTS454bc2ea is independently locally APPROVED by both reviewers. Primary
+review re-derived the original getters and all64 selected source rows; evidence
+review verified128 receipts/1023 frozen identities,16 passing cases per profile
+and four actual semantic mutants. Root verified all128 hashes. Real sources and
+authored records/draws remain labelled. Historical live-path changes and the stale
+zero-case probe are disclosed, not counted as proof.
+
+CI44533934657 and portability correction CI44530293046 remain pending. Old failed
+CHUNK/MATERIALIZE heads remain failures; no passing local gate was repeated.
+WILDLIFE-HABITAT-LOAD-1 is independently scope-approved and RELEASED on454bc2ea:
+bind one interior chunk plus halo from actual prepared cells, close the source
+property-7 getter, resolve growing successors and compose the accepted habitat
+and maintenance functions. Border behavior, cave geometry, World/default/identity/
+PRNG/navigation/FP remain outside scope. Executor ordinary-pushes its task branch
+and reports directly here for review. Main, shared boards and other jobs untouched.

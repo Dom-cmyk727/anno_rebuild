@@ -17111,3 +17111,59 @@ Decisions and reasoning:
 
 NOT_RUN: broad/full gates, old mutants/original C++ rerun, original executable/HE/Windows runtime, new kernel/World/fill work,
 full pins/warnings and LeakSanitizer. QUESTIONs: none. Independent focused re-review pending; no reviewer agents.
+
+
+## 2026-11-19 — WILDLIFE-KERNEL-LOAD-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-KERNEL-LOAD-1`, base `fe4355fd`; dispatch `56ff354aa9a19349a4eab0d6255c6e448340edd2`, no board/main merge/rebase.
+- Contract/authored builder first commit `4ee6e535`; frozen source `fb6c7f524790ff6ca9c6d882a26687581d206425`, tree `c2f051e970c0fb6ca66d7d707c989ca539f6bb1b`.
+- Final publication changes report/evidence only; exact pushed head/tree and CI URL accompany direct handoff before CI terminal.
+- [Contract/acceptance table](../formats/annowelt-ground-kernel.md) and [full evidence/identities](evidence/wildlife-kernel-load-1.md); independent orchestrator review pending.
+- D: Welt `0x10084670–0x10084698`, RVA `0xca008 + 25*selector`, unsigned 5 × 5 bytes; supported observed selectors 0–6, NOT complete table extent/global climate limit.
+- Add `formats::annowelt::read_ground_kernel(Bytes, uint32_t)` -> owned `GroundKernel` / string error; selector/RVA/raw offset/profile/source SHA retained.
+- PE32/I386 stamp/image/base identify layout, not unchanged-original authenticity or city/scene provenance; synthetic matching profiles deliberately supported.
+- Add only virtual size/characteristics and strict readonly window query to private PE helper; legacy mapping/error priority unchanged.
+- Whole 25-byte window fits virtual and raw extents, selected section has full backing, READ/no WRITE; duplicate/partial/virtual-only overlaps refuse in both orders.
+- Widened image/section/raw arithmetic; huge fields tested in small images; zero-length section is not ambiguous coverage.
+- Hand-derived authored rows 0/6 compared byte-for-byte with nonidentity raw mapping; exact section/EOF end accepted, one-byte-short controls refuse.
+- Unknown backed row 7 refuses explicitly, not by incidental truncation; owned rows/SHA survive original buffer overwrite/free; refusal inputs stay unchanged.
+- Independent private pefile extractor precedes C++; recheck reproduces all original private artifacts; exact command, Python 3.14.6/pefile 2024.8.26 identities retained.
+- Module SHA `f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`; seven rows/175 bytes, private concat SHA `61d6b93386c1dd714d9bf99f89824934ea4bc33f3f3c05205ab88606b4ff7615`.
+- Both gates require original files and explicit private 175-byte oracle; all bytes compared, raw coefficients/listings never committed.
+- One owned AUTHORED kernel feeds 3 × 3 ground leaf; hand low outputs 9,9,5/8,8,3/8,5,1, high nibbles retained; not original island preparation.
+- Actual private TU causal control passes 6 cases/179 assertions; ignored selector and stride 24 each fail expected output (4 assertions), without decode refusal.
+- Strict-query bypass loses required malformed/ambiguous refusals; allowing selector 7 loses explicit domain refusal; four wrong implementations rejected, canonical source/binary unchanged.
+- First compile-only CAPTURE argument error corrected; first direct old binary selected 0 cases, NOT accepted evidence; both attempts preserved.
+- Rebuilt cheap checks: formats 6 cases/179 assertions; authored integration 1 case/4 assertions, all pass. Canonical results below supersede neither historical attempt by deletion.
+
+```text
+# cache/wildlife-kernel-load-1/debug-final.log — main
+COUNTS: selected=17 executed=17 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-kernel-load-1/asan-final.log — main
+COUNTS: selected=17 executed=17 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# Two separately required cases PER profile, each receipt:
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- Full evidence reproduces all six exact COUNTS/VERDICT receipts and both terminal GATE_END status 0 / ctest_rc 0; required cases excluded from main counts.
+- Required cases: exact boundary/backed unknown selector and seven original rows. Main also covers five old walk synthetics, three AnnoGame controls, four ground regressions and numerical connection.
+- No canonical failure, memory refusal, timeout, incomplete, empty, skip or sanitizer diagnostic; no whole gate repeated.
+- Frozen four executable/source/test pins, gate commands/inventories/log SHA256s and extractor/raw receipts published in evidence; manifest SHA `d0ecf09a6bb9ef420c5c602416a3bb779e49617ae982d63e3beb2660f37e03bd`.
+- Five affected/dependent TUs strict O3/Werror Apple Clang 21/GCC 15.3 clean; GCC shadow negative control rejected. Format 23.1.3/lint/diff-check pass.
+- Compiler warnings 0; inherited Apple duplicate-library linker warning preserved. Targeted warnings only; no full sweep claim.
+- All 292 tracked synthetic files unchanged; physical bytes frozen through gates. Inherited comments.dat CRLF bytes match predecessor receipt; no normalization or re-recording.
+- No World/native/Rules/default/identity/tag/pin change or production caller. HEAD/INFO/climate selection, empty-city facts, FRUCHTBAR and fill bindings remain separate.
+- Host M5 Max/18 logical/48 GiB/macOS 27.0.1; build jobs 2, gate jobs 1/inner threads 2, admission enabled; coordinator and awake assertion preserved; GPU unused.
+- Old growth CI 44475449514 cause remains UNKNOWN; corrected growth 44478146499/new kernel CI closeout belong to orchestrator. No credential search/install/old CI retry.
+
+Decisions and reasoning:
+- Keep source-layout checks local to formats, explicitly distinguish observed selectors from table extent and metadata profile from authenticity.
+- Use a separate strict window query so existing readers keep behavior; reject ambiguous/zero-fill/raw-padding windows before copying.
+- Compare independent original bytes separately from authored numerical connection; neither supplies original scene/city provenance.
+- Keep finite actual-source causal probes and first failures, reuse unchanged long/render/sailing/pins campaigns; stop at K5 UNWIRED binding.
+
+NOT_RUN: original/HE execution, other editions/full table extent, original scene/city/INFO/HEAD selection, World/native integration, full pins/heavy/long/warnings, Windows/WSL, LeakSanitizer.
+QUESTIONs: none blocking this bounded review; future source/caller integration needs a separate contract. Navigation decision/Windows raster observations unchanged.

@@ -14904,3 +14904,50 @@ READY FOR REVIEW.
   text even while its page is hidden.
 
 READY FOR REVIEW.
+
+## WIN-NAV-EDITIONS-1 — coarse navigation heights against GOG and the History Edition — READY FOR REVIEW
+
+Packet `docs/orchestration/tasks/windows-nav-editions-1.md` at `56ff354a`. Research only, on branch `task/WIN-NAV-EDITIONS-1` from main `b5c0ada2` (tree `5aae031d`). Evidence: `docs/orchestration/evidence/win-nav-editions-1.md`. N5's independent review is the orchestrator's. No production code, identity, default, pin or rule changed.
+
+**Result:**
+- **The rebuild's sum mask and clamp defect is confirmed for both editions.**
+  - GOG `AnnoWelt.dll`, HE `AnnoWeltAddOn.dll` (x86) and HE `AnnoWelt.dll` (x64, the module the HE game runs) all compute `(converted & 255) + base` with a widened sum, and halve the full maximum with no clamp (D at addresses traced in each edition's own code; E: each module's own producer bytes run in unicorn).
+  - Expected and emulated agree on all 13 rows in all three originals.
+  - The rebuild (R, private probe on the current `anno_sim`): canonical 3 mismatches, first at sum 256 (9/9 instead of 9/128); sum-mask-only correction 3; full correction 0; removing the component mask 1. This is the predicted pattern.
+- **One edition difference: the height conversion.**
+  - GOG uses x87 `fdiv` by 0.04f with `__ftol`; HE86 uses `divss`; HE64 uses `mulss` by 25.0f, both single precision.
+  - Over all 921 shipped types, five convert one unit higher in HE: FELSEN 1511/1522, KLIPPE 1552/1555, PIONIER 3960 (H, E).
+  - The rebuild's exact conversion equals GOG at 53/64-bit precision.
+  - Because these components are ≥ 44, the difference can never change a coarse class or shore.
+- **Shipped data:**
+  - Scope: GOG 515 scene files, 1,133 islands, 4.59 M placed objects; HE 571 files, 1,842 islands, 7.46 M.
+  - The overflow range is real: 337 (HE 580) placed objects have candidate > 255, up to 344, and 186 (325) blocks store a different maximum byte.
+  - **0 blocks change class or own-block shore.** Route impact is potential (authored or modded metadata), not demonstrated for shipped content.
+- **Thresholds:** 19 and 32 in all three. GOG computes them from DLL static initializers; HE compiles them in. The comparison order is the same.
+
+**Recommendation:** the faithful correction scoped as the Mac's `WILDLIFE-NAV-REPAIR-1`: component mask before the add, no sum mask, no clamp, the 13 rows as permanent tests, and no change to the fine rule or to `object_top_units`. Owner decisions, none taken here:
+1. which ADR 0006 section base version moves: `header` or `figures` (main has `kSectionVersions`, all at 1);
+2. whether to rebaseline pins and replays. Shipped scenes are expected to show no change; the repair packet's real-data canary checks it.
+
+No edition policy is needed for routing.
+
+**Gates:**
+- Docs only, so the C++ acceptance gates are not required and NOT_RUN.
+- The private probe (MSVC Release, `anno_sim` built from this base) is evidence, not a gate.
+- `git diff --check` is clean. Hosted CI is read after the push.
+
+**NOT_RUN:**
+- Original runtime observation in both editions (the HE session is the owner's).
+- A full route witness through `plan_route`.
+- Readers of chunk bytes `+2`/`+3` other than the builder in the originals.
+
+**Decisions and reasoning:**
+- **The HE module that matters.** HE's x64 `AnnoWelt.dll` is what `Anno1503.exe` loads. I traced it as well as the 32-bit twin and found its conversion (`mulss` 25.0f) differs from the twin's (`divss`). I located HE64's code by content (constants, call shape), not by slot arithmetic. Its tables are reordered.
+- **Running the rebuild on main.** The route files are blob-identical on main and on the Mac base `889143ba`, so I ran the probe on main. Main lacks `resource_import`, so I set the tile directly and checked it before the query. Legality rests on the Mac's import proof and on the shipped census, which shows real anchored objects at 256..344.
+- **Emulation instead of runtime.** I installed unicorn into a private venv under `cache/`, as the packet allows. GOG and HE86 ran at x87 PC 53, 24 and 64, and unicorn honoured the precision control: the shipped FELSEN row changes with PC. Only two stubs are used, and both mirror D-read bodies.
+- **Census approximation.** Every placed item's top-left tile counts as an anchor, even if a later item overwrites it. This can only add anchors, so "0 class/shore changes" is not made easier by it. Stated as an approximation anyway.
+- **The board.** I did not edit TASKS.md. Recording intake on the Windows board and any decision on the Mac stack stay with the orchestrator.
+
+**QUESTIONs:** none.
+
+READY FOR REVIEW.

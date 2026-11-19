@@ -53,3 +53,14 @@ full-world completeness and new defaults remain outside this result.
 and RELEASED from02111ea2. It establishes the actual reached scalar/import effects,
 implements only that transient arm, and continues once to the next unsupported
 boundary. Executor reports frozen results directly to the Mac orchestrator.
+
+
+## Exact-head CI closeout — 2026-11-19
+
+**ACCEPTED within the reviewed bounded scope.** Run [44436355753](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44436355753)
+has all12 jobs successful, each identifying `02111ea2139cfddf1e4018bcc229fd55d918056e`.
+Independent review remains applicable; no gate repeated. Jobs API receipt SHA-256:
+`b2324b392e03724050b5b5280b5317f5d7f347cd19f92f03741cf98509abda63`.
+This supersedes only pending-CI status; limits and preserved evidence remain.
+The nonblocking citation correction was carried by the DISCOVER packet.
+Windows owns stacking/landing; main untouched.

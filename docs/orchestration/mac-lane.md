@@ -38,11 +38,12 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife fertility header [WILDLIFE-FERTILITY-1](tasks/wildlife-fertility-1.md) | ACCEPTED; bounded transient header | `81026d1b451955d9167649cb3b8b2e3f5648d120`; source `12586595` | [44425779949](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44425779949), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-fertility-1-review.md) |
 | Wildlife BERGWERK2 [WILDLIFE-BERGWERK-1](tasks/wildlife-bergwerk-1.md) | ACCEPTED; bounded transient container | `03fff3c6ffc2e3c0bbd52f5e8f24c0fc083afb94`; source `7e4ac88f` | [44428107745](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44428107745), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-bergwerk-1-review.md) |
 | Wildlife occurrences [WILDLIFE-OCCUR-1](tasks/wildlife-occur-1.md) | ACCEPTED; bounded occurrence slice | `5bcd50c5b22be0d134fb63473680f321a7870ba4`; source `8c2de16c` | [44432068823](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44432068823), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-occur-1-review.md) |
-| Wildlife ANBAU header [WILDLIFE-ANBAU-1](tasks/wildlife-anbau-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `02111ea2139cfddf1e4018bcc229fd55d918056e`; source `d645071a` | [44436355753](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44436355753), in progress | [Review](reviews/2026-11-19-wildlife-anbau-1-review.md) |
+| Wildlife ANBAU header [WILDLIFE-ANBAU-1](tasks/wildlife-anbau-1.md) | ACCEPTED; bounded transient header | `02111ea2139cfddf1e4018bcc229fd55d918056e`; source `d645071a` | [44436355753](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44436355753), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-anbau-1-review.md) |
 | Wildlife DISCOVER header [WILDLIFE-DISCOVER-1](tasks/wildlife-discover-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `8d97b6956189faf9483f6d9944b42676362d1c7d`; source `ddab0993` | [44438472504](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44438472504), in progress | [Review](reviews/2026-11-19-wildlife-discover-1-review.md) |
 | Wildlife KONTORID header [WILDLIFE-KONTORID-1](tasks/wildlife-kontorid-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `eaa61980162b1552eb7acee1553ce11fb7a8869c`; source `c199cf1f` | [44439685272](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44439685272), in progress | [Review](reviews/2026-11-19-wildlife-kontorid-1-review.md) |
 | Wildlife PROD2 boundary [WILDLIFE-PROD2-1](tasks/wildlife-prod2-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `d7a21ac4a41975e5dd3a2afba8af84a430ed4e17`; source `8d65f385` | [44441246351](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44441246351), in progress | [Review](reviews/2026-11-19-wildlife-prod2-1-review.md) |
-| Wildlife EVENTINSEL boundary [WILDLIFE-EVENTINSEL-1](tasks/wildlife-eventinsel-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `d7a21ac4` | Not started | Frozen reportback directly to Mac orchestrator |
+| Wildlife EVENTINSEL boundary [WILDLIFE-EVENTINSEL-1](tasks/wildlife-eventinsel-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `218b838eb543782c60629f51288005fdd699c492`; source `c6c106a4` | [44443163952](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44443163952), in progress | [Review](reviews/2026-11-19-wildlife-eventinsel-1-review.md) |
+| Wildlife post-island contract [WILDLIFE-POSTLOAD-1](tasks/wildlife-postload-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `218b838e` | Not started; bounded research/reference scope | Frozen reportback directly to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -761,3 +762,22 @@ assume empty means inert. Project only proved local behavior and continue once t
 next boundary or local-island end. No global/script/World/native/tag/default or
 live-wildlife integration. Executor ordinary-pushes its task branch and reports
 directly here for review and next release. Main untouched.
+
+## Latest dispatch — local records reviewed; post-island contract released
+
+EVENTINSEL218b838e/source c6c106a4 is independently locally APPROVED.51 hashes and
+unchanged fixtures verified. Debug25+4required, ASan25+4required and original1
+retained green; no gate repeated. Both initial invalid exploratory attempts remain
+preserved. All73local headers complete;156owned spawn records/4745supplied draws
+are not live wildlife or completed original island initialization.
+
+ANBAU02111ea2 is now ACCEPTED: independent review and exact CI44436355753/all12
+successful jobs. DISCOVER/KONTORID/PROD2/EVENTINSEL remain pending CI at this check.
+
+[WILDLIFE-POSTLOAD-1](tasks/wildlife-postload-1.md) is RELEASED after independent
+scope review. Resolve the three post-island calls, their ground/fill/navigation
+and other direct effects, using existing research and minimal independent vectors.
+Deliver the dependency contract and bounded implementation steps toward World
+integration. No src/native/tag/default/World changes in this research packet.
+Executor ordinary-pushes its task branch and reports directly here for review
+and next implementation release. Main untouched.

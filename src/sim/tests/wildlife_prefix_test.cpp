@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <bit>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -666,8 +667,8 @@ TEST_CASE(
     const auto& out = result.value();
     const auto& is = out.islands[0];
     REQUIRE(is.bergwerk_entries.size() == 2);
-    REQUIRE(is.bergwerk_nodes.size() == 8);
-    REQUIRE(is.bergwerk_chunks.size() == 4);
+    REQUIRE(is.resource_list_nodes.size() == 8);
+    REQUIRE(is.resource_list_chunks.size() == 4);
     CHECK(is.headers[3].bergwerk_nodes_added == 0);
     CHECK(is.headers[4].bergwerk_nodes_added == 4);
     CHECK(is.headers[6].bergwerk_nodes_added == 4);
@@ -684,7 +685,7 @@ TEST_CASE(
         CHECK(e.source.header == (i == 0 ? 4 : 6));
         CHECK(e.source.record == (i == 0 ? 1 : 0));
         for (std::uint64_t c = 0; c < 4; ++c) {
-            const auto& n = is.bergwerk_nodes[i * 4 + c];
+            const auto& n = is.resource_list_nodes[i * 4 + c];
             CHECK(n.entry == i);
             CHECK(n.chunk == c);
             CHECK(n.offsets == offsets[c]);
@@ -698,8 +699,8 @@ TEST_CASE(
         }
     }
     for (std::uint64_t c = 0; c < 4; ++c) {
-        CHECK(is.bergwerk_chunks[c].head == c + 4);
-        CHECK(is.bergwerk_chunks[c].resource_flags == 2);
+        CHECK(is.resource_list_chunks[c].head == c + 4);
+        CHECK(is.resource_list_chunks[c].resource_flags == 2);
     }
     CHECK(out.consumed == 2);
     CHECK(is.resource.consumed == 1);
@@ -726,12 +727,12 @@ TEST_CASE(
                                                           meta.entries, pe, *types, inputs(), {});
         REQUIRE(result);
         const auto& is = result.value().islands[0];
-        REQUIRE(is.bergwerk_nodes.size() == ((rotation & 1U) ? 2 : 1));
-        CHECK(is.bergwerk_nodes[0].offsets == 0x45);
-        CHECK(is.bergwerk_nodes[0].chunk == 0);
+        REQUIRE(is.resource_list_nodes.size() == ((rotation & 1U) ? 2 : 1));
+        CHECK(is.resource_list_nodes[0].offsets == 0x45);
+        CHECK(is.resource_list_nodes[0].chunk == 0);
         if (rotation & 1U) {
-            CHECK(is.bergwerk_nodes[1].offsets == 0x4d);
-            CHECK(is.bergwerk_nodes[1].chunk == 1);
+            CHECK(is.resource_list_nodes[1].offsets == 0x4d);
+            CHECK(is.resource_list_nodes[1].chunk == 1);
         }
         CHECK(result.value().consumed == 0);
         CHECK(is.resource.variation == Buffer(256, 0));
@@ -743,13 +744,13 @@ TEST_CASE(
                                                       pe, *types, inputs(), {});
     REQUIRE(result);
     const auto& is = result.value().islands[0];
-    REQUIRE(is.bergwerk_nodes.size() == 2);
-    CHECK(is.bergwerk_nodes[0].chunk == 0); // (-7)/8 truncates to 0, not floor -1.
-    CHECK(is.bergwerk_nodes[1].chunk == 0); // (8-7)/8 also 0; preserve original collision.
-    CHECK(is.bergwerk_nodes[0].offsets == 7);
-    CHECK(is.bergwerk_nodes[1].offsets == 15);
-    CHECK(is.bergwerk_nodes[1].next == 0);
-    CHECK(is.bergwerk_chunks[0].head == 1);
+    REQUIRE(is.resource_list_nodes.size() == 2);
+    CHECK(is.resource_list_nodes[0].chunk == 0); // (-7)/8 truncates to 0, not floor -1.
+    CHECK(is.resource_list_nodes[1].chunk == 0); // (8-7)/8 also 0; preserve original collision.
+    CHECK(is.resource_list_nodes[0].offsets == 7);
+    CHECK(is.resource_list_nodes[1].offsets == 15);
+    CHECK(is.resource_list_nodes[1].next == 0);
+    CHECK(is.resource_list_chunks[0].head == 1);
 }
 
 TEST_CASE(
@@ -780,7 +781,7 @@ TEST_CASE(
         CHECK_FALSE(out.islands[0].headers.back().bergwerk_nodes_added);
         CHECK(out.islands[0].headers[3].bergwerk_nodes_added == 4);
         CHECK(out.islands[0].bergwerk_entries.size() == 1);
-        CHECK(out.islands[0].bergwerk_nodes.size() == 4);
+        CHECK(out.islands[0].resource_list_nodes.size() == 4);
         CHECK(out.islands[0].resource.variation[0] == 64);
         CHECK(out.consumed == 1);
     }
@@ -798,8 +799,266 @@ TEST_CASE(
     CHECK(out.boundary->source.record == 1);
     CHECK(out.islands[0].headers.back().records == 1);
     CHECK_FALSE(out.islands[0].headers.back().bergwerk_nodes_added);
-    CHECK(out.islands[0].bergwerk_nodes.size() == 4);
+    CHECK(out.islands[0].resource_list_nodes.size() == 4);
     CHECK_FALSE(out.complete_local_records);
+}
+
+namespace {
+std::shared_ptr<const sim::TypeRegistry> ore_registry() {
+    sim::TypeRegistry::Builder b;
+    sim::BuildingType resource;
+    resource.id = sim::TypeId{104};
+    resource.prodtype = 225;
+    resource.flags_word = 0x29;
+    b.add(resource);
+    for (const auto id : {501U, 502U, 503U, 504U, 1661U}) {
+        sim::FigureType f;
+        f.id = id;
+        f.bewohntype = id == 503 ? 146 : 145;
+        f.ware = id == 502 ? "SALZSTEIN" : id == 504 ? "WOLLE" : "EISENERZ";
+        b.figure_type(f);
+    }
+    const auto built = b.build();
+    REQUIRE(built);
+    return built.value();
+}
+Buffer ore_entry(std::uint32_t type = 501, std::uint16_t tons = 400, std::uint32_t discovery = 0,
+                 std::uint32_t x = 0x40d00000, std::uint32_t y = 0x40f00000,
+                 std::size_t state_length = 8) {
+    Buffer body;
+    fmt::put_u32_le(body, (type << 14) | 0xfc003fffU); // Unused fields deliberately nonzero.
+    fmt::put_u32_le(body, x);                          // Authored local 6.5.
+    fmt::put_u32_le(body, y);                          // Authored local 7.5.
+    fmt::put_u32_le(body, 0x3fc00000);                 // Authored height 1.5.
+    if (state_length == 8) {
+        fmt::put_u16_le(body, tons);
+        fmt::put_u16_le(body, 0xabcd); // Padding is ignored.
+        fmt::put_u32_le(body, discovery);
+    } else {
+        body.resize(16 + state_length, 255);
+    }
+    Buffer out;
+    REQUIRE(fmt::tagged::write_record("ENTRY2", false, body, out));
+    return out;
+}
+Buffer ore_base() {
+    auto b = bergwerk_base();
+    append(b, packed("GELAENDE", block(1, 0, 1, 1, object(104))));
+    append(b, packed("BERGWERK2", bergwerk_entry(7, 6, 1)));
+    return b;
+}
+} // namespace
+
+TEST_CASE(
+    "wildlife prefix: occur ore threshold equality preserves reserve and original load order") {
+    const auto types = ore_registry();
+    Metadata meta;
+    const auto pe = fake_pe();
+    for (const auto tons : std::vector<std::uint16_t>{0, 1599, 1600, 1601, 65535}) {
+        auto b = ore_base();
+        append(b, packed("OCCUR", ore_entry(501, tons, 0x80000002U)));
+        const auto result =
+            load::prepare_wildlife_prefix(scene({packed("INSEL5", b)}), meta.entries, pe, *types,
+                                          inputs(), std::vector<std::uint32_t>{4});
+        REQUIRE(result);
+        const auto& is = result.value().islands[0];
+        REQUIRE(is.occurrences.size() == 1);
+        const auto& o = is.occurrences[0];
+        CHECK(o.type == 501);
+        CHECK(o.goods == 1);
+        CHECK(o.world_x_bits == 0x41b40000U); // 22.5 after the original f32 store.
+        CHECK(o.world_y_bits == 0x41fc0000U); // 31.5.
+        CHECK(o.height_bits == 0x3fc00000U);
+        CHECK(o.tile_x == 22);
+        CHECK(o.tile_y == 31);
+        CHECK(o.reserve == 1);
+        CHECK(o.file_tons == tons);
+        CHECK(o.quantity_88 == (tons < 1600 ? 512000 : std::uint32_t{tons} * 256));
+        CHECK(o.discovery == 0x80000002U);
+        REQUIRE(is.resource_list_nodes.size() == 5);
+        const auto& node = is.resource_list_nodes[4];
+        CHECK(node.kind == 6);
+        CHECK(node.chunk == 0);
+        CHECK(node.x_offset == 6);
+        CHECK(node.y_offset == 7);
+        CHECK(node.next == 0);
+        CHECK(is.resource_list_chunks[0].head == 4);
+        CHECK(is.resource_list_chunks[0].resource_flags == 0x42);
+        for (std::uint64_t i = 0; i < 4; ++i)
+            CHECK(is.resource_list_nodes[i].mask == 0x11);
+        CHECK(is.occurrence_loads[0].mask_updates == 4);
+        CHECK(is.headers.back().occurrences_added == 1);
+        CHECK(result.value().consumed == 1);
+        CHECK(is.resource.variation[0] == 64);
+    }
+    for (const std::uint32_t type : {501U, 1661U})
+        for (const std::size_t length : {0U, 1U, 8U, 9U}) {
+            auto b = ore_base();
+            append(b, packed("OCCUR", ore_entry(type, 0, 99, 0x40d00000, 0x40f00000, length)));
+            const auto result =
+                load::prepare_wildlife_prefix(scene({packed("INSEL5", b)}), meta.entries, pe,
+                                              *types, inputs(), std::vector<std::uint32_t>{4});
+            REQUIRE(result);
+            const auto& o = result.value().islands[0].occurrences[0];
+            CHECK(o.reserve == (type == 1661 ? 0 : 1));
+            if (length == 8) {
+                CHECK(o.quantity_88 == (type == 1661 ? 0 : 512000));
+                CHECK(o.discovery == 99);
+            } else {
+                CHECK(o.quantity_88 == (type == 1661 ? 102400 : 512000));
+                CHECK(o.discovery == 0);
+                CHECK_FALSE(o.file_tons);
+            }
+            // A zero-Q deep source still refreshes every reached BERGWERK mask.
+            CHECK(result.value().islands[0].resource_list_nodes[0].mask == 17);
+        }
+}
+
+TEST_CASE(
+    "wildlife prefix: occur shared list masks candidate head and duplicate chronology are owned") {
+    const auto types = ore_registry();
+    Metadata meta;
+    const auto pe = fake_pe();
+    auto b = ore_base();
+    append(b, packed("OCCUR", {}));
+    auto first = ore_entry(501, 400, 1);
+    append(first, ore_entry(502, 1601, 2, 0x40b00000)); // Different tile 5.5, same chunk.
+    append(b, packed("OCCUR", first));
+    append(b, packed("FRUCHTBAR", Buffer(256, 3)));
+    auto second =
+        ore_entry(501, 0, 99, 0x40b00000); // Same tile/class as current head, different type: skip.
+    append(second,
+           ore_entry(501, 1600, 4)); // Older identical position is hidden by that head: create.
+    append(b, packed("OCCUR", second));
+    append(b, packed("HIRSCH", fmt::insel::encode_hirsch(
+                                   std::vector<fmt::insel::HirschRecord>{{0, 0, 0x80, 7, 10}})));
+    auto file = scene({packed("INSEL5", b)});
+    const auto original = file;
+    const auto result = load::prepare_wildlife_prefix(file, meta.entries, pe, *types, inputs(),
+                                                      std::vector<std::uint32_t>{4, 7});
+    REQUIRE(result);
+    CHECK(file == original);
+    file.clear();
+    file.shrink_to_fit();
+    b.clear();
+    first.clear();
+    second.clear();
+    const auto& out = result.value();
+    const auto& is = out.islands[0];
+    REQUIRE(is.occurrences.size() == 3);
+    REQUIRE(is.occurrence_loads.size() == 4);
+    CHECK(is.occurrence_loads[0].created);
+    CHECK(is.occurrence_loads[1].created);
+    CHECK_FALSE(is.occurrence_loads[2].created);
+    CHECK(is.occurrence_loads[2].occurrence == 1);
+    CHECK(is.occurrence_loads[2].mask_updates == 0);
+    CHECK(is.occurrence_loads[3].created);
+    CHECK(is.occurrences[1].type == 502);
+    CHECK(is.occurrences[1].quantity_88 == 409856);
+    CHECK(is.occurrences[1].discovery == 2);
+    CHECK(is.occurrences[2].quantity_88 == 409600);
+    CHECK(is.occurrences[2].discovery == 4);
+    CHECK(is.headers[4].occurrences_added == 0);
+    CHECK(is.headers[5].occurrences_added == 2);
+    CHECK(is.headers[7].occurrences_added == 1);
+    CHECK(is.headers[7].records == 2);
+    REQUIRE(is.resource_list_nodes.size() == 7);
+    CHECK(is.resource_list_nodes[4].next == 0);
+    CHECK(is.resource_list_nodes[5].next == 4);
+    CHECK(is.resource_list_nodes[6].next == 5);
+    CHECK(is.resource_list_chunks[0].head == 6);
+    for (std::uint64_t i = 0; i < 4; ++i)
+        CHECK(is.resource_list_nodes[i].mask ==
+              0x15); // goods 1/3 union, not tonnage or arithmetic sum.
+    CHECK(is.resource.variation[0] == 67);
+    CHECK(is.resource.tiles.object(0) == 104);
+    CHECK(is.resource.tiles.phase(0) == 7);
+    CHECK(is.resource.tiles.item_height(0) == 48);
+    CHECK(is.terrain->fertility == Buffer(256, 3));
+    CHECK(out.consumed == 2);
+    REQUIRE(is.spawns.size() == 1);
+    CHECK(is.spawns[0].draw_before == 1);
+    CHECK(is.spawns[0].timestamp == 8);
+}
+
+TEST_CASE("wildlife prefix: occur adapter contract stops malformed unknown and unsafe entries "
+          "diagnostically") {
+    const auto types = ore_registry();
+    Metadata meta;
+    const auto pe = fake_pe();
+    Buffer short_entry;
+    REQUIRE(fmt::tagged::write_record("ENTRY2", false, Buffer(15, 0), short_entry));
+    for (const auto& bad : {short_entry, Buffer{1}, ore_entry(999), ore_entry(503), ore_entry(504),
+                            ore_entry(501, 400, 0, 0x7f800000), ore_entry(501, 400, 0, 0x7fc00000),
+                            ore_entry(501, 400, 0, 0x437f0000)}) {
+        auto b = ore_base();
+        append(b, packed("OCCUR", ore_entry()));
+        append(b, packed("OCCUR", bad));
+        const auto result =
+            load::prepare_wildlife_prefix(scene({packed("INSEL5", b)}), meta.entries, pe, *types,
+                                          inputs(), std::vector<std::uint32_t>{4});
+        REQUIRE_FALSE(result);
+        REQUIRE(result.error().diagnostic);
+        const auto& out = *result.error().diagnostic;
+        REQUIRE(out.boundary);
+        CHECK(out.boundary->tag == "OCCUR");
+        CHECK(out.boundary->source.header == 5);
+        CHECK_FALSE(out.islands[0].headers.back().occurrences_added);
+        CHECK(out.islands[0].headers[4].occurrences_added == 1);
+        CHECK(out.islands[0].occurrences.size() == 1);
+        CHECK(out.islands[0].resource_list_nodes.size() == 5);
+        CHECK(out.islands[0].resource_list_nodes[0].mask == 17);
+        CHECK(out.consumed == 1);
+        CHECK_FALSE(out.complete_local_records);
+    }
+    auto b = ore_base();
+    auto payload = ore_entry();
+    append(payload, ore_entry(503));
+    append(b, packed("OCCUR", payload));
+    const auto result =
+        load::prepare_wildlife_prefix(scene({packed("INSEL5", b)}), meta.entries, pe, *types,
+                                      inputs(), std::vector<std::uint32_t>{4});
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().diagnostic);
+    const auto& out = *result.error().diagnostic;
+    CHECK(out.boundary->source.record == 1);
+    CHECK(out.islands[0].headers.back().records == 1);
+    CHECK_FALSE(out.islands[0].headers.back().occurrences_added);
+    CHECK(out.islands[0].occurrences.size() == 1);
+}
+
+TEST_CASE(
+    "wildlife prefix: occur mask radius boundary and u16 refresh edges preserve untouched nodes") {
+    const auto types = ore_registry();
+    Metadata meta;
+    const auto pe = fake_pe();
+    for (const auto local_y : {0x40800000U, 0x40400000U}) { // 4.0 versus 3.0.
+        auto b = ore_base();
+        append(b, packed("OCCUR", ore_entry(501, 400, 0, 0, local_y)));
+        const auto result =
+            load::prepare_wildlife_prefix(scene({packed("INSEL5", b)}), meta.entries, pe, *types,
+                                          inputs(), std::vector<std::uint32_t>{4});
+        REQUIRE(result);
+        const auto& is = result.value().islands[0];
+        // Anchor (23,30), source (16,28)/(16,27): row bounds 7 versus 6 at dx 7.
+        const auto expected = local_y == 0x40800000U ? 17 : 16;
+        CHECK(is.resource_list_nodes[0].mask == expected);
+        CHECK(is.resource_list_nodes[2].mask == expected);
+        // The actual 15-wide visitor excludes the right-column duplicate nodes.
+        CHECK(is.resource_list_nodes[1].mask == 16);
+        CHECK(is.resource_list_nodes[3].mask == 16);
+        CHECK(is.occurrence_loads[0].mask_updates == (expected == 17 ? 2 : 0));
+    }
+    auto b = bergwerk_base(0, 0);
+    append(b, packed("BERGWERK2", bergwerk_entry(0, 0, 0)));
+    append(b, packed("OCCUR", ore_entry(501, 400, 0, 0x3f000000, 0x3f000000)));
+    const auto result = load::prepare_wildlife_prefix(scene({packed("INSEL5", b)}), meta.entries,
+                                                      pe, *types, inputs(), {});
+    REQUIRE(result);
+    CHECK(result.value().islands[0].occurrences[0].tile_x == 0);
+    CHECK(result.value().islands[0].resource_list_nodes[0].mask == 16);
+    CHECK(result.value().islands[0].occurrence_loads[0].mask_updates == 0);
+    CHECK(result.value().consumed == 0); // u16(0-7), not a fabricated signed-clipped refresh.
 }
 
 TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported boundary") {
@@ -834,9 +1093,9 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     CHECK_FALSE(out.islands[0].complete_local_records);
     CHECK(out.boundary->source.island == 0);
     CHECK(out.boundary->source.slot == 11);
-    CHECK(out.boundary->source.header == 51);
+    CHECK(out.boundary->source.header == 52);
     CHECK(out.boundary->source.record == 0);
-    CHECK(out.boundary->tag == "OCCUR");
+    CHECK(out.boundary->tag == "ANBAU");
     CHECK(out.boundary->reason.find("unsupported intervening header") != std::string::npos);
     const auto raw_islands = fmt::insel::islands(bytes);
     REQUIRE(raw_islands);
@@ -863,13 +1122,13 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     REQUIRE(raw.records[50].name() == "BERGWERK2");
     CHECK(raw.records[50].payload.size() == 108);
     REQUIRE(is.bergwerk_entries.size() == 9);
-    REQUIRE(is.bergwerk_nodes.size() == 20);
+    REQUIRE(is.resource_list_nodes.size() == 21);
     CHECK(is.headers[50].records == 9);
     CHECK(is.headers[50].bergwerk_nodes_added == 20);
     CHECK_FALSE(is.headers[51].bergwerk_nodes_added);
     // The installed payload is independently read here without publishing its records.
     const auto payload = raw.records[50].payload;
-    std::vector<std::optional<std::uint64_t>> heads(is.bergwerk_chunks.size());
+    std::vector<std::optional<std::uint64_t>> heads(is.resource_list_chunks.size());
     std::uint64_t node_index = 0;
     for (std::uint64_t i = 0; i < is.bergwerk_entries.size(); ++i) {
         const auto packed_word = fmt::u32_le(payload, i * 12 + 8);
@@ -889,31 +1148,68 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
         for (auto by = expected_y - expected_y % 8; by < expected_y + height; by += 8)
             for (auto bx = expected_x - expected_x % 8; bx < expected_x + width; bx += 8) {
                 const auto chunk = ((by - raw.y) / 8) * ((raw.width + 7U) / 8) + (bx - raw.x) / 8;
-                REQUIRE(node_index < is.bergwerk_nodes.size());
-                const auto& n = is.bergwerk_nodes[node_index];
+                REQUIRE(node_index < is.resource_list_nodes.size());
+                const auto& n = is.resource_list_nodes[node_index];
                 CHECK(n.entry == i);
                 CHECK(n.chunk == chunk);
                 CHECK(n.offsets == ((expected_x - bx) % 16 | ((expected_y - by) % 16) * 16));
                 CHECK(n.rotation == expected_rotation);
-                CHECK(n.mask == 16);
+                CHECK(n.mask == 17);
                 CHECK(n.kind == 1);
                 CHECK(n.next == heads[chunk]);
                 heads[chunk] = node_index++;
             }
     }
     CHECK(node_index == 20);
+    REQUIRE(is.occurrences.size() == 1);
+    REQUIRE(is.occurrence_loads.size() == 1);
+    const auto& ore = is.occurrences[0];
+    REQUIRE(raw.records[51].name() == "OCCUR");
+    const auto occur_payload = raw.records[51].payload;
+    REQUIRE(occur_payload.size() == 32);
+    CHECK(ore.type == (fmt::u32_le(occur_payload, 8) >> 14 & 4095U));
+    CHECK(ore.goods == 1);
+    CHECK(ore.reserve == 1);
+    CHECK(ore.quantity_88 == 512000);
+    CHECK(ore.file_tons == fmt::u16_le(occur_payload, 24));
+    CHECK(ore.discovery == fmt::u32_le(occur_payload, 28));
+    const float expected_x = std::bit_cast<float>(fmt::u32_le(occur_payload, 12)) + raw.x;
+    const float expected_y = std::bit_cast<float>(fmt::u32_le(occur_payload, 16)) + raw.y;
+    CHECK(ore.world_x_bits == std::bit_cast<std::uint32_t>(expected_x));
+    CHECK(ore.world_y_bits == std::bit_cast<std::uint32_t>(expected_y));
+    CHECK(ore.height_bits == fmt::u32_le(occur_payload, 20));
+    CHECK(ore.tile_x == static_cast<std::int32_t>(expected_x));
+    CHECK(ore.tile_y == static_cast<std::int32_t>(expected_y));
+    const auto local_x = static_cast<std::uint32_t>(ore.tile_x - raw.x);
+    const auto local_y = static_cast<std::uint32_t>(ore.tile_y - raw.y);
+    const auto chunk = (local_y / 8) * ((raw.width + 7U) / 8) + local_x / 8;
+    const auto& occurrence_node = is.resource_list_nodes[20];
+    CHECK(occurrence_node.kind == 6);
+    CHECK(occurrence_node.chunk == chunk);
+    CHECK(occurrence_node.entry == 0);
+    CHECK(occurrence_node.next == heads[chunk]);
+    CHECK(occurrence_node.x_offset == local_x % 8);
+    CHECK(occurrence_node.y_offset == local_y % 8);
+    heads[chunk] = 20;
+    CHECK(is.occurrence_loads[0].mask_updates == 20);
+    CHECK(is.headers[51].occurrences_added == 1);
+    CHECK(is.headers[51].records == 1);
+    CHECK_FALSE(is.headers[52].occurrences_added);
+    std::cout
+        << "OCCUR_REAL header=51 loaded=1 nodes_added=1 mask_changes=20 draws=0 next=52/ANBAU\n";
     std::uint64_t active = 0;
     for (std::uint64_t i = 0; i < heads.size(); ++i) {
-        CHECK(is.bergwerk_chunks[i].head == heads[i]);
-        CHECK(is.bergwerk_chunks[i].resource_flags == (heads[i] ? 2 : 0));
+        CHECK(is.resource_list_chunks[i].head == heads[i]);
+        CHECK(is.resource_list_chunks[i].resource_flags ==
+              ((heads[i] ? 2 : 0) | (i == chunk ? 64 : 0)));
         active += heads[i].has_value();
     }
     CHECK(active == 8);
-    std::cout << "BERGWERK_REAL header=50 entries=9 nodes=20 chunks=8 next=51/OCCUR\n";
+    std::cout << "BERGWERK_REAL header=50 entries=9 nodes=20 chunks=8\n";
     CHECK(out.islands[0].resources.size() == 4760);
     CHECK(out.islands[0].spawns.empty());
     CHECK(out.consumed == 4589);
-    REQUIRE(out.islands[0].headers.size() == 52);
+    REQUIRE(out.islands[0].headers.size() == 53);
     CHECK(out.islands[0].headers[33].records == 0);
     REQUIRE(out.islands[0].headers[33].water_mask_updates);
     REQUIRE(out.islands[0].headers[34].water_mask_updates);

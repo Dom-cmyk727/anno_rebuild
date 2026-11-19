@@ -1,4 +1,7 @@
 #include <algorithm>
+#include <array>
+#include <bit>
+#include <cmath>
 #include <limits>
 #include <map>
 #include <set>
@@ -66,6 +69,190 @@ ri::ClimateFacts climate_facts(const formats::annogame::ResourceTables& raw) {
 bool setup_tag(std::string_view name) {
     return name == "INFO" || name == "HEIGHT" || name == "GFXID";
 }
+// OCCUR's reached ore profile only; contract: docs/sim/wildlife-occur.md.
+std::uint64_t resource_columns(const formats::insel::Island& raw) {
+    return (std::uint64_t{raw.width} + 7) / 8;
+}
+void materialize_resource_chunks(PreparedIsland& out, const formats::insel::Island& raw) {
+    if (out.resource_list_chunks.empty())
+        out.resource_list_chunks.resize(static_cast<std::size_t>(
+            resource_columns(raw) * ((std::uint64_t{raw.height} + 7) / 8)));
+}
+std::optional<std::uint64_t> occurrence_candidate(const PreparedIsland& out,
+                                                  const formats::insel::Island& raw, std::int32_t x,
+                                                  std::int32_t y) {
+    const auto nx = resource_columns(raw);
+    const auto first_x = static_cast<std::uint64_t>(x - raw.x) / 8;
+    const auto first_y = static_cast<std::uint64_t>(y - raw.y) / 8;
+    const auto ny = (std::uint64_t{raw.height} + 7) / 8;
+    // 0x10095770: first occupied chunk at/after this position, then its FIRST kind 6.
+    for (auto cy = first_y; cy < ny; ++cy)
+        for (auto cx = cy == first_y ? first_x : 0; cx < nx; ++cx)
+            for (auto n = out.resource_list_chunks[cy * nx + cx].head; n;
+                 n = out.resource_list_nodes[*n].next)
+                if (out.resource_list_nodes[*n].kind == 6)
+                    return out.resource_list_nodes[*n].entry;
+    return {};
+}
+std::vector<std::uint64_t> query_occurrences(const PreparedIsland& out,
+                                             const formats::insel::Island& raw, std::uint16_t x,
+                                             std::uint16_t y, std::uint32_t w, std::uint32_t h) {
+    const auto left = std::max(std::int64_t{x}, std::int64_t{raw.x});
+    const auto top = std::max(std::int64_t{y}, std::int64_t{raw.y});
+    const auto right = std::min(std::int64_t{x} + w, std::int64_t{raw.x} + raw.width);
+    const auto bottom = std::min(std::int64_t{y} + h, std::int64_t{raw.y} + raw.height);
+    std::vector<std::uint64_t> found;
+    if (left >= right || top >= bottom)
+        return found;
+    const auto nx = resource_columns(raw);
+    // 0x10095480: world-aligned chunk visits; local matrix division truncates.
+    for (auto by = top / 8 * 8; by < bottom; by += 8)
+        for (auto bx = left / 8 * 8; bx < right; bx += 8) {
+            const auto cx = static_cast<std::uint64_t>((bx - raw.x) / 8);
+            const auto cy = static_cast<std::uint64_t>((by - raw.y) / 8);
+            const auto chunk = cy * nx + cx;
+            for (auto n = out.resource_list_chunks[chunk].head; n;
+                 n = out.resource_list_nodes[*n].next) {
+                const auto& node = out.resource_list_nodes[*n];
+                if (node.kind != 6)
+                    continue;
+                // Original chunk coordinates are u8 fields, 0x1008c3ea/0x1008c3f6.
+                const auto px = std::int64_t{raw.x} + std::uint8_t(cx) * 8 + node.x_offset;
+                const auto py = std::int64_t{raw.y} + std::uint8_t(cy) * 8 + node.y_offset;
+                if (px >= x && px < std::int64_t{x} + w && py >= y && py < std::int64_t{y} + h)
+                    found.push_back(node.entry);
+            }
+        }
+    return found;
+}
+std::int32_t signed_nibble(std::uint8_t bits) {
+    const auto value = static_cast<std::int32_t>(bits & 15U);
+    return value >= 8 ? value - 16 : value;
+}
+std::uint64_t refresh_ore_masks(PreparedIsland& out, const formats::insel::Island& raw,
+                                std::int32_t tile_x, std::int32_t tile_y) {
+    // Reader 0x10096124..0x10096171: u16 subtraction, not a signed edge clamp.
+    const auto x = static_cast<std::uint16_t>(tile_x - 7);
+    const auto y = static_cast<std::uint16_t>(tile_y - 7);
+    const auto left = std::max(std::int64_t{x} - 3 - raw.x, std::int64_t{0});
+    const auto top = std::max(std::int64_t{y} - 3 - raw.y, std::int64_t{0});
+    const auto right = std::min(std::int64_t{x} + 15 - raw.x, std::int64_t{raw.width});
+    const auto bottom = std::min(std::int64_t{y} + 15 - raw.y, std::int64_t{raw.height});
+    const auto nx = resource_columns(raw);
+    std::uint64_t changed = 0;
+    for (auto by = top / 8 * 8; by < bottom; by += 8)
+        for (auto bx = left / 8 * 8; bx < right; bx += 8) {
+            const auto chunk =
+                static_cast<std::uint64_t>(by / 8) * nx + static_cast<std::uint64_t>(bx / 8);
+            for (auto n = out.resource_list_chunks[chunk].head; n;
+                 n = out.resource_list_nodes[*n].next) {
+                auto& node = out.resource_list_nodes[*n];
+                if (node.kind != 1)
+                    continue;
+                const auto ax = raw.x + bx + signed_nibble(node.offsets);
+                const auto ay =
+                    raw.y + by + signed_nibble(static_cast<std::uint8_t>(node.offsets >> 4));
+                if (ax < x || ax >= std::int64_t{x} + 15 || ay < y || ay >= std::int64_t{y} + 15)
+                    continue;
+                const std::uint32_t width = node.rotation & 1U ? 4 : 3;
+                const std::uint32_t height = node.rotation & 1U ? 3 : 4;
+                const auto sources =
+                    query_occurrences(out, raw, static_cast<std::uint16_t>(ax - 7),
+                                      static_cast<std::uint16_t>(ay - 7), width + 14, height + 14);
+                std::uint8_t mask = 0x10;
+                // Radius 7 row bounds generated at 0x1007c0de..0x1007c115.
+                constexpr std::array<std::int64_t, 8> row_bounds{7, 7, 7, 6, 6, 5, 4, 2};
+                for (const auto index : sources) {
+                    const auto& ore = out.occurrences[index];
+                    auto dy = ay - ore.tile_y;
+                    if (dy < 0)
+                        dy = 1 - dy - height;
+                    if (dy > 7)
+                        continue;
+                    dy = std::max(dy, std::int64_t{0});
+                    auto dx = ax - ore.tile_x;
+                    if (dx < 0)
+                        dx = 1 - dx - width;
+                    if (dx <= row_bounds[static_cast<std::size_t>(dy)])
+                        mask = static_cast<std::uint8_t>(mask | (1U << (ore.goods - 1)));
+                }
+                changed += node.mask != mask;
+                node.mask = mask;
+            }
+        }
+    return changed;
+}
+formats::Result<PrefixOccurrenceLoad, std::string> load_ore(PreparedIsland& out,
+                                                            const formats::insel::Island& raw,
+                                                            const formats::tagged::Record& record,
+                                                            PrefixSource source,
+                                                            const sim::TypeRegistry& types) {
+    if (record.payload.size() < 16)
+        return std::string("ENTRY2 needs its 16-byte base");
+    const auto type = (formats::u32_le(record.payload, 0) >> 14) & 0xfffU;
+    const auto* facts = types.find_figure_type(type);
+    if (!facts || facts->bewohntype != 145)
+        return std::string("unsupported occurrence figure class/type ") + std::to_string(type);
+    const auto goods = types.goods_table();
+    const auto ware = std::find_if(goods.begin(), goods.end(),
+                                   [&](const auto& g) { return g.name == facts->ware; });
+    if (ware == goods.end() || ware - goods.begin() < 1 || ware - goods.begin() > 8)
+        return std::string("unsupported ore goods");
+    const auto local_x = std::bit_cast<float>(formats::u32_le(record.payload, 4));
+    const auto local_y = std::bit_cast<float>(formats::u32_le(record.payload, 8));
+    const float world_x = local_x + static_cast<float>(raw.x);
+    const float world_y = local_y + static_cast<float>(raw.y);
+    if (!std::isfinite(world_x) || !std::isfinite(world_y) ||
+        static_cast<double>(world_x) < std::numeric_limits<std::int32_t>::min() ||
+        static_cast<double>(world_x) > std::numeric_limits<std::int32_t>::max() ||
+        static_cast<double>(world_y) < std::numeric_limits<std::int32_t>::min() ||
+        static_cast<double>(world_y) > std::numeric_limits<std::int32_t>::max())
+        return std::string("unsafe occurrence position");
+    const auto x = static_cast<std::int32_t>(world_x), y = static_cast<std::int32_t>(world_y);
+    if (x < raw.x || y < raw.y || std::int64_t{x} >= std::int64_t{raw.x} + raw.width ||
+        std::int64_t{y} >= std::int64_t{raw.y} + raw.height)
+        return std::string("occurrence position outside island matrix");
+    materialize_resource_chunks(out, raw);
+    const auto candidate = occurrence_candidate(out, raw, x, y);
+    if (candidate &&
+        static_cast<std::uint16_t>(out.occurrences[*candidate].tile_x) ==
+            static_cast<std::uint16_t>(x) &&
+        static_cast<std::uint16_t>(out.occurrences[*candidate].tile_y) ==
+            static_cast<std::uint16_t>(y))
+        return PrefixOccurrenceLoad{source, *candidate, 0, false};
+    PrefixOccurrence ore;
+    ore.source = source;
+    ore.type = type;
+    ore.goods = static_cast<std::uint32_t>(ware - goods.begin());
+    ore.world_x_bits = std::bit_cast<std::uint32_t>(world_x);
+    ore.world_y_bits = std::bit_cast<std::uint32_t>(world_y);
+    ore.height_bits = formats::u32_le(record.payload, 12);
+    ore.tile_x = x;
+    ore.tile_y = y;
+    // Original descriptor-id exception in attach, 0x1006377d..0x1006378b.
+    ore.reserve = type == 1661 ? 0 : 1;
+    ore.quantity_88 = ore.reserve ? 512000 : 102400;
+    if (record.payload.size() - 16 == 8) {
+        ore.file_tons = formats::u16_le(record.payload, 16);
+        ore.quantity_88 = std::uint32_t{*ore.file_tons} << 8;
+        if (ore.reserve != 0 && ore.quantity_88 < 409600)
+            ore.quantity_88 = 512000;
+        ore.discovery = formats::u32_le(record.payload, 20);
+    }
+    const auto index = static_cast<std::uint64_t>(out.occurrences.size());
+    out.occurrences.push_back(ore);
+    const auto lx = static_cast<std::uint32_t>(x - raw.x),
+               ly = static_cast<std::uint32_t>(y - raw.y);
+    const auto chunk = std::uint64_t{ly / 8} * resource_columns(raw) + lx / 8;
+    auto& target = out.resource_list_chunks[chunk];
+    const auto node = static_cast<std::uint64_t>(out.resource_list_nodes.size());
+    out.resource_list_nodes.push_back({index, chunk, 0, 0, 0, 6, target.head,
+                                       static_cast<std::uint8_t>(lx % 8),
+                                       static_cast<std::uint8_t>(ly % 8)});
+    target.head = node;
+    target.resource_flags |= 0x40;
+    return PrefixOccurrenceLoad{source, index, refresh_ore_masks(out, raw, x, y), true};
+}
 } // namespace
 formats::Result<PreparedPrefix, PrefixFailure>
 prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::Entry> entries,
@@ -117,7 +304,7 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
              ++setup_end) {
             const auto& header = raw.records[setup_end];
             const auto name = header.name();
-            prepared.headers.push_back({source(setup_end), std::string(name), 0, {}, {}, {}});
+            prepared.headers.push_back({source(setup_end), std::string(name), 0, {}, {}, {}, {}});
             if (name == "INFO") {
                 if (header.payload.size() != 12) {
                     setup_error = PrefixBoundary{source(setup_end), "INFO", "strict INFO length"};
@@ -197,7 +384,7 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
         for (std::uint64_t h = setup_end; h < raw.records.size(); ++h) {
             const auto& header = raw.records[h];
             const auto name = header.name();
-            prepared.headers.push_back({source(h), std::string(name), 0, {}, {}, {}});
+            prepared.headers.push_back({source(h), std::string(name), 0, {}, {}, {}, {}});
             if (name == "GELAENDE") {
                 const auto block = formats::insel::Block::parse(header.payload);
                 if (!block || block.value().data.size() % 6 != 0) {
@@ -239,6 +426,26 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
                     return PrefixFailure{out.boundary->reason, std::move(out)};
                 }
                 prepared.headers.back().water_mask_updates = closed.value();
+            } else if (name == "OCCUR") {
+                const auto records = formats::tagged::parse_records(header.payload);
+                if (!records) {
+                    stop({source(h), "OCCUR", records.error()});
+                    return PrefixFailure{out.boundary->reason, std::move(out)};
+                }
+                const auto before = prepared.occurrences.size();
+                for (std::uint64_t r = 0; r < records.value().size(); ++r) {
+                    if (records.value()[r].name != "ENTRY2")
+                        continue;
+                    const auto loaded =
+                        load_ore(prepared, raw, records.value()[r], source(h, r), types);
+                    if (!loaded) {
+                        stop({source(h, r), "OCCUR", loaded.error()});
+                        return PrefixFailure{out.boundary->reason, std::move(out)};
+                    }
+                    prepared.occurrence_loads.push_back(loaded.value());
+                    ++prepared.headers.back().records;
+                }
+                prepared.headers.back().occurrences_added = prepared.occurrences.size() - before;
             } else if (name == "BERGWERK2") {
                 const auto records = formats::tagged::parse_records(header.payload);
                 if (!records) {
@@ -249,9 +456,9 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
                 constexpr std::int64_t edge = 8;
                 const auto nx = (std::int64_t{raw.width} + edge - 1) / edge;
                 const auto ny = (std::int64_t{raw.height} + edge - 1) / edge;
-                if (prepared.bergwerk_chunks.empty())
-                    prepared.bergwerk_chunks.resize(static_cast<std::size_t>(nx * ny));
-                const auto before = prepared.bergwerk_nodes.size();
+                if (prepared.resource_list_chunks.empty())
+                    prepared.resource_list_chunks.resize(static_cast<std::size_t>(nx * ny));
+                const auto before = prepared.resource_list_nodes.size();
                 for (std::uint64_t r = 0; r < records.value().size(); ++r) {
                     const auto& record = records.value()[r];
                     if (record.name != "ENTRY")
@@ -289,10 +496,10 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
                     const auto entry = static_cast<std::uint64_t>(prepared.bergwerk_entries.size());
                     prepared.bergwerk_entries.push_back({source(h, r), lx, ly, x, y, rotation});
                     for (const auto& [chunk, offsets] : nodes) {
-                        auto& target = prepared.bergwerk_chunks[chunk];
+                        auto& target = prepared.resource_list_chunks[chunk];
                         const auto index =
-                            static_cast<std::uint64_t>(prepared.bergwerk_nodes.size());
-                        prepared.bergwerk_nodes.push_back(
+                            static_cast<std::uint64_t>(prepared.resource_list_nodes.size());
+                        prepared.resource_list_nodes.push_back(
                             {entry, chunk, offsets, rotation, 0x10, 1, target.head});
                         target.head = index;
                         target.resource_flags |= 2;
@@ -300,7 +507,7 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
                     ++prepared.headers.back().records;
                 }
                 prepared.headers.back().bergwerk_nodes_added =
-                    prepared.bergwerk_nodes.size() - before;
+                    prepared.resource_list_nodes.size() - before;
             } else if (name == "FRUCHTBAR") {
                 const auto effect = session.apply_fertility(header.payload);
                 if (!effect) {

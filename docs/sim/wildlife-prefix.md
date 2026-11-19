@@ -183,3 +183,13 @@ from OCCUR ore occurrences and quantities; normal scenario/deposit imports remai
 unchanged. The same stream processes header 50, then stops before OCCUR header 51.
 Historical frozen boundaries remain predecessor evidence; post-island/global
 initialization and the existing omitted-cache integration obligations are unchanged.
+
+## OCCUR ore continuation (2026-11-19)
+
+The [bounded ore occurrence contract](wildlife-occur.md) adds typed occurrences,
+shared kind-6 list nodes and the reached BERGWERK-mask refresh. The existing
+resource-list node/chunk seam is named generically to represent the original
+shared chain, with kind-1 BERGWERK fields retained. Other classes/goods stop at
+record boundaries. No ordinary loader or mining integration changes. The same
+stream processes OCCUR header 51, then stops before ANBAU header 52; global
+initialization and existing omitted-cache obligations remain outside scope.

@@ -32,6 +32,7 @@ struct PrefixHeader {
     std::optional<std::uint64_t> water_mask_updates; // Engaged only after GELAENDE epilogue.
     std::optional<std::uint64_t> fertility_updates;  // Engaged after FRUCHTBAR, even if unchanged.
     std::optional<std::uint64_t> bergwerk_nodes_added; // Engaged after the whole header.
+    std::optional<std::uint64_t> occurrences_added;
 };
 struct PrefixResource {
     PrefixSource source;
@@ -55,15 +56,31 @@ struct PrefixBergwerkEntry {
     std::uint32_t local_x = 0, local_y = 0, world_x = 0, world_y = 0;
     std::uint8_t rotation = 0;
 };
-struct PrefixBergwerkNode {
+struct PrefixResourceListNode {
+    // entry indexes bergwerk_entries for kind 1, occurrences for kind 6.
     std::uint64_t entry = 0, chunk = 0;
     std::uint8_t offsets = 0, rotation = 0, mask = 0x10, kind = 1;
     std::optional<std::uint64_t> next;
+    std::uint8_t x_offset = 0, y_offset = 0; // Kind 6 uses unsigned bytes, not packed nibbles.
 };
-struct PrefixBergwerkChunk {
-    // Only the represented resource-presence bit; not the full original cache.
+struct PrefixResourceListChunk {
+    // Represented kind-1/kind-6 presence bits only; not the full original cache.
     std::uint8_t resource_flags = 0;
     std::optional<std::uint64_t> head;
+};
+struct PrefixOccurrence {
+    PrefixSource source;
+    std::uint32_t type = 0, goods = 0;
+    std::uint32_t world_x_bits = 0, world_y_bits = 0, height_bits = 0;
+    std::int32_t tile_x = 0, tile_y = 0;
+    std::uint32_t quantity_88 = 0, discovery = 0;
+    std::uint8_t reserve = 0;
+    std::optional<std::uint16_t> file_tons;
+};
+struct PrefixOccurrenceLoad {
+    PrefixSource source;
+    std::uint64_t occurrence = 0, mask_updates = 0;
+    bool created = false;
 };
 struct PreparedIsland {
     std::uint32_t slot = 0, climate = 0;
@@ -74,8 +91,10 @@ struct PreparedIsland {
     std::vector<PrefixSpawn> spawns; // Source chronology, never prepend visit order.
     std::vector<std::optional<std::uint64_t>> chunk_heads;
     std::vector<PrefixBergwerkEntry> bergwerk_entries;
-    std::vector<PrefixBergwerkNode> bergwerk_nodes;
-    std::vector<PrefixBergwerkChunk> bergwerk_chunks;
+    std::vector<PrefixResourceListNode> resource_list_nodes;
+    std::vector<PrefixResourceListChunk> resource_list_chunks;
+    std::vector<PrefixOccurrence> occurrences;
+    std::vector<PrefixOccurrenceLoad> occurrence_loads;
     bool complete_local_records = false;
 };
 struct PreparedPrefix {

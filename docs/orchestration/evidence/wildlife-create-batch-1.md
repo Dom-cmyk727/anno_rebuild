@@ -84,7 +84,7 @@ Actual Debug binary SHA256 0ac0f84ac0db2ffe5e94e80472845fa2a4615138974b89bac43f4
 ASan f8ae89db66acf2233ec8633e9ed8fd6099af2862121aea22479f566a98ecf2d3.
 Host Mac17,6 M5 Max, 18 logical CPU, 48 GiB, macOS 27.0.1 26A434; AppleClang 21.
 Build jobs 2, gate jobs 1, internal threads 2, host memory admission enabled.
-Original assets /Users/dom/Dev/anno1503-worktrees/anno1503/game/app required;
+Original assets required through ANNO1503_GAME_DIR (local game/app directory);
 ANNO_WILDLIFE_CREATE_ORACLE points to retained descriptor-oracle.tsv (SHA256
 69bf63f7acb864820fcddff8eda640ab28c1a9d82ecd0abd6f6c2751d11cf073).
 Canonical commands/env in cache/wildlife-create-batch-1/gate.py. Each profile runs
@@ -131,3 +131,8 @@ NOT_RUN: full/heavy/opening/pins/scale, Windows/runtime/HE/native allocator/CW/l
 nonempty cleanup/movement/death, first-action callbacks and LeakSanitizer (detect_leaks=0).
 QUESTIONs: none within the finite conditional contract. Native manager and World integration
 remain future dependencies; this batch introduces neither. STOP for independent review.
+
+Publication review correction: the optional end adapter preserves resource records;
+typed resource sidecars remain unchanged in batch progress outside that adapter.
+Absolute asset setup stays private; the gate still uses ANNO1503_GAME_DIR.
+Code/tests remain at tested 7f579a185b0420bcac2385b18daa77330e9b90a2; no repeated gates.

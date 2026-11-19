@@ -72,8 +72,9 @@ not only the returned prefix. No manager callback or new random draw executes.
 `release_island()` derives the narrow end adapter's island/chunk headers from the
 same source. Both end adapters share one bounded state transition. The optional
 adapter changes only the first matching category-0 record's occupancy; it retains
-unknown id/high-bit/byte11 and resource sidecars. A different saved id is not a
-veto. Repeated detached end does not clear replacement occupancy. A needed unknown
+unknown id/high-bit/byte11 and resource records. Typed sidecars remain owned
+unchanged in batch progress, outside the release adapter. A different saved id is
+not a veto. Repeated detached end does not clear replacement occupancy. A needed unknown
 position refuses; an unknown position after the first match is never inspected.
 This remains empty-cleanup attached ordinary end, not movement/death or arbitrary
 native cleanup. Numerical profiles, manager outcomes and live-corner provenance

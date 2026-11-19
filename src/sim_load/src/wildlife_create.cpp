@@ -146,9 +146,10 @@ formats::Result<std::uint32_t, std::string> truncate_coordinate(std::uint32_t bi
     return shift >= 23 ? significand << (shift - 23) : significand >> (23 - shift);
 }
 } // namespace
-formats::Result<WildlifeCreationEffects, std::string>
-project_wildlife_creation(const WildlifeCreationDescriptor& descriptor,
-                          const WildlifeCreationInputs& input) {
+namespace {
+formats::Result<WildlifeCreationOutcomeEffects, std::string>
+creation_outcome(const WildlifeCreationDescriptor& descriptor,
+                 const WildlifeCreationOutcomeInputs& input, bool legacy_null_id_check) {
     if (input.manager != WildlifeManagerOutcome::Success &&
         input.manager != WildlifeManagerOutcome::Null)
         return std::string("creation effects: unsupported manager outcome");
@@ -189,10 +190,14 @@ project_wildlife_creation(const WildlifeCreationDescriptor& descriptor,
     if (g.place == WildlifeCreationPlace::ResolvedCaveEntrance &&
         (!exact_binary32_integer(g.home_x) || !exact_binary32_integer(g.home_z)))
         return std::string("creation effects: cave target needs unproved rounding");
-    if (input.assigned_id > std::numeric_limits<std::uint16_t>::max())
+    if (input.manager == WildlifeManagerOutcome::Success && !input.assigned_id)
+        return std::string("creation effects: success requires assigned id");
+    if ((input.manager == WildlifeManagerOutcome::Success || legacy_null_id_check) &&
+        (!input.assigned_id || *input.assigned_id > std::numeric_limits<std::uint16_t>::max()))
         return std::string("creation effects: id outside original projection");
-    WildlifeCreationEffects out;
-    out.spawn = input.prior;
+    if (input.manager == WildlifeManagerOutcome::Success && !input.creation_time)
+        return std::string("creation effects: success requires creation time");
+    WildlifeCreationOutcomeEffects out;
     out.helper_consumed = input.helper_consumed;
     using S = WildlifeCreationStage;
     if (input.manager == WildlifeManagerOutcome::Null) {
@@ -201,10 +206,10 @@ project_wildlife_creation(const WildlifeCreationDescriptor& descriptor,
     }
     WildlifeCreatedProjection animal;
     animal.type = descriptor.id();
-    animal.engine_id = input.assigned_id;
-    animal.original_id = static_cast<std::uint16_t>(input.assigned_id);
-    animal.full_creation_time = input.creation_time;
-    animal.original_times.fill(static_cast<std::uint16_t>(input.creation_time));
+    animal.engine_id = *input.assigned_id;
+    animal.original_id = static_cast<std::uint16_t>(*input.assigned_id);
+    animal.full_creation_time = *input.creation_time;
+    animal.original_times.fill(static_cast<std::uint16_t>(*input.creation_time));
     animal.hp = descriptor.hp();
     animal.quantity = 0x200;
     const auto id = descriptor.id().v;
@@ -219,10 +224,9 @@ project_wildlife_creation(const WildlifeCreationDescriptor& descriptor,
                             static_cast<std::uint16_t>(g.home_z)};
     animal.original_current_tile = animal.original_home;
     animal.descriptor_source_sha256 = descriptor.source_sha256();
-    out.spawn.id = animal.original_id;
-    out.spawn.timestamp = static_cast<std::uint8_t>(input.sweep_time / 1000U + 60U);
-    out.spawn.packed = static_cast<std::uint8_t>(out.spawn.packed | 0x40U);
-    out.spawn.goods = static_cast<std::uint16_t>(descriptor.yield());
+    out.writes = WildlifeSpawnWrites{animal.original_id,
+                                     static_cast<std::uint8_t>(input.sweep_time / 1000U + 60U),
+                                     static_cast<std::uint16_t>(descriptor.yield())};
     out.stages = {S::ConstructorQuantity,
                   S::AttachType,
                   S::AttachWorld,
@@ -241,4 +245,32 @@ project_wildlife_creation(const WildlifeCreationDescriptor& descriptor,
     out.animal = std::move(animal);
     return out;
 }
+} // namespace
+
+formats::Result<WildlifeCreationOutcomeEffects, std::string>
+project_wildlife_creation_outcome(const WildlifeCreationDescriptor& descriptor,
+                                  const WildlifeCreationOutcomeInputs& input) {
+    return creation_outcome(descriptor, input, false);
+}
+formats::Result<WildlifeCreationEffects, std::string>
+project_wildlife_creation(const WildlifeCreationDescriptor& descriptor,
+                          const WildlifeCreationInputs& input) {
+    const WildlifeCreationOutcomeInputs context{
+        input.manager,  input.assigned_id, input.creation_time,  input.position_words,
+        input.geometry, input.sweep_time,  input.helper_consumed};
+    auto result = creation_outcome(descriptor, context, true);
+    if (!result)
+        return result.error();
+    WildlifeCreationEffects out{std::move(result.value().animal), input.prior,
+                                std::move(result.value().stages), result.value().helper_consumed};
+    if (result.value().writes) {
+        const auto& writes = *result.value().writes;
+        out.spawn.id = writes.id;
+        out.spawn.timestamp = writes.timestamp;
+        out.spawn.packed = static_cast<std::uint8_t>(out.spawn.packed | 0x40U);
+        out.spawn.goods = writes.goods;
+    }
+    return out;
+}
+
 } // namespace anno::sim_load

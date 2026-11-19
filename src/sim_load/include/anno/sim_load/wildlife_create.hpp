@@ -83,6 +83,20 @@ struct WildlifeCreationInputs {
     std::uint32_t sweep_time = 0;
     std::uint64_t helper_consumed = 0; // Already consumed elsewhere, never advanced here.
 };
+// No prior packed-byte placeholder. Null ignores absent success-only ID/time.
+struct WildlifeCreationOutcomeInputs {
+    WildlifeManagerOutcome manager;
+    std::optional<std::uint32_t> assigned_id, creation_time;
+    std::array<std::uint32_t, 3> position_words;
+    WildlifeCreationGeometry geometry;
+    std::uint32_t sweep_time;
+    std::uint64_t helper_consumed;
+};
+struct WildlifeSpawnWrites {
+    std::uint16_t id;
+    std::uint8_t timestamp;
+    std::uint16_t goods;
+};
 enum class WildlifeCreationStage {
     ManagerNull,
     ConstructorQuantity,
@@ -125,6 +139,16 @@ struct WildlifeCreationEffects {
     std::uint64_t helper_consumed = 0;
     bool operator==(const WildlifeCreationEffects&) const = default;
 };
+struct WildlifeCreationOutcomeEffects {
+    std::optional<WildlifeCreatedProjection> animal;
+    std::optional<WildlifeSpawnWrites>
+        writes; // Engaged only for successful creation; occupied=true.
+    std::vector<WildlifeCreationStage> stages;
+    std::uint64_t helper_consumed = 0;
+};
+[[nodiscard]] formats::Result<WildlifeCreationOutcomeEffects, std::string>
+project_wildlife_creation_outcome(const WildlifeCreationDescriptor&,
+                                  const WildlifeCreationOutcomeInputs&);
 // Pure projection under explicit supplied manager/geometry outcomes. No live figure,
 // manager rollback, actual spatial links, PRNG, I/O or new cross-host FP policy.
 [[nodiscard]] formats::Result<WildlifeCreationEffects, std::string>

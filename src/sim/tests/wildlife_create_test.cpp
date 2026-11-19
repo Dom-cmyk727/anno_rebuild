@@ -16,6 +16,7 @@
 #include <anno/formats/tagged.hpp>
 #include <anno/sim_load/original_registry.hpp>
 #include <anno/sim_load/wildlife_create.hpp>
+#include <anno/sim_load/wildlife_create_batch.hpp>
 #include <anno/sim_load/wildlife_final_facts.hpp>
 #include <anno/sim_load/wildlife_geometry.hpp>
 #include <anno/sim_load/wildlife_habitat_load.hpp>
@@ -3063,4 +3064,491 @@ TEST_CASE("wildlife geometry: source batch forwards independent table and callba
         CHECK(geometry.value().unchanged_draws.selector_only == 10);
     }
     CHECK(rig.prepared.fill.island.terrain->height == before);
+}
+namespace {
+load::WildlifeManagerFact null_manager(std::uint64_t token) {
+    return {
+        token, load::WildlifeManagerOutcome::Null, {}, {}, "supplied Null, no success-only facts"};
+}
+load::WildlifeManagerFact success_manager(std::uint64_t token, std::uint32_t id = 77,
+                                          std::uint32_t time = 65538) {
+    return {token, load::WildlifeManagerOutcome::Success, id, time,
+            "supplied success/id/time, not allocation"};
+}
+struct CreateBatchRig {
+    ImportRig rig;
+    Source animals;
+    Buffer welt = species_pe();
+    load::WildlifeNumericContext numeric = geometry_context();
+    load::WildlifeImportPlan plan;
+    CreateBatchRig(bool nonflat = false)
+        : rig(1, 500,
+              nonflat ? std::optional{std::array<std::uint8_t, 4>{0, 25, 50, 100}} : std::nullopt) {
+        species_source(animals);
+        const std::array<std::uint32_t, 6> m{0, 1, 0, 0, 0, 999};
+        const std::array<std::uint32_t, 11> s{6, 1, 6, 0, 6, 0, 6, 0, 0, 0, 999};
+        const auto result = load::prepare_wildlife_import_plan(
+            rig.prepared, rig.scene, 1, 1, import_runtime(), final_profile,
+            rig.metadata.source.entries, rig.metadata.source.image, *rig.metadata.types, source(),
+            m, s);
+        REQUIRE_MESSAGE(result, (result ? "" : result.error().reason));
+        plan = result.value();
+        // Explicit synthetic runtime snapshot facts, NOT claims about file-loaded
+        // occupancy/ID/highbit.
+        for (auto& r : plan.maintenance.completed.chunk.records) {
+            if (r.token == 0) {
+                r.saved_id = std::uint16_t{99};
+                r.high_bit = true;
+                r.byte11 = std::uint8_t{7};
+            }
+            if (r.token == 1) {
+                r.saved_id = std::uint16_t{0};
+                r.high_bit = false;
+                r.byte11 = std::uint8_t{0};
+            }
+        }
+        plan.maintenance.completed.chunk.records.push_back({2000, 0, std::uint8_t{1}, true, true,
+                                                            std::uint8_t{99}, std::uint16_t{888},
+                                                            std::uint16_t{69}, std::uint8_t{59}});
+        rematerialize(plan, s);
+    }
+    load::WildlifeSpeciesSource source() const {
+        return {welt, rig.metadata.source.image, animals.entries,
+                fmt::annowelt::WildlifeSpeciesProfile::GogClimate2, 2};
+    }
+    void rematerialize(load::WildlifeImportPlan& target,
+                       std::span<const std::uint32_t> draws) const {
+        const auto result = load::prepare_wildlife_materialization(
+            target.maintenance, target.supplied.time, target.final_facts.facts, source(), draws);
+        REQUIRE_MESSAGE(result, (result ? "" : result.error().reason));
+        target.materialization = result.value();
+        target.draws.selector_only = result.value().completed.selector_consumed;
+    }
+    std::vector<load::WildlifeManagerFact> managers() const {
+        std::vector<load::WildlifeManagerFact> out;
+        for (const auto& s : plan.materialization.completed.entries)
+            if (s.disposition == load::WildlifeMaterializeDisposition::Selected)
+                out.push_back(s.token == 1001 ? success_manager(s.token)
+                              : s.token == 0  ? success_manager(s.token, 1, 0)
+                                              : null_manager(s.token));
+        std::reverse(out.begin(), out.end());
+        return out; // Manager input order is NOT visit order.
+    }
+    auto run(std::span<const load::WildlifeManagerFact> facts) const {
+        return load::prepare_wildlife_create_batch(
+            rig.prepared, plan, numeric, facts,
+            "authored fresh source plus labelled runtime snapshot overlay");
+    }
+};
+std::vector<std::uint64_t> batch_tokens(const load::WildlifeCreateBatchProgress& p) {
+    std::vector<std::uint64_t> out;
+    for (const auto& e : p.entries)
+        out.push_back(e.token);
+    return out;
+}
+const load::WildlifeCreateBatchEntry& batch_entry(const load::WildlifeCreateBatchProgress& p,
+                                                  std::uint64_t token) {
+    const auto it = std::find_if(p.entries.begin(), p.entries.end(),
+                                 [&](const auto& e) { return e.token == token; });
+    REQUIRE(it != p.entries.end());
+    return *it;
+}
+} // namespace
+TEST_CASE(
+    "wildlife batch: source ordered success null and unknown fields are complete owned effects") {
+    const auto owned = [] {
+        CreateBatchRig r;
+        const auto managers = r.managers();
+        const auto prior = r.plan.maintenance.completed.chunk;
+        const auto result = r.run(managers);
+        REQUIRE_MESSAGE(result, (result ? "" : result.error().reason));
+        const auto& p = result.value().completed;
+        CHECK(batch_tokens(p) == std::vector<std::uint64_t>{1001, 1000, 7, 6, 2, 1, 0, 2000});
+        auto expected = prior;
+        expected.records[0] = {1001,
+                               0,
+                               std::uint8_t{57},
+                               true,
+                               {},
+                               std::uint8_t{70},
+                               std::uint16_t{77},
+                               std::uint16_t{138},
+                               {}};
+        expected.records[6] = {0,
+                               0,
+                               std::uint8_t{9},
+                               true,
+                               true,
+                               std::uint8_t{70},
+                               std::uint16_t{1},
+                               std::uint16_t{137},
+                               std::uint8_t{7}};
+        CHECK(p.chunk == expected);
+        CHECK(r.plan.maintenance.completed.chunk == prior);
+        const auto& first = batch_entry(p, 1001);
+        REQUIRE(first.effects);
+        REQUIRE(first.effects->animal);
+        CHECK(first.disposition == load::WildlifeCreateBatchDisposition::Created);
+        CHECK(first.effects->animal->type.v == 127);
+        CHECK(first.effects->animal->engine_id == 77);
+        CHECK(first.effects->animal->full_creation_time == 65538);
+        CHECK(first.effects->animal->original_times == std::array<std::uint16_t, 3>{2, 2, 2});
+        CHECK(first.effects->animal->hp == 5);
+        CHECK(first.effects->animal->yield == 138);
+        CHECK(first.effects->animal->quantity == 512);
+        CHECK(first.effects->animal->carried_goods == 69);
+        CHECK(first.effects->stages == success_stages());
+        CHECK(first.effects->helper_consumed == 2);
+        const auto& null = batch_entry(p, 1000);
+        REQUIRE(null.effects);
+        REQUIRE(null.manager);
+        CHECK_FALSE(null.manager->assigned_id);
+        CHECK_FALSE(null.manager->creation_time);
+        CHECK_FALSE(null.effects->animal);
+        CHECK_FALSE(null.effects->writes);
+        CHECK(null.effects->stages == std::vector{load::WildlifeCreationStage::ManagerNull});
+        CHECK(p.chunk.records[1] == prior.records[1]);
+        CHECK_FALSE(p.chunk.records[1].saved_id);
+        CHECK_FALSE(p.chunk.records[1].high_bit);
+        CHECK_FALSE(p.chunk.records[1].byte11);
+        CHECK(p.chunk.records[5].saved_id == std::uint16_t{0});
+        CHECK(p.chunk.records[5].high_bit == false);
+        CHECK(p.chunk.records[5].byte11 == std::uint8_t{0});
+        CHECK(batch_entry(p, 2000).disposition == load::WildlifeCreateBatchDisposition::Unselected);
+        CHECK_FALSE(batch_entry(p, 6).effects);
+        CHECK_FALSE(batch_entry(p, 2).manager);
+        REQUIRE(p.sidecars.size() == 2);
+        CHECK(std::get<load::WildlifeOccurrenceSidecar>(p.sidecars.at(6)).loads.size() == 2);
+        CHECK(std::get<load::WildlifeBergwerkSidecar>(p.sidecars.at(2)).node_projection.offsets ==
+              0x67);
+        CHECK(p.unchanged_draws.imported_prefix == 100);
+        CHECK(p.unchanged_draws.maintenance == 5);
+        CHECK(p.unchanged_draws.selector_only == 10);
+        CHECK(p.unused_maintenance == std::vector<std::uint32_t>{999});
+        CHECK(p.unused_selectors == std::vector<std::uint32_t>{999});
+        CHECK(r.run(managers).value().completed.chunk == p.chunk);
+        auto reversed = r.plan;
+        const auto steps = reversed.materialization.completed.entries;
+        std::reverse(reversed.maintenance.completed.chunk.records.begin(),
+                     reversed.maintenance.completed.chunk.records.end());
+        std::vector<std::uint32_t> draws;
+        for (const auto& record : reversed.maintenance.completed.chunk.records) {
+            const auto step = std::find_if(steps.begin(), steps.end(),
+                                           [&](const auto& s) { return s.token == record.token; });
+            REQUIRE(step != steps.end());
+            if (step->selection) {
+                draws.push_back(static_cast<std::uint32_t>(step->selection->choice.value.position));
+                draws.push_back(step->selection->choice.value.index);
+            }
+        }
+        draws.push_back(999);
+        r.rematerialize(reversed, draws);
+        const auto other = load::prepare_wildlife_create_batch(
+            r.rig.prepared, reversed, r.numeric, managers, "authored reversed snapshot order");
+        REQUIRE(other);
+        CHECK(batch_tokens(other.value().completed) ==
+              std::vector<std::uint64_t>{2000, 0, 1, 2, 6, 7, 1000, 1001});
+        CHECK(other.value().completed.chunk.records.back() == expected.records[0]);
+        return result.value();
+    }();
+    CHECK(owned.completed.chunk.records[0].saved_id == std::uint16_t{77});
+    const auto& survivor = batch_entry(owned.completed, 1001);
+    REQUIRE(survivor.geometry);
+    REQUIRE(survivor.descriptor);
+    CHECK(survivor.geometry->words[0] != 0);
+    CHECK(survivor.descriptor->id().v == 127); // All original owners dead.
+}
+TEST_CASE(
+    "wildlife batch: admission differs from reached failures retaining exact completed prefix") {
+    CreateBatchRig r;
+    const auto managers = r.managers();
+    const auto prior = r.plan.maintenance.completed.chunk;
+    REQUIRE(r.run(managers));
+    auto duplicate = managers;
+    duplicate.push_back(managers.at(0));
+    const auto bad = r.run(duplicate);
+    REQUIRE_FALSE(bad);
+    CHECK(bad.error().scope == load::WildlifeCreateBatchScope::Admission);
+    CHECK(bad.error().stage == load::WildlifeCreateBatchStage::Manager);
+    CHECK_FALSE(bad.error().diagnostic_only);
+    auto mismatch = r.plan;
+    mismatch.materialization.completed.entries[0].selection->creation =
+        mismatch.materialization.completed.entries[6].selection->creation;
+    const auto desc =
+        load::prepare_wildlife_create_batch(r.rig.prepared, mismatch, r.numeric, managers, "fresh");
+    REQUIRE_FALSE(desc);
+    CHECK(desc.error().scope == load::WildlifeCreateBatchScope::Admission);
+    CHECK(desc.error().stage == load::WildlifeCreateBatchStage::Descriptor);
+    CHECK(desc.error().token == 1001);
+    CHECK_FALSE(desc.error().diagnostic_only);
+    mismatch = r.plan;
+    mismatch.final_facts.scene_sha256 = "wrong";
+    const auto source =
+        load::prepare_wildlife_create_batch(r.rig.prepared, mismatch, r.numeric, managers, "fresh");
+    REQUIRE_FALSE(source);
+    CHECK(source.error().scope == load::WildlifeCreateBatchScope::Admission);
+    CHECK_FALSE(source.error().diagnostic_only);
+    auto later = managers;
+    std::erase_if(later, [](const auto& f) { return f.token == 7; });
+    const auto missing = r.run(later);
+    REQUIRE_FALSE(missing);
+    CHECK(missing.error().scope == load::WildlifeCreateBatchScope::ReachedEntry);
+    CHECK(missing.error().stage == load::WildlifeCreateBatchStage::Manager);
+    CHECK(missing.error().token == 7);
+    REQUIRE(missing.error().diagnostic_only);
+    const auto& p = *missing.error().diagnostic_only;
+    CHECK(batch_tokens(p) == std::vector<std::uint64_t>{1001, 1000});
+    auto expected = prior;
+    expected.records[0] = {1001,
+                           0,
+                           std::uint8_t{57},
+                           true,
+                           {},
+                           std::uint8_t{70},
+                           std::uint16_t{77},
+                           std::uint16_t{138},
+                           {}};
+    CHECK(p.chunk == expected);
+    CHECK(p.unchanged_draws.selector_only == 10);
+    CHECK(p.unused_selectors == std::vector<std::uint32_t>{999});
+    CHECK(p.sidecars.size() == 2);
+    later = managers;
+    for (auto& f : later)
+        if (f.token == 7)
+            f = success_manager(7, 65536, 0);
+    const auto unsupported = r.run(later);
+    REQUIRE_FALSE(unsupported);
+    CHECK(unsupported.error().scope == load::WildlifeCreateBatchScope::ReachedEntry);
+    CHECK(unsupported.error().stage == load::WildlifeCreateBatchStage::Projection);
+    CHECK(unsupported.error().token == 7);
+    REQUIRE(unsupported.error().diagnostic_only);
+    CHECK(unsupported.error().diagnostic_only->chunk == expected);
+    later = managers;
+    for (auto& f : later)
+        if (f.token == 7)
+            f.outcome.reset();
+    const auto missing_outcome = r.run(later);
+    REQUIRE_FALSE(missing_outcome);
+    CHECK(missing_outcome.error().stage == load::WildlifeCreateBatchStage::Manager);
+    CHECK(missing_outcome.error().token == 7);
+    REQUIRE(missing_outcome.error().diagnostic_only);
+    CHECK(missing_outcome.error().diagnostic_only->chunk == expected);
+    later = managers;
+    for (auto& f : later)
+        if (f.token == 7) {
+            f = success_manager(7);
+            f.creation_time.reset();
+        }
+    const auto time = r.run(later);
+    REQUIRE_FALSE(time);
+    CHECK(time.error().token == 7);
+    CHECK(time.error().reason == "creation effects: success requires creation time");
+    CHECK(r.plan.maintenance.completed.chunk == prior);
+}
+TEST_CASE(
+    "wildlife batch: nonflat source creation and partial empty end preserve unknown resources") {
+    CreateBatchRig r{true};
+    const auto result = r.run(r.managers());
+    REQUIRE_MESSAGE(result, (result ? "" : result.error().reason));
+    const auto& p = result.value().completed;
+    const auto& entry = batch_entry(p, 0);
+    REQUIRE(entry.effects);
+    REQUIRE(entry.effects->animal);
+    REQUIRE(entry.descriptor);
+    CHECK(entry.geometry->words ==
+          std::array<std::uint32_t, 3>{0x4204aaab, 0x3f000040, 0x4244aaab});
+    CHECK(entry.effects->animal->position_words == entry.geometry->words);
+    CHECK(entry.effects->animal->type.v == 60001);
+    CHECK(entry.effects->animal->hp == 17);
+    CHECK(entry.effects->animal->full_creation_time == 0);
+    CHECK(entry.effects->animal->original_times == std::array<std::uint16_t, 3>{0, 0, 0});
+    CHECK(p.unchanged_draws.imported_prefix == 96);
+    auto island = p.release_island();
+    auto before = island.chunks[0].chunk;
+    // Proved no saved-ID guard: actor ID1, matching source record now999, still clears only
+    // occupancy.
+    island.chunks[0].chunk.records[6].saved_id = std::uint16_t{999};
+    before = island.chunks[0].chunk;
+    load::WildlifeEndState state{
+        *entry.effects->animal}; // Explicit bounded empty-cleanup profile, no executed actions.
+    const auto ended = load::project_wildlife_partial_end(*entry.descriptor, state, island);
+    REQUIRE_MESSAGE(ended, (ended ? "" : ended.error()));
+    auto expected = before;
+    expected.records[6].occupied = false;
+    CHECK(ended.value().island.chunks[0].chunk == expected);
+    CHECK(island.chunks[0].chunk == before);
+    CHECK_FALSE(ended.value().state.attached);
+    CHECK(ended.value().state.ended);
+    CHECK(ended.value().state.animal.requested == 0);
+    CHECK(ended.value().state.animal.original_home == std::array<std::uint16_t, 2>{33, 49});
+    CHECK(ended.value().state.animal.full_creation_time == 0);
+    auto replacement = ended.value().island;
+    replacement.chunks[0].chunk.records[6].occupied = true;
+    const auto repeated =
+        load::project_wildlife_partial_end(*entry.descriptor, ended.value().state, replacement);
+    REQUIRE(repeated);
+    CHECK(repeated.value().island.chunks[0].chunk == replacement.chunks[0].chunk);
+    CHECK(std::find(repeated.value().stages.begin(), repeated.value().stages.end(),
+                    load::WildlifeEndStage::IslandRelease) == repeated.value().stages.end());
+    auto duplicate = island;
+    auto first = duplicate.chunks[0].chunk.records[0];
+    first.token = 3000;
+    first.position = std::uint8_t{9};
+    first.saved_id = std::uint16_t{555};
+    first.occupied = true;
+    duplicate.chunks[0].chunk.records.insert(duplicate.chunks[0].chunk.records.begin(), first);
+    duplicate.chunks[0].chunk.records.push_back(
+        {3001, 0, {}, {}, {}, {}, {}, {}, {}}); // Unreached unknown position must remain unknown.
+    auto expected_duplicate = duplicate.chunks[0].chunk;
+    expected_duplicate.records[0].occupied = false;
+    const auto first_match =
+        load::project_wildlife_partial_end(*entry.descriptor, state, duplicate);
+    REQUIRE(first_match);
+    CHECK(first_match.value().island.chunks[0].chunk == expected_duplicate);
+    auto missing = island;
+    missing.chunks[0].chunk.records[0].position.reset();
+    CHECK_FALSE(load::project_wildlife_partial_end(*entry.descriptor, state, missing));
+}
+TEST_CASE("wildlife batch: optional outcome core needs no null ID time or invented prior") {
+    Source s;
+    s.add(127, "HIRSCH", {}, "MEAT");
+    const auto cap = s.bind({sim::TypeId{127}});
+    REQUIRE(cap);
+    const auto legacy = inputs();
+    load::WildlifeCreationOutcomeInputs input{load::WildlifeManagerOutcome::Null,
+                                              {},
+                                              {},
+                                              legacy.position_words,
+                                              legacy.geometry,
+                                              legacy.sweep_time,
+                                              2};
+    const auto null = load::project_wildlife_creation_outcome(cap.value()[0], input);
+    REQUIRE(null);
+    CHECK_FALSE(null.value().animal);
+    CHECK_FALSE(null.value().writes);
+    CHECK(null.value().stages == std::vector{load::WildlifeCreationStage::ManagerNull});
+    CHECK(null.value().helper_consumed == 2);
+    input.manager = load::WildlifeManagerOutcome::Success;
+    CHECK_FALSE(load::project_wildlife_creation_outcome(cap.value()[0], input));
+    input.assigned_id = std::uint32_t{0};
+    CHECK_FALSE(load::project_wildlife_creation_outcome(cap.value()[0], input));
+    input.creation_time = std::uint32_t{0};
+    const auto zero = load::project_wildlife_creation_outcome(cap.value()[0], input);
+    REQUIRE(zero);
+    REQUIRE(zero.value().animal);
+    REQUIRE(zero.value().writes);
+    CHECK(zero.value().animal->engine_id == 0);
+    CHECK(zero.value().animal->full_creation_time == 0);
+    CHECK(zero.value().writes->id == 0);
+    CHECK(zero.value().writes->timestamp == 54);
+    CHECK(zero.value().writes->goods == 137);
+    input.manager = load::WildlifeManagerOutcome::Null;
+    input.assigned_id = std::numeric_limits<std::uint32_t>::max();
+    input.creation_time.reset();
+    CHECK(load::project_wildlife_creation_outcome(cap.value()[0], input));
+    auto old = legacy;
+    old.manager = load::WildlifeManagerOutcome::Null;
+    old.assigned_id = 65536;
+    const auto refused = load::project_wildlife_creation(cap.value()[0], old);
+    REQUIRE_FALSE(refused);
+    CHECK(refused.error() == "creation effects: id outside original projection");
+}
+TEST_CASE("wildlife batch: original Tutorial derives prior home creation and bounded release") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        std::cout << "SKIPPED: ANNO1503_GAME_DIR not set (original creation batch unavailable)\n";
+        return;
+    }
+    const auto read = [](const std::filesystem::path& path) {
+        std::ifstream in(path, std::ios::binary);
+        REQUIRE(in);
+        return Buffer(std::istreambuf_iterator<char>(in), {});
+    };
+    const auto scene = read(*dir / "Scenes/Tutorial/01Discover01.sze"),
+               game = read(*dir / "AnnoGame.dll"), welt = read(*dir / "AnnoWelt.dll");
+    const auto bytes = read(*dir / "Anlagen.dat"), figbytes = read(*dir / "FigurenHeader.dat");
+    const auto entries = fmt::anlagen::AnlagenFile::parse(bytes);
+    const auto figures = fmt::figuren::FigurenHeader::parse(figbytes);
+    REQUIRE(entries);
+    REQUIRE(figures);
+    const auto registry = load::load_original_registry(*dir, load::FigureEntries::Required);
+    REQUIRE_MESSAGE(registry.types, registry.error);
+    load::PrefixInputs input;
+    input.sampled_stamps = {500};
+    input.stamp_provenance = "authored stamp 500";
+    input.mode_provenance = "authored mode 0";
+    const auto prepared = load::prepare_wildlife_first_call(scene, {0, 11}, entries.value().entries,
+                                                            game, *registry.types, input,
+                                                            std::vector<std::uint32_t>(20000, 7));
+    REQUIRE(prepared);
+    load::WildlifeImportRuntime runtime;
+    runtime.time = 10000;
+    runtime.flags = {std::uint16_t{0x8000}, "authored non-presence flags"};
+    runtime.provenance = "authored time/no fresh allocation";
+    const load::WildlifeSpeciesSource species{
+        welt, game, figures.value().entries, fmt::annowelt::WildlifeSpeciesProfile::GogClimate2, 2};
+    const std::array<std::uint32_t, 1> maintenance{999};
+    const std::array<std::uint32_t, 3> selectors{6, 0, 999};
+    const auto plan = load::prepare_wildlife_import_plan(
+        prepared.value(), scene, 10, 2, runtime, final_profile, entries.value().entries, game,
+        *registry.types, species, maintenance, selectors);
+    REQUIRE_MESSAGE(plan, (plan ? "" : plan.error().reason));
+    const auto prior = plan.value().maintenance.completed.chunk;
+    const std::array managers{success_manager(21, 321, 65538)};
+    const auto batch = load::prepare_wildlife_create_batch(
+        prepared.value(), plan.value(), geometry_context(), managers,
+        "original fresh HEIGHT; supplied numeric/manager context");
+    REQUIRE_MESSAGE(batch, (batch ? "" : batch.error().reason));
+    const auto& p = batch.value().completed;
+    REQUIRE(p.entries.size() == 1);
+    REQUIRE(p.entries[0].geometry);
+    REQUIRE(p.entries[0].effects);
+    REQUIRE(p.entries[0].effects->animal);
+    REQUIRE(p.entries[0].descriptor);
+    CHECK(p.entries[0].prior == prior.records[0]);
+    CHECK(p.entries[0].geometry->words ==
+          std::array<std::uint32_t, 3>{0x42dfaaab, 0x3ff5c28f, 0x42375555});
+    CHECK(p.entries[0].geometry->home == std::array<std::uint32_t, 2>{111, 45});
+    CHECK(p.entries[0].geometry->corners == std::array<std::uint8_t, 4>{48, 48, 48, 48});
+    const load::WildlifeChunkRecord expected{
+        21, 0, std::uint8_t{47}, true, {}, std::uint8_t{70}, std::uint16_t{321}, std::uint16_t{0},
+        {}};
+    CHECK(p.chunk.records == std::vector{expected});
+    CHECK(p.chunk.flags == 0x8001);
+    CHECK(p.sidecars.empty());
+    const auto& actor = *p.entries[0].effects->animal;
+    CHECK(actor.type.v == 528);
+    CHECK(actor.engine_id == 321);
+    CHECK(actor.hp == 40);
+    CHECK(actor.quantity == 512);
+    CHECK(actor.yield == 0);
+    CHECK(actor.carried_goods == 69);
+    CHECK(actor.full_creation_time == 65538);
+    CHECK(actor.original_times == std::array<std::uint16_t, 3>{2, 2, 2});
+    CHECK(actor.original_home == std::array<std::uint16_t, 2>{111, 45});
+    CHECK(p.entries[0].effects->stages == success_stages());
+    CHECK(p.unchanged_draws.imported_prefix == 4745);
+    CHECK(p.unchanged_draws.maintenance == 0);
+    CHECK(p.unchanged_draws.selector_only == 2);
+    CHECK(p.unused_maintenance == std::vector<std::uint32_t>{999});
+    CHECK(p.unused_selectors == std::vector<std::uint32_t>{999});
+    CHECK(plan.value().maintenance.completed.chunk == prior);
+    const auto ended = load::project_wildlife_partial_end(
+        *p.entries[0].descriptor, load::WildlifeEndState{actor}, p.release_island());
+    REQUIRE_MESSAGE(ended, (ended ? "" : ended.error()));
+    auto released = expected;
+    released.occupied = false;
+    CHECK(ended.value().island.chunks[0].chunk.records == std::vector{released});
+    CHECK(ended.value().state.animal.position_words == actor.position_words);
+    const std::array nulls{null_manager(21)};
+    const auto null = load::prepare_wildlife_create_batch(
+        prepared.value(), plan.value(), geometry_context(), nulls,
+        "original fresh HEIGHT, supplied Null with no ID/time");
+    REQUIRE(null);
+    CHECK(null.value().completed.chunk == prior);
+    CHECK_FALSE(null.value().completed.entries[0].effects->animal);
+    CHECK_FALSE(null.value().completed.entries[0].effects->writes);
+    CHECK_FALSE(null.value().completed.chunk.records[0].saved_id);
+    CHECK_FALSE(null.value().completed.chunk.records[0].high_bit);
+    CHECK_FALSE(null.value().completed.chunk.records[0].byte11);
 }

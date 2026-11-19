@@ -30,9 +30,10 @@ These are explicit admission facts, not assumptions about arbitrary live cleanup
 D: island table 0x100cac2c +0x148 selects 0x1008bc80–0x1008bde5.
 New property +0x48 selects 0x10052b00–0x10052b3a: query 0x2f zero-extends
 u16 home +0x68/+0x6a into x/z and returns a one-cell rectangle. Type getter
-+0x78 = 0x100a3cb0 and Game kind getter +0x50 = 0x10010a40 are the already
-closed creation receivers. Kind 54 has a separate arm; normal family selection
-at 0x1008bd05–0x1008bd0d admits 49..64. This API supports only New 49/51.
++0x78 = 0x100a3cb0 and Game kind getter +0x50 = 0x1000fad0 are the already
+closed creation receivers. Game class getter +0x14 is 0x10010a40. Kind 54 has
+a separate arm; normal family selection at 0x1008bd05–0x1008bd0d admits 49..64.
+This API supports only New 49/51.
 Query 12 in New +0x8c = 0x10052570 uses table 0x100525c0 entry 5 ->0x100525a2,
 returning configuration dword +0xa0. 0x1008bd21 tests AL with numeric mask 2.
 Configuration 4 skips 0x1008bd25–0x1008bd61 entirely, independently of an empty

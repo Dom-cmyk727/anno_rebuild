@@ -49,9 +49,10 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife first-call fill [WILDLIFE-POSTLOAD-FILL-1](tasks/wildlife-postload-fill-1.md) | ACCEPTED; isolated UNWIRED fill; evidence prose corrected in NAV-INPUTS | `889143ba1485a2fed72c03bd648c9c39878c4f06`; source `db2240a6` | [44456284511](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44456284511), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-postload-fill-1-review.md) |
 | Wildlife navigation inputs [WILDLIFE-NAV-INPUTS-1](tasks/wildlife-nav-inputs-1.md) | ACCEPTED research; production compatibility decision pending | `74d50bfeedf1a48ab7e140cc66e36859e0d0a9c3`; production base `889143ba` | [44458725953](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44458725953), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-nav-inputs-1-review.md) |
 | Wildlife secondary raster [WILDLIFE-RASTER-CONTRACT-1](tasks/wildlife-raster-contract-1.md) | ACCEPTED conditional research; runtime numeric qualification remains | `8217e1879aead7fa3b451c155b060f0a05405874`; production base `889143ba` | [44461780207](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44461780207), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-raster-contract-1-review.md) |
-| Wildlife load-thread numerics [WILDLIFE-RASTER-FP-1](tasks/wildlife-raster-fp-1.md) | LOCAL REVIEW APPROVED; precise Windows capture pending | `aec8bcc8fc1a35230dffba91c8e8b34c35f31bf3`; production base `889143ba` | [44464134541](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44464134541), in progress | [Review and Windows intake](reviews/2026-11-19-wildlife-raster-fp-1-review.md) |
+| Wildlife load-thread numerics [WILDLIFE-RASTER-FP-1](tasks/wildlife-raster-fp-1.md) | ACCEPTED research/capture card; Windows observation pending | `aec8bcc8fc1a35230dffba91c8e8b34c35f31bf3`; production base `889143ba` | [44464134541](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44464134541), all 12 jobs successful | [Review and Windows intake](reviews/2026-11-19-wildlife-raster-fp-1-review.md) |
 | Wildlife ground preparation [WILDLIFE-PREPROCESS-CONTRACT-1](tasks/wildlife-preprocess-contract-1.md) | LOCAL REVIEW APPROVED; conditional numerical implementation released | `54798a4b5f5bc8a2c65874ea375441b7cca9e21f`; production base `889143ba` | [44467047682](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44467047682), in progress | [Review](reviews/2026-11-19-wildlife-preprocess-contract-1-review.md) |
-| Wildlife numerical preparation [WILDLIFE-GROUND-PREPARE-1](tasks/wildlife-ground-prepare-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `54798a4b` | Not started; isolated UNWIRED integer leaf | Frozen reportback directly to Mac orchestrator |
+| Wildlife numerical preparation [WILDLIFE-GROUND-PREPARE-1](tasks/wildlife-ground-prepare-1.md) | LOCAL REVIEW APPROVED; isolated UNWIRED numerical leaf | `5bdfd92ac01a70656a718cea4f7c7405445b41d5`; tested `92c17db` | [44469519552](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44469519552), in progress | [Review](reviews/2026-11-19-wildlife-ground-prepare-1-review.md) |
+| Wildlife growth source [WILDLIFE-GROWTH-LOAD-1](tasks/wildlife-growth-load-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `5bdfd92a` | Not started; one typed source loader, UNWIRED | Frozen reportback directly to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -971,3 +972,27 @@ Debug/ASan gates. Remain UNWIRED: no scene provenance certificate, growth parser
 fake FRUCHTBAR, relaxed old fill validator, World/default/state change or original
 load claim. The selected Tutorial remains unchanged. Executor ordinary-pushes
 its task branch and reports directly here for review and the next release.
+
+
+## Latest dispatch — integer leaf reviewed; growth source loader released
+
+GROUND-PREPARE `5bdfd92a` / tested `92c17db` is independently locally APPROVED.
+73 manifest hashes and 22 published rows verified. Reference precedes C++; 24
+full-output vectors, independent 2D arithmetic, ownership/refusal controls and
+seven actual wrong-source variants support the conditional leaf. Debug and ASan
+each pass 21 main cases plus two required 1/1 contracts. No failures, skips or
+sanitizer reports; LeakSanitizer remains NOT_RUN. No gate repeated, no original
+scene/city provenance or live integration claim. PREPROCESS and GROUND exact CI
+remain pending.
+
+RASTER-FP `aec8bcc8` is now ACCEPTED research/capture card with all 12
+CI44464134541 jobs green. Original Windows observations and the owner navigation
+correction/compatibility decision remain pending; no numeric policy is selected.
+
+[WILDLIFE-GROWTH-LOAD-1](tasks/wildlife-growth-load-1.md) is RELEASED after
+independent scope review. Implement one owning original growth-lookup loader from
+source bytes, after closing its bounded parser contract. Keep generic text::ints
+unchanged, use nonzero retained-staging controls and a real-source/authored-leaf
+integration test. No kernel extraction, city proof, FRUCHTBAR capability, fill
+composition, World/state/default or other-lane change. Executor ordinary-pushes
+its task branch and reports directly here for review and next release.

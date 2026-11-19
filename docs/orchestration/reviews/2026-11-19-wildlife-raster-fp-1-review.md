@@ -56,3 +56,14 @@ The selected Tutorial already skips this branch because FRUCHTBAR is complete:
 this is broader initialization support, not a newly invented Tutorial prerequisite.
 No production/World change is released. Executor reports directly here for the
 next review; main untouched.
+
+## Terminal CI and acceptance
+
+RASTER-FP `aec8bcc8fc1a35230dffba91c8e8b34c35f31bf3` is now **ACCEPTED**
+within the research/capture-card scope. CI 44464134541 has all 12 jobs successful
+at that exact head, including all five C++ jobs and the aggregate gate. Hosted
+jobs receipt SHA-256:
+`4cff31800a42f612d3940f7db8ebdb6816981044288a249bfca98dfb76e0884c`.
+No local gate repeated. Acceptance does not close the two runtime numeric
+checkpoints: the original Windows capture remains pending and no production
+profile is selected. Landing remains with the Windows orchestrator.

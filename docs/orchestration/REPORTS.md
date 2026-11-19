@@ -17799,3 +17799,67 @@ Decisions and reasoning:
 - Keep setup and source failures separate; preserve old receipts rather than inferring root cause or acceptance.
 - Freeze tiny delta and run existing focused controls only; target proof comes from exact-head hosted MSVC.
 QUESTIONs: none. STOP pending orchestrator focused review/hosted acceptance; no gameplay continuation started.
+
+## WILDLIFE-FINAL-FACTS-1 — 2026-11-19 — READY FOR REVIEW
+
+Branch `task/WILDLIFE-FINAL-FACTS-1`, base `86e24940256d2cadf17a585b31b836b02701ae9e` locally reviewed, hosted pending.
+Dispatch `00638f63` F0–F5 read; no main/board merge/rebase. No failed predecessor reclassified.
+Tested source `39a5c67f8f61abfb6ed9642e34690e95a735ae1f`, tree `1021b4cb9f09c741ec696061303ce0fbdf2fd5d8`.
+Publication docs only; [contract](../sim/wildlife-final-facts.md), [exact evidence/hashes/limits](evidence/wildlife-final-facts-1.md).
+F0: fresh factory/table `Game 0x100063a0→0x1000c240`, table `0x10021a88`, +0xac→`0x1000a410–0x1000a424`.
+Actual output 0 byte +0x206, initialized 0 (`0x1000b61e–0x1000b624`), WARE first-match writes at `0x1000a1dc`.
+Only first 2 slots parsed; absent/empty/UNUSED default 0 proved; unknown names defensively refuse.
+No HEAD-property or modern output proxy. Safe source bounds documented; duplicate overwrite not imitated.
+F1: owned `bind_wildlife_final_types`, whole actual words/kinds/output, null words and source/WARE provenance.
+Reuses ground binder kind/HEAD/null admission only; source WARE independently decoded, registry vector cross-checked.
+Unknown nonzero, mismatch/duplicate/unsafe/profile refuse; known word 0 can be Present; absent 0 needs both omissions.
+F2: `bind_wildlife_final_chunk` maps completed first-call final resource plane, checked origin/stride/full 8 x 8.
+All 64-cell SOURCE ADMISSION precedes planner, explicitly distinct from original reached-field refusals.
+F3: existing planner unchanged; actual 104 not replaced by 105; missing/zero cave counts remain explicit.
+F4: 3 synthetic cases/610 assertions; owner death, whole aliases/data-defined 90001, ordered skips/counts/immutability.
+Independent original Tutorial chunk (10,2), base (104,40), all 64 field rows match raw-file oracle SHA in evidence.
+Authored records/time/draws give actual slot 1/type 501, consumed 2/suffix 999; no runtime PRNG or live fauna claim.
+Tutorial has no cave: original 1542 metadata used only in labelled synthetic-tile unresolved-entrance companion.
+4 distinct production mutants reject intended assertions, legal control passes; exact actual sources/binaries retained.
+First build had message-macro parentheses errors; stale predecessor probe selected 0, NOT counted as new passes.
+Both retained; corrected builds pass. Safety/lifetime controls added before freeze; no production semantic failure hidden.
+F5 Debug `cache/wildlife-final-facts-1/debug.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=13 executed=13 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+ASan/UBSan `cache/wildlife-final-facts-1/asan.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=13 executed=13 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+16 unique/profile = 4 final + 7 materialize + 5 reached ground binder; 3 required original cases separately then 13.
+Game directory/3 oracle paths set; jobs 1/threads 2/timeout 180/admission on. First gates pass, no refusal/rerun/skip.
+Apple Clang 21/GCC 15.3 O3/Werror 2 TUs each pass; shadow negative rejects; format 23.1.3/lint/diff/links pass.
+0 compiler warnings; inherited duplicate-library linker warning disclosed. Actual Debug/ASan binaries retained.
+1023 frozen identities and 292 unchanged fixtures verified. Prior owned artifacts 50/114/92/66 intact.
+Legacy ground manifest's 4 changed live paths distinguished from retained artifacts; naive audit diagnostic preserved.
+Closeout 128 artifacts SHA256 `3283532147a4887ae1b9a89ccea3beb21cf11e9e16fafec91f222ee13e8adfcd`.
+Publication CI read after own-branch push; orchestrator owns hosted closeout and independent review.
+NOT_RUN: cave/coordinate providers, real habitat/maintenance inputs, live creation/native callbacks/whole sweep/total draws,
+original/HE runtime, Windows/WSL/FP/nav, LeakSanitizer, broad/full/heavy/opening/pins. Unchanged adjacent evidence reused.
+Decisions and reasoning:
+- Decode source output byte independently; preserve actual words/null/known zero with explicit provenance.
+- Separate all-chunk source admission from original reached predicates; no duplicate eligibility implementation.
+- Consume final prepared resource tiles and own facts once; keep cave counts unresolved instead of inventing geometry.
+- Use independent field/cell oracle and causal counterexamples, without World/state/default/identity/PRNG changes.
+QUESTIONs: none in this bounded seam. STOP pending orchestrator review; no live gameplay continuation started.

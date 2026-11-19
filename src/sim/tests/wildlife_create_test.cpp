@@ -13,6 +13,7 @@
 #include <anno/formats/sha256.hpp>
 #include <anno/sim_load/wildlife_create.hpp>
 #include <anno/sim_load/wildlife_release.hpp>
+#include <anno/sim_load/wildlife_species.hpp>
 #include <anno/test/game_dir.hpp>
 
 namespace fmt = anno::formats;
@@ -703,4 +704,337 @@ TEST_CASE("wildlife end: unsupported live profiles refuse and returned effects o
           load::WildlifeSpawnProjection{19, 7, 0x83, 138});
     CHECK(owned->island.chunks[1].records[0].spawn ==
           load::WildlifeSpawnProjection{77, 13, 0xc0, 138});
+}
+
+namespace {
+using SpeciesProfile = fmt::annowelt::WildlifeSpeciesProfile;
+Buffer species_pe(std::vector<std::uint16_t> ids = {}) {
+    if (ids.empty()) {
+        ids.assign(32, 60001);
+        ids[1] = 127;
+        ids[31] = 503;
+    }
+    Buffer b(0x1200, 0);
+    b[0] = 'M';
+    b[1] = 'Z';
+    put32(b, 0x3c, 0x40);
+    b[0x40] = 'P';
+    b[0x41] = 'E';
+    put16(b, 0x44, 0x14c);
+    put16(b, 0x46, 1);
+    put32(b, 0x48, fmt::annowelt::kGogTimeDateStamp);
+    put16(b, 0x54, 0xe0);
+    put16(b, 0x58, 0x10b);
+    put32(b, 0x74, 0x10000000);
+    put32(b, 0x90, fmt::annowelt::kGogSizeOfImage);
+    constexpr auto sh = 0x138;
+    put32(b, sh + 8, 0x1000);
+    put32(b, sh + 12, 0xca000);
+    put32(b, sh + 16, 0x1000);
+    put32(b, sh + 20, 0x200);
+    put32(b, sh + 36, 0x40000040);
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        put16(b, 0x200 + 0x780 + 2 * i, ids[i]);
+        put16(b, 0x200 + 0x740 + 2 * i, 127); // Distinct adjacent row, not row 2.
+    }
+    return b;
+}
+void species_source(Source& s) {
+    s.add(60001, "HASE", hp(17), "MEAT");
+    s.add(127, "HIRSCH", {}, "FUR");
+    s.add(503, "RAUBTIER", {}, "MOVED");
+}
+auto species_plan(const Source& source, const Buffer& welt, bool cave, sim::GoodsId saved,
+                  std::span<const std::uint32_t> draws, std::size_t entrances = 1) {
+    return load::prepare_wildlife_creation_plan(welt, source.image, source.entries,
+                                                SpeciesProfile::GogClimate2, 2, cave, entrances,
+                                                saved, draws);
+}
+} // namespace
+TEST_CASE("wildlife species: raw order duplicate slots numeric facts and exact selection") {
+    Source s;
+    species_source(s);
+    const auto welt = species_pe();
+    const auto raw =
+        fmt::annowelt::read_wildlife_species_ring(welt, SpeciesProfile::GogClimate2, 2);
+    REQUIRE(raw);
+    REQUIRE(raw.value().ids.size() == 32);
+    CHECK(raw.value().ids[0] == 60001);
+    CHECK(raw.value().ids[1] == 127);
+    CHECK(raw.value().ids[2] == 60001);
+    CHECK(raw.value().ids[31] == 503);
+    CHECK(raw.value().rva == 0xca780);
+    CHECK(raw.value().raw_offset == 0x980);
+    const std::array<std::uint32_t, 3> ordinary{6, 33, 999};
+    const auto before = s.image;
+    const auto stored_before = s.storage;
+    const auto welt_before = welt;
+    const auto plan = species_plan(s, welt, false, 255, ordinary);
+    REQUIRE(plan);
+    CHECK(plan.value().ring.ids == raw.value().ids);
+    REQUIRE(plan.value().slot_facts.size() == 32);
+    CHECK(plan.value().slot_facts[0] == plan.value().slot_facts[2]);
+    CHECK(plan.value().slot_facts[31].kind == 50);
+    CHECK(plan.value().slot_facts[31].yield == 9);
+    CHECK(plan.value().choice.value.position == 2);
+    CHECK(plan.value().choice.value.index == 1);
+    CHECK(plan.value().choice.value.species.v == 127);
+    CHECK(plan.value().choice.value.inspected == 1);
+    CHECK(plan.value().choice.consumed == 2);
+    CHECK(plan.value().selected.yield == 138);
+    REQUIRE(plan.value().creation);
+    CHECK(plan.value().creation->yield() == 138);
+    const std::array<std::uint32_t, 2> cave{31, 999};
+    const auto wrap = species_plan(s, welt, true, 137, cave);
+    REQUIRE(wrap);
+    CHECK(wrap.value().choice.value.position == -1);
+    CHECK(wrap.value().choice.value.index == 0);
+    CHECK(wrap.value().choice.value.species.v == 60001);
+    CHECK(wrap.value().choice.value.inspected == 2);
+    CHECK(wrap.value().choice.consumed == 1);
+    CHECK(wrap.value().selected.kind == 51);
+    REQUIRE(wrap.value().creation);
+    CHECK(wrap.value().creation->id().v == 60001);
+    const auto unsupported = species_plan(s, welt, true, 9, cave);
+    REQUIRE(unsupported);
+    CHECK(unsupported.value().disposition ==
+          load::WildlifePlanDisposition::UnsupportedCreationKind);
+    CHECK_FALSE(unsupported.value().creation);
+    CHECK(unsupported.value().selected.kind == 50);
+    CHECK(unsupported.value().choice.value.index == 31);
+    CHECK(unsupported.value().choice.value.species.v == 503);
+    CHECK(unsupported.value().choice.value.inspected == 1);
+    CHECK(unsupported.value().choice.consumed == 1);
+    const auto failed_match = species_plan(s, welt, true, 142, cave);
+    REQUIRE(failed_match);
+    CHECK(failed_match.value().choice.value.index == 16);
+    CHECK(failed_match.value().choice.value.inspected == 18);
+    CHECK(failed_match.value().choice.consumed == 1);
+    CHECK(failed_match.value().selected.yield == 137); // Still selected despite no goods match.
+    CHECK(s.image == before);
+    CHECK(s.storage == stored_before);
+    CHECK(welt == welt_before);
+    CHECK(ordinary == std::array<std::uint32_t, 3>{6, 33, 999});
+    CHECK(cave == std::array<std::uint32_t, 2>{31, 999});
+    const auto again = species_plan(s, welt, false, 255, ordinary);
+    REQUIRE(again);
+    CHECK(again.value().slot_facts == plan.value().slot_facts);
+    CHECK(again.value().choice.value.index == plan.value().choice.value.index);
+    CHECK(again.value().choice.consumed == plan.value().choice.consumed);
+}
+TEST_CASE("wildlife species: selector exhaustion stays distinct from source and creation failure") {
+    Source s;
+    species_source(s);
+    const auto welt = species_pe();
+    const std::array<std::uint32_t, 1> one{31};
+    for (const auto cave : {false, true}) {
+        const auto empty = species_plan(s, welt, cave, 255, {});
+        REQUIRE_FALSE(empty);
+        CHECK(empty.error().stage == load::WildlifePlanFault::Selector);
+        CHECK(empty.error().selector.fault == sim::WildlifeFault::DrawsExhausted);
+        CHECK(empty.error().selector.consumed == 0);
+    }
+    const auto short_ordinary = species_plan(s, welt, false, 255, one);
+    REQUIRE_FALSE(short_ordinary);
+    CHECK(short_ordinary.error().selector.fault == sim::WildlifeFault::DrawsExhausted);
+    CHECK(short_ordinary.error().selector.consumed == 1);
+    const auto no_entrance = species_plan(s, welt, true, 255, one, 0);
+    REQUIRE_FALSE(no_entrance);
+    CHECK(no_entrance.error().selector.fault == sim::WildlifeFault::Oq574CaveWithoutEntrance);
+    CHECK(no_entrance.error().selector.consumed == 0);
+    REQUIRE(species_plan(s, welt, true, 255, one));
+    s.entries.pop_back(); // Missing unselected descriptor must still refuse source first.
+    const auto missing = species_plan(s, welt, false, 255, {});
+    REQUIRE_FALSE(missing);
+    CHECK(missing.error().stage == load::WildlifePlanFault::Source);
+    CHECK(missing.error().source == "creation descriptor: missing entry");
+    CHECK(missing.error().selector.consumed == 0);
+}
+TEST_CASE("wildlife species: own row profile and safe source refusal controls") {
+    Source s;
+    species_source(s);
+    const auto welt = species_pe();
+    const auto read = [](const Buffer& b) {
+        return fmt::annowelt::read_wildlife_species_ring(b, SpeciesProfile::GogClimate2, 2);
+    };
+    REQUIRE(read(welt));
+    for (auto climate : {0U, 1U, 3U, 255U})
+        REQUIRE_FALSE(
+            fmt::annowelt::read_wildlife_species_ring(welt, SpeciesProfile::GogClimate2, climate));
+    REQUIRE_FALSE(
+        fmt::annowelt::read_wildlife_species_ring(welt, static_cast<SpeciesProfile>(99), 2));
+    for (unsigned variant = 0; variant < 7; ++variant) {
+        auto bad = welt;
+        if (variant == 0)
+            put32(bad, 0x48, 0);
+        if (variant == 1)
+            put32(bad, 0x138 + 8, 0x7bf); // One byte short initialized virtual range.
+        if (variant == 2)
+            put32(bad, 0x138 + 16, 0x7bf); // One byte short raw range.
+        if (variant == 3) {
+            put16(bad, 0x46, 2);
+            std::copy_n(bad.begin() + 0x138, 40, bad.begin() + 0x160);
+        }
+        if (variant == 4)
+            put32(bad, 0x138 + 36, 0xc0000040);
+        if (variant == 5)
+            put16(bad, 0x44, 0x8664);
+        if (variant == 6)
+            bad.pop_back();
+        REQUIRE_FALSE(read(bad));
+    }
+    const std::array<std::uint32_t, 2> draws{0, 0};
+    auto zero = welt;
+    put16(zero, 0x980 + 31 * 2, 0);
+    const auto zero_ring = read(zero);
+    REQUIRE(zero_ring);
+    CHECK(zero_ring.value().ids[31] == 0); // Reader retains; binder refuses absent descriptor 0.
+    REQUIRE_FALSE(species_plan(s, zero, false, 255, draws));
+    s.entries.push_back(s.entries[0]);
+    const auto duplicate = species_plan(s, welt, false, 255, draws);
+    REQUIRE_FALSE(duplicate);
+    CHECK(duplicate.error().source == "creation descriptor: duplicate entry id");
+}
+TEST_CASE("wildlife species: fresh non-New unmatched default and source ownership are explicit") {
+    std::optional<load::WildlifeCreationPlan> owned;
+    {
+        Source s;
+        species_source(s);
+        s.add(131, "RAUBTIER", {}, "SAFE_UNMATCHED_NAME");
+        s.add(130, "RAUBTIER");
+        const std::array<sim::TypeId, 3> requested{sim::TypeId{127}, sim::TypeId{130},
+                                                   sim::TypeId{131}};
+        const auto generic = load::bind_wildlife_species_facts(load::WildlifeDescriptorProfile::Gog,
+                                                               requested, s.entries, s.image);
+        REQUIRE(generic);
+        CHECK(generic.value()[0].yield == 138);
+        CHECK(generic.value()[0].ware_present);
+        CHECK(generic.value()[0].ware_matched);
+        CHECK(generic.value()[1].yield == 0);
+        CHECK_FALSE(generic.value()[1].ware_present);
+        CHECK_FALSE(generic.value()[1].ware_matched);
+        CHECK(generic.value()[2].yield == 0);
+        CHECK(generic.value()[2].ware_present);
+        CHECK_FALSE(generic.value()[2].ware_matched);
+        auto welt = species_pe();
+        put16(welt, 0x980 + 31 * 2, 131);
+        const std::array<std::uint32_t, 1> draw{31};
+        const auto defaulted = species_plan(s, welt, true, 255, draw);
+        REQUIRE(defaulted);
+        CHECK(defaulted.value().selected.yield == 0);
+        CHECK(defaulted.value().choice.value.index == 31);
+        CHECK(defaulted.value().choice.consumed == 1);
+        CHECK(defaulted.value().disposition ==
+              load::WildlifePlanDisposition::UnsupportedCreationKind);
+        CHECK_FALSE(defaulted.value().creation);
+        const std::array<std::uint32_t, 1> supported_draw{0};
+        const auto plan = species_plan(s, welt, true, 255, supported_draw);
+        REQUIRE(plan);
+        owned = plan.value();
+        const auto safe_ware = s.entries[3].records.back();
+        s.entries[3].records.back() = s.record("WARE", {'U', 'N', 'K'});
+        const auto unsafe = species_plan(s, welt, true, 255, supported_draw);
+        REQUIRE_FALSE(unsafe);
+        CHECK(unsafe.error().source == "creation descriptor: unsafe WARE name");
+        s.entries[3].records.back() = safe_ware;
+        s.entries[3].records.push_back(s.record("WARE", {'M', 'E', 'A', 'T', 0}));
+        const auto ambiguous = species_plan(s, welt, true, 255, supported_draw);
+        REQUIRE_FALSE(ambiguous);
+        CHECK(ambiguous.error().source == "creation descriptor: unique needed records required");
+    }
+    REQUIRE(owned);
+    REQUIRE(owned->creation);
+    CHECK(owned->creation->id().v == 60001);
+    CHECK(owned->ring.ids.size() == 32);
+    CHECK(owned->slot_facts.size() == 32);
+    CHECK(owned->selected.source_sha256.size() == 64);
+    // Authored geometry only: selection did not generate these position words.
+    const auto projected = load::project_wildlife_creation(*owned->creation, end_creation_inputs());
+    REQUIRE(projected);
+    CHECK(projected.value().animal->type.v == 60001);
+    CHECK(projected.value().animal->hp == 17);
+    CHECK(projected.value().animal->yield == 137);
+}
+TEST_CASE(
+    "wildlife species: original climate two ring facts and selections match independent oracle") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        std::cout << "SKIPPED: ANNO1503_GAME_DIR not set (original game files unavailable)\n";
+        return;
+    }
+    const auto welt = anno::test::read_file(*dir / "AnnoWelt.dll");
+    const auto game = anno::test::read_file(*dir / "AnnoGame.dll");
+    const auto bytes = anno::test::read_file(*dir / "FigurenHeader.dat");
+    const auto header = fmt::figuren::FigurenHeader::parse(bytes);
+    REQUIRE(header);
+    const std::array<std::uint32_t, 3> ordinary{6, 33, 999};
+    const auto prepare = [&](bool cave, sim::GoodsId saved, std::span<const std::uint32_t> draws) {
+        return load::prepare_wildlife_creation_plan(welt, game, header.value().entries,
+                                                    SpeciesProfile::GogClimate2, 2, cave, 2, saved,
+                                                    draws);
+    };
+    const auto plan = prepare(false, 255, ordinary);
+    REQUIRE_MESSAGE(plan, (plan ? "" : plan.error().source));
+    REQUIRE(plan.value().ring.ids.size() == 32);
+    REQUIRE(plan.value().slot_facts.size() == 32);
+    std::ostringstream rows;
+    for (std::size_t i = 0; i < 32; ++i) {
+        const auto& f = plan.value().slot_facts[i];
+        CHECK(f.id.v == plan.value().ring.ids[i]);
+        rows << i << '\t' << f.id.v << '\t' << f.kind << '\t' << f.yield << '\n';
+    }
+    // Independent pefile + raw Figuren reference, not generated by this reader.
+    const auto text = rows.str();
+    CHECK(fmt::sha256_hex(
+              fmt::Bytes(reinterpret_cast<const std::uint8_t*>(text.data()), text.size())) ==
+          "fda833fca3e31245f1b9ce6088015ac6b0379a37fde6687ed2602b914617b0cc");
+    if (const auto oracle = std::getenv("ANNO_WILDLIFE_SPECIES_ORACLE")) {
+        std::ifstream input(oracle);
+        REQUIRE(input);
+        for (std::size_t i = 0; i < 32; ++i) {
+            std::uint32_t index = 0, id = 0, kind = 0, yield = 0;
+            REQUIRE(static_cast<bool>(input >> index >> id >> kind >> yield));
+            CHECK(index == i);
+            CHECK(id == plan.value().ring.ids[i]);
+            CHECK(kind == plan.value().slot_facts[i].kind);
+            CHECK(yield == plan.value().slot_facts[i].yield);
+        }
+        std::string extra;
+        CHECK_FALSE(static_cast<bool>(input >> extra));
+    }
+    struct Expected {
+        bool cave;
+        sim::GoodsId saved;
+        std::array<std::uint32_t, 3> draws;
+        std::int32_t position;
+        std::uint32_t index, inspected;
+        std::size_t consumed;
+    };
+    // Hand/source-derived, cross-checked with unchanged wildlife_ref.py before C++.
+    for (const auto& e : std::array<Expected, 5>{{{false, 255, {6, 33, 999}, 2, 1, 1, 2},
+                                                  {true, 255, {31, 999, 888}, -1, 31, 1, 1},
+                                                  {true, 137, {31, 999, 888}, -1, 0, 2, 1},
+                                                  {false, 138, {1, 17, 999}, 1, 23, 7, 2},
+                                                  {true, 142, {31, 999, 888}, -1, 16, 18, 1}}}) {
+        const auto selected = prepare(e.cave, e.saved, e.draws);
+        REQUIRE(selected);
+        CHECK(selected.value().choice.value.position == e.position);
+        CHECK(selected.value().choice.value.index == e.index);
+        CHECK(selected.value().choice.value.inspected == e.inspected);
+        CHECK(selected.value().choice.consumed == e.consumed);
+        CHECK(selected.value().selected == plan.value().slot_facts[e.index]);
+        if (e.index == 31) {
+            CHECK(selected.value().selected.kind == 50);
+            CHECK(selected.value().selected.yield == 0);
+            CHECK(selected.value().selected.ware_present);
+            CHECK_FALSE(selected.value().selected.ware_matched);
+            CHECK_FALSE(selected.value().creation);
+            CHECK(selected.value().disposition ==
+                  load::WildlifePlanDisposition::UnsupportedCreationKind);
+        } else {
+            REQUIRE(selected.value().creation);
+            CHECK(selected.value().creation->id() == selected.value().selected.id);
+            CHECK(selected.value().creation->yield() == selected.value().selected.yield);
+        }
+    }
 }

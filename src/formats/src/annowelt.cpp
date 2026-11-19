@@ -104,4 +104,29 @@ Result<GroundKernel, std::string> read_ground_kernel(Bytes dll, std::uint32_t se
     return out;
 }
 
+Result<WildlifeSpeciesRing, std::string>
+read_wildlife_species_ring(Bytes dll, WildlifeSpeciesProfile profile, std::uint32_t climate) {
+    if (profile != WildlifeSpeciesProfile::GogClimate2 || climate != 2)
+        return std::string("species ring: unsupported profile/climate");
+    const auto parsed = pe_tables_detail::read(dll, kGogTimeDateStamp, kGogSizeOfImage);
+    if (!parsed)
+        return std::string("species ring: ") + error_message(parsed.error());
+    const auto& image = parsed.value();
+    if (image.machine != 0x14c || image.base != 0x10000000)
+        return std::string("species ring: unsupported image identity");
+    // Welt 0x10092eb8: 32 u16 entries selected by mask 31. Only row 2 proved here.
+    const auto rva = 0xca700U + 2U * (32U * climate);
+    const auto at = image.readonly_offset(rva, 64);
+    if (!at)
+        return std::string("species ring: ") + at.error();
+    WildlifeSpeciesRing out;
+    out.climate = climate;
+    out.rva = rva;
+    out.raw_offset = at.value();
+    for (std::size_t i = 0; i < 32; ++i)
+        out.ids.push_back(u16_le(dll, at.value() + 2 * i));
+    out.image_sha256 = sha256_hex(dll);
+    return out;
+}
+
 } // namespace anno::formats::annowelt

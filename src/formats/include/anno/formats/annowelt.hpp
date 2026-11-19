@@ -83,4 +83,15 @@ struct GroundKernel {
 // file-backed window, then owns all returned data; input need not outlive call.
 Result<GroundKernel, std::string> read_ground_kernel(Bytes dll, std::uint32_t selector);
 
+// Narrow addressed source profile, not the species table's total extent.
+enum class WildlifeSpeciesProfile { GogClimate2 };
+struct WildlifeSpeciesRing {
+    std::uint32_t climate = 0, rva = 0;
+    std::uint64_t raw_offset = 0;
+    std::vector<std::uint16_t> ids;
+    std::string image_sha256;
+};
+Result<WildlifeSpeciesRing, std::string>
+read_wildlife_species_ring(Bytes dll, WildlifeSpeciesProfile, std::uint32_t climate);
+
 } // namespace anno::formats::annowelt

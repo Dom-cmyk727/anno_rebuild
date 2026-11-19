@@ -10,11 +10,11 @@
 #include <anno/sim_load/wildlife_create.hpp>
 
 namespace anno::sim_load {
-formats::Result<std::vector<WildlifeCreationDescriptor>, std::string>
-bind_wildlife_creation_descriptors(WildlifeDescriptorProfile profile,
-                                   std::span<const sim::TypeId> requested,
-                                   std::span<const formats::figuren::Entry> entries,
-                                   formats::Bytes game) {
+namespace {
+formats::Result<std::vector<WildlifeSpeciesFact>, std::string>
+read_species_facts(WildlifeDescriptorProfile profile, std::span<const sim::TypeId> requested,
+                   std::span<const formats::figuren::Entry> entries, formats::Bytes game,
+                   bool new_only) {
     if (profile != WildlifeDescriptorProfile::Gog)
         return std::string("creation descriptor: unsupported profile");
     if (requested.empty())
@@ -29,7 +29,7 @@ bind_wildlife_creation_descriptors(WildlifeDescriptorProfile profile,
     for (const auto& entry : entries)
         if (ids.contains(entry.id) && !indexed.emplace(entry.id, &entry).second)
             return std::string("creation descriptor: duplicate entry id");
-    std::vector<WildlifeCreationDescriptor> out;
+    std::vector<WildlifeSpeciesFact> out;
     for (auto id : ids) {
         const auto found = indexed.find(id);
         if (found == indexed.end())
@@ -61,7 +61,7 @@ bind_wildlife_creation_descriptors(WildlifeDescriptorProfile profile,
         if (kind == mapping.value().kinds.end())
             return std::string("creation descriptor: unknown BEWOHNTYPE");
         const auto number = static_cast<std::uint32_t>(kind - mapping.value().kinds.begin());
-        if (number != 49 && number != 51)
+        if (new_only && number != 49 && number != 51)
             return std::string("creation descriptor: unsupported animal kind");
         const auto logic = entry.record("LOGIC"), ware = entry.record("WARE");
         std::uint16_t hp = 5; // Game constructor 0x10011249; absent is not present zero.
@@ -73,15 +73,22 @@ bind_wildlife_creation_descriptors(WildlifeDescriptorProfile profile,
             hp = formats::u16_le(buffer, 0x1e);
         }
         sim::GoodsId yield = 0; // Game ctor 0x10011259, absent WARE preserves zero.
+        bool ware_matched = false;
         if (ware) {
             if (!terminated(*ware, 256)) // Original stack input buffer, not a content limit.
                 return std::string("creation descriptor: unsafe WARE name");
             const auto goods = text(*ware);
             const auto matched =
                 std::find(mapping.value().goods.begin(), mapping.value().goods.end(), goods);
-            if (matched == mapping.value().goods.end())
-                return std::string("creation descriptor: unknown WARE");
-            yield = static_cast<sim::GoodsId>(matched - mapping.value().goods.begin());
+            if (matched == mapping.value().goods.end()) {
+                if (new_only || number == 49 || number == 51)
+                    return std::string("creation descriptor: unknown WARE");
+                // Fresh non-New facts: no match returns without +0x100 store
+                // (Game 0x1001042d–0x10010445), preserving constructor zero.
+            } else {
+                ware_matched = true;
+                yield = static_cast<sim::GoodsId>(matched - mapping.value().goods.begin());
+            }
         }
         // Identity of used parsed fields, not authenticity or a whole file hash.
         formats::ByteBuffer identity;
@@ -94,9 +101,34 @@ bind_wildlife_creation_descriptors(WildlifeDescriptorProfile profile,
                 formats::put_u32_le(identity, static_cast<std::uint32_t>(record.payload.size()));
                 identity.insert(identity.end(), record.payload.begin(), record.payload.end());
             }
-        out.push_back(WildlifeCreationDescriptor(
-            sim::TypeId{id}, number, hp, yield, mapping.value().source_sha256,
-            formats::sha256_hex(identity), logic.has_value(), ware.has_value()));
+        out.push_back({sim::TypeId{id}, number, yield, hp, mapping.value().source_sha256,
+                       formats::sha256_hex(identity), logic.has_value(), ware.has_value(),
+                       ware_matched});
+    }
+    return out;
+}
+} // namespace
+formats::Result<std::vector<WildlifeSpeciesFact>, std::string>
+bind_wildlife_species_facts(WildlifeDescriptorProfile profile,
+                            std::span<const sim::TypeId> requested,
+                            std::span<const formats::figuren::Entry> entries, formats::Bytes game) {
+    return read_species_facts(profile, requested, entries, game, false);
+}
+formats::Result<std::vector<WildlifeCreationDescriptor>, std::string>
+bind_wildlife_creation_descriptors(WildlifeDescriptorProfile profile,
+                                   std::span<const sim::TypeId> requested,
+                                   std::span<const formats::figuren::Entry> entries,
+                                   formats::Bytes game) {
+    const auto facts = read_species_facts(profile, requested, entries, game, true);
+    if (!facts)
+        return facts.error();
+    std::vector<WildlifeCreationDescriptor> out;
+    for (const auto& fact : facts.value()) {
+        if (fact.kind != 49 && fact.kind != 51)
+            return std::string("creation descriptor: unsupported animal kind");
+        out.push_back(WildlifeCreationDescriptor(fact.id, fact.kind, fact.hp, fact.yield,
+                                                 fact.image_sha256, fact.source_sha256,
+                                                 fact.logic_present, fact.ware_present));
     }
     return out;
 }

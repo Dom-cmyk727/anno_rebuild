@@ -44,6 +44,21 @@ class WildlifeCreationDescriptor {
 bind_wildlife_creation_descriptors(WildlifeDescriptorProfile, std::span<const sim::TypeId>,
                                    std::span<const formats::figuren::Entry>, formats::Bytes game);
 
+// Fresh unique definition facts, not reused catalogues or overlays. Generic
+// selector facts are distinct from the sealed New-only capability.
+struct WildlifeSpeciesFact {
+    sim::TypeId id;
+    std::uint32_t kind = 0;
+    sim::GoodsId yield = 0;
+    std::uint16_t hp = 0;
+    std::string image_sha256, source_sha256;
+    bool logic_present = false, ware_present = false, ware_matched = false;
+    bool operator==(const WildlifeSpeciesFact&) const = default;
+};
+[[nodiscard]] formats::Result<std::vector<WildlifeSpeciesFact>, std::string>
+bind_wildlife_species_facts(WildlifeDescriptorProfile, std::span<const sim::TypeId>,
+                            std::span<const formats::figuren::Entry>, formats::Bytes game);
+
 enum class WildlifeManagerOutcome { Success, Null };
 enum class WildlifeCreationPlace { Ordinary, ResolvedCaveEntrance };
 struct WildlifeCreationGeometry {

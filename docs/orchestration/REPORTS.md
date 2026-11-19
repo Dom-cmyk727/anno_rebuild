@@ -16583,3 +16583,61 @@ Decisions and reasoning:
 NOT_RUN: original runtime/HE/leaf, full postload/draw closure, World/native/lifecycle, full pins/warnings,
 Windows/WSL, LeakSanitizer, unrelated long suites. Exact-head CI pending, read after push.
 QUESTIONs: none blocking isolated review. Independent orchestrator review pending; STOP here.
+
+
+## 2026-11-19 — WILDLIFE-POSTLOAD-INPUTS-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-POSTLOAD-INPUTS-1` from reviewed GFX `ad2a1a23`; no board/main merge/rebase.
+- Research source `625db996a2c320327476180ecd19f829f4c6460b`, tree `fd7a20cf8b9e09bd23cacd39083330a46426e199`.
+- Final head/tree/CI accompany direct handoff; publication adds report/evidence only.
+- [Producer/type/lifetime read](../re/wildlife-postload-inputs.md), [capability §10](../sim/wildlife-postload.md#10-first-call-input-capability--wildlife-postload-inputs-1), [evidence](evidence/wildlife-postload-inputs-1.md).
+- D: Scene6ee4/7a24 forward caller input; factory1150 third arg comes from Frame global9c268.
+- Frame20108/20114 ->Game13760 kind0x101 ->07650 installs catalogue215a4 after base initialization.
+- Frame checks factory/Init before later Scene construction207a6/291af; failure is not success.
+- Game020a0 resolves Anlagen.dat; 01d10–0206b reads ENTRY keys/fields and reuses existing descriptors.
+- Kind0x700 factory063a0 ->c240 installs actual type21a88, not assumed base2185c.
+- Derived insert05f00 ->03260 stores pointer214+4*key; a670 stores returned id lowu16.
+- Lookup37e0 has no index/null defense. Keys2/11 offsets21c/240; no4000-type modern cap.
+- World/island stored-pointer chain now binds these actual lookup/id/mean/walk leaves for fresh first fill.
+- P: HEAD2 length52 /HEAD11 length56, both1x1 flags29 and walk inputs2/3 ->code2.
+- Mean branch08fae–08fdf sums unsigned corners /4; float descriptor height not queried.
+- Grass calls walk getter07dc0(rotation0); fish does NOT and preserves other aux bits.
+- D: catalogue destruction03760 releases descriptors; original raw pointers require retained lifetime.
+- Reuse/injected suppliers identified, not automatically treated as fresh standard profile.
+- C: existing registry owns normalized HEAD/flags/ids; walk_class is not walk_code.
+- Proposed immutable capability cross-checks raw metadata/registry before effects; no bare-registry fallback.
+- Completed FRUCHTBAR, even zero updates/data, proves precomputed ground; missing presence is unsupported.
+- Effective owned variation differs from raw Terrain fertility; low nibble agreement required.
+- Original role ids remain2/11; no goods-based substitution or compiled catalogue copy.
+- Future output owns tiles and retains terrain; raw terrain/ground/digest remain unchanged by fill.
+- Future controls cover0x4000 occupied, means15/16/31/32, unsigned5/6/13, grass/fish writes, lifetime/digests.
+- Authored grass code3 and old fish code/mask distinguish accidental common/constant2 writer behavior.
+
+```text
+# cache/wildlife-postload-inputs-1/profiles.log
+PROFILE_CHECK profiles=2 corner_predictions=12 rotation_predictions=8 wrong_profile_controls=2 authored_walk_controls=2 status=PASS
+Original runtime NOT_RUN; full grass/fish fill NOT_EXECUTED; existing Python helpers only
+# cache/wildlife-postload-inputs-1/bindings.log
+BINDING_CHECK module=AnnoGame.dll concrete_slots=8 disagreements=0 status=PASS
+Original runtime NOT_RUN; PE table inspection only
+```
+
+- No CTest COUNTS/VERDICT: docs-only, no engine or new public tool; these are inspection checks.
+- Hand expectations81/23 precede existing Python computation; wrong profile produces actual0 twice.
+- V1 capability, full V2–V5 effects remain HAND-DERIVED/NOT_EXECUTED; no original-runtime claim.
+- First-fill leaf draw closure only; not catalogue/global/preprocessing/second-call closure.
+- OQ-202 dated first-call narrowing and fisher§6 update; broader question not globally re-closed.
+- Docs/links/anchors/diff/receipts checked; 277 fixtures/runtime/tools/CMake/CI unchanged.
+- Missing optional PE version resources recorded null; initial AttributeError note retained, hashes identify files.
+- GFX remains UNWIRED. No src, state/tag/default/identity/registry/World changes; no pin moves.
+- Next finite files/acceptance in §10; no implementation started or released by this report.
+
+Decisions and reasoning:
+- Bind concrete producer/slots and retain typed ownership instead of assuming current Registry equivalence.
+- Require provenance plus geometry/metadata agreement, never nonzero-data or missing-field defaults.
+- Preserve static/Python/H distinctions; no unrelated runtime/corpus/sailing/render campaign repeated.
+NOT_RUN: C++ suites, original runtime/HE, composed fill/preprocessing/nav/raster/global/World/native,
+full pins/warnings and performance. QUESTIONs: none; remaining static edges are separate dependencies.
+Exact-head CI pending, read after push. Independent orchestrator review pending; STOP here.
+
+Docs check: `cache/wildlife-postload-inputs-1/docs-check.log`; SHA-256 `5f0b9f83295e27cd63d0d6ac068a8848fe776eb374eed0ec21de319976066926` (71 receipts checked).

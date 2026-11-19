@@ -170,6 +170,12 @@ says who is doing what, where the work is, and what it waits on.
   order?", the owner answered "Yes". They run in the UI lane, then UI-RANGE-1. Also, asked "Delete the public
   task branch with the data table after landing, and recreate it clean?", the owner answered "Yes, clean it
   up": `task/BUILDINGS-REF-1` is recreated as one clean commit.
+- **BUILDINGS-REF-2 done** (UI lane, docs, `task/BUILDINGS-REF-2` `60a26f0d`): roads, built-over rules, selection
+  (BUILDINGSOBJECTS part B section 10, gaps 16-20, OQ-764..772; UI-CATNAV-1 uses 773-774, the next free number
+  is 775). **The owner's go, 2026-11-19:** asked "Go for ROADS-0, ROADS-1, ROADS-3 and UI-GHOST-2, in that
+  order?", the owner answered "Yes, go": runtime tile objects and roads in the picture; the original's road
+  rules in the sim; the L-drag road UI; the ghost hiding built-over objects. UI-SELECT-1, UI-RANGE-1, ROADS-2
+  and ROADS-5 are not approved yet.
 - **The owner's test ui_10 (2026-11-19, combined build `612f0940`)**: the Kontor placement, range, rotation and
   ghost work. Findings: the UI lane's ui_10 report (kept outside the repo with the video). Dispatched:
   - **WATER-SUBMERGED-1** (Windows executor; owner: "find the root cause and fix it"): with enhanced water,

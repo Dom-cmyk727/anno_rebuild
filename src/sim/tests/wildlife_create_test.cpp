@@ -239,6 +239,19 @@ TEST_CASE("wildlife create: source and PE refusal siblings cannot relabel predat
     duplicate_ware.add(127, "HIRSCH", {}, "MEAT");
     duplicate_ware.entries[0].records.push_back(duplicate_ware.record("WARE", {'F', 'U', 'R', 0}));
     expect(duplicate_ware, "creation descriptor: unique needed records required");
+    for (std::size_t length : {std::size_t{155}, std::size_t{156}}) {
+        Source long_mapping;
+        long_mapping.add(127, "HIRSCH", {}, std::string(length, 'L'));
+        put32(long_mapping.image, 0x251d0 + 137 * 4 - 0x24000 + 0x200, 0x10027000);
+        std::fill_n(long_mapping.image.begin() + 0x3200, length, std::uint8_t{'L'});
+        if (length == 155) {
+            const auto legal_long = long_mapping.bind({sim::TypeId{127}});
+            REQUIRE(legal_long);
+            CHECK(legal_long.value()[0].yield() == 137);
+        } else {
+            expect(long_mapping, "wildlife names: lookup name exceeds safe original buffer");
+        }
+    }
     Source wrong_map;
     wrong_map.add(127, "RAUBTIER");
     put32(wrong_map.image, 0x24cb8 + 49 * 4 - 0x24000 + 0x200, 0x10026040);

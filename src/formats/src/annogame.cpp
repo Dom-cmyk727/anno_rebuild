@@ -119,6 +119,11 @@ Result<WildlifeNames, std::string> read_wildlife_names(Bytes dll) {
                 cached.emplace(pointer, out);
                 return Name{out};
             }
+            // Game WARE query output +0x88 must end before input +0x124.
+            // This profile's original scratch span is not an engine name cap.
+            constexpr std::size_t query_bytes = 0x124 - 0x88;
+            if (out.size() >= query_bytes - 1)
+                return std::string("wildlife names: lookup name exceeds safe original buffer");
             out.push_back(static_cast<char>(byte));
         }
         return std::string("wildlife names: unterminated string");

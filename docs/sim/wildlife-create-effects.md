@@ -123,3 +123,14 @@ Canonical source and binary are preserved. Focused Debug/ASan receipts and final
 review disposition are in the [evidence](../orchestration/evidence/wildlife-create-effects-1.md).
 Original/HE runtime, upstream cross-host FP/cave provider, allocator handler,
 persistent World/manager/save/tag/PRNG/default integration remain outside scope.
+
+### Final source-name safety discriminator
+
+D: the lookup writes its output name at stack +0x88 while WARE input starts
+at +0x124 (Game 0x100103d8–0x10010400 / common copy 0x10003493). A mapped name
+plus terminator must fit in that 156-byte nonoverlapping span for this adapter.
+Authored name length 155 is legal; 156 refuses before binding. Apply the same
+conservative name bound to this profile's mapping reads; it is not a global engine
+text/content limit. The actual GOG mappings remain supported. Earlier 18-case
+Debug/ASan gates are retained at c82aec30; this last reader-only refinement needs
+only the six affected creation cases rerun, with the 12 unchanged regressions reused.

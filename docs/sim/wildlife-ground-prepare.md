@@ -60,3 +60,26 @@ short row retains three zeros and alone cannot distinguish retention/zero-fill.
 
 NOT_RUN at reference checkpoint: C++, original/HE, source binding and live
 composition. No original kernel table, script, asset or binary in fixtures.
+
+## Implemented leaf and finite evidence
+
+`prepare_wildlife_ground(const WildlifeGroundInput&)` now returns an owned
+`formats::Result<vector<uint8_t>, string>` from the focused sim_load header/source.
+Fact validation uses the four named enum states, then sorts one private fact copy
+and binds whole words by lower_bound. No input span survives the call. Geometry
+checks the last TileXY, u64 product, vector representability, then exact lengths.
+The no-rectangle API deliberately cannot express partial updates.
+
+The public C++ vector test executes all 24 authored rows, translated origins and
+reversed fact order. Three further cases cover single-precondition refusals,
+large arithmetic without huge allocations and output lifetime/immutability.
+Private actual-source variants all fail only intended output assertions: aggregate
+1, guard 3, byte-product 2, whole-byte 22, in-place scratch 1, signed byte 3,
+transposed indexing 1; the legal private build passes all 4,596 assertions.
+Canonical source/binary hashes are unchanged by these builds. The echo-only
+reference variant is rejected by the public command contract's wrong-expectation
+control. These prove conditional computation, not original scene binding.
+
+Final gate receipts and independent disposition accompany the REPORTS handoff.
+Original/HE, growth parsing, original city provenance, source adapter and fill
+composition remain NOT_RUN/out of scope. The pre-existing validator is unchanged.

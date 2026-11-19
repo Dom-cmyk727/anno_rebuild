@@ -333,6 +333,13 @@ if(ANNO_BUILD_TESTS)
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/resource_import_ref_contract_test.py
                      --ref ${CMAKE_SOURCE_DIR}/tools/resource_import_ref.py
                      --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/resource_import_vectors.txt)
+    add_test(NAME wildlife_ground_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/wildlife_ground_ref.py
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/wildlife_ground_vectors.txt)
+    add_test(NAME wildlife_ground_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/wildlife_ground_ref_contract_test.py
+                     --ref ${CMAKE_SOURCE_DIR}/tools/wildlife_ground_ref.py
+                     --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/wildlife_ground_vectors.txt)
     add_test(NAME wildlife_postload_reference_agrees
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/wildlife_postload_ref.py
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/wildlife_postload_vectors.txt)

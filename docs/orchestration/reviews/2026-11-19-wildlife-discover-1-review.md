@@ -55,3 +55,13 @@ callback or gameplay-integration claim follows.
 and RELEASED from8d97b695. Prove and implement the finite transient counter import,
 separate raw transfer from normal-loader nonzero/default policy, continue once,
 and report frozen results directly to the Mac orchestrator. Main untouched.
+
+
+## Exact-head CI closeout — 2026-11-19
+
+**ACCEPTED within the reviewed bounded scope.** Run [44438472504](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44438472504)
+has all12 jobs successful, each identifying `8d97b6956189faf9483f6d9944b42676362d1c7d`.
+Independent review remains applicable; no gate repeated. Jobs API receipt SHA-256:
+`de4ff3cce1c4519ebb8442a55666a3d5cc54d02544dfdddf84aa7b99d4ac1cda`.
+This supersedes pending-CI status only; limits/preserved evidence remain. Windows
+owns stacking and landing; main untouched.

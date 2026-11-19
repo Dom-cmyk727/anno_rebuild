@@ -51,3 +51,13 @@ island+30, slot+8 call89776) and finite empty-path effects before implementing
 that local slice. Empty payload is not proof of no effect. Continue once to the
 next boundary; no broad event/script runtime or World integration. Executor
 reports directly for review and next release. Main untouched.
+
+
+## Exact-head CI closeout — 2026-11-19
+
+**ACCEPTED within the reviewed bounded scope.** Run [44441246351](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44441246351)
+has all12 jobs successful, each identifying `d7a21ac4a41975e5dd3a2afba8af84a430ed4e17`.
+Independent review remains applicable; no gate repeated. Jobs API receipt SHA-256:
+`d2c71e040d751470ca8cbd6f57f16b301fb9a96087df13a986acd291fd6b2d49`.
+This supersedes pending-CI status only; limits/preserved evidence remain. Windows
+owns stacking and landing; main untouched.

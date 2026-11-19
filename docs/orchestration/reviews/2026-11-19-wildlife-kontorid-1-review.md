@@ -51,3 +51,13 @@ branch895d9–895db reaches shared return89d6c, unlike GELAENDE's epilogue; exec
 must establish this in its contract, not blindly reuse resource admission.
 Nonempty writer+78/flag04000000 is a distinct later scope. Report directly to
 Mac orchestrator for review/next release. Main untouched.
+
+
+## Exact-head CI closeout — 2026-11-19
+
+**ACCEPTED within the reviewed bounded scope.** Run [44439685272](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44439685272)
+has all12 jobs successful, each identifying `eaa61980162b1552eb7acee1553ce11fb7a8869c`.
+Independent review remains applicable; no gate repeated. Jobs API receipt SHA-256:
+`429ea5ed013239da1d9a81e902f0c294e683555ff231466690a3121ee2dfabf3`.
+This supersedes pending-CI status only; limits/preserved evidence remain. Windows
+owns stacking and landing; main untouched.

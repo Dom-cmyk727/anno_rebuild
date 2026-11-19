@@ -64,7 +64,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Animal species source [WILDLIFE-SPECIES-LOAD-1](tasks/wildlife-species-load-1.md) | ACCEPTED; bounded source-backed species plan | `f5f1c9fa7f0eca4d6263147797022ff1c5e6d771`; tested `4acf5545` | [44515114872](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44515114872), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-species-load-1-review.md) |
 | Wildlife chunk planning [WILDLIFE-CHUNK-PLAN-1](tasks/wildlife-chunk-plan-1.md) | LOCAL SEMANTICS APPROVED; CI FAIL, correction released | `95d2eb0f4bf09c559413ef380fba3fd4281939ff`; tested `ef8fcb48` | [44522148816](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44522148816), MSVC build and Linux dependency setup fail | [Review](reviews/2026-11-19-wildlife-chunk-plan-1-review.md) |
 | Wildlife materialization planning [WILDLIFE-MATERIALIZE-PLAN-1](tasks/wildlife-materialize-plan-1.md) | LOCAL SEMANTICS APPROVED; portability blocked | `1c027079fd0d431fae1613df839f1bde9c38d2bc`; tested `49c9ddb3` | [44528637255](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44528637255), pending | [Review](reviews/2026-11-19-wildlife-materialize-plan-1-review.md) |
-| Wildlife planning portability [WILDLIFE-PLAN-CI-CLOSE-1](tasks/wildlife-plan-ci-close-1.md) | RELEASED; narrow typed-conversion repair | Base `1c027079fd0d431fae1613df839f1bde9c38d2bc` | Preserve old failures; exact-head MSVC proof required | Direct reportback to Mac orchestrator |
+| Wildlife planning portability [WILDLIFE-PLAN-CI-CLOSE-1](tasks/wildlife-plan-ci-close-1.md) | LOCAL REVIEW APPROVED; hosted target proof pending | `86e24940256d2cadf17a585b31b836b02701ae9e`; tested `1b078d95` | [44530293046](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44530293046), pending | [Review](reviews/2026-11-19-wildlife-plan-ci-close-1-review.md) |
+| Wildlife final tile facts [WILDLIFE-FINAL-FACTS-1](tasks/wildlife-final-facts-1.md) | RELEASED; locally reviewed stacked continuation | Base `86e24940256d2cadf17a585b31b836b02701ae9e` | Source-backed actual tile/type inputs; cave facts remain explicit | Direct reportback to Mac orchestrator |
 | Windows dual-edition navigation [WIN-NAV-EDITIONS-1](tasks/windows-nav-editions-1.md) | Owner-requested HANDOFF READY; Windows intake pending | Accepted diagnosis `74d50bfe`, production base `889143ba` | GOG and HE verification requested; no repair released | Owner forwards to Windows orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
@@ -1310,3 +1311,20 @@ any same-cause changed-packet sites, focused checks and exact-head hosted proof.
 No warning suppression, semantic change, old-history rewrite or broad repair.
 Executor pushes only its task branch and reports here promptly; gameplay planning
 resumes after the small correction is reviewed. Other lanes and main untouched.
+
+## Portability reviewed; actual tile/type binding released
+
+CI-CLOSE86e24940 is independently locally APPROVED by both reviewers. One
+production and29 test literals now have explicit destination types; all3 affected
+TUs are otherwise token/value-equivalent. Root verified50 receipt hashes and the
+reviewers verified1022 frozen identities. Debug/ASan each14 unique passes. Hosted
+MSVC and aggregate CI44530293046 remain pending; old failed heads remain FAIL.
+
+WILDLIFE-FINAL-FACTS-1 is independently scope-approved and RELEASED on corrected
+86e24940 as a locally reviewed stacked continuation. Bind original actual kind
+and output-0 goods, map one completed prepared chunk's full tile words, then feed
+the reviewed ordered planner. No growing substitution, unavailable-as-null or
+fabricated cave geometry. A bounded real-source case and distinguishing controls
+replace authored tile/type assumptions without claiming live fauna or full load.
+No World/state/default/identity/PRNG/navigation/FP changes. Executor pushes only
+its own branch and reports directly here; main and shared boards untouched.

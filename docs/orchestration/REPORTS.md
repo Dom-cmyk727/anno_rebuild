@@ -17007,3 +17007,65 @@ Decisions and reasoning:
 NOT_RUN: original/HE/Windows runtime, LeakSanitizer, full suite/corpus/pins/warnings, source/provider binding,
 prep-to-fill composition and World/live wildlife. Independent review pending orchestrator; no review agents.
 QUESTIONs: none blocking this numerical leaf; broader source binding/composition requires a separate release.
+
+
+## 2026-11-19 — WILDLIFE-GROWTH-LOAD-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-GROWTH-LOAD-1`, base `5bdfd92ac01a70656a718cea4f7c7405445b41d5`, exact dispatch `746b0e191d26f7e6b7dbce98483b54bb2accd64a`.
+- Reference-first `076170fa`; first source `6e980f79`, final tested `0dc52331c39dd63be33eee691e4adb00b56acfda`, tree `458a60f4c2b5c82e7747cf6c572da4b59ed0492b`.
+- [Contract/acceptance](../sim/wildlife-growth-load.md); [primary/probe/gate hashes](evidence/wildlife-growth-load-1.md). No merge/rebase.
+- `load_wildlife_growth(Bytes)` returns owned primary map, typed record/short-row diagnostics, counts and source SHA; fresh source profile only.
+- D: Game 6a80 producer; 6b4b–6b6b clears 256 DWORDs per stage, NOT old probe's 1024 convenience elements.
+- Default 6×6; Id resets row counters, not stage; complete batches write low bytes with packed id/column/row, later overwrite wins.
+- Repeated WACHSTUM clears staging, retains map; incomplete/unsafe grammar states refuse transactionally as documented.
+- Bridge/Klima counted independently; their outputs, original catalogue reload, city/kernel/header/source-scene binding remain outside scope.
+- 13 hand-derived full-map cases, nonzero retained staging, both short/missing-comma cases, signed bytes, aliases, section reset and sidecars.
+- Public reference 13/13; contract 32 CLI controls; echo-only agreement variant rejected; original data unchanged.
+- Original one file: 1 WACHSTUM + END, 146 Id, 876 Proz, 30 Bridge, 92 Klima, 1 Size; row 765 parses 3/6.
+- Independent 256-stage reference and C++ agree on all 16,384 bytes; source/map SHA receipts in evidence.
+- Real retained cells are zero, so authored values 20/30 carry the decisive retention proof.
+- C++ direct four cases 1,206 assertions; five actual wrong-source variants fail intended map comparisons after legal parsing.
+- Legal vector control 972/972; wrong whitespace 1 / per-Id clear 2 / short zero-fill 2 / packing 7 / byte clamp 1 failures.
+- Source/old binary unchanged through those probes; no validation failure substituted for a numerical counterexample.
+- Leaf composition uses real growth source plus AUTHOR-DEFINED object/kernel/position/ground; no original island/postload claim.
+- After first Debug pass, CHECK->REQUIRE prevents agreement text after an oracle mismatch; loader/vector logic unchanged.
+- Corrupted private oracle: exit 1, no agreement line; legal oracle exit 0. Only affected Debug case reran; 12 outcomes reused.
+
+```text
+# cache/wildlife-growth-load-1/debug-final.log: growth contract, ground contract, first main selection
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=13 executed=13 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-growth-load-1/debug-oracle-final.log: affected original-file case on final source
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-growth-load-1/asan-final.log: contracts and first sanitizer selection on final source
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=13 executed=13 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- Debug unique main coverage 13, not 14; ASan 13; four separate required contract runs 1/1 each, not folded into main totals.
+- Required game files and independent private oracle supplied; existing generic text corpus/ground controls execute, no skips.
+- No canonical failure, memory refusal, timeout, empty/incomplete outcome or sanitizer diagnostic; no whole gate repeated.
+- Dev/ASan targets build; compiler warnings 0, inherited duplicate-library linker warning retained.
+- Apple Clang 21 / GCC 15.3 strict O3/Werror clean, changed test rechecked; shadow control refused; format 23.1.3/lint/diff pass.
+- Generic text::ints and six-value diagnostic, ground leaf/fill validator, all old fixture/pin bytes, World/native/default/registry/PRNG unchanged.
+- Closeout: 26 scoped files, 8 local links, 105 manifest/30 published hashes verified; docs-check.log SHA in evidence.
+- Exact pushed head/tree/CI sent directly before completion. Caller audit is helper/tests only; no reviewer agents.
+
+Decisions and reasoning:
+- Implement the addressed comma-stopping producer separately; preserve generic diagnostic semantics and explicit unsupported-domain refusals.
+- Use authored nonzero staging and full-map zero regions, rather than trust the real short row or a digest alone.
+- Keep a fresh owned primary lookup and typed diagnostics; do not imply sidecar, city or original-load capability.
+- Correct the evidence marker with a targeted rerun, preserving the valid first gate and avoiding a whole repeat.
+
+NOT_RUN: original executable/HE/Windows runtime, unsupported grammar/reload profiles, sidecar outputs, city/kernel/header
+binding, fill/World wiring, LeakSanitizer, broad/full gates or full pins/warnings. No original bytes/arrays in git.
+QUESTIONs: none blocking this bounded loader; broader grammar/source composition needs a separate release. Independent review pending.

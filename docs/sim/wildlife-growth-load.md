@@ -31,7 +31,7 @@ at a comma after whitespace scan `0x100161e0–0x10016203`. A missing comma
 stops that row; common line skip discards its remainder, not more list values.
 Integer wrapper `0x10016300–0x10016326` uses base 0 through
 `0x100173b2–0x100173c8`; signed decimal branch/sign/base selection at
-`0x10017411–0x1001748e`, signed bounds at `0x10017557–0x100175a2`.
+`0x10017411–0x1001748e`, signed bounds/sign application at `0x10017557–0x100175b9`.
 
 D: Bridge `0x10006dea–0x10006f61` uses the separate second staging/map (+4);
 Klima `0x10006f66–0x100072b9` writes only map +8 and restores height at
@@ -84,7 +84,9 @@ duplicate/packed-alias overwrite have separate hand-derived cases.
 | Real source | Exact unchanged file, full lookup compared with independent producer | opt-in bounded one-file comparison, hashes/raw map private | pending |
 | UNWIRED | No original city/kernel/header/World binding; generic parser unchanged | caller/scope audit and focused canonical gates | pending |
 
-No original tables, bytes or listings in git. No city proof, FRUCHTBAR capability,
+Each call starts a fresh owned primary map; an original reload into an already
+allocated catalogue buffer is outside this API. Repeated sections within one
+source retain the map as proved above. No original tables, bytes or listings in git. No city proof, FRUCHTBAR capability,
 fill composition, state/Rules/default/registry change or live wildlife claim.
 
 ## Implemented unit and proof boundary
@@ -133,3 +135,17 @@ Real-source composition uses Id 11 / rotation 3, p 100 -> b 10 -> low 10, with
 AUTHOR-DEFINED object-null fact, 1×1 geometry, centre-only kernel and old ground.
 It proves one source input reaches numerical computation, not an original island,
 climate kernel, city, FRUCHTBAR branch or postload/fill sequence.
+
+### Final evidence correction and gate reuse
+
+After the valid first Debug 13/13 gate at `6e980f79`, the optional full-byte asset
+comparison changed from CHECK to REQUIRE at `0dc52331`. This prevents an
+agreement line after a mismatch. A corrupted private oracle now fails that exact
+comparison with no agreement line; the legal oracle passes. Only this Debug
+case reran (1/1); the other 12 unchanged outcomes are reused. ASan/UBSan executes
+the entire focused 13/13 selection for the first time on `0dc52331`. Both broad
+profiles separately run growth and ground reference contracts, each 1/1.
+No whole gate repeats, original data changes or recreated historical failures.
+The production loader, vector testcase and generic text library are unchanged
+by this test-reporting correction. Exact counts/identities/hashes are in the
+handoff evidence. No local independent approval is claimed.

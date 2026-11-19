@@ -15953,3 +15953,65 @@ Decisions and reasoning:
 
 NOT_RUN: original/HE runtime, Windows/WSL game-file runs, full suites/pins/warnings, LeakSanitizer, World/cache consumers/fauna/global initialization.
 QUESTIONs: none blocking bounded review. Next finite step: establish the reached BERGWERK2 header 50 and its callbacks before one continuation.
+
+## 2026-11-19 — WILDLIFE-BERGWERK-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-BERGWERK-1` from corrected FERTILITY `81026d1b`; dispatch `f30239dc` read, not merged.
+- Frozen tested source `7e4ac88f68a9cec14100a41e6c82b6bf9ed338a3`, tree `3e408d06e51102169cee6d1de4e19071e31a3da4`.
+- Publication adds report/evidence only; pushed head/tree/CI accompany direct handoff; no main merge/rebase or other-lane intake.
+- [Prewritten primary contract](../sim/wildlife-bergwerk.md); [frozen evidence](evidence/wildlife-bergwerk-1.md) includes acceptance, raw-log identities and exact required-control receipts.
+- D: AnnoWelt `0x10089d37–0x10089d7b` calls island +0x24/table `0x100c9b10` reader +0x18 -> `0x10078960–0x10078aa3`.
+- Fresh constructor/factory `0x1008be60` / `0x10078c80–0x10078cf1` copies island origin/dimensions; distinct from +0x28 OCCUR/table `0x100caf34`.
+- No ore tonnage, goods, reserve, marker retyping, mine extraction or later binding inferred; accepted ore research read without importing its branch.
+- Existing small tagged format reused: 6-byte name/u16 length plus existing 24-bit escape; ENTRY payload one u32 LE, unknown tags skipped.
+- D: `0x100789ef–0x10078a2e` decodes x bits 0–11, y 12–23, rotation 24–25; upper 6 ignored; u16 origin addition wraps before engine widening.
+- D: insertion `0x10077e30–0x10077fc9` uses 3 × 4 for rotations 0/2, 4 × 3 for 1/3, visits world-aligned 8-cell chunks in y/x order.
+- D: matrix geometry ceil(dimensions/8), allocation `0x1008c2ed–0x1008c39e`; signed C truncating `(chunk_base-origin)/8` preserved.
+- D: node constructor `0x1007c290–0x1007c2cc` packs signed nibble offsets, rotation/kind; caller sets mask 0x10 and ORs chunk presence bit 2.
+- D: list prepend `0x1007bd50–0x1007bd60` -> concrete +8 setter `0x10040230–0x10040237` only writes next; no reset/dedup across headers.
+- Typed prepared entries/nodes/heads/resource-presence bits owned; no raw stash labelled completion, no new persistent/native/identity/tag/default field.
+- Normal scenario loader still reports undecoded deposits, mining untouched; existing omitted derived-cache/future consumer rebuild boundary retained.
+- Finite reached chain has no tile/variation write, resource selection, world draw or further observer; post-island callbacks remain outside scope.
+- Authored local (7,6), origin (16,24), rotation 1 -> four chunks / offsets 0x67,0x6f,0xe7,0xef; duplicate headers yield 8 nodes with retained next links.
+- All rotations, upper bits ignored, short/long tagged round-trip, empty header, unknown tag, source identity/ownership and surrounding effects covered.
+- Exact-length/trailing/extended-count and out-of-matrix errors refuse before completion; prior header or earlier valid ENTRY remains diagnostic.
+- Unaligned origin x 7 proves negative truncation to 0 and two world chunks sharing one matrix slot; no invented clamp or local-floor substitution.
+- Private actual adapter-TU wrong x-from-y mutant: legal 128 assertions pass; mutant fails 12 intended checks / 116 pass, source unchanged/rebuilt.
+- Single original continuation independently parses 9 entries -> 20 nodes / 8 chunks; checks all typed fields, source order, offsets, links, heads and flags.
+- Terrain stays 4,760 completed/accepted / 0 refused; resource-class/draws 4,589; 84 stones / 63 cliffs / 24 rocks; 16 terrain epilogues.
+- Fertility completion 1 / 8,160 changed low nibbles; BERGWERK2 completion 1 / 9 entries; additional draws 0 / spawns 0; total cursor 4,589.
+- 51 completed headers including 33 setup, 16 terrain, fertility and BERGWERK2; trace includes the next unsupported header before effects.
+- Next boundary island ordinal 0/slot 11/header 51/record 0 OCCUR; HIRSCH 71 unreached. Diagnostic partial, never complete world success.
+
+```text
+# cache/wildlife-bergwerk-1/debug-final.log (main)
+COUNTS: selected=8 executed=8 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-bergwerk-1/asan-final.log (main)
+COUNTS: selected=8 executed=8 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# Three separately required controls per profile; all six exact receipts reproduced in evidence
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-bergwerk-1/original-final.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- Totals Debug 11 / ASan 11 executed passes including required controls, plus original Debug 1; no skips/refusals/timeouts/incomplete/sanitizer lines.
+- Required: typed-node causal chronology, malformed-entry public adapter contract, existing malformed-prefix contract; no double counting.
+- Two affected TUs strict O3/Werror Apple Clang 21/GCC 15.3 pass; GCC shadow control rejected; format 23.1.3/lint/diff/links pass.
+- Compiler warnings 0; inherited Apple duplicate-library linker warning disclosed; targeted warning checks are not a full sweep.
+- All 276 fixtures/pins/recordings byte-identical; unchanged format helper/selector/PE/HHbb/HIRSCH/reference/long lanes reused with dependency reasons.
+- Private mutation harness footer's inherited whole-byte-copy label is stale; actual one-expression wrong-axis mutation/failures/identities retained, no extra campaign.
+- Host Apple M5 Max / 18 logical / 48 GiB / macOS 27.0.1, jobs 1/threads 2, normal admission; awake assertion/coordinator preserved.
+- Exact-head CI read after ordinary push and sent directly; do not wait for it to submit and never call pending jobs green.
+
+Decisions and reasoning:
+- Prove the actual container/list effect through return before code; distinguish resource records from ore quantities and OCCUR objects.
+- Reuse tagged framing, represent typed nodes/order/presence bits and preserve signed/nibble behavior without original-capacity assumptions.
+- Use one actual wrong-axis control, focused gates and one original continuation; no full rerun or guessed no-op completion.
+- Stop before OCCUR, keep existing projected-cache/global-init limits and normal gameplay paths unchanged.
+
+NOT_RUN: original/HE runtime, Windows/WSL game-file runs, whole suites/full pins/warnings, LeakSanitizer, allocator-failure emulation, World/cache/fauna/global initialization.
+QUESTIONs: none blocking bounded review. Next finite task: the reached OCCUR header 51 handler/factory/state/draw contract before one continuation.

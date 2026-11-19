@@ -97,3 +97,16 @@ Only that expectation corrected; resource behavior unchanged, failed test source
 Four actual private C++ source mutants reject wrong corner, omitted spill, forced
 callback profile and high shortcut after a legal control. Canonical source/binary
 hashes unchanged; clean control rebuilt and rerun. Gate results follow in handoff.
+
+### Final table-rounding discriminator and gate reuse
+
+After the initial frozen focused gates, add test-only independent table RC controls:
+248*c=166429979/2^24, binary32 grid step 16 numerator units. PC53/64 retain that
+accumulator exactly; nearest/up store 166429984 ->0x411eb852, down/toward-zero
+store 166429968 ->0x411eb851, with callback fixed separately to nearest.
+An actual table-local forced-nearest C++ mutant fails four intended assertions;
+legal context control passes 41 assertions. Only the changed context case is rerun
+in Debug/ASan; the other 16 checks/profile reuse their original frozen evidence.
+Production implementation is unchanged across the two tested epochs. No expected
+fixture, reference, golden or pin value changed. The independent 29 JSON vectors
+remain the accepted geometry reference input.

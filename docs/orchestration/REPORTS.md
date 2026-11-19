@@ -18084,3 +18084,82 @@ QUESTIONs/next boundary unchanged: conditional adapter versus runtime observatio
 Primary review P3 docs corrected: left-height FSTP address 0x100b5649, following FADD 0x100b5646.
 Stored-edge comparison claim now names query-edge admission; prior extended orientation comparison is
 invariant only for the admitted interior unit-cell profile. No broader helper claim or repeated gate.
+
+## WILDLIFE-ORDINARY-PROJECT-1 — 2026-11-19 — READY FOR REVIEW
+
+Branch task/WILDLIFE-ORDINARY-PROJECT-1, reviewed base 7c91bd12, dispatch 30ee90da P0–P5; no merge/rebase.
+Initial tested `30b1e8a55d5a621ba5326dbc62e06261a060895e`, tree `79886c055fb92cad149db35ffd9ab4d257f89d72`.
+Final test-only pin `0cd6320eeb27efd8c093bedc58340ebd4b6b148c`, tree `e3787ebbf9dd93a0a2417ea8ec6ce0e2e8f358ed`; production unchanged, publication docs only.
+[Contract](../sim/wildlife-ordinary-project.md), [identities/receipts](evidence/wildlife-ordinary-project-1.md).
+P0: corrected ordinary receiver/spill/conditional profiles retained, hand acceptance table before code.
+P1: portable 8-u32 workspace, explicit add/subtract/multiply/divide/binary32 stores, no host FP/__int128/FPU writes.
+Normal finite PC24/53/64 x four RC; checked range/alignment/underflow/zero-domain errors, no successful fake zero.
+P2: sealed independent table/callback context/provenance; first 256 source-byte table entries computed once.
+Source batch validates scene/chunk/actual type + fresh immutable terrain once, owns requests, projects 4 corner reads.
+Owned XYZ/home/corners/profiles/source/provenance + unchanged draw domains; cave/border/unavailable facts refuse.
+P3: all 29 independent vectors + separate literal RC/PC/spill/high/diagonal/width/zero assertions.
+P4: nonflat raw patch gives [0x4204aaab,0x3f000040,0x4244aaab], composed type 60001 under supplied manager.
+Original Tutorial 419 ->figure 528, corners 48, hand XYZ[0x42dfaaab,0x3ff5c28f,0x42375555],35 assertions pass.
+No native allocation/creation or original CW claim; authored context, retained owners/determinism/input checks.
+First authored failure reused prefix 100; independent means24/22/30/28 cause 4 resource rejections ->96, not geometry bug.
+Only expected count corrected; failed source/binary/log retained. Initial 6 signedness compiler errors fixed, no suppression.
+Four initial C++ mutants reject source/spill/profile/high errors; fifth table-rounding mutant fails 4 literal assertions.
+Initial authored 4 cases/1280 assertions; final context 41 includes 16 extra table-rounding assertions, production unchanged.
+P5 initial Debug `cache/wildlife-ordinary-project-1/debug.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=12 executed=12 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+Initial ASan/UBSan `cache/wildlife-ordinary-project-1/asan.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=12 executed=12 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+After table-RC test improvement, ONLY changed context case, Debug `debug-table-rc.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+ASan `asan-table-rc.log` (same cache directory):
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+17 unique/profile, 18 physical/profile including changed-case rerun; 16 unchanged cases/profile reused, no whole rerun.
+All counts executed pass, no skip/empty/refusal/timeout/incomplete/sanitizer. Admission on, original/oracle paths set.
+Strict AppleClang21/GCC15.3 source + 2 test TUs pass; changed table test TU alone rechecked; shadow control rejects.
+Format 23.1.3/lint/diff/links pass; 0 compiler warnings, inherited duplicate-library linker warning disclosed.
+Initial/final 1034 identities verified at their epochs; actual binaries retained. 293 fixture working bytes/pins unchanged.
+Closeout 140 artifacts SHA256 `83523d0ff517f9ee87e680007d4d0c9d70d098fb77ee714f7ab184aeea0fbdf5`; original assets/listings never committed.
+Hosted exact-head CI read after ordinary push; hosted closeout + independent review pending orchestrator.
+NOT_RUN: original/HE/CW/native x87/Windows/LSan, cave/border/live corners/manager/World/state/default/identity,
+full/heavy/opening/pins/render/nav/raster/animal actions. No production runtime policy or total draw-history claim.
+Decisions and reasoning:
+- Preserve source widths/actual kind and each rounded operation/spill; never substitute mean or separately rounded offset.
+- Bind once, project 4 corners; generated numeric context is explicitly supplied and not observed original state.
+- Keep literal expected words separate from reference; retain first failures and reuse unchanged frozen checks.
+QUESTIONs: none within conditional profile. Next seam is native context/manager integration, not started. STOP for review.

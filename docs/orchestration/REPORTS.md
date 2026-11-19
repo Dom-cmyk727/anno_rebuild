@@ -17541,3 +17541,71 @@ Decisions and reasoning:
 - Empty profile refuses unsupported state; separate direct-delete contrast avoids invented lifecycle guarantees.
 - Reuse unchanged format/prefix evidence and run only directly reached focused regressions.
 QUESTIONs: none for this isolated boundary. Stop pending orchestrator source/evidence review.
+
+
+## WILDLIFE-SPECIES-LOAD-1 — 2026-11-19 — READY FOR REVIEW
+
+Branch `task/WILDLIFE-SPECIES-LOAD-1`, base `901a8467f766825ae9683cb41dee33522a9aff39`.
+Dispatch `470b400a32456c59ddbb03f3414336f40458d6f9`; no board/main merge.
+Tested `4acf5545303964ed30440105bdef9cd7a6803496`, tree `aa42defb5b91795f64411788922c19c338f43851`.
+Publication adds docs only; final independent code/evidence review pending orchestrator.
+[Contract/API](../sim/wildlife-species-load.md); [receipts/failures](evidence/wildlife-species-load-1.md).
+S0/S1: only GogClimate2, Tutorial INFO climate 2; Welt `0x10092eb8`/`0x10092eed`,
+row RVA 0xca780, 32 ordered u16 entries, strict unique initialized readonly PE backing.
+This profile is proved from its own addressed row, not seven unrelated kernel selectors.
+Independent pefile/raw Figuren/INFO oracle: 32 slots, 9 unique IDs, kinds 49/50, yields 0/137/138.
+All slots/duplicates/non-New/zero IDs retained; missing/unsafe/ambiguous facts refuse before selection.
+
+Fresh non-New WARE gap settled by focused primary review at board `a2454542`:
+Game `0x10010436–0x10010445` no-match returns without +0x100 write;
+fresh constructor `0x100111a8`/`0x10011259` establishes zero. Reused descriptors excluded.
+Absent/matched/unmatched-default provenance retained; sealed New unknown-name refusal unchanged.
+Type 131/kind 50 stays in its slot with numeric 0; no extra ordinal/filter/reroll.
+S2: owned `prepare_wildlife_creation_plan` reads source row/facts then calls unchanged `wildlife_create`.
+Return choice/index/inspection/position selector/draw count/selected facts and optional sealed New descriptor.
+Selected other kind ->typed UnsupportedCreationKind, preserving choice/count, no creation claim.
+No position/height generation, cave provider, World, manager, state, default, tag, identity or PRNG changes.
+S3: four authored cases /121 assertions; real case /247 assertions, all 32 rows independently compared.
+Authored 60001/kind 51 fits u16; existing 90001 binder controls remain wider-only.
+Wrap/duplicates/no-match 18/unused suffixes/exhaustion/OQ-574/unsafe source/ownership/determinism checked.
+Five real selections independently cross-checked with unchanged Python reference, using supplied draws/providers.
+Five final production mutants (sort, row, goods, cave draw, unmatched default) fail intended assertions after legal 4/121.
+Actual replacement counts and canonical immutability proved; final test source/binaries retained.
+First oracle unknown-WARE error, build's three doctest syntax errors, wrong duplicate-record fixture
+and aborted initial causal legal control remain preserved; final corrections are separate evidence.
+
+S4 Debug `cache/wildlife-species-load-1/debug.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=27 executed=27 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+ASan/UBSan `cache/wildlife-species-load-1/asan.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=27 executed=27 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+29 unique entries/profile: 5 species, 6 creation, 4 release, 2 leaf, 1 vectors, 11 formats; real cases required separately.
+No memory refusals/timeouts/gate reruns. Both actual sim/formats binaries retained; 1024 frozen entries verified.
+Apple Clang 21/GCC 15.3 strict affected TUs pass; final changed test TU rechecked; shadow negative rejects.
+Format 23.1.3/lint_sim/diff pass; 0 compiler warnings; inherited duplicate-library linker warning disclosed.
+Prior 83/209 manifest artifacts intact; 292 tracked fixtures unchanged (ignored bytecode explains prior 293 physical).
+178-entry manifest SHA256 `c17eeca1a3812f892e27d06c062fbf7fb2d8f8ca8350928c43d142c9c0e21f5b`.
+Hosted exact publication CI read after ordinary push; orchestrator owns terminal closeout.
+NOT_RUN/unproved: other climates, reused catalogues, original/HE runtime, fractional positions/provider,
+live lifecycle/World/global draw provenance, full OQ-578/579/584, LeakSanitizer, local Windows/WSL, broad/full/heavy/pins.
+Decisions and reasoning:
+- Prove one addressed climate row completely; explicitly refuse unproved profiles instead of inferring a table extent.
+- Bind fresh numeric facts separately from sealed New capability; unsupported species remain selector participants.
+- Preserve original retained-default WARE path only where fresh construction proves zero; unsafe/ambiguous input refuses.
+- Keep selection/accounting separate from creation and reuse unchanged selectors, references and prior unaffected evidence.
+QUESTIONs: none for this bounded profile. STOP pending orchestrator final source/evidence review.

@@ -179,6 +179,14 @@ says who is doing what, where the work is, and what it waits on.
   - Research only: no routing repair, no compatibility identity, no save/replay rebaseline, no choice
     between edition behaviours; those stay with the owner.
   - Intake only: the Mac lane's accepted packets are **not** accepted or landed by this entry.
+  - **Result, 2026-11-19:** research head `adb430b8` (tree `ee56dbcb`, docs only, CI 44486094969 green).
+    Independent read-only review: **ACCEPTED WITH NOTES**
+    ([review](reviews/2026-11-19-win-nav-editions-1-review.md)). The rebuild's coarse defect (the sum masked
+    and clamped instead of the component masked) is confirmed in GOG and in both HE modules; the editions
+    differ only in the height conversion's rounding (five shipped types one unit higher in HE), which can
+    never change a class or shore. Shipped scenes: 0 class or own-block shore changes. Recommendation: the
+    faithful correction (WILDLIFE-NAV-REPAIR-1); owner decisions: the ADR 0006 section base and the
+    pin/replay rebaseline policy. Original runtime NOT_RUN in both editions.
 - **The Mac's GATE-RUN on candidate 10 `95897a55` FAILED** (Mac review
   `reviews/2026-11-17-gate-ui-info-2d-buildcat-review.md` on `orch/mac-lane`): 2,805 executed, 2 failed,
   `viewer_wiring_ui_magnifier_range` and `_stepped` ("no frame was drawn within 30000 ms" on Metal); and 10

@@ -76,3 +76,21 @@ the unchanged source is requested. No Mac engine/coordinator repair is added to 
 **Next Mac packet:** MAC-HEAVY-1b is RELEASED; the final gate report is received and the executor
 reports gate/warning work ended. It starts from main, not this failed candidate, and only repackages earlier
 evidence. This keeps TOWN-START-1's gameplay measurement independent of the viewer failure.
+
+
+## Owner/Windows follow-up, 2026-11-19
+
+The owner forwards Windows' skip-policy reconciliation: the TEN named-adapter
+GPU skips above are now expected (two play and eight atlas/RENDER-DIRECT).
+DXGI stays platform and the texture-ceiling probe opt-in. The old two-GPU-skip
+expectation is superseded; no tests were rerun to reinterpret these receipts.
+The two magnifier failures remain FAIL and are not covered by this allowance.
+
+The owner confirms the display was **unlocked and awake** during the original
+run. Locked/asleep/SSH is therefore not an established explanation. Window
+coverage/focus and surface-acquire state remain to be established.
+[MAC-GPU-WINDOW-1](../tasks/mac-gpu-window-1.md) releases four unchanged-candidate
+case invocations, two display-context pairs, with retained stderr/traces and
+explicit hidden-versus-back-off attribution or an honest unresolved verdict.
+No code change or whole-suite repeat. Windows owns any later harness/display
+requirement policy. This follow-up does not retroactively accept candidate 10.

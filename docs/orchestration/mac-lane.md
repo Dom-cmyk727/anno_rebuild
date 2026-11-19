@@ -14,7 +14,7 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 
 | Wave / packet | Status | Head / tree | CI | Review |
 |---|---|---|---|---|
-| 0.1 [GATE-RUN ui-info-2d-buildcat](tasks/gate-run-ui-info-2d-buildcat.md) | CLOSED with FAIL: two no-frame cases; warning check passed; candidate NOT ACCEPTED | Candidate `95897a55bc939a185766b7207e69d098997cdb1d`; tree `d65099256a598f7ce82d37ea303b81ff87088542` | Exact-head lookup: no run found | [Final failure review](reviews/2026-11-17-gate-ui-info-2d-buildcat-review.md); eight extra GPU skips also need policy reconciliation |
+| 0.1 [GATE-RUN ui-info-2d-buildcat](tasks/gate-run-ui-info-2d-buildcat.md) | CLOSED with FAIL: two no-frame cases; warning check passed; candidate NOT ACCEPTED | Candidate `95897a55bc939a185766b7207e69d098997cdb1d`; tree `d65099256a598f7ce82d37ea303b81ff87088542` | Exact-head lookup: no run found | [Final failure review](reviews/2026-11-17-gate-ui-info-2d-buildcat-review.md); ten named-adapter GPU skips now reconciled; two window failures remain |
 | 0.2 [MAC-HEAVY-1b](tasks/mac-heavy-1b.md) | ACCEPTED: publication correction only; Windows landing pending | `8c7155080fbe3e4544f4d4908518859b8e80c4fe` | [44193521811](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44193521811), exact-head docs gate green | [Acceptance](reviews/2026-11-17-mac-heavy-1b-review.md) |
 | 1.1 prerequisite [TOWN-START-SETUP-1](tasks/town-start-setup-1.md) | ACCEPTED; Windows landing pending | Head `ad360af024543a71e083dc3de714b7f48f354e63`; tested code `e71f2dc0` | [44209875238](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44209875238), all 12 jobs success at exact head | [Acceptance](reviews/2026-11-18-town-start-setup-1-review.md) |
 | 1.1 [TOWN-START-1](tasks/town-start-1.md) | ACCEPTED bounded measurement on repaired stack; landing pending | Accepted `9edb151c414246d306194a703db71475affbdad4`; preserved report `156badab`, measured `f36c22fa` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Acceptance and preserved failures](reviews/2026-11-18-town-start-1-review.md) |
@@ -52,8 +52,9 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife load-thread numerics [WILDLIFE-RASTER-FP-1](tasks/wildlife-raster-fp-1.md) | ACCEPTED research/capture card; Windows observation pending | `aec8bcc8fc1a35230dffba91c8e8b34c35f31bf3`; production base `889143ba` | [44464134541](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44464134541), all 12 jobs successful | [Review and Windows intake](reviews/2026-11-19-wildlife-raster-fp-1-review.md) |
 | Wildlife ground preparation [WILDLIFE-PREPROCESS-CONTRACT-1](tasks/wildlife-preprocess-contract-1.md) | ACCEPTED bounded preprocessing contract | `54798a4b5f5bc8a2c65874ea375441b7cca9e21f`; production base `889143ba` | [44467047682](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44467047682), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-preprocess-contract-1-review.md) |
 | Wildlife numerical preparation [WILDLIFE-GROUND-PREPARE-1](tasks/wildlife-ground-prepare-1.md) | ACCEPTED; isolated UNWIRED numerical leaf | `5bdfd92ac01a70656a718cea4f7c7405445b41d5`; tested `92c17db` | [44469519552](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44469519552), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-ground-prepare-1-review.md) |
-| Wildlife growth source [WILDLIFE-GROWTH-LOAD-1](tasks/wildlife-growth-load-1.md) | LOCAL REVIEW APPROVED; P2 closed, hosted acceptance open | `fe4355fd719fad0ecafbe9322788f4b7d885a7af`; tested `464e4935` | [44478146499](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44478146499) pending; old 44475449514 ASan test step failed, cause unresolved | [Focused review](reviews/2026-11-19-wildlife-growth-load-1-review.md) |
-| Wildlife climate kernel [WILDLIFE-KERNEL-LOAD-1](tasks/wildlife-kernel-load-1.md) | RELEASED; independent unwired source binding | Locally reviewed base `fe4355fd`; pending CI explicitly retained | New task CI at handover | Direct reportback to Mac orchestrator |
+| Wildlife growth source [WILDLIFE-GROWTH-LOAD-1](tasks/wildlife-growth-load-1.md) | ACCEPTED; focused P2 closed | `fe4355fd719fad0ecafbe9322788f4b7d885a7af`; tested `464e4935` | [44478146499](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44478146499), all 12 successful; earlier failed run preserved | [Review](reviews/2026-11-19-wildlife-growth-load-1-review.md) |
+| Wildlife climate kernel [WILDLIFE-KERNEL-LOAD-1](tasks/wildlife-kernel-load-1.md) | LOCAL REVIEW APPROVED; UNWIRED reader, CI pending | `c9259c1612863def493dcb47f455a018b8e110c0`; tested `fb6c7f52` | [44483388631](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44483388631), pending | [Review](reviews/2026-11-19-wildlife-kernel-load-1-review.md) |
+| Candidate 10 display [MAC-GPU-WINDOW-1](tasks/mac-gpu-window-1.md) | RELEASED; owner priority, no code changes | Existing candidate `95897a55bc939a185766b7207e69d098997cdb1d` | Four bounded original-build case invocations; no whole gate | Report directly to Mac orchestrator |
 | Windows dual-edition navigation [WIN-NAV-EDITIONS-1](tasks/windows-nav-editions-1.md) | Owner-requested HANDOFF READY; Windows intake pending | Accepted diagnosis `74d50bfe`, production base `889143ba` | GOG and HE verification requested; no repair released | Owner forwards to Windows orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
@@ -1049,3 +1050,25 @@ runtime/data work, compatibility assessment and independent review. It stops
 before a repair or identity change. Windows chat intake is pending; this Mac
 publication does not assign other Windows work or claim a message was delivered.
 Main, shared TASKS/STATUS and original files remain untouched.
+
+
+## Latest priority — candidate 10 display diagnosis
+
+Owner/Windows request releases MAC-GPU-WINDOW-1 at the completed kernel checkpoint.
+Run the two magnifier cases alone once with an explicitly visible, unlocked/awake,
+terminal-frontmost setup and once in the recovered original launch context. The
+owner confirms the ORIGINAL display was unlocked and awake. Do not substitute
+locked/asleep assumptions; record unrecoverable coverage/focus facts as unknown.
+Four case runs only, retained stderr/traces, no source changes or whole gate.
+Report the proved draw blocker or insufficient observation; Windows owns follow-up.
+
+Mac GPU skips for candidate 10 are the TEN named-adapter cases (two play, eight
+atlas/RENDER-DIRECT), with DXGI platform and texture-ceiling opt-in. This resolves
+the old skip-policy mismatch, not the two Metal first-frame failures. Exact names
+remain in the preserved skip inventory/review; no blanket new skip allowance.
+
+Growth fe4355fd is ACCEPTED with all 12 exact-head CI jobs green (44478146499).
+Kernel c9259c16 has both independent reviews APPROVED, 45+45 hash receipts verified,
+and focused Debug/ASan 17+1+1 each; exact-head CI 44483388631 pending. No gate
+repeated. Common-HEAD gameplay binding remains queued after the small GPU packet.
+Executor reports directly here for review and continuation. Main untouched.

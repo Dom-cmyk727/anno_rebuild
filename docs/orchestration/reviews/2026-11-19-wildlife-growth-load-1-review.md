@@ -86,3 +86,14 @@ This is LOCAL REVIEW APPROVED, not ACCEPTED. Root permits independent stacked
 continuation to [WILDLIFE-KERNEL-LOAD-1](../tasks/wildlife-kernel-load-1.md) on
 fe4355fd while hosted CI/old failure triage remain separate. No production
 navigation correction, version allocation or live wildlife wiring is released.
+
+
+## Terminal exact-head CI — accepted correction
+
+Corrected head `fe4355fd719fad0ecafbe9322788f4b7d885a7af` is now **ACCEPTED**
+within its independently reviewed scope: all 12 jobs, including five C++ lanes
+and aggregate gate, succeeded in CI 44478146499 at that exact head. Terminal
+jobs receipt SHA-256:
+`ae5f46a5c06dd6bf847aa44da5ffceb3f7b4cb77475ff516257c96b4e7574cdd`.
+No retry or repeated local gate. This does not explain or erase the earlier
+44475449514 ASan test failure, whose underlying assertion remains UNKNOWN.

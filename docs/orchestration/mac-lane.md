@@ -40,7 +40,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife occurrences [WILDLIFE-OCCUR-1](tasks/wildlife-occur-1.md) | ACCEPTED; bounded occurrence slice | `5bcd50c5b22be0d134fb63473680f321a7870ba4`; source `8c2de16c` | [44432068823](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44432068823), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-occur-1-review.md) |
 | Wildlife ANBAU header [WILDLIFE-ANBAU-1](tasks/wildlife-anbau-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `02111ea2139cfddf1e4018bcc229fd55d918056e`; source `d645071a` | [44436355753](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44436355753), in progress | [Review](reviews/2026-11-19-wildlife-anbau-1-review.md) |
 | Wildlife DISCOVER header [WILDLIFE-DISCOVER-1](tasks/wildlife-discover-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `8d97b6956189faf9483f6d9944b42676362d1c7d`; source `ddab0993` | [44438472504](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44438472504), in progress | [Review](reviews/2026-11-19-wildlife-discover-1-review.md) |
-| Wildlife KONTORID header [WILDLIFE-KONTORID-1](tasks/wildlife-kontorid-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `8d97b695` | Not started | Frozen reportback directly to Mac orchestrator |
+| Wildlife KONTORID header [WILDLIFE-KONTORID-1](tasks/wildlife-kontorid-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `eaa61980162b1552eb7acee1553ce11fb7a8869c`; source `c199cf1f` | [44439685272](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44439685272), in progress | [Review](reviews/2026-11-19-wildlife-kontorid-1-review.md) |
+| Wildlife PROD2 boundary [WILDLIFE-PROD2-1](tasks/wildlife-prod2-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `eaa61980` | Not started | Frozen reportback directly to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -727,3 +728,19 @@ distinguish raw values from normal engine nonzero/default policy, and continue
 once to the next unsupported boundary. No World/native/tag/default, counter
 allocation, founding or other-lane changes. Executor ordinary-pushes its task
 branch and reports directly here for review and next release. Main untouched.
+
+## Latest dispatch — KONTORID reviewed; empty PROD2 path released
+
+KONTORIDeaa61980/source c199cf1f is independently locally APPROVED with no findings.
+41 receipt hashes and unchanged fixtures verified. Original raw counter transfer,
+saver/init and55-header continuation independently confirmed. Debug20+3required,
+ASan20+3required and original1 retained green; no gate repeated. DISCOVER's P3
+scratch correction is verified. Exact CI44439685272 remains pending, as do the
+ANBAU/DISCOVER runs at this check; none is labelled accepted prematurely.
+
+[WILDLIFE-PROD2-1](tasks/wildlife-prod2-1.md) is RELEASED after independent scope
+review. Prove the reached empty-block path and its full finite effects, implement
+only that path, explicitly stop at unsupported nonempty records and continue once.
+Do not reuse GELAENDE admission/epilogue or claim full building import. No World/
+native/tag/default/other-lane changes. Executor ordinary-pushes the task branch
+and reports directly here for review/next release. Main untouched.

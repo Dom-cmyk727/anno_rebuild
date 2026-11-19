@@ -65,3 +65,12 @@ runtime integration. It must distinguish original-width projections from widened
 engine identifiers, exact source facts from supplied outcomes, and carried goods
 from descriptor yield. Unsupported/default/geometry profiles must be explicit.
 Navigation/secondary raster and persistent-world decisions remain separate.
+
+
+## Exact-head hosted closeout, 2026-11-19
+
+ACCEPTED within the reviewed bounded scope at `252ed66cdb5e61818f459039822d2dd8167cbd04`. Both independent reviews
+approved; all12 exact-head hosted jobs, including five C++ lanes and aggregate
+gate, succeeded in [44500172507](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44500172507).
+Public jobs receipt SHA256 `e52d4ef240abc78b3f4dd62bfbcbab5fbf886d5f511af4207ef21931819fd2b3`. Earlier pending wording is historical.
+No local gate repeated; existing runtime/integration/FP limitations remain.

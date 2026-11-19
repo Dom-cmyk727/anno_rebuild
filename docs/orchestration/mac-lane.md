@@ -57,9 +57,10 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Candidate 10 display [MAC-GPU-WINDOW-1](tasks/mac-gpu-window-1.md) | CLOSED, diagnostic approved; candidate remains FAIL | Unchanged `95897a55bc939a185766b7207e69d098997cdb1d` | 4/4 post-script failures; 7287 successful acquire/present returns; original no-frame cause unresolved | [Review / Windows handoff](reviews/2026-11-19-mac-gpu-window-1-review.md) |
 | Wildlife object facts [WILDLIFE-GROUND-FACTS-1](tasks/wildlife-ground-facts-1.md) | ACCEPTED; bounded owned metadata binding | `4054d93aa42f777c49c9c4dd035bd3cdce23f64b`; tested `f443ed12` | [44490451270](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44490451270), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-ground-facts-1-review.md) |
 | Wildlife source provenance [WILDLIFE-PREP-PROVENANCE-1](tasks/wildlife-prep-provenance-1.md) | ACCEPTED bounded contract; P3 closed | `0a30d44a6214b2c3e1d6859fb5a65b7c1c3b4719`; engine `4054d93a` | [44494353183](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44494353183), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-prep-provenance-1-review.md) |
-| Wildlife first-call composition [WILDLIFE-FIRST-CALL-1](tasks/wildlife-first-call-1.md) | LOCAL REVIEW APPROVED; CI pending | `7d2df0fc5c94786372960000b1c7fe8d3a28dee2`; tested `a6f7527d` | [44496760869](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44496760869), pending | [Review](reviews/2026-11-19-wildlife-first-call-1-review.md) |
-| Animal construction callbacks [WILDLIFE-CREATE-CLOSURE-1](tasks/wildlife-create-closure-1.md) | LOCAL REVIEW APPROVED; CI pending | `252ed66cdb5e61818f459039822d2dd8167cbd04` | [44500172507](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44500172507), pending | [Review](reviews/2026-11-19-wildlife-create-closure-1-review.md) |
-| Animal creation effects [WILDLIFE-CREATE-EFFECTS-1](tasks/wildlife-create-effects-1.md) | RELEASED; source binding + pure effects, UNWIRED | Locally reviewed base `252ed66c` | Focused binder/effects and real-descriptor checks | Direct reportback to Mac orchestrator |
+| Wildlife first-call composition [WILDLIFE-FIRST-CALL-1](tasks/wildlife-first-call-1.md) | ACCEPTED; isolated source-to-fill | `7d2df0fc5c94786372960000b1c7fe8d3a28dee2`; tested `a6f7527d` | [44496760869](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44496760869), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-first-call-1-review.md) |
+| Animal construction callbacks [WILDLIFE-CREATE-CLOSURE-1](tasks/wildlife-create-closure-1.md) | ACCEPTED; bounded creation contract | `252ed66cdb5e61818f459039822d2dd8167cbd04` | [44500172507](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44500172507), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-create-closure-1-review.md) |
+| Animal creation effects [WILDLIFE-CREATE-EFFECTS-1](tasks/wildlife-create-effects-1.md) | LOCAL REVIEW APPROVED; CI pending | `25bab774208c9e610b43447e247d99cc1aba0195`; tested `37c144b1` | [44508278589](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44508278589), pending | [Review](reviews/2026-11-19-wildlife-create-effects-1-review.md) |
+| Animal end/release effects [WILDLIFE-RELEASE-EFFECTS-1](tasks/wildlife-release-effects-1.md) | RELEASED; closed-profile owned lifecycle projection | Locally reviewed base `25bab774` | Exact cleanup callbacks before code; focused end/release tests | Direct reportback to Mac orchestrator |
 | Windows dual-edition navigation [WIN-NAV-EDITIONS-1](tasks/windows-nav-editions-1.md) | Owner-requested HANDOFF READY; Windows intake pending | Accepted diagnosis `74d50bfe`, production base `889143ba` | GOG and HE verification requested; no repair released | Owner forwards to Windows orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
@@ -1174,3 +1175,26 @@ source lifetime with focused tests. No live animal or new World/state/identity/
 default/PRNG integration. Actual manager and upstream float/scheduler policies stay
 separate. Executor pushes its own task branch and reports directly here for review.
 Main, Windows/UI work and shared TASKS/STATUS remain untouched.
+
+## Creation effects approved; end/release continuation
+
+CREATE-EFFECTS25bab774 is locally independently APPROVED by primary and evidence
+reviewers. Original segmented goods lookup and all29 descriptor rows were
+independently reproduced. Root verified209 manifest and35 published local hashes;
+evidence reviewer verified1004 frozen identities and coverage reuse across three
+sources. Debug/ASan each18 unique cases covered by18+6+5 executions, not a fresh
+full final-head gate. Initial failures/missing historical artifacts remain disclosed.
+CI44508278589 is still running; exact-head acceptance is not claimed.
+
+FIRST-CALL7d2df0fc and CREATE-CLOSURE252ed66c are now ACCEPTED: all12 jobs green
+in44496760869 and44500172507 respectively, with their existing independent reviews.
+No passing local gate repeated.
+
+WILDLIFE-RELEASE-EFFECTS-1 is independently scope-approved and RELEASED on25bab774:
+close only remaining selected New cleanup callbacks, then implement owned normal
+end/release effects. Home lookup, preserved ID/time/goods, no saved-ID guard,
+repeated detach and distinct direct deletion receive discriminating checks.
+Unsupported cleanup state refuses; no invented safer ownership policy, live
+manager or World/state/default/identity change. Windows navigation/FP work stays
+separate. Executor pushes own task branch and reports directly here for review.
+Main, shared TASKS/STATUS and other-lane work remain untouched.

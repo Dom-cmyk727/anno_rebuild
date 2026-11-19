@@ -354,6 +354,13 @@ if(ANNO_BUILD_TESTS)
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/wildlife_postload_ref_contract_test.py
                      --ref ${CMAKE_SOURCE_DIR}/tools/wildlife_postload_ref.py
                      --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/wildlife_postload_vectors.txt)
+    add_test(NAME wildlife_geometry_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/wildlife_geometry_ref.py
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/wildlife_geometry_vectors.json)
+    add_test(NAME wildlife_geometry_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/wildlife_geometry_ref_contract_test.py
+                     --ref ${CMAKE_SOURCE_DIR}/tools/wildlife_geometry_ref.py
+                     --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/wildlife_geometry_vectors.json)
     add_test(NAME wildlife_reference_agrees
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/wildlife_ref.py
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/wildlife_vectors.txt)

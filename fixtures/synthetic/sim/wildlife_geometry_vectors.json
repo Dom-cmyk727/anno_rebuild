@@ -1,0 +1,467 @@
+[
+  {
+    "kind": "position",
+    "inputs": {
+      "ox": 0,
+      "oz": 0,
+      "cx": 0,
+      "cz": 0,
+      "packed": 0,
+      "draw": 0,
+      "pc": 53,
+      "rc": "nearest"
+    },
+    "expected": {
+      "x": 1042983595,
+      "z": 1042983595,
+      "consumed": 1
+    },
+    "derivation": "Origin zero; low=a=11184811/2^26, high=S(1-a); draw bits select the four ordered corners."
+  },
+  {
+    "kind": "position",
+    "inputs": {
+      "ox": 0,
+      "oz": 0,
+      "cx": 0,
+      "cz": 0,
+      "packed": 0,
+      "draw": 1,
+      "pc": 53,
+      "rc": "nearest"
+    },
+    "expected": {
+      "x": 1062557013,
+      "z": 1042983595,
+      "consumed": 1
+    },
+    "derivation": "Origin zero; low=a=11184811/2^26, high=S(1-a); draw bits select the four ordered corners."
+  },
+  {
+    "kind": "position",
+    "inputs": {
+      "ox": 0,
+      "oz": 0,
+      "cx": 0,
+      "cz": 0,
+      "packed": 0,
+      "draw": 2,
+      "pc": 53,
+      "rc": "nearest"
+    },
+    "expected": {
+      "x": 1062557013,
+      "z": 1062557013,
+      "consumed": 1
+    },
+    "derivation": "Origin zero; low=a=11184811/2^26, high=S(1-a); draw bits select the four ordered corners."
+  },
+  {
+    "kind": "position",
+    "inputs": {
+      "ox": 0,
+      "oz": 0,
+      "cx": 0,
+      "cz": 0,
+      "packed": 0,
+      "draw": 3,
+      "pc": 53,
+      "rc": "nearest"
+    },
+    "expected": {
+      "x": 1042983595,
+      "z": 1062557013,
+      "consumed": 1
+    },
+    "derivation": "Origin zero; low=a=11184811/2^26, high=S(1-a); draw bits select the four ordered corners."
+  },
+  {
+    "kind": "position",
+    "inputs": {
+      "ox": 1,
+      "oz": 1,
+      "cx": 0,
+      "cz": 0,
+      "packed": 0,
+      "draw": 1,
+      "pc": 53,
+      "rc": "nearest"
+    },
+    "expected": {
+      "x": 1072343723,
+      "z": 1066751317,
+      "consumed": 1
+    },
+    "derivation": "High=2-a is above the midpoint; adding separately stored high instead is a tie choosing even 0x3feaaaaa."
+  },
+  {
+    "kind": "position",
+    "inputs": {
+      "ox": 0,
+      "oz": 0,
+      "cx": 0,
+      "cz": 0,
+      "packed": 0,
+      "draw": 4,
+      "pc": 24,
+      "rc": "nearest"
+    },
+    "expected": {
+      "x": 1042983595,
+      "z": 1042983595,
+      "consumed": 1
+    },
+    "derivation": "Draw 4 masks to 0; source a is exactly binary32, even directed stores preserve it."
+  },
+  {
+    "kind": "position",
+    "inputs": {
+      "ox": 0,
+      "oz": 0,
+      "cx": 0,
+      "cz": 0,
+      "packed": 0,
+      "draw": 4,
+      "pc": 24,
+      "rc": "down"
+    },
+    "expected": {
+      "x": 1042983595,
+      "z": 1042983595,
+      "consumed": 1
+    },
+    "derivation": "Draw 4 masks to 0; source a is exactly binary32, even directed stores preserve it."
+  },
+  {
+    "kind": "position",
+    "inputs": {
+      "ox": 0,
+      "oz": 0,
+      "cx": 0,
+      "cz": 0,
+      "packed": 0,
+      "draw": 4,
+      "pc": 24,
+      "rc": "up"
+    },
+    "expected": {
+      "x": 1042983595,
+      "z": 1042983595,
+      "consumed": 1
+    },
+    "derivation": "Draw 4 masks to 0; source a is exactly binary32, even directed stores preserve it."
+  },
+  {
+    "kind": "position",
+    "inputs": {
+      "ox": 0,
+      "oz": 0,
+      "cx": 0,
+      "cz": 0,
+      "packed": 0,
+      "draw": 4,
+      "pc": 24,
+      "rc": "zero"
+    },
+    "expected": {
+      "x": 1042983595,
+      "z": 1042983595,
+      "consumed": 1
+    },
+    "derivation": "Draw 4 masks to 0; source a is exactly binary32, even directed stores preserve it."
+  },
+  {
+    "kind": "position",
+    "inputs": {
+      "ox": 1,
+      "oz": 1,
+      "cx": 0,
+      "cz": 0,
+      "packed": 0,
+      "draw": 1,
+      "pc": 64,
+      "rc": "nearest"
+    },
+    "expected": {
+      "x": 1072343723,
+      "z": 1066751317,
+      "consumed": 1
+    },
+    "derivation": "At tile 1 high 2-a straddles f32 neighbours; positive directed rounding chooses the named neighbour."
+  },
+  {
+    "kind": "position",
+    "inputs": {
+      "ox": 1,
+      "oz": 1,
+      "cx": 0,
+      "cz": 0,
+      "packed": 0,
+      "draw": 1,
+      "pc": 64,
+      "rc": "up"
+    },
+    "expected": {
+      "x": 1072343723,
+      "z": 1066751318,
+      "consumed": 1
+    },
+    "derivation": "At tile 1 high 2-a straddles f32 neighbours; positive directed rounding chooses the named neighbour."
+  },
+  {
+    "kind": "position",
+    "inputs": {
+      "ox": 1,
+      "oz": 1,
+      "cx": 0,
+      "cz": 0,
+      "packed": 0,
+      "draw": 1,
+      "pc": 64,
+      "rc": "down"
+    },
+    "expected": {
+      "x": 1072343722,
+      "z": 1066751317,
+      "consumed": 1
+    },
+    "derivation": "At tile 1 high 2-a straddles f32 neighbours; positive directed rounding chooses the named neighbour."
+  },
+  {
+    "kind": "position",
+    "inputs": {
+      "ox": 1,
+      "oz": 1,
+      "cx": 0,
+      "cz": 0,
+      "packed": 0,
+      "draw": 1,
+      "pc": 64,
+      "rc": "zero"
+    },
+    "expected": {
+      "x": 1072343722,
+      "z": 1066751317,
+      "consumed": 1
+    },
+    "derivation": "At tile 1 high 2-a straddles f32 neighbours; positive directed rounding chooses the named neighbour."
+  },
+  {
+    "kind": "position",
+    "inputs": {
+      "ox": 65535,
+      "oz": 65535,
+      "cx": 255,
+      "cz": 255,
+      "packed": 63,
+      "draw": 2,
+      "pc": 53,
+      "rc": "nearest"
+    },
+    "expected": {
+      "x": 1199832939,
+      "z": 1199832939,
+      "consumed": 1
+    },
+    "derivation": "67582+(1-a), ULP=1/128: high rounds to 107/128; significand=67582*128+107=8650603."
+  },
+  {
+    "kind": "table",
+    "inputs": {
+      "n": 0,
+      "pc": 53,
+      "rc": "nearest"
+    },
+    "expected": {
+      "word": 0,
+      "consumed": 0
+    },
+    "derivation": "Initial retained accumulator is +0."
+  },
+  {
+    "kind": "table",
+    "inputs": {
+      "n": 6,
+      "pc": 53,
+      "rc": "nearest"
+    },
+    "expected": {
+      "word": 1047904911,
+      "consumed": 0
+    },
+    "derivation": "6*c=32212254/2^27, one final nearest store."
+  },
+  {
+    "kind": "table",
+    "inputs": {
+      "n": 6,
+      "pc": 24,
+      "rc": "nearest"
+    },
+    "expected": {
+      "word": 1047904910,
+      "consumed": 0
+    },
+    "derivation": "At additions 5 and 6, retained PC24 rounds to numerators 26843544 and 32212252 over 2^27."
+  },
+  {
+    "kind": "table",
+    "inputs": {
+      "n": 48,
+      "pc": 53,
+      "rc": "nearest"
+    },
+    "expected": {
+      "word": 1073070735,
+      "consumed": 0
+    },
+    "derivation": "48*c=257698032/2^27=16106127/2^23, exactly binary32."
+  },
+  {
+    "kind": "height",
+    "inputs": {
+      "x": 1042983595,
+      "z": 1042983595,
+      "corners": [
+        0,
+        1065353216,
+        1073741824,
+        1082130432
+      ],
+      "pc": 53,
+      "rc": "nearest"
+    },
+    "expected": {
+      "y": 1056964608,
+      "triangle": 1,
+      "consumed": 0
+    },
+    "derivation": "Low/low: edge schedule is within half ULP of 1/2."
+  },
+  {
+    "kind": "height",
+    "inputs": {
+      "x": 1062557013,
+      "z": 1042983595,
+      "corners": [
+        0,
+        1065353216,
+        1073741824,
+        1082130432
+      ],
+      "pc": 53,
+      "rc": "nearest"
+    },
+    "expected": {
+      "y": 1066751317,
+      "triangle": 1,
+      "consumed": 0
+    },
+    "derivation": "High/low lies on stored first-triangle right edge; final is nearest(1+a)."
+  },
+  {
+    "kind": "height",
+    "inputs": {
+      "x": 1062557013,
+      "z": 1062557013,
+      "corners": [
+        0,
+        1065353216,
+        1073741824,
+        1082130432
+      ],
+      "pc": 53,
+      "rc": "nearest"
+    },
+    "expected": {
+      "y": 1078635178,
+      "triangle": 2,
+      "consumed": 0
+    },
+    "derivation": "High/high reaches second triangle; exact height is below midpoint between 3.1666665077 and 3.1666667461."
+  },
+  {
+    "kind": "height",
+    "inputs": {
+      "x": 1042983595,
+      "z": 1062557013,
+      "corners": [
+        0,
+        1065353216,
+        1073741824,
+        1082130432
+      ],
+      "pc": 53,
+      "rc": "nearest"
+    },
+    "expected": {
+      "y": 1072343722,
+      "triangle": 1,
+      "consumed": 0
+    },
+    "derivation": "Low/high is inside stored first triangle edge; height rounds to lower neighbour of 11/6."
+  },
+  {
+    "kind": "height",
+    "inputs": {
+      "x": 1048576000,
+      "z": 1061158912,
+      "corners": [
+        0,
+        1065353216,
+        1073741824,
+        1082130432
+      ],
+      "pc": 53,
+      "rc": "nearest"
+    },
+    "expected": {
+      "y": 1071644672,
+      "triangle": 1,
+      "consumed": 0
+    },
+    "derivation": "Exact diagonal (1/4,3/4) is inclusive in triangle 1, giving 7/4."
+  },
+  {
+    "kind": "height",
+    "inputs": {
+      "x": 1048576001,
+      "z": 1061158912,
+      "corners": [
+        0,
+        1065353216,
+        1073741824,
+        1082130432
+      ],
+      "pc": 53,
+      "rc": "nearest"
+    },
+    "expected": {
+      "y": 1071644672,
+      "triangle": 2,
+      "consumed": 0
+    },
+    "derivation": "One X ULP above diagonal moves to triangle 2; 7/4+2^-24 ties to even 7/4."
+  },
+  {
+    "kind": "height",
+    "inputs": {
+      "x": 1121954475,
+      "z": 1110922581,
+      "corners": [
+        1073070735,
+        1073070735,
+        1073070735,
+        1073070735
+      ],
+      "pc": 53,
+      "rc": "nearest"
+    },
+    "expected": {
+      "y": 1073070735,
+      "triangle": 2,
+      "consumed": 0
+    },
+    "derivation": "Actual Tutorial tile (111,45), raw corners 48: each table53/nearest word is 16106127/2^23; flat interpolation preserves it."
+  }
+]

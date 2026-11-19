@@ -38,6 +38,7 @@ struct PrefixHeader {
     std::optional<std::uint64_t> bergwerk_nodes_added; // Engaged after the whole header.
     std::optional<std::uint64_t> occurrences_added;
     std::optional<PrefixAnbauEffect> anbau;
+    std::optional<std::uint32_t> discover; // Completed low-u16 transfer, including zero.
 };
 struct PrefixResource {
     PrefixSource source;
@@ -106,6 +107,7 @@ struct PreparedIsland {
     std::vector<PrefixOccurrence> occurrences;
     std::vector<PrefixOccurrenceLoad> occurrence_loads;
     std::optional<std::uint32_t> anbau_mask;
+    std::optional<std::uint32_t> discover_mask; // Observed import, absence is not a default.
     std::vector<PrefixAnbauToken> anbau_tokens;
     bool complete_local_records = false;
 };

@@ -10,8 +10,8 @@ policy or World integration. Independent orchestrator review pending.
 D: AnnoWelt ANBAU arm `0x10089871–0x10089974`. The dispatcher initializes EDI
 and its local count to 0 at `0x1008914e–0x10089157`. `0x10089885–0x100898a1`
 REPLACES island dword +0xac with 0 if climate byte +0xc0 is 0, otherwise 0xf009.
-INFO supplies that byte: `0x100897a6–0x100897ed` reads its payload then stores
-byte 0 to +0xc0. This reuses the prefix's explicit leading INFO and late-setup
+INFO supplies that byte: `0x100897a6–0x10089802` reads its payload then stores
+byte 0 to +0xc0 at `0x100897ee` (citation corrected 2026-11-19). This reuses the prefix's explicit leading INFO and late-setup
 refusal; it is not inferred from the map name. Absence of ANBAU does not establish
 an initial +0xac value in this transient contract.
 

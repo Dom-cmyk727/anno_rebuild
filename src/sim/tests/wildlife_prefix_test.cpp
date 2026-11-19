@@ -1307,6 +1307,116 @@ TEST_CASE("wildlife prefix: anbau adapter contract refuses unterminated processe
     CHECK_FALSE(fmt::annogame::read_anbau_names(wrong_machine));
 }
 
+TEST_CASE("wildlife prefix: discover replaces only the low word and owns ordered scalar effects") {
+    const auto types = ore_registry();
+    Metadata meta;
+    const auto pe = anbau_pe();
+    auto b = ore_base();
+    append(b, packed("OCCUR", ore_entry()));
+    append(b, packed("ANBAU", anbau_payload({"AX"})));
+    Buffer scalar(4);
+    put32(scalar, 0, 0xabcd8001);
+    append(b, packed("DISCOVER", scalar));
+    append(b, packed("FRUCHTBAR", Buffer(256, 2)));
+    put32(scalar, 0, 0x76540002);
+    append(b, packed("DISCOVER", scalar));
+    append(b, packed("HIRSCH", fmt::insel::encode_hirsch(
+                                   std::vector<fmt::insel::HirschRecord>{{0, 0, 0x80, 7, 10}})));
+    auto file = scene({packed("INSEL5", b)});
+    const auto original = file;
+    const auto result = load::prepare_wildlife_prefix(file, meta.entries, pe, *types, inputs(),
+                                                      std::vector<std::uint32_t>{4, 7});
+    REQUIRE(result);
+    CHECK(file == original);
+    file.clear();
+    file.shrink_to_fit();
+    b.clear();
+    const auto& out = result.value();
+    REQUIRE(out.islands.size() == 1);
+    const auto& is = out.islands[0];
+    REQUIRE(is.headers.size() == 10);
+    CHECK(is.headers[6].discover == 32769);
+    CHECK(is.headers[8].discover == 2);
+    CHECK(is.discover_mask == 2);
+    CHECK(is.headers[6].source.header == 6);
+    CHECK(is.headers[8].source.header == 8);
+    CHECK(is.headers[6].records == 1);
+    CHECK(is.headers[8].records == 1);
+    CHECK_FALSE(is.headers[7].discover);
+    CHECK(is.headers[7].fertility_updates.has_value());
+    CHECK(is.terrain->fertility == Buffer(256, 2));
+    CHECK(sim::terrain_matches(*is.terrain));
+    CHECK(is.anbau_mask == 1);
+    REQUIRE(is.occurrences.size() == 1);
+    CHECK(is.occurrences[0].quantity_88 == 512000);
+    CHECK(is.occurrences[0].reserve == 1);
+    CHECK(is.occurrences[0].discovery == 0);
+    CHECK(is.occurrence_loads.size() == 1);
+    CHECK(is.spawns.size() == 1);
+    CHECK(is.spawns[0].draw_before == 1);
+    CHECK(is.spawns[0].timestamp == 8);
+    CHECK(out.consumed == 2);
+    CHECK(is.resources.size() == 1);
+    CHECK(is.resources[0].draw_before == 0);
+    CHECK(is.resource_list_nodes.size() == 5);
+    CHECK(is.resource_list_nodes[0].mask == 17);
+    CHECK(is.resource.variation[0] == 66);
+    CHECK(is.resource.tiles.object(0) == 104);
+    CHECK(is.resource.tiles.item_height(0) == 48);
+    CHECK(out.complete_local_records);
+}
+
+TEST_CASE(
+    "wildlife prefix: discover contract distinguishes absence zero maximum and malformed framing") {
+    const auto types = ore_registry();
+    Metadata meta;
+    const auto pe = fake_pe();
+    const auto run = [&](const Buffer& body) {
+        return load::prepare_wildlife_prefix(scene({packed("INSEL5", body)}), meta.entries, pe,
+                                             *types, inputs(), std::vector<std::uint32_t>{4});
+    };
+    const auto absent = run(ore_base());
+    REQUIRE(absent);
+    CHECK_FALSE(absent.value().islands[0].discover_mask);
+    for (const auto word : {0U, 0x1234ffffU, 0xabcd8001U}) {
+        auto b = ore_base();
+        Buffer scalar(4);
+        put32(scalar, 0, word);
+        append(b, packed("DISCOVER", scalar));
+        const auto result = run(b);
+        REQUIRE(result);
+        const auto& is = result.value().islands[0];
+        REQUIRE(is.discover_mask);
+        CHECK(*is.discover_mask == (word & 65535U));
+        CHECK(is.headers.back().discover == is.discover_mask);
+        CHECK(is.headers.back().records == 1);
+        CHECK(result.value().consumed == 1);
+    }
+    for (const auto length : {0U, 1U, 2U, 3U, 5U, 8U}) {
+        auto b = ore_base();
+        Buffer scalar(4);
+        put32(scalar, 0, 0xabcd8001);
+        append(b, packed("DISCOVER", scalar));
+        append(b, packed("DISCOVER", Buffer(length, 0xff)));
+        const auto result = run(b);
+        REQUIRE_FALSE(result);
+        REQUIRE(result.error().diagnostic);
+        const auto& out = *result.error().diagnostic;
+        REQUIRE(out.boundary);
+        CHECK(out.boundary->tag == "DISCOVER");
+        CHECK(out.boundary->source.header == 5);
+        CHECK(out.boundary->reason == "expected four-byte DISCOVER payload");
+        const auto& is = out.islands[0];
+        CHECK(is.discover_mask == 32769);
+        CHECK(is.headers[4].discover == 32769);
+        CHECK_FALSE(is.headers[5].discover);
+        CHECK(is.headers[5].records == 0);
+        CHECK_FALSE(is.complete_local_records);
+        CHECK(out.consumed == 1);
+        CHECK(is.resources.size() == 1);
+    }
+}
+
 TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported boundary") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
@@ -1339,9 +1449,9 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     CHECK_FALSE(out.islands[0].complete_local_records);
     CHECK(out.boundary->source.island == 0);
     CHECK(out.boundary->source.slot == 11);
-    CHECK(out.boundary->source.header == 53);
+    CHECK(out.boundary->source.header == 54);
     CHECK(out.boundary->source.record == 0);
-    CHECK(out.boundary->tag == "DISCOVER");
+    CHECK(out.boundary->tag == "KONTORID");
     CHECK(out.boundary->reason.find("unsupported intervening header") != std::string::npos);
     const auto raw_islands = fmt::insel::islands(bytes);
     REQUIRE(raw_islands);
@@ -1475,11 +1585,21 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     }
     CHECK(token_at == anbau_payload_raw.size());
     std::cout << "ANBAU_REAL header=52 tokens=13 seed=61449 mask=65535 ignored=0 draws=0 "
-                 "next=53/DISCOVER\n";
+                 "next=54/KONTORID\n";
+    REQUIRE(raw.records[53].name() == "DISCOVER");
+    REQUIRE(raw.records[53].payload.size() == 4);
+    const auto expected_discovery = fmt::u16_le(raw.records[53].payload, 0);
+    CHECK(expected_discovery == 0);
+    CHECK(is.discover_mask == expected_discovery);
+    CHECK(is.headers[53].discover == expected_discovery);
+    CHECK(is.headers[53].records == 1);
+    CHECK_FALSE(is.headers[54].discover);
+    CHECK(raw.records[54].name() == "KONTORID");
+    std::cout << "DISCOVER_REAL header=53 bytes=4 mask=0 draws=0 next=54/KONTORID\n";
     CHECK(out.islands[0].resources.size() == 4760);
     CHECK(out.islands[0].spawns.empty());
     CHECK(out.consumed == 4589);
-    REQUIRE(out.islands[0].headers.size() == 54);
+    REQUIRE(out.islands[0].headers.size() == 55);
     CHECK(out.islands[0].headers[33].records == 0);
     REQUIRE(out.islands[0].headers[33].water_mask_updates);
     REQUIRE(out.islands[0].headers[34].water_mask_updates);

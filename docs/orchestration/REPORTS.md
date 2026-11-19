@@ -16296,3 +16296,77 @@ NOT_RUN: full suite/pins.py, Windows/WSL/original runtime/HE, World/native/found
 post-island/global callbacks, UI/visibility, derived consumers and later wildlife.
 QUESTIONs: none in this finite arm. Publication CI pending; no state/tag/default/registry changes.
 Status: READY FOR REVIEW; final commit adds report/evidence only; no main/board merge or other-lane edits.
+
+
+## 2026-11-19 — WILDLIFE-PROD2-1 — READY FOR REVIEW
+
+Source `8d65f38583b3180fe960caba79f25bc3ab657446`, tree `240588c63a3dc06dfcd23b6931daafd801cdbeb1`; base `eaa61980`, dispatch `af83b290`.
+[Contract](../sim/wildlife-prod2.md); [evidence / acceptance / hashes](evidence/wildlife-prod2-1.md).
+Independent review pending; full publication head/tree/exact CI supplied in direct handoff.
+P1: PROD2 arm 0x1008957d–0x10089692, empty test 0x100895d9–db -> return 0x10089d6c–7b.
+Six-byte block header, scratch-only origin addition, floor remaining/6; zero path no callback/draw.
+Nonempty type: 14 bits; rotation: 2 bits; signed offsets; phase: 6 bits; height byte, writer +0x78/0x04000000.
+Wildlife target 0x1008ec90 -> lower 0x10082040; not resource admission or city PROD/ENTRY.
+Caller 0x100a2f8c–bc and header reader 0x100b4c20–35 do NOT skip partial item tails.
+P2: owned empty geometry/completion only; no cell pass, native field, default or nonempty support.
+P3: 764 authored assertions pass; duplicates, nonzero/outside geometry, ownership, retained effects.
+Water-only rig retains mask 0: no accidental GELAENDE epilogue. Lengths 0–5 / tails 1–5 refuse.
+Whole item plus tail stops unsupported item 0; known/unknown/high-id/state controls stay explicit.
+Actual private guard-removal mutant: legal 36/36, broken 35 pass / 1 precise boundary failure; rebuilt.
+Same original Debug once: 16 empty PROD2 headers 55–70, 0 items, added epilogues or draws.
+Existing HIRSCH 71 now reached:156 owned spawn records / 156 load draws, every raw field/head checked.
+Total 4745 draws = 4589 resource + 156 load; 72 complete headers, EVENTINSEL 72 (73 evidence rows).
+Prior: 4760 accepts, 16 epilogues, fertility 8160, BERGWERK 9/20, OCCUR 1/1, Q 512000/R 1/masks 17.
+ANBAU 65535 / DISCOVER 0 / KONTORID 1 unchanged; not living animals or original global cursor.
+P4 exact gate lines (four separately executed required contracts, not counted twice):
+
+`cache/wildlife-prod2-1/debug-final.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=22 executed=22 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+
+`cache/wildlife-prod2-1/asan-final.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=22 executed=22 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+
+`cache/wildlife-prod2-1/original-final.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+
+Debug 22+4=26, ASan 22+4=26, original 1; no failures/skips/empty/incomplete/sanitizer/refusal/timeout.
+Apple 21/GCC 15.3 O3 strict Werror on 2 TUs pass; shadow negative rejects; format/lint/links/diff pass.
+Inherited duplicate-library linker warning disclosed; 276 fixtures byte-equal base, no full pins.py claim.
+M5 Max / 18 logical CPUs / 48 GiB / macOS 27.0.1, 1.5 TiB free, jobs 1/admission on; other jobs/awake untouched.
+Decisions and reasoning:
+- Complete only proven empty return, no resource admission/water epilogue or nonempty side effects.
+- Keep empty completion distinct; defensive tail refusal follows checked source-order limits.
+- Let already-supported HIRSCH execute naturally, stop EVENTINSEL without adding support.
+- Preserve original global-cursor, figure-creation and derived-cache consumer boundaries.
+NOT_RUN: full suite/pins.py, Windows/WSL/original runtime/HE, World/native/state/default/registry,
+post-island/global callbacks, nonempty PROD2/city factory/production, UI, living wildlife and cache consumers.
+QUESTIONs: none for finite empty path. CI pending at publication; no main/board merge or other-lane edits.
+Status: READY FOR REVIEW; final commit is report/evidence only.

@@ -17259,7 +17259,8 @@ QUESTIONs: none blocking bounded review; future live caller/provenance bindings 
 - Legal/refusal siblings specify INFO order/missing/late, zero/absent/malformed ground, ordinal/slot/geometry/stale prefix, city profile, full/partial and lifetime.
 - Future C++ capability checks are all NOT_RUN; private arithmetic is not a passing placeholder.
 - P4 fixed sample 24 files/24 islands: 24 completed FRUCHTBAR, 0 absent, 0 all-zero; complete HEIGHT/GFX 24, one INFO each.
-- No sample expansion/corpus absence inference. First selection failed before payload reads on missing Tundra DUMMY; preserved, corrected fallback explicit.
+- No sample expansion/corpus absence inference. Preserved first-selection script establishes missing-Tundra-DUMMY path before payload reads; corrected fallback explicit.
+- P3 review correction: both first stdout logs are empty; first runtime diagnostic/exit unavailable, not retained evidence. No failure rerun/recreated; old artifacts/manifest unchanged.
 - Five sampled DUMMY STAEDTE contain WARETYP only (543 bytes), zero ENTRY; no city-positive witness claimed.
 - Tutorial source SHA `225ed50b005743e00d8d3ffe18667d4565dc781ef45bd6d9b767fd2fe056c0f6`.
 - Ordinal 0/slot 11, 73 headers; INFO ordinal 0/offset 1943/length 12/climate 2; FRUCHTBAR ordinal 49/offset 80739/length 16384.

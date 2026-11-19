@@ -12,8 +12,11 @@ Independent orchestrator review pending. Original listings/data remain private.
   the earlier `Welt-10089130.private` filename now contains a shorter focused dump.
   Only aligned function/instruction addresses in the ledger support claims.
 - Commands: `python3 -I cache/wildlife-prep-provenance-1/source_probe.py`
-  redirected to `source-probe-final.log`; private `source_probe_first.py` attempt
-  stopped on missing Tundra DUMMY before payload reads; first failure retained.
+  redirected to `source-probe-final.log`. Preserved `source_probe_first.py`
+  establishes the missing-Tundra-DUMMY selection path before payload reads.
+  `source-probe-first.log` and `source-probe.log` are empty stdout files;
+  the first runtime diagnostic and exit status are unavailable. No failure
+  was rerun or recreated; the corrected fallback is explicit.
 - `python3 -I cache/wildlife-prep-provenance-1/authored_probe.py`
   redirected to `authored-probe.log`:
   `PRIVATE_PROBES field_order_geometry=12 passed=12 failed=0 future_cpp=NOT_RUN original_execution=NOT_RUN`.

@@ -163,8 +163,10 @@ lexical template in each other climate folder + first lexical DUMMY per folder
 (or first unselected lexical file where no DUMMY exists). 24 files/24 islands:
 24 completed FRUCHTBAR, 0 absent, 0 all-zero; 24 complete nonoverlapping HEIGHT/GFX
 layouts, one INFO each. This is a sample-only result, not a corpus absence claim.
-The first selection attempt stopped before file reads because Tundra has no DUMMY;
-its failure is retained. No header was removed or source modified.
+The preserved first-selection script establishes the missing-Tundra-DUMMY
+selection path before payload reads. Its stdout logs are empty; the first runtime
+diagnostic and exit status are unavailable, not retained evidence. The corrected
+fallback is explicit. No header was removed or source modified.
 
 P: Scenes/Tutorial/01Discover01.sze SHA256
 `225ed50b005743e00d8d3ffe18667d4565dc781ef45bd6d9b767fd2fe056c0f6`:

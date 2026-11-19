@@ -20,6 +20,38 @@ struct WildlifeCreationPlan {
     WildlifePlanDisposition disposition;
     std::optional<WildlifeCreationDescriptor> creation;
 };
+// Thin owned per-record selection; the batch owns one catalogue/ring separately.
+struct WildlifeSpeciesSelection {
+    sim::WildlifeDecision<sim::WildlifeCreation> choice;
+    WildlifeSpeciesFact selected;
+    WildlifePlanDisposition disposition;
+    std::optional<WildlifeCreationDescriptor> creation;
+};
+class WildlifeSpeciesCatalogue {
+  public:
+    const formats::annowelt::WildlifeSpeciesRing& ring() const { return ring_; }
+    const std::vector<WildlifeSpeciesFact>& slots() const { return slots_; }
+    [[nodiscard]] formats::Result<WildlifeSpeciesSelection, WildlifePlanError>
+    select(bool cave, std::size_t entrances, sim::GoodsId saved,
+           std::span<const std::uint32_t> draws) const;
+
+  private:
+    WildlifeSpeciesCatalogue(formats::annowelt::WildlifeSpeciesRing,
+                             std::vector<WildlifeSpeciesFact>);
+    formats::annowelt::WildlifeSpeciesRing ring_;
+    std::vector<WildlifeSpeciesFact> slots_;
+    std::vector<sim::WildlifeSpecies> species_;
+    friend formats::Result<WildlifeSpeciesCatalogue, WildlifePlanError>
+    prepare_wildlife_species_catalogue(formats::Bytes, formats::Bytes,
+                                       std::span<const formats::figuren::Entry>,
+                                       formats::annowelt::WildlifeSpeciesProfile, std::uint32_t);
+};
+[[nodiscard]] formats::Result<WildlifeSpeciesCatalogue, WildlifePlanError>
+prepare_wildlife_species_catalogue(formats::Bytes welt, formats::Bytes game,
+                                   std::span<const formats::figuren::Entry>,
+                                   formats::annowelt::WildlifeSpeciesProfile,
+                                   std::uint32_t climate);
+
 [[nodiscard]] formats::Result<WildlifeCreationPlan, WildlifePlanError>
 prepare_wildlife_creation_plan(formats::Bytes welt, formats::Bytes game,
                                std::span<const formats::figuren::Entry>,

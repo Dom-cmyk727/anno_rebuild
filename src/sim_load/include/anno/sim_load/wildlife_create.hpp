@@ -24,6 +24,7 @@ class WildlifeCreationDescriptor {
     bool ware_present() const { return ware_present_; }
 
   private:
+    friend class WildlifeSpeciesCatalogue;
     WildlifeCreationDescriptor(sim::TypeId id, std::uint32_t kind, std::uint16_t hp,
                                sim::GoodsId yield, std::string image, std::string source,
                                bool logic, bool ware)

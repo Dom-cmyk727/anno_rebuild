@@ -12,6 +12,7 @@
 #include <anno/formats/annogame.hpp>
 #include <anno/formats/sha256.hpp>
 #include <anno/sim_load/wildlife_create.hpp>
+#include <anno/sim_load/wildlife_materialize.hpp>
 #include <anno/sim_load/wildlife_release.hpp>
 #include <anno/sim_load/wildlife_species.hpp>
 #include <anno/test/game_dir.hpp>
@@ -1037,4 +1038,523 @@ TEST_CASE(
             CHECK(selected.value().creation->yield() == selected.value().selected.yield);
         }
     }
+}
+TEST_CASE("wildlife species: single record error order remains source before selector") {
+    Source source;
+    species_source(source);
+    const auto welt = species_pe();
+    auto broken_welt = welt;
+    put32(broken_welt, 0x48, 0);
+    auto broken_game = source.image;
+    put32(broken_game, 0x48, 0);
+    const auto ring_first = load::prepare_wildlife_creation_plan(
+        broken_welt, broken_game, source.entries, SpeciesProfile::GogClimate2, 2, true, 0, 255, {});
+    REQUIRE_FALSE(ring_first);
+    CHECK(ring_first.error().stage == load::WildlifePlanFault::Source);
+    CHECK(ring_first.error().source == "species ring: wrong build");
+    const auto game_first = load::prepare_wildlife_creation_plan(
+        welt, broken_game, source.entries, SpeciesProfile::GogClimate2, 2, true, 0, 255, {});
+    REQUIRE_FALSE(game_first);
+    CHECK(game_first.error().stage == load::WildlifePlanFault::Source);
+    CHECK(game_first.error().source == "wildlife names: wrong build");
+    const auto no_entrance = species_plan(source, welt, true, 255, {}, 0);
+    REQUIRE_FALSE(no_entrance);
+    CHECK(no_entrance.error().stage == load::WildlifePlanFault::Selector);
+    CHECK(no_entrance.error().selector.fault == sim::WildlifeFault::Oq574CaveWithoutEntrance);
+    CHECK(no_entrance.error().selector.consumed == 0);
+    const std::array<std::uint32_t, 1> one{0};
+    const auto short_draws = species_plan(source, welt, false, 255, one);
+    REQUIRE_FALSE(short_draws);
+    CHECK(short_draws.error().selector.fault == sim::WildlifeFault::DrawsExhausted);
+    CHECK(short_draws.error().selector.consumed == 1);
+    const auto supported = species_plan(source, welt, true, 255, one);
+    REQUIRE(supported);
+    REQUIRE(supported.value().creation);
+    CHECK(supported.value().selected.id.v == 60001); // Unselected kind 50 never New-bound.
+    const std::array<std::uint32_t, 1> predator{31};
+    const auto unsupported = species_plan(source, welt, true, 255, predator);
+    REQUIRE(unsupported);
+    CHECK(unsupported.value().disposition ==
+          load::WildlifePlanDisposition::UnsupportedCreationKind);
+    CHECK(unsupported.value().choice.consumed == 1);
+    source.entries[0].records.back() = source.record("WARE", {'B', 'A', 'D', 0});
+    const auto needed_invalid = species_plan(source, welt, true, 255, predator);
+    REQUIRE_FALSE(needed_invalid);
+    CHECK(needed_invalid.error().stage == load::WildlifePlanFault::Source);
+    CHECK(needed_invalid.error().source == "creation descriptor: unknown WARE");
+}
+
+namespace {
+using MatD = load::WildlifeMaterializeDisposition;
+using MatF = load::WildlifeMaterializeFault;
+using MatS = load::WildlifeMaterializeStage;
+using TileR = load::WildlifeTileResolution;
+load::WildlifeChunkRecord ready_record(std::uint64_t token, std::uint8_t pos,
+                                       std::uint16_t goods = 255) {
+    load::WildlifeChunkRecord record;
+    record.token = token;
+    record.position = pos;
+    record.occupied = false;
+    record.timestamp = 0;
+    record.goods = goods;
+    return record;
+}
+load::WildlifeChunkPlan authored_chunk(std::vector<load::WildlifeChunkRecord> records) {
+    load::WildlifeChunkPlan out;
+    out.completed.chunk.records = std::move(records);
+    out.completed.retained = static_cast<std::uint64_t>(
+        std::count_if(out.completed.chunk.records.begin(), out.completed.chunk.records.end(),
+                      [](const auto& record) { return record.category == 0; }));
+    return out; // Authored completed-snapshot facts, not maintenance execution.
+}
+load::WildlifeMaterializeFacts materialize_facts() {
+    return {{{1, TileR::Present, 41},
+             {2, TileR::Present, 10},
+             {3, TileR::Present, 11},
+             {4, TileR::Present, 11}},
+            {{41, 7, 0xe2}, {42, 0x46, 0}, {10, 0x46, 0}, {11, 7, 0x145}},
+            {{3, 2}, {4, 2}}};
+}
+load::WildlifeChunkPlan mixed_materialize_chunk() {
+    load::WildlifeChunkRecord category;
+    category.token = 100;
+    category.category = 3;
+    load::WildlifeChunkRecord occupied;
+    occupied.token = 90;
+    occupied.occupied = true;
+    load::WildlifeChunkRecord delayed;
+    delayed.token = 80;
+    delayed.occupied = false;
+    delayed.timestamp = 1;
+    return authored_chunk({category, occupied, delayed, ready_record(70, 1), ready_record(60, 2),
+                           ready_record(50, 3, 137)});
+}
+load::WildlifeSpeciesSource source_view(const Source& source, const Buffer& welt) {
+    return {welt, source.image, source.entries, SpeciesProfile::GogClimate2, 2};
+}
+std::string materialize_summary(const load::WildlifeMaterializeProgress& work) {
+    std::ostringstream out;
+    for (const auto& e : work.entries) {
+        out << e.token << ':' << static_cast<int>(e.disposition) << ':' << e.selector_consumed
+            << ':' << e.cumulative_selector_consumed;
+        if (e.selection) {
+            const auto& s = *e.selection;
+            out << ':' << s.choice.value.position << ':' << s.choice.value.index << ':'
+                << s.choice.value.species.v << ':' << s.choice.value.inspected << ':'
+                << s.selected.kind << ':' << s.selected.yield << ':' << s.selected.source_sha256;
+            if (s.creation)
+                out << ':' << s.creation->hp() << ':' << s.creation->source_sha256();
+        }
+        out << '\n';
+    }
+    return out.str(); // Repeat check supplements, never replaces literal expected rows.
+}
+} // namespace
+TEST_CASE("wildlife materialize: literal mixed order skips and ordinary cave selector prefix") {
+    Source source;
+    species_source(source);
+    const auto welt = species_pe();
+    const auto chunk = mixed_materialize_chunk();
+    const auto facts = materialize_facts();
+    const auto before_facts = facts;
+    const auto source_bytes = source.storage;
+    const auto image = source.image;
+    const std::array<std::uint32_t, 4> raw{6, 33, 31, 999};
+    const auto result =
+        load::prepare_wildlife_materialization(chunk, 0, facts, source_view(source, welt), raw);
+    REQUIRE(result);
+    const auto& out = result.value().completed;
+    CHECK(out.unchanged_chunk == chunk);
+    CHECK(out.selector_consumed == 3);
+    CHECK(out.unused_draws == std::vector<std::uint32_t>{999});
+    REQUIRE(out.entries.size() == 6);
+    const std::array<std::uint64_t, 6> tokens{100, 90, 80, 70, 60, 50};
+    const std::array reasons{MatD::WrongCategory,     MatD::Occupied, MatD::NotReady,
+                             MatD::NonqualifyingType, MatD::Selected, MatD::Selected};
+    const std::array<std::size_t, 6> per{0, 0, 0, 0, 2, 1}, cumulative{0, 0, 0, 0, 2, 3};
+    for (std::size_t i = 0; i < 6; ++i) {
+        CHECK(out.entries[i].token == tokens[i]);
+        CHECK(out.entries[i].disposition == reasons[i]);
+        CHECK(out.entries[i].selector_consumed == per[i]);
+        CHECK(out.entries[i].cumulative_selector_consumed == cumulative[i]);
+        CHECK(out.entries[i].selection.has_value() == (i >= 4));
+    }
+    REQUIRE(out.entries[4].selection);
+    REQUIRE(out.entries[5].selection);
+    const auto& ordinary = *out.entries[4].selection;
+    CHECK(ordinary.choice.value.position == 2);
+    CHECK(ordinary.choice.value.index == 1);
+    CHECK(ordinary.choice.value.species.v == 127);
+    CHECK(ordinary.choice.value.inspected == 1);
+    REQUIRE(ordinary.creation);
+    CHECK(ordinary.creation->yield() == 138);
+    CHECK(ordinary.creation->source_sha256() == ordinary.selected.source_sha256);
+    const auto& cave = *out.entries[5].selection;
+    CHECK(cave.choice.value.position == -1);
+    CHECK(cave.choice.value.index == 0);
+    CHECK(cave.choice.value.species.v == 60001);
+    CHECK(cave.choice.value.inspected == 2);
+    REQUIRE(cave.creation);
+    CHECK(cave.creation->id().v == 60001);
+    REQUIRE(out.catalogue);
+    CHECK(out.catalogue->ring().ids.size() == 32);
+    CHECK(out.catalogue->slots()[31].kind == 50); // Not eagerly New-bound or filtered.
+    CHECK(facts == before_facts);
+    CHECK(source.storage == source_bytes);
+    CHECK(source.image == image);
+    CHECK(raw == std::array<std::uint32_t, 4>{6, 33, 31, 999});
+    const auto again =
+        load::prepare_wildlife_materialization(chunk, 0, facts, source_view(source, welt), raw);
+    REQUIRE(again);
+    CHECK(materialize_summary(again.value().completed) == materialize_summary(out));
+    CHECK(again.value().completed.unchanged_chunk == chunk);
+}
+TEST_CASE("wildlife materialize: signed byte gate boundaries ignore all unreached facts") {
+    struct TimeCase {
+        std::uint32_t time;
+        std::uint8_t stamp;
+        bool eligible;
+    };
+    for (const auto& t : std::array<TimeCase, 5>{{{256000, 0, true},
+                                                  {256000, 129, true},
+                                                  {256000, 128, false},
+                                                  {256000, 1, false},
+                                                  {260000, 250, true}}}) {
+        auto record = ready_record(0, 1);
+        record.timestamp = t.stamp;
+        record.goods.reset();
+        if (!t.eligible)
+            record.position.reset();
+        const auto chunk = authored_chunk({record});
+        load::WildlifeMaterializeFacts facts;
+        facts.tiles = {{1, TileR::Null, 0}}; // Known-null zero lookup, not a missing fact.
+        const std::array<std::uint32_t, 1> raw{999};
+        const auto result = load::prepare_wildlife_materialization(chunk, t.time, facts, {}, raw);
+        REQUIRE(result);
+        const auto& out = result.value().completed;
+        REQUIRE(out.entries.size() == 1);
+        CHECK(out.entries[0].disposition == (t.eligible ? MatD::NullType : MatD::NotReady));
+        CHECK(out.selector_consumed == 0);
+        CHECK(out.unused_draws == std::vector<std::uint32_t>{999});
+        CHECK_FALSE(out.catalogue);
+        CHECK(out.unchanged_chunk == chunk);
+    }
+    auto chunk = mixed_materialize_chunk();
+    chunk.completed.chunk.records.resize(3); // Category/occupied/delayed, all later fields absent.
+    load::WildlifeMaterializeFacts ambiguous_unused;
+    ambiguous_unused.tiles = {{2, TileR::Unknown, {}}, {2, TileR::Present, 99}};
+    const auto skipped = load::prepare_wildlife_materialization(chunk, 0, ambiguous_unused, {}, {});
+    REQUIRE(skipped);
+    REQUIRE(skipped.value().completed.entries.size() == 3);
+    CHECK(skipped.value().completed.entries[0].token == 100);
+    CHECK(skipped.value().completed.entries[1].token == 90);
+    CHECK(skipped.value().completed.entries[2].token == 80);
+    CHECK_FALSE(skipped.value().completed.catalogue);
+    CHECK(skipped.value().completed.selector_consumed == 0);
+}
+TEST_CASE("wildlife materialize: actual whole type never substitutes growing id plus one") {
+    Source source;
+    species_source(source);
+    const auto welt = species_pe();
+    const auto facts = materialize_facts();
+    const std::array<std::uint32_t, 2> raw{6, 33};
+    const auto growing = authored_chunk({ready_record(1, 1)});
+    const auto result =
+        load::prepare_wildlife_materialization(growing, 0, facts, source_view(source, welt), raw);
+    REQUIRE(result);
+    CHECK(result.value().completed.entries[0].disposition == MatD::NonqualifyingType);
+    CHECK(result.value().completed.entries[0].type->object_word == 41);
+    CHECK(result.value().completed.selector_consumed == 0);
+    CHECK_FALSE(result.value().completed.catalogue);
+    auto control = facts;
+    control.tiles[0].object_word =
+        42; // Actual next type is a distinct legal control, not substitution.
+    const auto legal =
+        load::prepare_wildlife_materialization(growing, 0, control, source_view(source, welt), raw);
+    REQUIRE(legal);
+    CHECK(legal.value().completed.entries[0].disposition == MatD::Selected);
+    CHECK(legal.value().completed.entries[0].type->object_word == 42);
+    CHECK(legal.value().completed.selector_consumed == 2);
+    auto whole = control;
+    whole.tiles[0].object_word = 0x4001;
+    whole.types.push_back({0x4001, 0, 0});
+    whole.types.push_back({1, 0x46, 0});
+    const auto unmasked = load::prepare_wildlife_materialization(growing, 0, whole, {}, raw);
+    REQUIRE(unmasked);
+    CHECK(unmasked.value().completed.entries[0].disposition == MatD::NonqualifyingType);
+    CHECK(unmasked.value().completed.entries[0].type->object_word == 0x4001);
+}
+TEST_CASE("wildlife materialize: reached missing ambiguous and known zero facts stay distinct") {
+    Source source;
+    species_source(source);
+    const auto welt = species_pe();
+    const auto original = authored_chunk({ready_record(1, 2)});
+    const auto original_facts = materialize_facts();
+    const std::array<std::uint32_t, 2> raw{0, 0};
+    REQUIRE(load::prepare_wildlife_materialization(original, 0, original_facts,
+                                                   source_view(source, welt), raw));
+    const std::array<MatS, 10> stages{
+        MatS::Occupancy,  MatS::Timestamp, MatS::Position, MatS::Tile,       MatS::Tile,
+        MatS::ActualType, MatS::Output0,   MatS::Kind,     MatS::SavedGoods, MatS::ActualType};
+    for (unsigned variant = 0; variant < stages.size(); ++variant) {
+        auto chunk = original;
+        auto facts = original_facts;
+        if (variant == 0)
+            chunk.completed.chunk.records[0].occupied.reset();
+        if (variant == 1)
+            chunk.completed.chunk.records[0].timestamp.reset();
+        if (variant == 2)
+            chunk.completed.chunk.records[0].position.reset();
+        if (variant == 3)
+            facts.tiles.clear();
+        if (variant == 4)
+            facts.tiles.push_back(facts.tiles[1]);
+        if (variant == 5)
+            facts.tiles[1].object_word.reset();
+        if (variant == 6)
+            facts.types[2].output0.reset();
+        if (variant == 7)
+            facts.types[2].prodtype.reset();
+        if (variant == 8)
+            chunk.completed.chunk.records[0].goods.reset();
+        if (variant == 9)
+            facts.types.push_back(facts.types[2]);
+        const auto before = facts;
+        const auto result = load::prepare_wildlife_materialization(chunk, 0, facts, {}, raw);
+        REQUIRE_FALSE(result);
+        CHECK(result.error().stage == stages[variant]);
+        CHECK(result.error().fault ==
+              ((variant == 4 || variant == 9) ? MatF::AmbiguousFacts : MatF::MissingFacts));
+        CHECK(result.error().diagnostic_only.selector_consumed == 0);
+        CHECK_FALSE(result.error().diagnostic_only.catalogue);
+        CHECK(result.error().diagnostic_only.unchanged_chunk == chunk);
+        CHECK(facts == before);
+    }
+    auto zero = original_facts;
+    zero.tiles[1].object_word = 0;
+    zero.types.push_back({0, 0, 0}); // Known zero properties, not missing metadata.
+    const auto known_zero = load::prepare_wildlife_materialization(original, 0, zero, {}, raw);
+    REQUIRE(known_zero);
+    CHECK(known_zero.value().completed.entries[0].disposition == MatD::NonqualifyingType);
+    zero.tiles[1].resolution = TileR::Null;
+    zero.types.clear();
+    const auto known_null = load::prepare_wildlife_materialization(original, 0, zero, {}, raw);
+    REQUIRE(known_null);
+    CHECK(known_null.value().completed.entries[0].disposition == MatD::NullType);
+    auto goods_zero = original;
+    goods_zero.completed.chunk.records[0].goods = 0;
+    const auto no_match = load::prepare_wildlife_materialization(goods_zero, 0, original_facts,
+                                                                 source_view(source, welt), raw);
+    REQUIRE(no_match);
+    CHECK(no_match.value().completed.entries[0].selection->choice.value.inspected == 18);
+    CHECK(no_match.value().completed.selector_consumed == 2);
+    auto cave_chunk = authored_chunk({ready_record(2, 3, 137)});
+    auto cave_facts = original_facts;
+    cave_facts.caves.clear();
+    const auto absent = load::prepare_wildlife_materialization(cave_chunk, 0, cave_facts, {}, raw);
+    REQUIRE_FALSE(absent);
+    CHECK(absent.error().fault == MatF::MissingFacts);
+    CHECK(absent.error().stage == MatS::Cave);
+    cave_facts.caves = {{3, 0}};
+    const auto zero_entrance = load::prepare_wildlife_materialization(
+        cave_chunk, 0, cave_facts, source_view(source, welt), raw);
+    REQUIRE_FALSE(zero_entrance);
+    CHECK(zero_entrance.error().fault == MatF::Selector);
+    REQUIRE(zero_entrance.error().selection_error);
+    CHECK(zero_entrance.error().selection_error->selector.fault ==
+          sim::WildlifeFault::Oq574CaveWithoutEntrance);
+    CHECK(zero_entrance.error().diagnostic_only.selector_consumed == 0);
+    REQUIRE(zero_entrance.error().diagnostic_only.catalogue);
+    const auto bad_source_zero =
+        load::prepare_wildlife_materialization(cave_chunk, 0, cave_facts, {}, raw);
+    REQUIRE_FALSE(bad_source_zero);
+    CHECK(bad_source_zero.error().fault == MatF::Source); // Same source-before-selector order.
+}
+TEST_CASE("wildlife materialize: supported prefix stops with actual unsupported choice or exact "
+          "exhaustion") {
+    Source source;
+    species_source(source);
+    const auto welt = species_pe();
+    const auto chunk =
+        authored_chunk({ready_record(60, 2), ready_record(50, 3, 137), ready_record(40, 4)});
+    const auto facts = materialize_facts();
+    const std::array<std::uint32_t, 5> raw{6, 33, 31, 31, 999};
+    const auto unsupported =
+        load::prepare_wildlife_materialization(chunk, 0, facts, source_view(source, welt), raw);
+    REQUIRE_FALSE(unsupported);
+    CHECK(unsupported.error().fault == MatF::UnsupportedCreationKind);
+    CHECK(unsupported.error().stage == MatS::UnsupportedSelection);
+    const auto& prefix = unsupported.error().diagnostic_only;
+    REQUIRE(prefix.entries.size() == 2);
+    CHECK(prefix.entries[0].token == 60);
+    CHECK(prefix.entries[0].selection->choice.value.index == 1);
+    CHECK(prefix.entries[0].cumulative_selector_consumed == 2);
+    CHECK(prefix.entries[1].token == 50);
+    CHECK(prefix.entries[1].selection->choice.value.index == 0);
+    CHECK(prefix.entries[1].cumulative_selector_consumed == 3);
+    CHECK(prefix.selector_consumed == 4);
+    CHECK(prefix.unused_draws == std::vector<std::uint32_t>{999});
+    CHECK(prefix.unchanged_chunk == chunk);
+    const auto& stop = unsupported.error().failing_record;
+    CHECK(stop.token == 40);
+    CHECK(stop.disposition == MatD::UnsupportedSelection);
+    CHECK(stop.selector_consumed == 1);
+    CHECK(stop.cumulative_selector_consumed == 4);
+    REQUIRE(stop.selection);
+    CHECK(stop.selection->choice.value.index == 31);
+    CHECK(stop.selection->choice.value.species.v == 503);
+    CHECK(stop.selection->choice.value.inspected == 1);
+    CHECK_FALSE(stop.selection->creation);
+    auto ordinary_last = facts;
+    ordinary_last.tiles[3].object_word = 10;
+    const std::array<std::uint32_t, 4> short_raw{6, 33, 31, 0};
+    const auto exhausted = load::prepare_wildlife_materialization(
+        chunk, 0, ordinary_last, source_view(source, welt), short_raw);
+    REQUIRE_FALSE(exhausted);
+    CHECK(exhausted.error().fault == MatF::Selector);
+    CHECK(exhausted.error().stage == MatS::Selector);
+    REQUIRE(exhausted.error().selection_error);
+    CHECK(exhausted.error().selection_error->selector.fault == sim::WildlifeFault::DrawsExhausted);
+    CHECK(exhausted.error().selection_error->selector.consumed == 1);
+    CHECK(exhausted.error().diagnostic_only.entries.size() == 2);
+    CHECK(exhausted.error().diagnostic_only.selector_consumed == 4);
+    CHECK(exhausted.error().diagnostic_only.unused_draws.empty());
+    CHECK(exhausted.error().diagnostic_only.unchanged_chunk == chunk);
+    CHECK(exhausted.error().failing_record.token == 40);
+    CHECK(exhausted.error().failing_record.selector_consumed == 1);
+    CHECK(exhausted.error().failing_record.cumulative_selector_consumed == 4);
+    CHECK_FALSE(exhausted.error().failing_record.selection);
+}
+TEST_CASE("wildlife materialize: catalogue and batch own source and unchanged fresh chunk fields") {
+    std::optional<load::WildlifeSpeciesCatalogue> catalogue;
+    std::optional<load::WildlifeMaterializePlan> owned;
+    load::WildlifeChunkPlan expected;
+    {
+        Source source;
+        species_source(source);
+        const auto welt = species_pe();
+        auto prepared = load::prepare_wildlife_species_catalogue(welt, source.image, source.entries,
+                                                                 SpeciesProfile::GogClimate2, 2);
+        REQUIRE(prepared);
+        catalogue = std::move(prepared.value());
+        load::WildlifeChunkInputs input;
+        input.habitat.fill(false);
+        input.habitat[9] = true;
+        input.fresh_tokens = {7};
+        input.time = 259000;
+        const std::array<std::uint32_t, 1> maintenance_draw{0};
+        auto chunk = load::prepare_wildlife_chunk(input, maintenance_draw);
+        REQUIRE(chunk);
+        expected = chunk.value();
+        REQUIRE_FALSE(expected.completed.chunk.records[0].saved_id);
+        REQUIRE_FALSE(expected.completed.chunk.records[0].high_bit);
+        const load::WildlifeMaterializeFacts facts{{{9, TileR::Present, 10}}, {{10, 0x46, 0}}, {}};
+        const std::array<std::uint32_t, 3> raw{6, 33, 999};
+        auto result = load::prepare_wildlife_materialization(chunk.value(), input.time, facts,
+                                                             source_view(source, welt), raw);
+        REQUIRE(result);
+        owned = std::move(result.value());
+    }
+    REQUIRE(catalogue);
+    const std::array<std::uint32_t, 3> raw{6, 33, 999};
+    const auto first = catalogue->select(false, 0, 255, raw); // No source bytes/entries exist now.
+    REQUIRE(first);
+    CHECK(first.value().choice.value.index == 1);
+    REQUIRE(first.value().creation);
+    CHECK(first.value().creation->source_sha256() == first.value().selected.source_sha256);
+    const std::array<std::uint32_t, 1> cave{31};
+    const auto second = catalogue->select(true, 2, 137, cave);
+    REQUIRE(second);
+    CHECK(second.value().choice.value.index == 0);
+    REQUIRE(second.value().creation);
+    CHECK(second.value().creation->hp() == 17);
+    CHECK(catalogue->slots().size() == 32);
+    CHECK(catalogue->ring().image_sha256.size() == 64);
+    REQUIRE(owned);
+    CHECK(owned->completed.unchanged_chunk == expected);
+    CHECK(owned->completed.selector_consumed == 2);
+    CHECK(owned->completed.unused_draws == std::vector<std::uint32_t>{999});
+    REQUIRE(owned->completed.entries.size() == 1);
+    CHECK(owned->completed.entries[0].token == 7);
+    REQUIRE(owned->completed.entries[0].selection);
+    CHECK(owned->completed.entries[0].selection->creation->id().v == 127);
+    CHECK(owned->completed.unchanged_chunk.completed.chunk.records[0].timestamp == 3);
+    CHECK(owned->completed.unchanged_chunk.completed.chunk.records[0].goods == 255);
+    CHECK(owned->completed.unchanged_chunk.completed.chunk.records[0].occupied == false);
+    CHECK_FALSE(owned->completed.unchanged_chunk.completed.chunk.records[0].saved_id);
+    CHECK_FALSE(owned->completed.unchanged_chunk.completed.chunk.records[0].high_bit);
+    CHECK_FALSE(owned->completed.unchanged_chunk.completed.chunk.records[0].byte11);
+}
+TEST_CASE("wildlife materialize: original climate two batch matches independent source rows and "
+          "selections") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        std::cout << "SKIPPED: ANNO1503_GAME_DIR not set (original game files unavailable)\n";
+        return;
+    }
+    const auto welt = anno::test::read_file(*dir / "AnnoWelt.dll");
+    const auto game = anno::test::read_file(*dir / "AnnoGame.dll");
+    const auto bytes = anno::test::read_file(*dir / "FigurenHeader.dat");
+    const auto header = fmt::figuren::FigurenHeader::parse(bytes);
+    REQUIRE(header);
+    const auto chunk = authored_chunk({ready_record(60, 2), ready_record(50, 3, 137)});
+    const auto facts =
+        materialize_facts(); // Authored actual tile/cave outcomes, not terrain proof.
+    const load::WildlifeSpeciesSource source{welt, game, header.value().entries,
+                                             SpeciesProfile::GogClimate2, 2};
+    const std::array<std::uint32_t, 4> raw{6, 33, 31, 999};
+    const auto result = load::prepare_wildlife_materialization(chunk, 0, facts, source, raw);
+    REQUIRE_MESSAGE(result, (result ? "" : result.error().reason));
+    const auto& out = result.value().completed;
+    REQUIRE(out.catalogue);
+    REQUIRE(out.catalogue->slots().size() == 32);
+    std::ostringstream rows;
+    for (std::size_t i = 0; i < 32; ++i) {
+        const auto& f = out.catalogue->slots()[i];
+        rows << i << '\t' << f.id.v << '\t' << f.kind << '\t' << f.yield << '\n';
+    }
+    const auto text = rows.str();
+    CHECK(fmt::sha256_hex(
+              fmt::Bytes(reinterpret_cast<const std::uint8_t*>(text.data()), text.size())) ==
+          "fda833fca3e31245f1b9ce6088015ac6b0379a37fde6687ed2602b914617b0cc");
+    if (const auto path = std::getenv("ANNO_WILDLIFE_SPECIES_ORACLE")) {
+        std::ifstream input(path);
+        REQUIRE(input);
+        for (std::size_t i = 0; i < 32; ++i) {
+            std::uint32_t index = 0, id = 0, kind = 0, yield = 0;
+            REQUIRE(static_cast<bool>(input >> index >> id >> kind >> yield));
+            CHECK(index == i);
+            CHECK(id == out.catalogue->slots()[i].id.v);
+            CHECK(kind == out.catalogue->slots()[i].kind);
+            CHECK(yield == out.catalogue->slots()[i].yield);
+        }
+        std::string extra;
+        CHECK_FALSE(static_cast<bool>(input >> extra));
+    }
+    CHECK(out.unchanged_chunk == chunk);
+    CHECK(out.selector_consumed == 3);
+    CHECK(out.unused_draws == std::vector<std::uint32_t>{999});
+    REQUIRE(out.entries.size() == 2);
+    REQUIRE(out.entries[0].selection);
+    REQUIRE(out.entries[1].selection);
+    CHECK(out.entries[0].token == 60);
+    CHECK(out.entries[0].selector_consumed == 2);
+    CHECK(out.entries[0].cumulative_selector_consumed == 2);
+    CHECK(out.entries[0].selection->choice.value.position == 2);
+    CHECK(out.entries[0].selection->choice.value.index == 1);
+    CHECK(out.entries[0].selection->choice.value.species.v == 501);
+    CHECK(out.entries[0].selection->choice.value.inspected == 1);
+    CHECK(out.entries[1].token == 50);
+    CHECK(out.entries[1].selector_consumed == 1);
+    CHECK(out.entries[1].cumulative_selector_consumed == 3);
+    CHECK(out.entries[1].selection->choice.value.position == -1);
+    CHECK(out.entries[1].selection->choice.value.index == 0);
+    CHECK(out.entries[1].selection->choice.value.species.v == 501);
+    CHECK(out.entries[1].selection->choice.value.inspected == 2);
+    REQUIRE(out.entries[0].selection->creation);
+    REQUIRE(out.entries[1].selection->creation);
+    CHECK(out.entries[0].selection->creation->source_sha256() ==
+          out.entries[0].selection->selected.source_sha256);
+    CHECK(out.entries[1].selection->creation->source_sha256() ==
+          out.entries[1].selection->selected.source_sha256);
 }

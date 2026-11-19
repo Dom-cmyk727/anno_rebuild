@@ -32,6 +32,7 @@ struct PrefixAnbauEffect {
 struct PrefixProd2EmptyBlock {
     std::uint32_t x = 0, y = 0, width = 0, height = 0; // Owned raw block geometry, no cell pass.
 };
+enum class PrefixEventinselCompletion : std::uint8_t { EmptyPreserved };
 struct PrefixHeader {
     PrefixSource source;
     std::string tag;
@@ -44,6 +45,7 @@ struct PrefixHeader {
     std::optional<std::uint32_t> discover;       // Completed low-u16 transfer, including zero.
     std::optional<std::uint32_t> kontor_counter; // Completed KONTORID transfer, not KONTID.
     std::optional<PrefixProd2EmptyBlock> prod2_empty;
+    std::optional<PrefixEventinselCompletion> eventinsel;
 };
 struct PrefixResource {
     PrefixSource source;

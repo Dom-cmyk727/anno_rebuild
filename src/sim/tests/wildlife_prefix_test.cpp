@@ -1708,7 +1708,191 @@ TEST_CASE("wildlife prefix: prod2 contract refuses short headers tails and all n
     }
 }
 
-TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported boundary") {
+TEST_CASE(
+    "wildlife prefix: empty eventinsel owns completion and preserves existing local records") {
+    const auto types = ore_registry();
+    Metadata meta;
+    const auto pe = anbau_pe();
+    auto b = ore_base();
+    append(b, packed("OCCUR", ore_entry()));
+    Buffer discover(4);
+    put32(discover, 0, 0xabcd8001);
+    append(b, packed("DISCOVER", discover));
+    append(b, packed("ANBAU", anbau_payload({"AX"})));
+    append(b, packed("KONTORID", Buffer{2, 129}));
+    append(b, packed("HIRSCH", fmt::insel::encode_hirsch(
+                                   std::vector<fmt::insel::HirschRecord>{{0, 0, 0x80, 7, 10}})));
+    append(b, packed("EVENTINSEL", {}));
+    append(b, packed("FRUCHTBAR", Buffer(256, 2)));
+    append(b, packed("HIRSCH", fmt::insel::encode_hirsch(
+                                   std::vector<fmt::insel::HirschRecord>{{1, 0, 1, 9, 20}})));
+    append(b, packed("EVENTINSEL", {}));
+    auto file = scene({packed("INSEL5", b)});
+    const auto original = file;
+    const auto result = load::prepare_wildlife_prefix(file, meta.entries, pe, *types, inputs(),
+                                                      std::vector<std::uint32_t>{4, 7});
+    REQUIRE(result);
+    CHECK(file == original);
+    file.clear();
+    file.shrink_to_fit();
+    b.clear();
+    const auto& out = result.value();
+    REQUIRE(out.islands.size() == 1);
+    const auto& is = out.islands[0];
+    REQUIRE(is.headers.size() == 13);
+    CHECK(is.headers[9].eventinsel == load::PrefixEventinselCompletion::EmptyPreserved);
+    CHECK(is.headers[12].eventinsel == load::PrefixEventinselCompletion::EmptyPreserved);
+    CHECK(is.headers[9].source.header == 9);
+    CHECK(is.headers[12].source.header == 12);
+    CHECK(is.headers[9].records == 0);
+    CHECK(is.headers[12].records == 0);
+    CHECK_FALSE(is.headers[9].water_mask_updates);
+    CHECK_FALSE(is.headers[12].water_mask_updates);
+    CHECK_FALSE(is.headers[11].eventinsel);
+    CHECK(is.headers[10].fertility_updates.has_value());
+    CHECK(is.terrain->fertility == Buffer(256, 2));
+    CHECK(sim::terrain_matches(*is.terrain));
+    CHECK(is.anbau_mask == 1);
+    CHECK(is.discover_mask == 32769);
+    CHECK(is.kontor_counter == 33026);
+    REQUIRE(is.occurrences.size() == 1);
+    CHECK(is.occurrences[0].quantity_88 == 512000);
+    CHECK(is.occurrences[0].reserve == 1);
+    CHECK(is.occurrence_loads.size() == 1);
+    REQUIRE(is.spawns.size() == 2);
+    CHECK(is.spawns[0].raw.goods == 10);
+    CHECK(is.spawns[0].raw.raw5 == 7);
+    CHECK(is.spawns[0].draw_before == 1);
+    CHECK(is.spawns[0].timestamp == 8);
+    CHECK(is.spawns[1].raw.goods == 20);
+    CHECK(is.spawns[1].raw.raw5 == 9);
+    CHECK(is.spawns[1].draw_before == 2);
+    CHECK(is.spawns[1].timestamp == 1);
+    CHECK(is.spawns[1].next_in_chunk == 0);
+    CHECK(is.chunk_heads[0] == 1);
+    CHECK(out.consumed == 2);
+    CHECK(is.resources.size() == 1);
+    CHECK(is.resources[0].draw_before == 0);
+    CHECK(is.resource_list_nodes.size() == 5);
+    CHECK(is.resource_list_nodes[0].mask == 17);
+    CHECK(is.resource.variation[0] == 66);
+    CHECK(is.resource.tiles.object(0) == 104);
+    CHECK(is.resource.tiles.item_height(0) == 48);
+    CHECK(out.complete_local_records);
+    CHECK(is.complete_local_records);
+    CHECK_FALSE(out.boundary);
+
+    Buffer water;
+    for (const auto v : std::vector<std::uint16_t>{7, 11, 3, 2})
+        fmt::put_u16_le(water, v);
+    fmt::put_u32_le(water, 17);
+    append(water, packed("INFO", Buffer(12, 0)));
+    append(water, packed("HEIGHT", block(0, 0, 3, 2, Buffer(6, 0))));
+    const auto absent = load::prepare_wildlife_prefix(scene({packed("INSEL5", water)}),
+                                                      meta.entries, pe, *types, inputs(), {});
+    REQUIRE(absent);
+    CHECK_FALSE(absent.value().islands[0].headers.back().eventinsel);
+    append(water, packed("EVENTINSEL", {}));
+    const auto empty = load::prepare_wildlife_prefix(scene({packed("INSEL5", water)}), meta.entries,
+                                                     pe, *types, inputs(), {});
+    REQUIRE(empty);
+    CHECK(empty.value().consumed == 0);
+    const auto& ew = empty.value().islands[0];
+    REQUIRE(ew.headers.back().eventinsel);
+    CHECK_FALSE(ew.headers.back().water_mask_updates);
+    for (std::uint64_t i = 0; i < ew.resource.tiles.tile_count(); ++i) {
+        CHECK(ew.resource.tiles.walk_mask(i) == 0);
+        CHECK(ew.resource.tiles.walk_mask(i) ==
+              absent.value().islands[0].resource.tiles.walk_mask(i));
+        CHECK(ew.resource.tiles.object(i) == 0);
+    }
+}
+
+TEST_CASE(
+    "wildlife prefix: eventinsel nonempty boundary retains earlier completion and spawn records") {
+    const auto types = ore_registry();
+    Metadata meta;
+    const auto pe = fake_pe();
+    auto b = ore_base();
+    append(b, packed("HIRSCH", fmt::insel::encode_hirsch(
+                                   std::vector<fmt::insel::HirschRecord>{{0, 0, 0x80, 7, 10}})));
+    append(b, packed("EVENTINSEL", {}));
+    Buffer nested;
+    REQUIRE(fmt::tagged::write_record("ENTRY2", false, Buffer(12, 0), nested));
+    append(b, packed("EVENTINSEL", nested));
+    append(b, packed("MYSTERY", {})); // Mutant accepting nonempty reaches a different boundary.
+    const auto result =
+        load::prepare_wildlife_prefix(scene({packed("INSEL5", b)}), meta.entries, pe, *types,
+                                      inputs(), std::vector<std::uint32_t>{4, 7});
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().diagnostic);
+    const auto& out = *result.error().diagnostic;
+    REQUIRE(out.boundary);
+    REQUIRE(out.islands.size() == 1);
+    const auto& is = out.islands[0];
+    REQUIRE(is.headers.size() >= 7);
+    REQUIRE(is.headers[5].eventinsel);
+    CHECK(is.headers[5].records == 0);
+    CHECK((out.boundary->tag == "EVENTINSEL" && out.boundary->source.header == 6 &&
+           out.boundary->source.record == 0 &&
+           out.boundary->reason == "unsupported nonempty EVENTINSEL payload" &&
+           !is.headers[6].eventinsel.has_value()));
+    CHECK_FALSE(is.complete_local_records);
+    CHECK(out.consumed == 2);
+    CHECK(is.resources.size() == 1);
+    CHECK(is.resource.tiles.object(0) == 104);
+    CHECK(is.resource.variation[0] == 64);
+    REQUIRE(is.spawns.size() == 1);
+    CHECK(is.spawns[0].raw.goods == 10);
+    CHECK(is.spawns[0].draw_before == 1);
+    CHECK(is.spawns[0].timestamp == 8);
+    CHECK(is.chunk_heads[0] == 0);
+}
+
+TEST_CASE("wildlife prefix: eventinsel contract refuses nonempty nested inputs and malformed outer "
+          "framing") {
+    const auto types = ore_registry();
+    Metadata meta;
+    const auto pe = fake_pe();
+    Buffer nested;
+    REQUIRE(fmt::tagged::write_record("ENTRY2", false, Buffer(12, 0), nested));
+    for (const auto& payload :
+         std::vector<Buffer>{Buffer{1}, Buffer(7, 255), Buffer(12, 0), nested}) {
+        auto b = ore_base();
+        append(b, packed("EVENTINSEL", {}));
+        append(b, packed("EVENTINSEL", payload));
+        const auto result =
+            load::prepare_wildlife_prefix(scene({packed("INSEL5", b)}), meta.entries, pe, *types,
+                                          inputs(), std::vector<std::uint32_t>{4});
+        REQUIRE_FALSE(result);
+        REQUIRE(result.error().diagnostic);
+        const auto& out = *result.error().diagnostic;
+        REQUIRE(out.boundary);
+        CHECK(out.boundary->tag == "EVENTINSEL");
+        CHECK(out.boundary->source.header == 5);
+        CHECK(out.boundary->source.record == 0);
+        CHECK(out.boundary->reason == "unsupported nonempty EVENTINSEL payload");
+        const auto& is = out.islands[0];
+        CHECK(is.headers[4].eventinsel == load::PrefixEventinselCompletion::EmptyPreserved);
+        CHECK_FALSE(is.headers[5].eventinsel);
+        CHECK(is.headers[5].records == 0);
+        CHECK_FALSE(is.complete_local_records);
+        CHECK(out.consumed == 1);
+        CHECK(is.resources.size() == 1);
+    }
+    auto b = ore_base();
+    append(b, packed("EVENTINSEL", {}));
+    auto file = scene({packed("INSEL5", b)});
+    file.pop_back(); // Outer checked chunk length now exceeds the available bytes.
+    const auto truncated = load::prepare_wildlife_prefix(file, meta.entries, pe, *types, inputs(),
+                                                         std::vector<std::uint32_t>{4});
+    REQUIRE_FALSE(truncated);
+    CHECK(truncated.error().reason == "no island");
+    CHECK_FALSE(truncated.error().diagnostic);
+}
+
+TEST_CASE(
+    "wildlife prefix: original Tutorial completes local records before post-island callbacks") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         std::cout << "SKIPPED: ANNO1503_GAME_DIR not set (original game files unavailable)\n";
@@ -1729,21 +1913,12 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     supplied.mode_provenance = "explicit test query bit 0, not MAIN";
     const auto result = load::prepare_wildlife_prefix(bytes, anlagen.value().entries, pe,
                                                       *types.types, supplied, draws);
-    const bool inspectable = result.ok() || result.error().diagnostic.has_value();
-    REQUIRE_MESSAGE(inspectable, (result.ok() ? "" : result.error().reason));
-    const auto& out = result ? result.value() : *result.error().diagnostic;
+    REQUIRE_MESSAGE(result, (result ? "" : result.error().reason));
+    const auto& out = result.value();
     REQUIRE(out.islands.size() == 1);
-    REQUIRE(out.islands[0].resources.size() > 0);
-    REQUIRE_FALSE(result); // A diagnostic prefix is not a complete prepared-island success.
-    REQUIRE(out.boundary);
-    CHECK_FALSE(out.complete_local_records);
-    CHECK_FALSE(out.islands[0].complete_local_records);
-    CHECK(out.boundary->source.island == 0);
-    CHECK(out.boundary->source.slot == 11);
-    CHECK(out.boundary->source.header == 72);
-    CHECK(out.boundary->source.record == 0);
-    CHECK(out.boundary->tag == "EVENTINSEL");
-    CHECK(out.boundary->reason.find("unsupported intervening header") != std::string::npos);
+    CHECK(out.complete_local_records);
+    CHECK(out.islands[0].complete_local_records);
+    CHECK_FALSE(out.boundary);
     const auto raw_islands = fmt::insel::islands(bytes);
     REQUIRE(raw_islands);
     const auto& raw = raw_islands.value()[0];
@@ -1876,7 +2051,7 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     }
     CHECK(token_at == anbau_payload_raw.size());
     std::cout << "ANBAU_REAL header=52 tokens=13 seed=61449 mask=65535 ignored=0 draws=0 "
-                 "next=72/EVENTINSEL\n";
+                 "local_end=73/after_EVENTINSEL\n";
     REQUIRE(raw.records[53].name() == "DISCOVER");
     REQUIRE(raw.records[53].payload.size() == 4);
     const auto expected_discovery = fmt::u16_le(raw.records[53].payload, 0);
@@ -1886,7 +2061,7 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     CHECK(is.headers[53].records == 1);
     CHECK_FALSE(is.headers[54].discover);
     CHECK(raw.records[54].name() == "KONTORID");
-    std::cout << "DISCOVER_REAL header=53 bytes=4 mask=0 draws=0 next=72/EVENTINSEL\n";
+    std::cout << "DISCOVER_REAL header=53 bytes=4 mask=0 draws=0 local_end=73/after_EVENTINSEL\n";
     REQUIRE(raw.records[54].name() == "KONTORID");
     REQUIRE(raw.records[54].payload.size() == 2);
     const auto expected_counter = fmt::u16_le(raw.records[54].payload, 0);
@@ -1896,7 +2071,8 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     CHECK(is.headers[54].records == 1);
     CHECK_FALSE(is.headers[55].kontor_counter);
     CHECK(raw.records[55].name() == "PROD2");
-    std::cout << "KONTORID_REAL header=54 bytes=2 counter=1 draws=0 next=72/EVENTINSEL\n";
+    std::cout
+        << "KONTORID_REAL header=54 bytes=2 counter=1 draws=0 local_end=73/after_EVENTINSEL\n";
     for (std::uint64_t h = 55; h <= 70; ++h) {
         REQUIRE(raw.records[h].name() == "PROD2");
         const auto payload_raw = raw.records[h].payload;
@@ -1942,7 +2118,15 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     CHECK(raw.records[72].name() == "EVENTINSEL");
     CHECK_FALSE(is.headers[72].prod2_empty);
     std::cout << "PROD2_REAL headers=16 items=0 extra_epilogues=0 draws=0 "
-                 "HIRSCH=156 load_draws=156 next=72/EVENTINSEL\n";
+                 "HIRSCH=156 load_draws=156 local_end=73/after_EVENTINSEL\n";
+    REQUIRE(raw.records.size() == 73);
+    CHECK(raw.records[72].payload.empty());
+    CHECK(is.headers[72].eventinsel == load::PrefixEventinselCompletion::EmptyPreserved);
+    CHECK(is.headers[72].records == 0);
+    CHECK_FALSE(is.headers[72].water_mask_updates);
+    CHECK_FALSE(is.headers[71].eventinsel);
+    std::cout << "EVENTINSEL_REAL header=72 bytes=0 preserved=1 added_draws=0 "
+                 "local_records_complete=1 boundary=before_post_island_callbacks\n";
     CHECK(out.islands[0].resources.size() == 4760);
     CHECK(out.islands[0].spawns.size() == 156);
     CHECK(out.consumed == 4745);
@@ -2100,6 +2284,5 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
                   << " record=" << out.boundary->source.record << " tag=" << out.boundary->tag
                   << " reason=" << out.boundary->reason;
     std::cout << "\n";
-    // The predecessor 35/22 boundary is preserved in PREFIX evidence; this is
-    // the same unfiltered stream, now stopping at the independently parsed next class.
+    // The same unfiltered local stream ends here. No post-island or global callback is executed.
 }

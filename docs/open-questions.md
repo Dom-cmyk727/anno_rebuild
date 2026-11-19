@@ -1786,6 +1786,8 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   - successor id absent from the registry: 759→760.
 - **The question:** when a growing item advances, does the original leave the walk record that placement wrote, or write the successor's code and mask? The successor's record still needs a rotation, and the tile state does not store one. F5 does not guess that rotation and does not tune the samples.
 
+- **2026-11-19, WILDLIFE-POSTLOAD-1 (D, NARROWED):** the pointer-store chain is now explicit: island +0x1c receives world +0x18 at AnnoWelt `0x1008c0c9–0x1008c0db`; getter `0x100a37d0` returns world +0x110; base Init stores its third caller argument there at `0x1009d848`, forwarded by factory `0x100b2568–0x100b2588`. AnnoScene `0x10002e84–0x10002ea6` supplies Scene +0x154, whose constructor stores its caller's pointer at `0x10002fc6`. This proves the stores, **not** the actual catalogue vtable/type-array construction. Direct Scene constructor callers `0x10006ee4` / `0x10007a24` and catalogue population remain the next edges; current TypeRegistry construction is not asserted equivalent. See [postload contract](sim/wildlife-postload.md#3-catalogue-provenance-a-narrowed-dependency-not-a-guessed-binding).
+
 ## OQ-203: What byte 3 bit 7 of the tile record means (T33.5 stage 1, 2026-10-26)
 - **Status:** answered (T33.5 F1, 2026-10-26, `transport.md` §3.4.17). It is the 8×8 block-anchor flag. Placement sets it on the first footprint tile it writes in each world-aligned 8×8 block (`mov bl, 1` at `0x1008213b`; ordinary clear `0x100824c8`; overlay clear only after a written tile, `0x10082289`). A footprint whose edge is at most 8 therefore has at most four anchors.
 - **Area:** simulation / tile record.

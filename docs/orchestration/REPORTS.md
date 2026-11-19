@@ -16527,3 +16527,59 @@ DOC_CHECK files=2 links=10 hand_vector_rows=15 hashes=7 missing=0 status=PASS
 FROZEN_EVIDENCE unchanged; source/tools/CMake/fixtures unchanged
 EXECUTION: C++/reference suites NOT_RUN; proposed vectors NOT_EXECUTED
 ```
+
+
+## 2026-11-19 — WILDLIFE-GFX-FINALIZE-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-GFX-FINALIZE-1` from reviewed POSTLOAD `1628ba18`; no merge/rebase.
+- Tested source `e9256f2234535d12917cc8cc4a39523d94dec358`, tree `09d6fc88608cfec3cacbfeb41b99986414a6c1f0`.
+- Final head/tree/CI accompany direct handoff; final publication changes docs only.
+- [Contract](../sim/wildlife-postload.md#9-isolated-graphics-finalizer--wildlife-gfx-finalize-1), [evidence](evidence/wildlife-gfx-finalize-1.md).
+- D: fresh leaf 85290–853a9; exact high byte 0x20, 4x4 x/y-1..+2, max-zero FULL-word clear.
+- No threshold 16/32, RNG, resource/variation/HEIGHT mutation or rectangle restriction.
+- `finalize_wildlife_graphics(const sim::Island&)` -> `Result<FinalizedWildlifeGraphics,string>`.
+- New owned immutable Terrain + cleared count; original input immutable, digest recomputed once.
+- Positive validated geometry; exact HEIGHT/GFX, absent-or-exact fertility, matching digest.
+- u64 shape product before indexing; O(W*H), 16 vertex reads per qualifying word, one plane copy.
+- Only raw Terrain supported; W/H borders forced zero, outside zero via VertexGrid.
+- Conditional V12a/b NOT_EXPRESSIBLE, not tested; equivalent clamping is not a false mutant target.
+- 12 independent hand vectors and 23 public CLI controls, committed at `68516060` BEFORE C++.
+- Covers exact high byte/full-word, height 1, +2/+2, -1/-1, x/y+3 exclusion, 5x2/2x3/1x1.
+- C++ full-plane/count, other channels, digest/no-change, destruction/repetition/idempotence checks.
+- Malformed lengths, absent terrain, stale digest and empty geometry refuse without source writes.
+- Actual-code private control 3 cases /1639 assertions pass; wrong bit test causes 6 intended failures.
+- Wrong 2x2 stencil causes 8 intended failures; remaining 1633/1631 assertions still pass.
+- Canonical production source unchanged/restored identity and rebuild checked before gates.
+- First CLI fixture diagnostic failure note and first 3 test API compiler errors retained; fixed before freeze.
+
+```text
+# cache/wildlife-gfx-finalize-1/debug-final.log (required contract then main)
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=9 executed=9 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-gfx-finalize-1/asan-final.log (required contract then main)
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=9 executed=9 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- Per profile 3 leaf +5 VertexGrid +1 reference agreement, plus separately required CLI contract.
+- No canonical failure, empty, skip, incomplete, timeout, memory refusal or sanitizer diagnostic.
+- Format 23.1.3/lint/diff pass; affected two TUs strict O3/Werror Apple Clang 21/GCC 15.3 clean.
+- GCC shadow negative control rejected; inherited duplicate-library linker warning retained.
+- Caller search: definition/header/tests ONLY; no prepare_wildlife_prefix/load/World wiring.
+- 276 prior synthetic fixtures (120 sim), sim runtime/public headers and prefix adapter unchanged.
+- Only new synthetic vectors added; no pins moved or full pins.py claim; hashes in evidence.
+- Apple M5 Max/18 logical/48 GiB/macOS 27.0.1; jobs 1, threads 2, 2048 MiB/thread, admission retained.
+- Original fill -> navigation/raster -> cleanup order preserved; complete postload NOT claimed.
+- Catalogue/c2-zero ground/full fill, navigation/raster inputs/consumers and V9 sum/clamp remain separate.
+
+Decisions and reasoning:
+- Reuse verified geometry/digest and return owned output; no cache, borrowed result or early wiring.
+- Hand expectations before C++; distinct semantic mutants after legal setup, no padding invention.
+- Reuse unrelated gates by unchanged callers/dependencies; no broad prefix/corpus/sailing/render rerun.
+NOT_RUN: original runtime/HE/leaf, full postload/draw closure, World/native/lifecycle, full pins/warnings,
+Windows/WSL, LeakSanitizer, unrelated long suites. Exact-head CI pending, read after push.
+QUESTIONs: none blocking isolated review. Independent orchestrator review pending; STOP here.

@@ -333,11 +333,29 @@ were hand-derived before C++, using §5 and V10–V12; the
 [reference](../../tools/wildlife_postload_ref.py) never reads expected outputs as
 computed answers. This is an isolated leaf, not ordered postload execution.
 
-| Requirement | Distinguishing authored expectation | Proof planned / disposition |
+| Requirement | Distinguishing authored expectation | Executed proof / disposition |
 |---|---|---|
-| Exact high byte/full-word clear | 0x20ab->0, 0x6001/0x2101 retained, 0x2000->0 | reference then C++, actual-code bit-test mutant |
-| 4x4 with unsigned-positive test | target (1,1), sample (3,3)=1 preserves; sample (0,0)=7 preserves | reference then C++, actual-code truncated-quad mutant |
-| No wider neighbourhood or transposed stride | x+3/y+3 do not preserve; 5x2 asymmetric plane has only one clear | reference then C++ full-plane comparison |
-| Owned immutable channels and digest | nonzero height/fertility survive; changed/no-change, source destruction, idempotence | C++ direct ownership tests |
-| Refusal before writes | absent, malformed column/digest, empty geometry | C++ negative controls, original source unchanged |
-| Unwired and original ordering preserved | production caller search excludes prepare/load/World | static caller search; no integration claim |
+| Exact high byte/full-word clear | 0x20ab->0, 0x6001/0x2101 retained, 0x2000->0 | 12 reference/C++ vectors pass; actual-code bit-test mutant fails 6 assertions; review pending |
+| 4x4 with unsigned-positive test | target (1,1), sample (3,3)=1 preserves; sample (0,0)=7 preserves | 12 reference/C++ vectors pass; actual-code quad mutant fails 8 assertions; review pending |
+| No wider neighbourhood or transposed stride | x+3/y+3 do not preserve; 5x2 asymmetric plane has only one clear | Reference/C++ full-plane comparison passes; review pending |
+| Owned immutable channels and digest | nonzero height/fertility survive; changed/no-change, source destruction, idempotence | C++ ownership/immutability/digest/idempotence tests pass; review pending |
+| Refusal before writes | absent, malformed column/digest, empty geometry | C++ refusals pass, source unchanged; review pending |
+| Unwired and original ordering preserved | production caller search excludes prepare/load/World | Only declaration, definition and test callers; no integration claim; review pending |
+
+
+G4 disposition: `finalize_wildlife_graphics(const sim::Island&)` returns
+`Result<FinalizedWildlifeGraphics, std::string>` with a new owned immutable Terrain
+and cleared-word count. It scans the full island in O(W*H), with 16 vertex reads
+per qualifying word and one output-plane copy; all other columns are copied once,
+and the output digest is computed once. Input shape and digest are checked before
+writes. No production caller exists. Input destruction, exact other-channel
+retention, deterministic repetition and idempotence are tested. Different/no-change
+digests are asserted on the authored cases, not claimed collision-free in general.
+
+The new 12-vector raw-Terrain subset of V10–V12 is executed; §6's broader
+hand-derived ledger is historical and does not become an executed postload model.
+V12a/b remain NOT_EXPRESSIBLE at this interface. No equivalent-clamping mutant
+is claimed. Catalogue binding, c2-zero ground preprocessing, full first-call fill,
+second-call navigation/raster inputs and consumers, V9's sum-mask/clamp obligations,
+original aggregate draw closure and actual publication order remain unresolved
+and unchanged. See the [isolated leaf evidence](../orchestration/evidence/wildlife-gfx-finalize-1.md).

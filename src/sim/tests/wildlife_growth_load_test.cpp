@@ -225,7 +225,7 @@ TEST_CASE("wildlife growth: original GOG source full lookup and authored numeric
     if (const auto* oracle = std::getenv("ANNO_WILDLIFE_GROWTH_ORACLE")) {
         const auto expected = anno::test::read_file(oracle);
         REQUIRE(expected.size() == 16384);
-        CHECK(value.values == expected);
+        REQUIRE(value.values == expected);
         std::cout << "Growth independent full-byte comparison: 16384 bytes agree\n";
     } else {
         std::cout << "External full-byte oracle unavailable; known GOG full-map SHA checked\n";

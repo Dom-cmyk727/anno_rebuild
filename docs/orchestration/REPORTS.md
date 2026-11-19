@@ -17673,3 +17673,74 @@ Decisions and reasoning:
 - Existing replenish helper lacks partial record effects; small composer preserves it unchanged, collecting recycle order linearly.
 - Reuse untouched species/source evidence; no adjacent source-bound rerun. No state/default/tag/identity/PRNG/nav/raster changes.
 QUESTIONs: C0 resolved as documented; none at the isolated stopping boundary. STOP pending orchestrator review.
+
+## WILDLIFE-MATERIALIZE-PLAN-1 — 2026-11-19 — READY FOR REVIEW
+
+Branch `task/WILDLIFE-MATERIALIZE-PLAN-1`, base `95d2eb0f4bf09c559413ef380fba3fd4281939ff`.
+Dispatch `4634c2de` read in full, not merged; no board/main merge or rebase.
+Tested implementation `49c9ddb3066ba7f71cd4e6e29170fb11bf3a7130`, tree `103d57f73ff7344dc8d1bbf6066e163b2dcdffab`.
+Publication adds report/evidence only; independent review pending orchestrator.
+[Contract and literal sequence](../sim/wildlife-materialize-plan.md); [raw receipts and hashes](evidence/wildlife-materialize-plan-1.md).
+M0/M1: category then occupancy then signed wrapping byte gate (`AnnoWelt 0x10093780–0x100937a7`).
+Deltas 0/127 eligible, 128/255 ineligible; wrap 4 minus 250 gives 10. Reached facts only.
+Whole actual tile word/null lookup (`0x100937e0–0x100937f5`), goods 0x46 OR kind 0x145 (`0x100937fd–0x10093814`).
+No growing id+1 or 14-bit mask. Known-null and known numeric zero distinct from missing facts.
+M2: immutable owned catalogue once per batch, lazily prepared only at first eligible selection.
+Selected New capability only; no eager unsupported New binding, per-record PE reparse/hash or global cache.
+Standalone API source-before-selector errors, unsupported results and owner lifetimes preserved.
+Pre-factor retained baseline 1/22 assertions; post-factor old synthetic API 10/328 pass.
+M3: ordered token-associated skips/selections, exact per-call/cumulative selector consumption and unused suffix.
+Unsupported actual choice or exhaustion retains diagnostic prefix/failing stage; never partial success or rollback.
+Full chunk unchanged: no saved ID, occupancy, goods, cooldown, high-bit or byte 11 writes.
+M4: six synthetic cases/269 assertions, source-backed case/191; immutable inputs, ownership, repeated results.
+Literal reasons category/occupied/not-ready/actual-type/selected/selected; per counts [0,0,0,0,2,1], suffix 999.
+Supported two-record prefix then unsupported or exhaustion retains exact choice/count and unchanged chunk.
+Seven actual production mutants reject through semantic assertions; legal control passes, canonical hashes unchanged.
+Original climate-2 source case matches independent 32-slot oracle plus exact selections/source hashes.
+Facts/records/draws authored: source-backed composition, NOT actual terrain/native materialization.
+
+M5 Debug first `cache/wildlife-materialize-plan-1/debug.log`: new original prerequisite passed, then typo refused:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+VERDICT: FAIL workflow: missing required contract: anno_sim_tests.wildlife species: original climate two row agrees with independent source and selector oracles
+GATE_END {"status": 5, "ctest_rc": null}
+```
+Only unexecuted remainder, `cache/wildlife-materialize-plan-1/debug-remaining.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=26 executed=26 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+ASan/UBSan `cache/wildlife-materialize-plan-1/asan.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=26 executed=26 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+29 unique/profile: 7 materialize + 6 species + 6 creation + 7 chunk + 1 all-family + 2 leaf controls.
+All 3 original cases required with game directory/oracles set. No skip/empty/incomplete/sanitizer/memory refusal.
+No whole-gate rerun: first Debug original case preserved, only remaining 28 executed in corrected call.
+Apple Clang 21/GCC 15.3 O3/Werror 4 affected TUs each pass; shadow negative rejects; format 23.1.3/lint/diff pass.
+0 compiler warnings; inherited duplicate-library linker warning disclosed. Debug/ASan binaries retained.
+1023 frozen identities and 292 unchanged fixtures verified; prior chunk 110/species 178/release 83 artifacts intact.
+Closeout 114 artifacts; SHA256 `ee51700bf2c70829113627b7debb87ed027728df01bc4d5a52754a118918631a`.
+Hosted publication CI read after ordinary push; orchestrator owns terminal closeout, not claimed green here.
+NOT_RUN: actual terrain/cave/coordinates/native manager/creation/first action, spawn writes/whole sweep/total draws,
+original/HE runtime, local Windows/WSL, Windows FP/nav, LeakSanitizer, broad/full/heavy/pins; unchanged release reused.
+Decisions and reasoning:
+- Preserve reached knownness and exact byte gate; explicit null lookup avoids numeric-zero/missing conflation.
+- Cache validated owned source once; lazy selected capability preserves old API semantics and unsupported choices.
+- Keep selector-only accounting explicit; supplied immutable facts cannot establish native mutable callbacks.
+- Retain failing prefix diagnostically, never invent rollback/success; no World/state/tag/default/identity/PRNG changes.
+QUESTIONs: none in this bounded profile. STOP pending orchestrator source/evidence review.

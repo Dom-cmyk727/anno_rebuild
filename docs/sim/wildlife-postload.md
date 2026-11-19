@@ -5,6 +5,12 @@ post-island execution or World-publication acceptance.** D = GOG instructions,
 P = parsed original files, C = inspected rebuild code, H = hand-derived vector,
 U = unread or unresolved binding. No engine/reference implementation is added.
 
+**Fix round 1, 2026-11-19:** the current contract corrects V12's claimed
+padding discriminator and the secondary raster's rounding arithmetic. The
+original `09614995` contract and `e05d9504` handoff remain frozen historical
+evidence; use this corrected contract and the [correction receipt](../orchestration/evidence/wildlife-postload-1-fix-1.md)
+for the superseding interpretation. All proposed vectors remain NOT_EXECUTED.
+
 The [local prefix](wildlife-prefix.md) now completes all 73 local headers through
 [EVENTINSEL](wildlife-eventinsel.md). That does not execute the three calls below.
 The first can create grass/fish tile resources, the second builds navigation and
@@ -139,12 +145,24 @@ can rebuild the existing coarse index. HOWEVER block_range currently applies
 original chunk-bound producer. Do not confuse it with the distinct original
 fine-tile query's BYTE addition at 0x100904e7, which legitimately wraps.
 Static hand counterexample V9 below blocks an unconditional equivalence claim.
+A later correction must ALSO audit block_range's separate `min(mx,255)` before
+halving. Removing the sum mask alone gives max_half 127 for V9, not original
+135. Both are mixed, so class-only assertions miss this second numerical mismatch;
+assert the exact extrema bytes too. No route repair or compatibility change is
+released by this research correction.
 No source fix, compatibility choice, shipped-map failure or executed reproduction
 is claimed in this packet.
 
 D: flags-2 raster branch a3cc3–a3ed1 obtains world width/height, maps the rectangle
 to its raster buckets, sums world +0x5c height samples, normalizes/truncates and
-replaces the LOW NIBBLE of object byte plane +0x14, preserving the high nibble.
+updates object byte plane +0x14. **Corrected from original instructions,
+2026-11-19:** at a3e7d–a3e90 the literal arithmetic is
+`u = converted &0xff`, `rounded = (u+8)>>4`,
+`new_byte = (old_byte &0xf0) | rounded`. There is NO `&0x0f` on rounded.
+Since u is 0..255, rounded is 0..16; u 248..255 produces 16, which can SET
+bit 4 of the old high nibble. Only a proved u <=247 bound guarantees high-nibble
+preservation; the runtime numeric-table domain remains U, so no unconditional
+preservation claim is made. Old byte 0 / converted 248 yields 0x10, not 0x00.
 It increments object dword +0xc at a3ece even if no bucket loop runs. Flag-1 work
 is skipped at a3ed7–a3edc for the actual flags 2; return a40be–a40c5.
 World +0x5c is `0x1009db00–0x1009db68`: resolve island and call island +0x98.
@@ -194,17 +212,21 @@ not rerun or presented as new passes.
 | V6 / ab0b8–ab0e7 | (min_half,max_half)=(9,9),(10,10),(9,10) | all-water, all-land, mixed respectively; do not apply raw mean <16 |
 | V7 / ab94b–ab966 | shore ranges (15,16),(16,17),(15,17) | false,false,true; strict 32 equality is not straddling |
 | V8 / a3ed7 / a3ece | flags 2, valid initialized cache, rect [0,0,0,0), generation 7 | no bucket write, generation 8. Flags 0 -> unchanged 7. Empty rect is not whole callback no-op |
-| V9 / 842ae–84331 versus route_world.cpp | Interior chunk: 9x9 vertices all 18, one anchor base 250, descriptor height 0.8f ->20 height units | original max=270 ->half135, min_half9 ->mixed. Engine wrapped sum14 leaves vertex max18 ->half9 ->all-water. STATIC, not executed or observed corpus failure |
+| V9 / 842ae–84331 versus route_world.cpp | Interior chunk: 9x9 vertices all 18, one anchor base 250, descriptor height 0.8f ->20 height units | original max=270 ->half135, min_half9 ->mixed. Engine wrapped sum14 leaves vertex max18 ->half9 ->all-water. Removing only the sum mask still hits min(mx,255), giving half127, NOT135; compare bytes, not only mixed class. STATIC/NOT_EXECUTED, not observed corpus failure |
 | V10 / 852d1–85353 | graphic 0x20ab, all legal 4x4 vertices zero | whole word 0, not 0x00ab. Graphic 0x6001 unchanged, despite bit0x2000 |
 | V11 / 852eb–85349 | graphic 0x20ab, only vertex(x+2,y+2)=1 | unchanged 0x20ab; a quad/3x3-only implementation incorrectly clears |
-| V12 / 85303–8532d | 1x1 island HEIGHT 0 versus 1, other logical vertices zero | graphic 0x20ab ->0 versus retained; boundary samples are zero, not clamped to interior |
+| V12 / 85303–8532d | Raw-Terrain 1x1 HEIGHT 0 versus 1, logical border forced zero | graphic 0x20ab ->0 versus retained: a zero/nonzero sanity case ONLY. Nearest-edge clamping repeats a nonnegative sample already in the 4x4, so it is observationally equivalent for this maximum/zero predicate, not distinguished by this case |
+| V12a / 85307–85313 | CONDITIONAL low-level validated corner-grid representation: 1x1 tile domain, legal logical vertex (W,0)=1 (or (0,H)=1), all other vertices zero | inclusive <=W/<=H keeps 0x20ab; exclusive <W/<H wrongly clears. NOT_EXPRESSIBLE through raw Terrain's forced-zero border; use only if a separately validated low-level grid contract admits this input, otherwise narrow the dynamic claim |
+| V12b / 85311–8532d | CONDITIONAL low-level validated padded-grid representation: all legal vertices zero, physical H+1 padding row has sentinel 1 within the sampled x window | original excludes H+1, so clears; a reader treating H+1 as legal wrongly keeps. Raw Terrain does not expose this padding row: NOT_EXPRESSIBLE there. Test only if the low-level representation admits arbitrary padding, otherwise retain static proof only |
+| V13 / a3e7d–a3e90 | old byte 0, converted 247 versus 248 versus 255 | output 0x0f versus 0x10 versus 0x10. Masking rounded to low nibble would wrongly produce 0 for the latter two. Runtime reachability/bound U; H/NOT_EXECUTED |
 
 | Acceptance requirement | Proof delivered / exact residual | Independent disposition |
 |---|---|---|
 | Three receivers/order/errors | D ledger, standard/base world targets distinguished, stack rectangle and no return checks | pending |
 | Reached first-call predicate | D FRUCHTBAR store and wrapper test; P raw Tutorial flag/rectangle derivation | pending |
 | Do not assume cache equivalence | D chunk producer/consumer and extra raster; C/H static V9 mismatch | pending |
-| Third leaf width/bounds/effects | Complete D body; hand V10–V12 distinguish exact high byte, full-word clear and 4x4 extent | pending |
+| Third leaf width/bounds/effects | Complete D body; V10/V11 distinguish exact high byte, whole-word clear and 4x4. V12 is a sanity case, padding/clamping equivalent for this predicate; V12a/b require an explicitly admitted low-level grid, not fabricated raw inputs | pending |
+| Raster merge arithmetic | D a3e7d–a3e90 and H V13 distinguish a carry into bit 4; high preservation conditional on proved converted-byte bound <=247 | pending |
 | Honest draw closure | Third leaf 0; first named standard fill getters 0; no total postload/global claim while bindings/query edges remain U | pending |
 | No unrelated work | Docs only; source/fixtures/CMake/native/defaults untouched; prior C++ evidence retained without rerun | pending |
 
@@ -215,9 +237,9 @@ not rerun or presented as new passes.
 | c2 predicate, valid completed FRUCHTBAR | PrefixHeader fertility completion and raw low nibble available | Model precomputed-ground presence separately from data nonzero. Do not run absent branch with fabricated metadata | Capability input contract |
 | c2-zero preprocessing | None established for complete 84370–84818 | City/type properties 0x1c/0x2e, GFXID lookup, climate kernel and full-rectangle scratch preconditions; reads/writes fertility used by grass/farms | Separate bounded read, NOT silently folded into current Tutorial |
 | Full grass/fish fill, named standard 2/11 profile | fisher::fill_fish_resources and fisher_ref runtime_fish cover ONLY fish; fisher_corner/VertexGrid cover border geometry | Bind catalogue/type facts; grass threshold/code/mask writes missing. Existing code/draw defaults are not whole callback proof | Transient first-call apply, stop before navigation |
-| Original +0x94 extrema | WorldTileSource::block_range is a candidate reconstruction | V9 sum-width mismatch must be reproduced/reviewed; exact Game height metadata and anchor semantics before CoastIndex reads | Focused navigation-input verification/correction contract |
+| Original +0x94 extrema | WorldTileSource::block_range is a candidate reconstruction | V9 sum-width mismatch AND separate min(mx,255) clamp require audit with exact extrema bytes; Game height metadata and anchor semantics before CoastIndex reads | Focused navigation-input verification/correction contract |
 | Coarse sea index | CoastIndex rebuild_rect, WorldTileSource, existing builder vectors | Whole world dimensions/island lookup, consistent lifetime and exact extrema/overlay inputs. Rebuild before route_plan's first read and after reload | Navigation adapter composition after input closure |
-| Additional +0x120 raster +generation | No equivalent proven here | Runtime height table numeric profile and raster consumers unread; preserve/rebuild before any reader, no automatic UI/cache exemption | Bounded secondary-raster contract |
+| Additional +0x120 raster +generation | No equivalent proven here | Exact byte mask ->round ->OR can set bit 4 for converted bytes >=248; numeric profile/bound and consumers unread. Preserve/rebuild before readers, no cache exemption | Bounded secondary-raster contract |
 | Whole-island GFXID cleanup | Raw Terrain gfx plus proven zero-border HEIGHT geometry available | Pure leaf implementation, owned result/digest update once; publish only after ordered preceding effects | State-free graphics finalizer |
 | Original global draws/live state | Existing frozen local prefix only | Original catalogue/world initialization and live figure/manager scheduling not established. 4745 is PRE-callback supplied consumption only | Future global-input and owned import contract |
 
@@ -242,9 +264,13 @@ toward it, with hard stopping points rather than a promise of World readiness:
    `tools/wildlife_postload_ref.py`, its `_contract_test.py`,
    `fixtures/synthetic/sim/wildlife_postload_vectors.txt`, root `CMakeLists.txt`
    for the two reference registrations, and this contract. Reuse the existing
-   reference CLI/contract pattern, not a new framework. V10–V12
-   must fail before and pass after, plus immutable input/digest identity and
-   explicit geometry errors. Negative controls: 0x6001, the +2,+2 vertex, nonzero
+   reference CLI/contract pattern, not a new framework. V10/V11 and V12's
+   zero/nonzero sanity case must run, plus immutable input/digest identity and
+   explicit geometry errors. Do not claim raw-Terrain tests distinguish zero
+   padding from nearest-edge clamping: those are observationally equivalent
+   here. V12a/b are conditional low-level grid controls only; if that input is
+   not admitted, mark them NOT_EXPRESSIBLE and narrow the claim, without expanding
+   supported inputs solely to make a test pass. Negative controls: 0x6001, the +2,+2 vertex, nonzero
    height. Stop after isolated leaf/evidence; do not execute it ahead of navigation
    in a published pipeline, change a native field or move pins.
 2. **WILDLIFE-POSTLOAD-INPUTS-1 (about 2 h, one catalogue contract):** close
@@ -281,7 +307,7 @@ by the unread static edges; D-1 map selection/D-2 living defaults remain untouch
 
 Docs/link/diff checks only. No new helper/reference/CMake/test/fixture changes,
 no new C++ run, no original-prefix replay merely to restate its frozen 29 Debug /
-29 ASan /1 original passes. Hand vectors V1–V12 are NOT_EXECUTED. Raw context
+29 ASan /1 original passes. Hand vectors V1–V13 (including conditional V12a/b) are NOT_EXECUTED. Raw context
 inspection establishes one island, FRUCHTBAR 49 and [24,24,152,152), not output
 counts for a callback that has not executed. No new postload corpus or runtime
 measurement, complete transitive draw total, original/HE execution or late-game

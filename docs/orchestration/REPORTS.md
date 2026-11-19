@@ -16494,3 +16494,36 @@ NOT_RUN: new C++/reference gates, hand vectors, original postload/runtime/HE, gl
 full draw closure, World/native/lifecycle, postload corpus/performance or default changes.
 QUESTIONs: none new; unresolved static edges are research dependencies. Exact-head CI pending.
 Status: READY FOR REVIEW, bounded research rather than postload-complete claim; final commit docs only.
+
+
+### WILDLIFE-POSTLOAD-1 — fix round 1 — READY FOR REVIEW
+
+Docs-only correction on the same branch, based on `e05d9504`.
+[Corrected contract](../sim/wildlife-postload.md) and [correction receipt](evidence/wildlife-postload-1-fix-1.md).
+Frozen `09614995` source, original evidence/logs and prior head remain preserved.
+V12 is a sanity case, not a zero-padding versus nearest-edge-clamping discriminator.
+Those interpretations are observationally equivalent for this nonnegative max predicate.
+Conditional V12a: nonzero logical W/H border distinguishes inclusive/exclusive bounds
+only if admitted by a validated low-level grid. Raw Terrain forces that border zero.
+Conditional V12b: exposed H+1 padding sentinel proves exclusion only if represented;
+raw Terrain exposes no such row. Otherwise NOT_EXPRESSIBLE; narrow the dynamic claim.
+Re-read a3e7d–a3e90: u=converted&0xff; rounded=(u+8)>>4; new=(old&0xf0)|rounded.
+No rounded&0x0f: old 0, converted 248 ->0x10, so high-bit-4 preservation is not unconditional.
+V13 records 247/248/255 ->0x0f/0x10/0x10. Numeric bound/profile U; no producer campaign.
+V9 still unexecuted; future repair must also audit min(mx,255), not only the sum mask.
+Removing only the sum mask gives half127 rather than original135; class-only controls miss it.
+All 13 numbered hand-vector families /15 table rows remain NOT_EXECUTED, including conditional inputs.
+Checks: docs/links/anchors/diff and unchanged runtime/evidence identities only, no C++ or reference run.
+Exact contract diff and hashes: `cache/wildlife-postload-1/fix-1/contract.diff`, correction evidence above.
+No src/tools/CMake/fixture/native/default/state/tag or compatibility change; no test campaign repeated.
+Decisions and reasoning: correct the predicate and literal arithmetic; preserve frozen receipts;
+require representable inputs and exact extrema bytes; do not invent tests or a runtime bound.
+NOT_RUN: proposed vectors, C++/reference gates, original runtime/HE and World/postload execution.
+QUESTIONs: none. READY FOR REVIEW; focused independent re-review/CI pending.
+
+Correction check log: `cache/wildlife-postload-1/fix-1/docs-check.log`; SHA-256 `fe0169f201bfc3a828ee7b172fc3cedc86c621c973554bb114b009fa31042d0d`.
+```text
+DOC_CHECK files=2 links=10 hand_vector_rows=15 hashes=7 missing=0 status=PASS
+FROZEN_EVIDENCE unchanged; source/tools/CMake/fixtures unchanged
+EXECUTION: C++/reference suites NOT_RUN; proposed vectors NOT_EXECUTED
+```

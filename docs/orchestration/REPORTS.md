@@ -16641,3 +16641,62 @@ full pins/warnings and performance. QUESTIONs: none; remaining static edges are 
 Exact-head CI pending, read after push. Independent orchestrator review pending; STOP here.
 
 Docs check: `cache/wildlife-postload-inputs-1/docs-check.log`; SHA-256 `5f0b9f83295e27cd63d0d6ac068a8848fe776eb374eed0ec21de319976066926` (71 receipts checked).
+
+
+## 2026-11-19 — WILDLIFE-POSTLOAD-FILL-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-POSTLOAD-FILL-1` from reviewed INPUTS263958ed; no extra intake/main merge/rebase.
+- Tested source `db2240a656f50e65d8557667d528a4c9d56a07e2`, tree `795a25a7b8562a7767e2fb10b0c0c9666bf0798d`.
+- Final head/tree/CI accompany direct handoff; final publication changes docs only.
+- [Acceptance §11](../sim/wildlife-postload.md#11-isolated-first-call-apply--wildlife-postload-fill-1), [evidence](evidence/wildlife-postload-fill-1.md).
+- Independent reference/19 hand full-field rows before C++ at26e92579;12 old GFX rows byte-identical.
+- 31 vectors agree;42 public CLI controls verify actual output/child statuses, zero/missing/malformed/wrong cases.
+- First control replacement matched HEIGHT twice and refused mutation; failure retained, input anchor corrected.
+- Private move-only capability pairs complete local/FRUCHTBAR trace with exact scene SHA/geometry/header offsets.
+- Checks last raw payload/effective low nibble, Terrain digest/source samples and registry/unique normalized HEAD.
+- Original role2/11 mean profile; alternate9001/9002 code3 and short HEAD/default4 validated through same seam.
+- No walk_class/constant2 fallback, missing/inconsistent facts refuse before cloning or writes.
+- Strict source HEIGHT/GFX complete/nonoverlap proof domain; unsupported partial/overlap explicitly refuses.
+- One owned island/tile copy after validation, retained immutable Terrain, then moved output; no per-cell copies.
+- Whole-word occupancy, means15/16/31/32, unsigned fertility5/6/13, distinct grass/fish aux/code/mask writes.
+- Source fields/ground/Terrain/digest/spawns/cursor retained; output survives caller mutation/destruction.
+- Full-plane literal expectations, deterministic repeat/idempotence and independent expected chunk digests pass.
+- Actual-code legal4 cases/41185 assertions; occupancy/signed/fish-writer mutants fail4/4/20 intended checks.
+- Canonical source unchanged and rebuilt; mutant compile/link/log identities frozen. One test rect() compile error retained/fixed before freeze.
+
+```text
+# cache/wildlife-postload-fill-1/debug-final.log (required contract, main)
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=13 executed=13 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-postload-fill-1/original-final.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-postload-fill-1/asan-final.log (required contract, main)
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=13 executed=13 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- Per synthetic profile4 fill +3 GFX +5 VertexGrid +1 agreement, plus separately required contract; no double count.
+- No canonical failure/empty/skip/incomplete/refusal/timeout/sanitizer line; no whole-gate repeat.
+- Original Tutorial LEAF ONLY: normal reviewed prefix, supplied500/0/7, pre-leaf4745 draws, new0.
+- Independent raw union5001 occupied ->8486 fish/1559 grass/6339 unchanged, action-map SHA in evidence.
+- C++ checks all output fields against raw plan/prior-prefix preservation;83270 assertions,12.55s.
+- 73 headers/156 spawns retained; original-runtime, ordered postload and global parity NOT claimed.
+- Caller search: new prepare/apply definitions/header/tests ONLY; no prefix/loader/World or later-helper wiring.
+- Format23.1.3/lint/diff and affected3 TU O3/Werror AppleClang21/GCC15.3 pass; shadow control rejected.
+- Compiler warnings0; inherited Apple duplicate-library linker warning retained; no full-warning claim.
+- 276 old fixture files and12 old GFX rows unchanged,19 appended vectors; no pin/recording movement/full pins claim.
+- Core/public sim, prefix and GFX helper unchanged. Host M5Max/18 logical/48GiB/macOS27.0.1; jobs1/threads2/admission retained.
+
+Decisions and reasoning:
+- Validate source-backed completion/metadata before effects, keep owned result and actual getter semantics.
+- Prove full split-word fields with independent hand values and surgical semantic mutants after legal setup.
+- Derive the original action plan before C++ output; reuse reviewed prefix admission rather than repeat a broad campaign.
+- Keep first-call apply UNWIRED; do not compose navigation/raster/GFX or change identity/defaults.
+NOT_RUN: original runtime/HE, c2-zero/nav/raster/V9/GFX composition/global/World/native/lifecycle,
+unrelated full/long/corpus/performance, full pins/warnings, Windows/WSL, LeakSanitizer.
+QUESTIONs: none blocking bounded review. Exact-head CI pending/read after push; independent review pending; STOP.

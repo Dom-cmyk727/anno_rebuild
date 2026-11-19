@@ -9,7 +9,8 @@ U = unread or unresolved binding. No engine/reference implementation is added.
 padding discriminator and the secondary raster's rounding arithmetic. The
 original `09614995` contract and `e05d9504` handoff remain frozen historical
 evidence; use this corrected contract and the [correction receipt](../orchestration/evidence/wildlife-postload-1-fix-1.md)
-for the superseding interpretation. All proposed vectors remain NOT_EXECUTED.
+for the superseding interpretation. At that research checkpoint the proposed
+vectors were NOT_EXECUTED; later isolated helper proof is scoped in §§9/11.
 
 The [local prefix](wildlife-prefix.md) now completes all 73 local headers through
 [EVENTINSEL](wildlife-eventinsel.md). That does not execute the three calls below.
@@ -463,13 +464,44 @@ and code 2 yields raw aa000220, or split aux aa000020/code 2/mask 0. Fish mean
 15 yields raw abcdef0f, or split aux aa00000f with code/mask unchanged. No raw
 walk-code bits are duplicated into the modern aux column.
 
-| Requirement / primary | Positive and nearest wrong interpretation | Planned proof / review disposition |
+| Requirement / primary | Positive and nearest wrong interpretation | Executed proof / review disposition |
 |---|---|---|
-| Presence/provenance, a1815/89565 | Complete zero-valued FRUCHTBAR accepted; absent/incomplete/mismatched scene, header, Terrain or ground refused before writes | Private immutable capability validates against original scene and typed prefix; pending |
-| Bound roles/getters, Game 21a88 | Raw HEAD/id/flags agree with registry, mean profile; alternate role 9001 with HEAD code 3 and zero-pair constructor code 4 | Data-defined same seam, not walk_class or constant 2; pending |
-| Whole-word occupancy, 92976 | object 0x4000 and existing roles preserve every field | Full-field vectors and actual-code occupancy mutant; pending |
-| Means/unsigned ground, 929d9–929f6 | 15/16/31/32, asymmetric 81, low nibble 5/6/13, differing high nibbles | Full-field vectors and actual-code signed-fertility mutant; pending |
-| Distinct writes, 92a25–92add | Fish preserves nonzero code/mask; grass clears mask and uses code 3; phase/offset clear, anchor retained | Full-field vectors and wrong fish-writer mutant; pending |
-| Owned result/digests | Input success/refusal unchanged, output survives source destruction, repeat/idempotence, independently hashed expected chunk bytes | One owned tile copy after validation; pending |
-| Geometry/order | Half-open clipping, empty rectangle/intersection, 1x1 zero border; raw Terrain/ground/spawns/draw cursor retained | Vectors and direct ownership tests; pending |
-| Isolation | No production caller and no navigation/raster/GFX call | Static caller search; pending |
+| Presence/provenance, a1815/89565 | Complete zero-valued FRUCHTBAR accepted; absent/incomplete/mismatched scene, header, Terrain or ground refused before writes | Private immutable capability matches scene SHA/header provenance, raw Terrain/last payload and low nibbles; refusal controls pass; review pending |
+| Bound roles/getters, Game 21a88 | Raw HEAD/id/flags agree with registry, mean profile; alternate role 9001 with HEAD code 3 and zero-pair constructor code 4 | 19 full-field rows pass; alternate role/code 3 and zero-extended short HEAD/code 4 pass; review pending |
+| Whole-word occupancy, 92976 | object 0x4000 and existing roles preserve every field | Full-field vectors pass; actual masked-occupancy mutant fails 4 intended assertions; review pending |
+| Means/unsigned ground, 929d9–929f6 | 15/16/31/32, asymmetric 81, low nibble 5/6/13, differing high nibbles | Full-field vectors pass; actual signed-fertility mutant fails 4 intended assertions; review pending |
+| Distinct writes, 92a25–92add | Fish preserves nonzero code/mask; grass clears mask and uses code 3; phase/offset clear, anchor retained | Full-field vectors pass; actual fish-writer mutant fails 20 intended assertions; review pending |
+| Owned result/digests | Input success/refusal unchanged, output survives source destruction, repeat/idempotence, independently hashed expected chunk bytes | One owned tile copy, retained const Terrain, caller mutation/destruction, literal expected field hashing and idempotence pass; review pending |
+| Geometry/order | Half-open clipping, empty rectangle/intersection, 1x1 zero border; raw Terrain/ground/spawns/draw cursor retained | Vectors/ownership pass; original leaf agrees on 8486 fish/1559 grass/6339 unchanged; review pending |
+| Isolation | No production caller and no navigation/raster/GFX call | Only definitions/header/tests call the new prepare/apply; no later helper calls; review pending |
+
+
+F5 bounded result: `prepare_wildlife_postload_fill` returns a private move-only
+`PrecomputedWildlifeFill`; `apply_wildlife_postload_fill` consumes it and returns
+an owned `PreparedIsland` plus fish/grass counts, new consumed count 0 and the
+unchanged contextual prefix cursor. No RNG source is accepted. No production
+caller exists. Registry/Entry/source buffers need only survive validation; the
+capability owns the copied island and retains immutable Terrain. Caller mutation
+and destruction after preparation cannot replace the validated snapshot.
+
+Provenance validation uses the exact scene SHA, selected original INSEL5 geometry,
+ordered header tags/source offsets and successful completion markers, last raw
+FRUCHTBAR, effective low nibbles, source HEIGHT/GFX and matching Terrain digest.
+The existing format accessors require complete nonoverlapping HEIGHT/GFX blocks;
+partial/overlapping source layouts are explicitly unsupported here, not filled
+with guessed zero samples. This is narrower than arbitrary prefix setup sequences.
+Validation scans source bytes/entries and selected terrain; after validation one
+island copy owns the output, and apply is linear in the clipped rectangle.
+
+The original Tutorial leaf check uses normal reviewed prefix preparation on a
+separate copy, supplied stamp 500/mode 0/draw value 7, with 4745 pre-leaf draws.
+An independent raw footprint union reuses the frozen all-accepted 4760-record
+prefix proof (overwrites/anchor skips do not clear occupancy), giving 5001
+occupied cells. Independent Python predicts 8486 fish, 1559 grass and 6339
+unchanged, with an action-map SHA checked before applying C++. Full output fields
+are checked against that raw-derived plan plus preserved prior-prefix fields;
+no C++ fill output is recorded as the answer. New draws 0; 156 spawn records,
+ground, Terrain/GFX/digest and prior cursor are retained. This is NOT original
+runtime, c2-zero preprocessing or ordered postload execution. Navigation/raster,
+V9 repair, graphics composition, global initialization and World/native remain
+separate. [Frozen evidence](../orchestration/evidence/wildlife-postload-fill-1.md).

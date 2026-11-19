@@ -25,6 +25,10 @@ struct PrefixBoundary {
     PrefixSource source;
     std::string tag, reason;
 };
+struct PrefixAnbauEffect {
+    std::uint32_t seed = 0, mask = 0;
+    std::uint64_t ignored_bytes = 0;
+};
 struct PrefixHeader {
     PrefixSource source;
     std::string tag;
@@ -33,6 +37,7 @@ struct PrefixHeader {
     std::optional<std::uint64_t> fertility_updates;  // Engaged after FRUCHTBAR, even if unchanged.
     std::optional<std::uint64_t> bergwerk_nodes_added; // Engaged after the whole header.
     std::optional<std::uint64_t> occurrences_added;
+    std::optional<PrefixAnbauEffect> anbau;
 };
 struct PrefixResource {
     PrefixSource source;
@@ -82,6 +87,11 @@ struct PrefixOccurrenceLoad {
     std::uint64_t occurrence = 0, mask_updates = 0;
     bool created = false;
 };
+struct PrefixAnbauToken {
+    PrefixSource source;
+    std::string name; // Owned byte string, not normalized Unicode.
+    std::optional<std::uint32_t> goods;
+};
 struct PreparedIsland {
     std::uint32_t slot = 0, climate = 0;
     std::shared_ptr<const sim::Terrain> terrain;
@@ -95,6 +105,8 @@ struct PreparedIsland {
     std::vector<PrefixResourceListChunk> resource_list_chunks;
     std::vector<PrefixOccurrence> occurrences;
     std::vector<PrefixOccurrenceLoad> occurrence_loads;
+    std::optional<std::uint32_t> anbau_mask;
+    std::vector<PrefixAnbauToken> anbau_tokens;
     bool complete_local_records = false;
 };
 struct PreparedPrefix {

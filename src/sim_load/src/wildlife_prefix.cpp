@@ -275,6 +275,7 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
     out.source_sha256 = formats::sha256_hex(scene);
     std::set<std::uint32_t> seen_slots;
     std::map<std::uint32_t, ri::ClimateFacts> climates;
+    std::optional<formats::annogame::AnbauNames> anbau_names;
     for (std::uint64_t ordinal = 0; ordinal < raw_islands.value().size(); ++ordinal) {
         const auto& raw = raw_islands.value()[ordinal];
         PreparedIsland prepared;
@@ -304,7 +305,8 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
              ++setup_end) {
             const auto& header = raw.records[setup_end];
             const auto name = header.name();
-            prepared.headers.push_back({source(setup_end), std::string(name), 0, {}, {}, {}, {}});
+            prepared.headers.push_back(
+                {source(setup_end), std::string(name), 0, {}, {}, {}, {}, {}});
             if (name == "INFO") {
                 if (header.payload.size() != 12) {
                     setup_error = PrefixBoundary{source(setup_end), "INFO", "strict INFO length"};
@@ -384,7 +386,7 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
         for (std::uint64_t h = setup_end; h < raw.records.size(); ++h) {
             const auto& header = raw.records[h];
             const auto name = header.name();
-            prepared.headers.push_back({source(h), std::string(name), 0, {}, {}, {}, {}});
+            prepared.headers.push_back({source(h), std::string(name), 0, {}, {}, {}, {}, {}});
             if (name == "GELAENDE") {
                 const auto block = formats::insel::Block::parse(header.payload);
                 if (!block || block.value().data.size() % 6 != 0) {
@@ -426,6 +428,52 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
                     return PrefixFailure{out.boundary->reason, std::move(out)};
                 }
                 prepared.headers.back().water_mask_updates = closed.value();
+            } else if (name == "ANBAU") {
+                const std::uint32_t seed = prepared.climate == 0 ? 0 : 0xf009;
+                if (header.payload.empty()) {
+                    // Original seed-only path returns without consulting any name.
+                    prepared.anbau_mask = seed;
+                    prepared.headers.back().anbau = PrefixAnbauEffect{seed, seed, 0};
+                    continue;
+                }
+                if (!anbau_names) {
+                    const auto names = formats::annogame::read_anbau_names(annogame);
+                    if (!names) {
+                        stop({source(h), "ANBAU", names.error()});
+                        return PrefixFailure{out.boundary->reason, std::move(out)};
+                    }
+                    anbau_names = names.value();
+                }
+                const auto& names = *anbau_names;
+                std::vector<std::string> tokens;
+                std::size_t at = 0;
+                // The supported original reader's 13-token bound equals this name
+                // window, 0x100898dc..0x1008995f. Tail bytes are not another token.
+                while (at < header.payload.size() && tokens.size() < names.names.size()) {
+                    const auto rest = header.payload.subspan(at);
+                    const auto end = std::find(rest.begin(), rest.end(), std::uint8_t{0});
+                    if (end == rest.end()) {
+                        stop({source(h, tokens.size()), "ANBAU", "unterminated processed token"});
+                        return PrefixFailure{out.boundary->reason, std::move(out)};
+                    }
+                    tokens.emplace_back(rest.begin(), end);
+                    at += tokens.back().size() + 1;
+                }
+                auto mask = seed;
+                for (std::uint64_t i = 0; i < tokens.size(); ++i) {
+                    const auto match = std::find(names.names.begin(), names.names.end(), tokens[i]);
+                    std::optional<std::uint32_t> goods;
+                    if (match != names.names.end()) {
+                        const auto offset = static_cast<std::uint32_t>(match - names.names.begin());
+                        goods = names.first_goods + offset;
+                        mask |= std::uint32_t{1} << offset;
+                    }
+                    prepared.anbau_tokens.push_back({source(h, i), std::move(tokens[i]), goods});
+                    ++prepared.headers.back().records;
+                }
+                prepared.anbau_mask = mask;
+                prepared.headers.back().anbau =
+                    PrefixAnbauEffect{seed, mask, header.payload.size() - at};
             } else if (name == "OCCUR") {
                 const auto records = formats::tagged::parse_records(header.payload);
                 if (!records) {

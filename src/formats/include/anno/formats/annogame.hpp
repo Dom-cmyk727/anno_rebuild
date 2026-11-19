@@ -14,4 +14,11 @@ struct ResourceTables {
 // Only the addressed GOG image/layout is supported. Its seven physical rows are
 // an image-layout fact, never an engine climate limit. Original arrays stay runtime data.
 Result<ResourceTables, std::string> read_resource_tables(Bytes dll, std::uint32_t climate);
+struct AnbauNames {
+    std::uint32_t first_goods = 0;
+    std::vector<std::string> names;
+};
+// GOG ANBAU's addressed name window, including the getter's null-pointer fallback.
+// Layout/rule bounds are not an engine crop/population capacity (wildlife-anbau.md).
+Result<AnbauNames, std::string> read_anbau_names(Bytes dll);
 } // namespace anno::formats::annogame

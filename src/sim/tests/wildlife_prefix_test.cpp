@@ -1061,6 +1061,252 @@ TEST_CASE(
     CHECK(result.value().consumed == 0); // u16(0-7), not a fabricated signed-clipped refresh.
 }
 
+namespace {
+std::vector<std::string> anbau_names() {
+    std::vector<std::string> names;
+    for (unsigned i = 0; i < 13; ++i)
+        names.push_back("NAME" + std::to_string(i));
+    names[0] = "AX";
+    names[1] = "BY";
+    names[12] = "CZ";
+    return names;
+}
+Buffer anbau_pe(const std::vector<std::string>& names = anbau_names()) {
+    REQUIRE(names.size() == 13);
+    auto b = fake_pe();
+    b.resize(0x2800, 0);
+    put16(b, 0x46, 2);
+    const auto sec = 0x58U + 0xe0U + 40;
+    put32(b, sec + 12, 0x25000);
+    put32(b, sec + 16, 0x2000);
+    put32(b, sec + 20, 0x800);
+    std::uint32_t pos = 0x25400;
+    for (std::uint32_t i = 0; i < names.size(); ++i) {
+        put32(b, 0x800 + 0x251f8 + (56 + i) * 4 - 0x25000, 0x10000000 + pos);
+        for (const auto c : names[i])
+            b.at(0x800 + pos++ - 0x25000) = static_cast<std::uint8_t>(c);
+        b.at(0x800 + pos++ - 0x25000) = 0;
+    }
+    const std::string fallback = "FALL";
+    for (std::uint32_t i = 0; i < fallback.size(); ++i)
+        b.at(0x800 + 0x261e8 + i - 0x25000) = static_cast<std::uint8_t>(fallback[i]);
+    return b;
+}
+Buffer anbau_payload(const std::vector<std::string>& names) {
+    Buffer b;
+    for (const auto& name : names) {
+        b.insert(b.end(), name.begin(), name.end());
+        b.push_back(0);
+    }
+    return b;
+}
+} // namespace
+
+TEST_CASE("wildlife prefix: anbau replaces prior bitmap and owns token chronology without changing "
+          "earlier effects") {
+    const auto types = ore_registry();
+    Metadata meta;
+    const auto pe = anbau_pe();
+    auto b = ore_base();
+    append(b, packed("OCCUR", ore_entry()));
+    append(b, packed("ANBAU", anbau_payload({"AX", "CZ"})));
+    append(b, packed("FRUCHTBAR", Buffer(256, 2)));
+    append(b, packed("ANBAU", anbau_payload({"BY"})));
+    append(b, packed("HIRSCH", fmt::insel::encode_hirsch(
+                                   std::vector<fmt::insel::HirschRecord>{{0, 0, 0x80, 7, 10}})));
+    append(b, packed("ANBAU", {}));
+    auto file = scene({packed("INSEL5", b)});
+    const auto original = file;
+    const auto result = load::prepare_wildlife_prefix(file, meta.entries, pe, *types, inputs(),
+                                                      std::vector<std::uint32_t>{4, 7});
+    REQUIRE(result);
+    CHECK(file == original);
+    file.clear();
+    file.shrink_to_fit();
+    b.clear();
+    const auto& out = result.value();
+    const auto& is = out.islands[0];
+    REQUIRE(is.headers[5].anbau);
+    REQUIRE(is.headers[7].anbau);
+    REQUIRE(is.headers[9].anbau);
+    CHECK(is.headers[5].anbau->seed == 0);
+    CHECK(is.headers[5].anbau->mask == 0x1001);
+    CHECK(is.headers[7].anbau->mask == 2);
+    CHECK(is.headers[9].anbau->mask == 0);
+    CHECK(is.anbau_mask == 0);
+    CHECK(is.headers[5].records == 2);
+    CHECK(is.headers[7].records == 1);
+    CHECK(is.headers[9].records == 0);
+    REQUIRE(is.anbau_tokens.size() == 3);
+    CHECK(is.anbau_tokens[0].name == "AX");
+    CHECK(is.anbau_tokens[1].name == "CZ");
+    CHECK(is.anbau_tokens[2].name == "BY");
+    CHECK(is.anbau_tokens[0].goods == 56);
+    CHECK(is.anbau_tokens[1].goods == 68);
+    CHECK(is.anbau_tokens[2].goods == 57);
+    CHECK(is.anbau_tokens[0].source.header == 5);
+    CHECK(is.anbau_tokens[1].source.record == 1);
+    CHECK(is.anbau_tokens[2].source.header == 7);
+    Buffer rebuilt;
+    for (const auto& token : is.anbau_tokens) {
+        rebuilt.insert(rebuilt.end(), token.name.begin(), token.name.end());
+        rebuilt.push_back(0);
+    }
+    CHECK(rebuilt == anbau_payload({"AX", "CZ", "BY"})); // Processed strings round-trip exactly.
+    CHECK(out.consumed == 2);
+    REQUIRE(is.spawns.size() == 1);
+    CHECK(is.spawns[0].draw_before == 1);
+    CHECK(is.spawns[0].timestamp == 8);
+    CHECK(is.resource.variation[0] == 66);
+    CHECK(is.resource.tiles.object(0) == 104);
+    CHECK(is.resource.tiles.item_height(0) == 48);
+    REQUIRE(is.occurrences.size() == 1);
+    CHECK(is.occurrences[0].quantity_88 == 512000);
+    for (std::uint64_t i = 0; i < 4; ++i)
+        CHECK(is.resource_list_nodes[i].mask == 17);
+    CHECK(is.resource_list_chunks[0].head == 4);
+    CHECK(is.terrain->fertility == Buffer(256, 2));
+    CHECK(sim::terrain_matches(*is.terrain));
+}
+
+TEST_CASE(
+    "wildlife prefix: anbau image names exact bytes first match null fallback and climate seeds") {
+    const auto types = registry();
+    Metadata meta;
+    auto names = anbau_names();
+    names[2] = "AX";
+    names[3] = std::string("\xC4Q", 2);
+    names[4] = "";
+    auto pe = anbau_pe(names);
+    put32(pe, 0x800 + 0x251f8 + 61 * 4 - 0x25000, 0); // Getter fallback, not a missing row.
+    const auto profile = fmt::annogame::read_anbau_names(pe);
+    REQUIRE(profile);
+    CHECK(profile.value().first_goods == 56);
+    REQUIRE(profile.value().names.size() == 13);
+    CHECK(profile.value().names[5] == "FALL");
+    for (const std::uint8_t climate : {std::uint8_t{0}, std::uint8_t{1}, std::uint8_t{2}}) {
+        auto b = bergwerk_base();
+        append(b, packed("ANBAU", anbau_payload({"AX", "ax", std::string("\xC4Q", 2),
+                                                 std::string("\xC3\x84Q", 3), "", "FALL"})));
+        auto file = change_header(scene({packed("INSEL5", b)}), "INFO", 0, Buffer(12, climate));
+        const auto result =
+            load::prepare_wildlife_prefix(file, meta.entries, pe, *types, inputs(), {});
+        REQUIRE(result);
+        const auto& is = result.value().islands[0];
+        const std::uint32_t seed = climate == 0 ? 0 : 0xf009;
+        CHECK(is.anbau_mask == (seed | 0x39));
+        CHECK(is.headers.back().anbau->seed == seed);
+        CHECK_FALSE(is.anbau_tokens[1].goods);
+        CHECK_FALSE(is.anbau_tokens[3].goods);
+        CHECK(is.anbau_tokens[0].goods == 56); // Not duplicate row 58.
+        CHECK(is.anbau_tokens[2].goods == 59);
+        CHECK(is.anbau_tokens[4].goods == 60);
+        CHECK(is.anbau_tokens[5].goods == 61);
+        CHECK(result.value().consumed == 0);
+        file = change_header(file, "ANBAU", 2, {});
+        const auto empty =
+            load::prepare_wildlife_prefix(file, meta.entries, pe, *types, inputs(), {});
+        REQUIRE(empty);
+        CHECK(empty.value().islands[0].anbau_mask == seed);
+        REQUIRE(empty.value().islands[0].headers.back().anbau);
+        CHECK(empty.value().islands[0].anbau_tokens.empty());
+        const auto no_name_data =
+            load::prepare_wildlife_prefix(file, meta.entries, fake_pe(), *types, inputs(), {});
+        REQUIRE(no_name_data); // Empty ANBAU never calls the Game name lookup.
+        CHECK(no_name_data.value().islands[0].anbau_mask == seed);
+    }
+    const auto absent = load::prepare_wildlife_prefix(scene({packed("INSEL5", bergwerk_base())}),
+                                                      meta.entries, pe, *types, inputs(), {});
+    REQUIRE(absent);
+    CHECK_FALSE(absent.value().islands[0].anbau_mask);
+}
+
+TEST_CASE("wildlife prefix: anbau original token limit ignores trailing bytes after the thirteenth "
+          "string") {
+    const auto types = registry();
+    Metadata meta;
+    const auto pe = anbau_pe();
+    for (const bool match_last : {false, true}) {
+        std::vector<std::string> names(13, "?");
+        if (match_last)
+            names.back() = "CZ";
+        auto payload = anbau_payload(names);
+        append(payload, anbau_payload({"AX"}));
+        payload.push_back(255);
+        auto b = bergwerk_base();
+        append(b, packed("ANBAU", payload));
+        const auto result = load::prepare_wildlife_prefix(scene({packed("INSEL5", b)}),
+                                                          meta.entries, pe, *types, inputs(), {});
+        REQUIRE(result);
+        const auto& is = result.value().islands[0];
+        CHECK(is.anbau_mask == (match_last ? 0x1000 : 0));
+        CHECK(is.headers.back().records == 13);
+        REQUIRE(is.headers.back().anbau);
+        CHECK(is.headers.back().anbau->ignored_bytes == 4);
+        CHECK(is.anbau_tokens.size() == 13);
+        CHECK(result.value().consumed == 0);
+    }
+}
+
+TEST_CASE("wildlife prefix: anbau adapter contract refuses unterminated processed tokens and "
+          "unsafe image metadata") {
+    const auto types = registry();
+    Metadata meta;
+    const auto pe = anbau_pe();
+    auto twelve = anbau_payload(std::vector<std::string>(12, "?"));
+    twelve.push_back('A');
+    for (const auto& bad : {Buffer{'B', 'Y'}, twelve}) {
+        auto b = ore_base();
+        append(b, packed("ANBAU", anbau_payload({"AX"})));
+        append(b, packed("ANBAU", bad));
+        const auto result =
+            load::prepare_wildlife_prefix(scene({packed("INSEL5", b)}), meta.entries, pe, *types,
+                                          inputs(), std::vector<std::uint32_t>{4});
+        REQUIRE_FALSE(result);
+        REQUIRE(result.error().diagnostic);
+        const auto& out = *result.error().diagnostic;
+        REQUIRE(out.boundary);
+        CHECK(out.boundary->tag == "ANBAU");
+        CHECK(out.boundary->source.header == 5);
+        CHECK_FALSE(out.islands[0].headers.back().anbau);
+        CHECK(out.islands[0].headers.back().records == 0);
+        CHECK(out.islands[0].anbau_mask == 1);
+        CHECK(out.islands[0].anbau_tokens.size() == 1);
+        CHECK(out.islands[0].resource.variation[0] == 64);
+        CHECK(out.consumed == 1);
+    }
+    auto bad_pointer = pe;
+    put32(bad_pointer, 0x800 + 0x251f8 + 56 * 4 - 0x25000, 0xffffffffU);
+    auto no_string = pe;
+    put32(no_string, 0x800 + 0x251f8 + 56 * 4 - 0x25000, 0x10026ff0);
+    std::fill(no_string.begin() + 0x27f0, no_string.end(), std::uint8_t{'A'});
+    auto short_table = pe;
+    put32(short_table, 0x58 + 0xe0 + 40 + 16, 0x2d8);
+    for (const auto& bad : {bad_pointer, no_string, short_table}) {
+        CHECK_FALSE(fmt::annogame::read_anbau_names(bad));
+        auto b = ore_base();
+        append(b, packed("ANBAU", anbau_payload({"AX"})));
+        const auto result =
+            load::prepare_wildlife_prefix(scene({packed("INSEL5", b)}), meta.entries, bad, *types,
+                                          inputs(), std::vector<std::uint32_t>{4});
+        REQUIRE_FALSE(result);
+        REQUIRE(result.error().diagnostic);
+        const auto& out = *result.error().diagnostic;
+        REQUIRE(out.boundary);
+        CHECK(out.boundary->tag == "ANBAU");
+        CHECK_FALSE(out.islands[0].anbau_mask);
+        CHECK_FALSE(out.islands[0].headers.back().anbau);
+        CHECK(out.islands[0].anbau_tokens.empty());
+        CHECK(out.consumed == 1);
+    }
+    auto wrong_identity = pe;
+    put32(wrong_identity, 0x48, 0);
+    CHECK_FALSE(fmt::annogame::read_anbau_names(wrong_identity));
+    auto wrong_machine = pe;
+    put16(wrong_machine, 0x44, 0x8664);
+    CHECK_FALSE(fmt::annogame::read_anbau_names(wrong_machine));
+}
+
 TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported boundary") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
@@ -1093,9 +1339,9 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     CHECK_FALSE(out.islands[0].complete_local_records);
     CHECK(out.boundary->source.island == 0);
     CHECK(out.boundary->source.slot == 11);
-    CHECK(out.boundary->source.header == 52);
+    CHECK(out.boundary->source.header == 53);
     CHECK(out.boundary->source.record == 0);
-    CHECK(out.boundary->tag == "ANBAU");
+    CHECK(out.boundary->tag == "DISCOVER");
     CHECK(out.boundary->reason.find("unsupported intervening header") != std::string::npos);
     const auto raw_islands = fmt::insel::islands(bytes);
     REQUIRE(raw_islands);
@@ -1195,8 +1441,7 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     CHECK(is.headers[51].occurrences_added == 1);
     CHECK(is.headers[51].records == 1);
     CHECK_FALSE(is.headers[52].occurrences_added);
-    std::cout
-        << "OCCUR_REAL header=51 loaded=1 nodes_added=1 mask_changes=20 draws=0 next=52/ANBAU\n";
+    std::cout << "OCCUR_REAL header=51 loaded=1 nodes_added=1 mask_changes=20 draws=0\n";
     std::uint64_t active = 0;
     for (std::uint64_t i = 0; i < heads.size(); ++i) {
         CHECK(is.resource_list_chunks[i].head == heads[i]);
@@ -1206,10 +1451,35 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     }
     CHECK(active == 8);
     std::cout << "BERGWERK_REAL header=50 entries=9 nodes=20 chunks=8\n";
+    REQUIRE(raw.records[52].name() == "ANBAU");
+    const auto anbau_payload_raw = raw.records[52].payload;
+    CHECK(anbau_payload_raw.size() == 135);
+    REQUIRE(is.headers[52].anbau);
+    CHECK(is.headers[52].anbau->seed == 0xf009);
+    CHECK(is.headers[52].anbau->mask == 0xffff);
+    CHECK(is.anbau_mask == 0xffff);
+    CHECK(is.headers[52].records == 13);
+    CHECK(is.headers[52].anbau->ignored_bytes == 0);
+    CHECK_FALSE(is.headers[53].anbau);
+    REQUIRE(is.anbau_tokens.size() == 13);
+    std::size_t token_at = 0;
+    for (std::uint64_t i = 0; i < is.anbau_tokens.size(); ++i) {
+        const auto remaining = anbau_payload_raw.subspan(token_at);
+        const auto end = std::find(remaining.begin(), remaining.end(), std::uint8_t{0});
+        REQUIRE(end != remaining.end());
+        CHECK(is.anbau_tokens[i].name == std::string(remaining.begin(), end));
+        CHECK(is.anbau_tokens[i].goods == 56 + i);
+        CHECK(is.anbau_tokens[i].source.header == 52);
+        CHECK(is.anbau_tokens[i].source.record == i);
+        token_at += static_cast<std::size_t>(end - remaining.begin()) + 1;
+    }
+    CHECK(token_at == anbau_payload_raw.size());
+    std::cout << "ANBAU_REAL header=52 tokens=13 seed=61449 mask=65535 ignored=0 draws=0 "
+                 "next=53/DISCOVER\n";
     CHECK(out.islands[0].resources.size() == 4760);
     CHECK(out.islands[0].spawns.empty());
     CHECK(out.consumed == 4589);
-    REQUIRE(out.islands[0].headers.size() == 53);
+    REQUIRE(out.islands[0].headers.size() == 54);
     CHECK(out.islands[0].headers[33].records == 0);
     REQUIRE(out.islands[0].headers[33].water_mask_updates);
     REQUIRE(out.islands[0].headers[34].water_mask_updates);

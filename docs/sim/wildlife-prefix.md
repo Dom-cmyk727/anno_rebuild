@@ -193,3 +193,13 @@ shared chain, with kind-1 BERGWERK fields retained. Other classes/goods stop at
 record boundaries. No ordinary loader or mining integration changes. The same
 stream processes OCCUR header 51, then stops before ANBAU header 52; global
 initialization and existing omitted-cache obligations remain outside scope.
+
+## ANBAU continuation (2026-11-19)
+
+The [ANBAU bitmap contract](wildlife-anbau.md) adds only the ordered scalar/name
+load: per-header climate seed/reset, exact byte-name matching against the checked
+original-image goods window, owned processed tokens and ignored-tail count.
+It changes no prior terrain/resource/occurrence state or draw assignments.
+The same stream processes header 52, then stops before DISCOVER header 53.
+This does not implement consumer farming rules, other-lane fertility policy,
+World publication or post-island initialization.

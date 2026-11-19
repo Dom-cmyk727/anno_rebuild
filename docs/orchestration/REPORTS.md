@@ -17409,3 +17409,67 @@ Decisions and reasoning:
 
 NOT_RUN: original/HE/Ghidra runtime, cross-host FP/cave entrance producer, live allocator/handler, complete animal tick/routes/hunting/death, World/native/persistence, navigation/raster/graphics, Windows/WSL/full/heavy/C++/pins/warnings gates.
 QUESTIONs: no owner policy question required for bounded research. Exact runtime allocator-handler edge remains U for failure closure; future persistent integration needs a separately released contract. Independent review pending.
+
+## 2026-11-19 — WILDLIFE-CREATE-EFFECTS-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-CREATE-EFFECTS-1`, base `252ed66cdb5e61818f459039822d2dd8167cbd04`; exact dispatch `c8591ff27ec4c7d4207852e3647b8bf9ffe5ec2c`, no board/main merge/rebase.
+- [Contract/API/hand expectations](../sim/wildlife-create-effects.md) first `3a666bb1`; [full receipts/acceptance/reuse](evidence/wildlife-create-effects-1.md).
+- Initial implementation `c82aec3087aea245b4e62a02c81595b6a120d67f`; name safety `e959bf0b`; final tested source `37c144b1956b3ceae52b8ccda67399f9d0103041` /tree `6aa8c14d03cb982652695d0bc057650d3212322f`; publication docs only.
+- E1 `read_wildlife_names` uses existing checked PE view, addressed GOG identity and canonical class positions, never a compiled species roster or decoded table.
+- New initialized/readable file-window query admits actual writable .data; readonly query retains identical strict backing/overlap/nonwritable checks.
+- `bind_wildlife_creation_descriptors` returns sealed owned kind/id/HP/numeric-yield/source hashes; no caller kind override or production registry/digest repair.
+- Needed entry flag 0/unique records; BEWOHNTYPE whole first-NUL, original first ordinal; kind 49/51 only, kind 50 with route HIRSCH still refuses.
+- Missing LOGIC HP 5 differs from present empty/zero HP 0; short zero-extends, >44 refuses. Absent WARE 0; unsafe/unknown/duplicate needed records refuse conservatively.
+- WARE primary Game `0x100103a4–0x1001045d`, getter `0x10013be0–0x10013ce7` is segmented; numeric yield is not raw WARE text or normalized modern kind 0.
+- E2 `project_wildlife_creation` is integer/bitwise only, owned defined fields/stages, no RNG/manager/World/I/O; supplied manager/geometry outcomes remain conditional.
+- Quantity ordinary 512/special 2048, HP replacement, carried 69 versus yield, time 65538->word 2/full time retained; requested 27/current 0, no first action.
+- Type id 90001 and synthetic kind 51 work without engine edits. Assigned id 0/65535 legal; >65535 refuses only this original projection, not global engine IDs.
+- Binary32 x1.25/z3.75 validates home 1/3; inconsistent 10/20 refuses. Nonfinite/negative/out-of-int32/bounds errors explicit; signed zero/subnormals checked.
+- Cave requires supplied entrance, separate bounded target; exact integer16777216 legal, inexact16777217 refuses unproved FILD/FSTP rounding. No native FP/new rounding policy.
+- Wide home65537 retains engine coordinate and explicit original word1. Null has no animal, unchanged four spawn fields and unchanged contextual helper count, no manager rollback claim.
+- Literal fields/15 ordered projection stages; source/fact owners destroyed before output checks, exact repeat and input immutability tested.
+- E3 actual-source six mutants after legal5/175: amount5 failures, adjustment1, cargo1, null occupancy1, trust home1, flat goods7; intended assertions, no crash/empty selection.
+- Only changed readers/geometry were challenged again: name legal/flat/bound-bypass and cave legal/trust-home/inexact-admission controls reject; earlier controls retained/reused honestly.
+- E4 independent raw pefile/figuren oracle: 368 entries, 29 kind49/0kind51, four HP0, yields0/137/138; every numeric bound row compared directly in required gates.
+- Oracle SHA `69bf63f7acb864820fcddff8eda640ab28c1a9d82ecd0abd6f6c2751d11cf073`; written before C++ real-data comparator, not generated from production results.
+- Original Game SHA `ac721220afd27ebca5fd2ece6a8ff452289b9d7458c4e091c68adea2012db7bc`; Figuren SHA `29fa1f0528fb337d9a61e8b73169281fd05bb27efa6df65638580a4c36c468a8`.
+- Real-descriptor projections use authored supplied id/time/position/home; not observed original creation, World canary, live animals or hunting.
+- First build missing put_u64_le fixed with existing bounded u32 envelope writer; first raw oracle UTF-8 UnicodeDecodeError corrected to Latin-1.
+- Initial oracle stdout empty and separate stderr/child exit not saved; first script/tool diagnostic preserved, never recreated or called a retained raw stderr file.
+- Initial real-inclusive6 cases:5 pass/1 mapping failure, diagnosed writable .data; corrected early6/642 pass. All first logs retained; no source expectation rebaseline.
+- Final safety refinement: mapped name155 legal/156 refuses scratch overlap (query +0x88/input +0x124); then cave exactness guard. Each has separate code/controls and scoped reruns.
+
+```text
+# c82: debug-final.log / asan-final.log — EACH main receipt
+COUNTS: selected=16 executed=16 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# e959: debug-name-bound.log / asan-name-bound.log — EACH main receipt
+COUNTS: selected=4 executed=4 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# 37c144b1: debug-cave.log / asan-cave.log — EACH main receipt
+COUNTS: selected=3 executed=3 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# EACH log additionally has TWO individually required cases, EACH exact receipt:
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- Logs under `cache/wildlife-create-effects-1/`; evidence quotes all six complete receipts and GATE_END status 0/ctest_rc 0. Required: real rows and geometry.
+- Per profile:18 first,6 affected after names,5 affected after cave; final18 UNIQUE covered, not29. Reuse12 unchanged regressions plus e959 source-refusal; no whole gate repeated.
+- No canonical failure/memory refusal/timeout/empty/skip/incomplete/sanitizer line; no commit during gates. Original assets required, full-row oracle frozen.
+- Final sim Debug SHA `e5c2d394cb3321650f83f76bf4f1933080a5251eb4b662b6650f164eec401ac1`; ASan `89ff81cf2d07424af32e360912782296742671507c5f2056b3c4255518f9b8b6`.
+- Formats binaries byte-identical across refinements; all1004 final code/fixture/binary/oracle entries verified, all292 synthetic working files unchanged; no pins moved/re-recorded.
+- Predecessor first-call binaries retained. Internal c82 Debug sim superseded before archival, NOT retained/reconstructed; its source/hash/terminal receipts remain. Other c82/e959/final retention explicit in evidence.
+- Four affected TUs strict O3/Werror Apple21/GCC15.3 clean, only changed pairs repeated; shadow controls reject. Format23.1.3/lint/diff/links pass; compiler warnings0, inherited duplicate-library link warning retained.
+- Manifest209 entries SHA `2e5ccebe530ab07522f1631255b9c954bf8b25245a951f5bc146766ec98363e4`; prior closure109 receipts untouched; originals/cache histories preserved.
+- Host M5 Max/18 logical/48 GiB/macOS27.0.1; build jobs2, gates jobs1/threads2, admission on; other jobs/coordinator/awake untouched. GPU unused, LeakSanitizer NOT_RUN.
+- E5 ordinary task push/direct exact-head CI handoff follows; independent review and hosted terminal closeout orchestrator-owned, no executor review agents.
+
+Decisions and reasoning:
+- Bind source kind/default/yield semantics privately, not route labels or the incompatible modern registry subset; do not repair persistent content here.
+- Keep original-width projections distinct from engine ids/coordinates and supplied outcomes distinct from actual manager/callback execution.
+- Refuse unsafe lookup overlap/inexact cave conversion instead of choosing a new rounding policy or silently accepting inconsistent geometry.
+- Preserve all first results; after refinements rerun only reached cases, reuse unchanged bodies and never count overlapping executions as unique coverage.
+
+NOT_RUN: original/HE runtime, live manager/allocator/cave provider/upstream FP, animals/tick/movement/hunting/death, World/registration/spatial/save/Rules/tag/state/PRNG/navigation/raster/graphics, Windows/WSL/full/heavy/opening/pins/full warnings, LeakSanitizer. No public Python CLI added.
+QUESTIONs: none blocking this isolated handoff; persistent integration and allocator/FP providers still need separately released coordination. READY FOR REVIEW, not self-approved or exact-head accepted.

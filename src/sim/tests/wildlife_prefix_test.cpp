@@ -1417,6 +1417,126 @@ TEST_CASE(
     }
 }
 
+TEST_CASE("wildlife prefix: kontor counter replaces unsigned words and preserves earlier effects") {
+    const auto types = ore_registry();
+    Metadata meta;
+    const auto pe = anbau_pe();
+    auto b = ore_base();
+    append(b, packed("OCCUR", ore_entry()));
+    Buffer discover(4);
+    put32(discover, 0, 0xabcd8001);
+    append(b, packed("DISCOVER", discover));
+    append(b, packed("ANBAU", anbau_payload({"AX"})));
+    append(b, packed("KONTORID", Buffer{2, 129})); // LE 0x8102 = 33026, not byte 2 or 641.
+    append(b, packed("FRUCHTBAR", Buffer(256, 2)));
+    append(b, packed("KONTORID", Buffer{7, 0}));
+    append(b, packed("HIRSCH", fmt::insel::encode_hirsch(
+                                   std::vector<fmt::insel::HirschRecord>{{0, 0, 0x80, 7, 10}})));
+    auto file = scene({packed("INSEL5", b)});
+    const auto original = file;
+    const auto result = load::prepare_wildlife_prefix(file, meta.entries, pe, *types, inputs(),
+                                                      std::vector<std::uint32_t>{4, 7});
+    REQUIRE(result);
+    CHECK(file == original);
+    file.clear();
+    file.shrink_to_fit();
+    b.clear();
+    const auto& out = result.value();
+    REQUIRE(out.islands.size() == 1);
+    const auto& is = out.islands[0];
+    REQUIRE(is.headers.size() == 11);
+    CHECK(is.headers[7].kontor_counter == 33026);
+    CHECK(is.headers[9].kontor_counter == 7);
+    CHECK(is.kontor_counter == 7);
+    CHECK(is.headers[7].source.header == 7);
+    CHECK(is.headers[9].source.header == 9);
+    CHECK(is.headers[7].records == 1);
+    CHECK(is.headers[9].records == 1);
+    CHECK_FALSE(is.headers[8].kontor_counter);
+    CHECK(is.headers[8].fertility_updates.has_value());
+    CHECK(is.terrain->fertility == Buffer(256, 2));
+    CHECK(sim::terrain_matches(*is.terrain));
+    CHECK(is.anbau_mask == 1);
+    CHECK(is.discover_mask == 32769);
+    CHECK(is.headers[5].discover == 32769);
+    REQUIRE(is.occurrences.size() == 1);
+    CHECK(is.occurrences[0].quantity_88 == 512000);
+    CHECK(is.occurrences[0].reserve == 1);
+    CHECK(is.occurrences[0].discovery == 0);
+    CHECK(is.occurrence_loads.size() == 1);
+    CHECK(is.spawns.size() == 1);
+    CHECK(is.spawns[0].draw_before == 1);
+    CHECK(is.spawns[0].timestamp == 8);
+    CHECK(out.consumed == 2);
+    CHECK(is.resources.size() == 1);
+    CHECK(is.resources[0].draw_before == 0);
+    CHECK(is.resource_list_nodes.size() == 5);
+    CHECK(is.resource_list_nodes[0].mask == 17);
+    CHECK(is.resource.variation[0] == 66);
+    CHECK(is.resource.tiles.object(0) == 104);
+    CHECK(is.resource.tiles.item_height(0) == 48);
+    CHECK(out.complete_local_records);
+}
+
+TEST_CASE("wildlife prefix: kontor counter contract distinguishes absent zero maximum and "
+          "malformed framing") {
+    const auto types = ore_registry();
+    Metadata meta;
+    const auto pe = fake_pe();
+    const auto run = [&](const Buffer& body) {
+        return load::prepare_wildlife_prefix(scene({packed("INSEL5", body)}), meta.entries, pe,
+                                             *types, inputs(), std::vector<std::uint32_t>{4});
+    };
+    const auto absent = run(ore_base());
+    REQUIRE(absent);
+    CHECK_FALSE(absent.value().islands[0].kontor_counter);
+    for (const auto word : {0U, 65535U, 33026U}) {
+        auto b = ore_base();
+        append(b, packed("KONTORID", Buffer{2, 129}));
+        Buffer scalar(2);
+        put16(scalar, 0, static_cast<std::uint16_t>(word));
+        append(b, packed("KONTORID", scalar));
+        const auto result = run(b);
+        REQUIRE(result);
+        const auto& is = result.value().islands[0];
+        REQUIRE(is.kontor_counter);
+        CHECK(*is.kontor_counter == word);
+        CHECK(is.headers.back().kontor_counter == is.kontor_counter);
+        CHECK(is.headers.back().records == 1);
+        CHECK(result.value().consumed == 1);
+    }
+    for (const auto length : {0U, 1U, 3U, 4U, 8U}) {
+        auto b = ore_base();
+        append(b, packed("KONTORID", Buffer{2, 129}));
+        append(b, packed("KONTORID", Buffer(length, 0xff)));
+        const auto result = run(b);
+        REQUIRE_FALSE(result);
+        REQUIRE(result.error().diagnostic);
+        const auto& out = *result.error().diagnostic;
+        REQUIRE(out.boundary);
+        CHECK(out.boundary->tag == "KONTORID");
+        CHECK(out.boundary->source.header == 5);
+        CHECK(out.boundary->reason == "expected two-byte KONTORID payload");
+        const auto& is = out.islands[0];
+        CHECK(is.kontor_counter == 33026);
+        CHECK(is.headers[4].kontor_counter == 33026);
+        CHECK_FALSE(is.headers[5].kontor_counter);
+        CHECK(is.headers[5].records == 0);
+        CHECK_FALSE(is.complete_local_records);
+        CHECK(out.consumed == 1);
+        CHECK(is.resources.size() == 1);
+    }
+    auto market = ore_base();
+    append(market, packed("KONTORID", Buffer{2, 129}));
+    append(market, packed("KONTID", Buffer{7, 0})); // Different record, not silently imported.
+    const auto result = run(market);
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().diagnostic);
+    CHECK(result.error().diagnostic->boundary->tag == "KONTID");
+    CHECK(result.error().diagnostic->islands[0].kontor_counter == 33026);
+    CHECK_FALSE(result.error().diagnostic->islands[0].headers.back().kontor_counter);
+}
+
 TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported boundary") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
@@ -1449,9 +1569,9 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     CHECK_FALSE(out.islands[0].complete_local_records);
     CHECK(out.boundary->source.island == 0);
     CHECK(out.boundary->source.slot == 11);
-    CHECK(out.boundary->source.header == 54);
+    CHECK(out.boundary->source.header == 55);
     CHECK(out.boundary->source.record == 0);
-    CHECK(out.boundary->tag == "KONTORID");
+    CHECK(out.boundary->tag == "PROD2");
     CHECK(out.boundary->reason.find("unsupported intervening header") != std::string::npos);
     const auto raw_islands = fmt::insel::islands(bytes);
     REQUIRE(raw_islands);
@@ -1585,7 +1705,7 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     }
     CHECK(token_at == anbau_payload_raw.size());
     std::cout << "ANBAU_REAL header=52 tokens=13 seed=61449 mask=65535 ignored=0 draws=0 "
-                 "next=54/KONTORID\n";
+                 "next=55/PROD2\n";
     REQUIRE(raw.records[53].name() == "DISCOVER");
     REQUIRE(raw.records[53].payload.size() == 4);
     const auto expected_discovery = fmt::u16_le(raw.records[53].payload, 0);
@@ -1595,11 +1715,21 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     CHECK(is.headers[53].records == 1);
     CHECK_FALSE(is.headers[54].discover);
     CHECK(raw.records[54].name() == "KONTORID");
-    std::cout << "DISCOVER_REAL header=53 bytes=4 mask=0 draws=0 next=54/KONTORID\n";
+    std::cout << "DISCOVER_REAL header=53 bytes=4 mask=0 draws=0 next=55/PROD2\n";
+    REQUIRE(raw.records[54].name() == "KONTORID");
+    REQUIRE(raw.records[54].payload.size() == 2);
+    const auto expected_counter = fmt::u16_le(raw.records[54].payload, 0);
+    CHECK(expected_counter == 1);
+    CHECK(is.kontor_counter == expected_counter);
+    CHECK(is.headers[54].kontor_counter == expected_counter);
+    CHECK(is.headers[54].records == 1);
+    CHECK_FALSE(is.headers[55].kontor_counter);
+    CHECK(raw.records[55].name() == "PROD2");
+    std::cout << "KONTORID_REAL header=54 bytes=2 counter=1 draws=0 next=55/PROD2\n";
     CHECK(out.islands[0].resources.size() == 4760);
     CHECK(out.islands[0].spawns.empty());
     CHECK(out.consumed == 4589);
-    REQUIRE(out.islands[0].headers.size() == 55);
+    REQUIRE(out.islands[0].headers.size() == 56);
     CHECK(out.islands[0].headers[33].records == 0);
     REQUIRE(out.islands[0].headers[33].water_mask_updates);
     REQUIRE(out.islands[0].headers[34].water_mask_updates);

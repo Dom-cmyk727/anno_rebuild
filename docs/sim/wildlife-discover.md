@@ -12,7 +12,10 @@ D: AnnoWelt `0x10089977–0x10089985` compares the supplied header with DISCOVER
 `0x10089987–0x100899a4` reads its payload into local scratch through
 `0x100b4c40–0x100b4c5f`. That helper obtains the declared length from header
 +0xc (`0x100b4b10–0x100b4b13`) and calls the supplied stream's read slot +4.
-The arm initializes the read-count local to zero, adds that reported count to
+Correction, 2026-11-19: `0x1008999b` initializes payload scratch to zero,
+not the read-count local: after three pushes `[esp+0x20]` is the original
+`[esp+0x14]`; the read-count pointer is the original `[esp+0x10]`.
+The arm adds the stream-reported count to
 the caller's consumed-byte accumulator at `0x100899a7–0x100899b2`, loads only
 the scratch's LOW WORD at `0x100899ab`, and REPLACES island u16 +0xa6 at
 `0x100899b6`. It returns success immediately at `0x100899bd–0x100899cb`.

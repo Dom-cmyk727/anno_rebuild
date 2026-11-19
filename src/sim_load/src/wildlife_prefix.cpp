@@ -306,7 +306,7 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
             const auto& header = raw.records[setup_end];
             const auto name = header.name();
             prepared.headers.push_back(
-                {source(setup_end), std::string(name), 0, {}, {}, {}, {}, {}, {}});
+                {source(setup_end), std::string(name), 0, {}, {}, {}, {}, {}, {}, {}});
             if (name == "INFO") {
                 if (header.payload.size() != 12) {
                     setup_error = PrefixBoundary{source(setup_end), "INFO", "strict INFO length"};
@@ -386,7 +386,8 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
         for (std::uint64_t h = setup_end; h < raw.records.size(); ++h) {
             const auto& header = raw.records[h];
             const auto name = header.name();
-            prepared.headers.push_back({source(h), std::string(name), 0, {}, {}, {}, {}, {}, {}});
+            prepared.headers.push_back(
+                {source(h), std::string(name), 0, {}, {}, {}, {}, {}, {}, {}});
             if (name == "GELAENDE") {
                 const auto block = formats::insel::Block::parse(header.payload);
                 if (!block || block.value().data.size() % 6 != 0) {
@@ -428,6 +429,17 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
                     return PrefixFailure{out.boundary->reason, std::move(out)};
                 }
                 prepared.headers.back().water_mask_updates = closed.value();
+            } else if (name == "KONTORID") {
+                // AnnoWelt 0x10089bee/0x10089bf4; contract: wildlife-kontorid.md.
+                // Raw transfer accepts zero; normal-loader counter policy is separate.
+                if (header.payload.size() != 2) {
+                    stop({source(h), "KONTORID", "expected two-byte KONTORID payload"});
+                    return PrefixFailure{out.boundary->reason, std::move(out)};
+                }
+                const std::uint32_t counter = formats::u16_le(header.payload, 0);
+                prepared.kontor_counter = counter;
+                prepared.headers.back().kontor_counter = counter;
+                prepared.headers.back().records = 1;
             } else if (name == "DISCOVER") {
                 // AnnoWelt 0x100899ab/0x100899b6; contract: wildlife-discover.md.
                 // Exact framing is defensive; the original arm ignores short-read failure.

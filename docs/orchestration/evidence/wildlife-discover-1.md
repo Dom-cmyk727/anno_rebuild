@@ -30,7 +30,9 @@ D = GOG instructions/data, P = original parsed input, C = authored execution.
 AnnoWelt header arm 0x10089977–0x100899cb compares DISCOVER at 0x100dcec8
 through 0x100b4b20–0x100b4b6c. Raw helper 0x100b4c40–0x100b4c5f takes declared
 length from header+0xc (0x100b4b10–0x100b4b13) and calls supplied stream read+4.
-Count local initialized0, reported bytes added to caller accumulator; scratch LOW
+Correction, 2026-11-19: payload scratch is initialized at 0x1008999b, not
+the read-count local. After three pushes, [esp+0x20] = original [esp+0x14];
+count pointer = original [esp+0x10]. Reported bytes enter caller accumulator; LOW
 WORD is loaded0x100899ab and replaces island+0xa6 at 0x100899b6, then returns1.
 No direct other island/resource/occurrence/terrain store, callback or random draw.
 Stream I/O semantics on every malformed/short input are not established: this arm
@@ -146,6 +148,11 @@ QUESTIONs: none in this finite arm. Next header needs a separate release.
 Independent review pending, no executor self-approval.
 
 ## SHA-256 receipts (raw artifacts stay in cache)
+
+Historical receipts below retain the tested `ddab0993` file identities. After the
+2026-11-19 P3 correction, the current DISCOVER contract has corrected prose; verify
+its historical row with `git show ddab0993:docs/sim/wildlife-discover.md`.
+Raw logs/disassembly and tested source pins are unchanged.
 
 | Artifact | SHA-256 |
 |---|---|

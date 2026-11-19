@@ -134,3 +134,15 @@ conservative name bound to this profile's mapping reads; it is not a global engi
 text/content limit. The actual GOG mappings remain supported. Earlier 18-case
 Debug/ASan gates are retained at c82aec30; this last reader-only refinement needs
 only the six affected creation cases rerun, with the 12 unchanged regressions reused.
+
+### Cave target's integer-to-binary32 boundary
+
+The helper's cave branch also performs FILD target integer ->FSTP binary32 before
+truncating the home (Welt 0x10092f84–0x10092f90). A supplied target integer must
+therefore be exactly representable as binary32 in this profile; otherwise it needs
+unproved rounding and refuses. Authored 16777216 is exact/legal, 16777217 refuses.
+Integer significand-bit validation admits larger exact values without an engine
+coordinate cap. This narrows only cave admission and introduces no FP rounding
+policy. After the completed name-bound six-case gates, rerun only the five affected
+effect/geometry/ownership/descriptor-projection cases; source-refusal and all prior
+unchanged regressions keep their earlier receipts.

@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <limits>
 #include <map>
 #include <set>
@@ -147,6 +148,15 @@ project_wildlife_creation(const WildlifeCreationDescriptor& descriptor,
         return std::string("creation effects: inconsistent ordinary home");
     if (g.place == WildlifeCreationPlace::ResolvedCaveEntrance && g.entrance_count == 0)
         return std::string("creation effects: OQ-574 cave without entrance");
+    const auto exact_binary32_integer = [](std::uint32_t value) {
+        const auto width = std::bit_width(value);
+        return width <= 24 || (value & ((1U << (width - 24)) - 1U)) == 0;
+    };
+    // Cave helper FILD ->FSTP at 0x10092f84. Refuse unproved rounding,
+    // rather than choosing an FP mode or imposing an engine coordinate cap.
+    if (g.place == WildlifeCreationPlace::ResolvedCaveEntrance &&
+        (!exact_binary32_integer(g.home_x) || !exact_binary32_integer(g.home_z)))
+        return std::string("creation effects: cave target needs unproved rounding");
     if (input.assigned_id > std::numeric_limits<std::uint16_t>::max())
         return std::string("creation effects: id outside original projection");
     WildlifeCreationEffects out;

@@ -385,6 +385,16 @@ TEST_CASE("wildlife create: geometry refuses inconsistent ordinary homes and uns
     in = inputs();
     in.geometry.place = load::WildlifeCreationPlace::ResolvedCaveEntrance;
     expect(in, "creation effects: OQ-574 cave without entrance");
+    in = inputs();
+    in.geometry.place = load::WildlifeCreationPlace::ResolvedCaveEntrance;
+    in.geometry.entrance_count = 1;
+    in.geometry.area = {0, 0, 20000000, 64};
+    in.geometry.home_x = 16777216;
+    auto exact_cave = load::project_wildlife_creation(facts.value()[0], in);
+    REQUIRE(exact_cave);
+    CHECK(exact_cave.value().animal->home[0] == 16777216);
+    in.geometry.home_x = 16777217;
+    expect(in, "creation effects: cave target needs unproved rounding");
     for (auto bits : {0U, 0x80000000U, 1U, 0x3f7fffffU}) {
         in = inputs();
         in.position_words[0] = bits;

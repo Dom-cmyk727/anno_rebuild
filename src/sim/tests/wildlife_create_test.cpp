@@ -3013,3 +3013,54 @@ TEST_CASE(
     CHECK(plan.value().materialization.completed.unused_draws == std::vector<std::uint32_t>{999});
     CHECK(plan.value().unused_maintenance == std::vector<std::uint32_t>{999});
 }
+TEST_CASE("wildlife geometry: source batch forwards independent table and callback profiles") {
+    ImportRig rig{1, 500, std::array<std::uint8_t, 4>{248, 248, 248, 248}};
+    Source animals;
+    species_source(animals);
+    const auto welt = species_pe();
+    const load::WildlifeSpeciesSource species{welt, rig.metadata.source.image, animals.entries,
+                                              fmt::annowelt::WildlifeSpeciesProfile::GogClimate2,
+                                              2};
+    const std::array<std::uint32_t, 6> maintenance{0, 1, 0, 0, 0, 999};
+    const std::array<std::uint32_t, 11> selectors{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 999};
+    const auto plan = load::prepare_wildlife_import_plan(
+        rig.prepared, rig.scene, 1, 1, import_runtime(), final_profile, rig.metadata.source.entries,
+        rig.metadata.source.image, *rig.metadata.types, species, maintenance, selectors);
+    REQUIRE_MESSAGE(plan, (plan ? "" : plan.error().reason));
+    using R = load::WildlifeRounding;
+    struct Case {
+        R table, callback;
+        std::array<std::uint32_t, 3> expected;
+    };
+    // a*2^18=43690+171/256. Nearest takes43691, down43690 at both world33/49.
+    // 248*c=166429979/2^24; stored table nearest chooses166429984, down166429968.
+    // Flat positive H interpolates to H exactly, even under downward callback RC.
+    const std::array<Case, 3> cases{{{R::Nearest, R::Nearest, {0x4204aaab, 0x411eb852, 0x4244aaab}},
+                                     {R::Nearest, R::Down, {0x4204aaaa, 0x411eb852, 0x4244aaaa}},
+                                     {R::Down, R::Nearest, {0x4204aaab, 0x411eb851, 0x4244aaab}}}};
+    const auto before = rig.prepared.fill.island.terrain->height;
+    for (const auto& c : cases) {
+        INFO("table rounding=" << static_cast<unsigned>(c.table)
+                               << " callback=" << static_cast<unsigned>(c.callback));
+        const auto context = load::prepare_wildlife_numeric_context(
+            {load::WildlifeFpProfile{53, c.table}, load::WildlifeFpProfile{53, c.callback},
+             "authored independent source-batch profiles"});
+        REQUIRE(context);
+        const auto batch = load::bind_wildlife_ordinary_source(
+            rig.prepared, plan.value(), context.value(), "fresh authored flat 248 HEIGHT patch");
+        REQUIRE_MESSAGE(batch, (batch ? "" : batch.error().reason));
+        const auto geometry = batch.value().project(0);
+        REQUIRE_MESSAGE(geometry, (geometry ? "" : geometry.error().reason));
+        INFO("actual XYZ=" << geometry.value().words[0] << "/" << geometry.value().words[1] << "/"
+                           << geometry.value().words[2] << " expected=" << c.expected[0] << "/"
+                           << c.expected[1] << "/" << c.expected[2]);
+        CHECK(geometry.value().words == c.expected);
+        CHECK(geometry.value().corners == std::array<std::uint8_t, 4>{248, 248, 248, 248});
+        CHECK(geometry.value().home == std::array<std::uint32_t, 2>{33, 49});
+        CHECK(geometry.value().corner_reads == 4);
+        CHECK(geometry.value().unchanged_draws.imported_prefix == 100);
+        CHECK(geometry.value().unchanged_draws.maintenance == 5);
+        CHECK(geometry.value().unchanged_draws.selector_only == 10);
+    }
+    CHECK(rig.prepared.fill.island.terrain->height == before);
+}

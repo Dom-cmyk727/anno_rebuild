@@ -43,10 +43,11 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife KONTORID header [WILDLIFE-KONTORID-1](tasks/wildlife-kontorid-1.md) | ACCEPTED; bounded counter import | `eaa61980162b1552eb7acee1553ce11fb7a8869c`; source `c199cf1f` | [44439685272](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44439685272), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-kontorid-1-review.md) |
 | Wildlife PROD2 boundary [WILDLIFE-PROD2-1](tasks/wildlife-prod2-1.md) | ACCEPTED; bounded empty-block path | `d7a21ac4a41975e5dd3a2afba8af84a430ed4e17`; source `8d65f385` | [44441246351](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44441246351), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-prod2-1-review.md) |
 | Wildlife EVENTINSEL boundary [WILDLIFE-EVENTINSEL-1](tasks/wildlife-eventinsel-1.md) | ACCEPTED; bounded empty-header/local-record scope | `218b838eb543782c60629f51288005fdd699c492`; source `c6c106a4` | [44443163952](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44443163952), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-eventinsel-1-review.md) |
-| Wildlife post-island contract [WILDLIFE-POSTLOAD-1](tasks/wildlife-postload-1.md) | LOCAL REVIEW APPROVED after two docs corrections; CI pending | `1628ba18a5b6eefb55684afc3091ba3be9fa10c8`; research source `09614995` | [44447642251](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44447642251), in progress | [Focused review](reviews/2026-11-19-wildlife-postload-1-review.md) |
-| Wildlife graphics leaf [WILDLIFE-GFX-FINALIZE-1](tasks/wildlife-gfx-finalize-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `ad2a1a23bbc4fe877c18f0e7bf8f4ce0180270b5`; source `e9256f22` | [44449632964](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44449632964), in progress | [Review](reviews/2026-11-19-wildlife-gfx-finalize-1-review.md) |
-| Wildlife catalogue inputs [WILDLIFE-POSTLOAD-INPUTS-1](tasks/wildlife-postload-inputs-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `263958edb83daa290aeb674f5b2b30c0655c5bb4`; research source `625db996` | [44452465008](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44452465008), in progress | [Review](reviews/2026-11-19-wildlife-postload-inputs-1-review.md) |
-| Wildlife first-call fill [WILDLIFE-POSTLOAD-FILL-1](tasks/wildlife-postload-fill-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `263958ed` | Not started; owned UNWIRED first-call implementation | Frozen reportback directly to Mac orchestrator |
+| Wildlife post-island contract [WILDLIFE-POSTLOAD-1](tasks/wildlife-postload-1.md) | ACCEPTED; corrected bounded research | `1628ba18a5b6eefb55684afc3091ba3be9fa10c8`; research source `09614995` | [44447642251](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44447642251), all12 jobs successful | [Focused review](reviews/2026-11-19-wildlife-postload-1-review.md) |
+| Wildlife graphics leaf [WILDLIFE-GFX-FINALIZE-1](tasks/wildlife-gfx-finalize-1.md) | ACCEPTED; isolated UNWIRED graphics leaf | `ad2a1a23bbc4fe877c18f0e7bf8f4ce0180270b5`; source `e9256f22` | [44449632964](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44449632964), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-gfx-finalize-1-review.md) |
+| Wildlife catalogue inputs [WILDLIFE-POSTLOAD-INPUTS-1](tasks/wildlife-postload-inputs-1.md) | ACCEPTED; bounded first-call input contract | `263958edb83daa290aeb674f5b2b30c0655c5bb4`; research source `625db996` | [44452465008](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44452465008), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-postload-inputs-1-review.md) |
+| Wildlife first-call fill [WILDLIFE-POSTLOAD-FILL-1](tasks/wildlife-postload-fill-1.md) | LOCAL REVIEW APPROVED; nonblocking evidence prose correction carried, CI pending | `889143ba1485a2fed72c03bd648c9c39878c4f06`; source `db2240a6` | [44456284511](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44456284511), in progress | [Review](reviews/2026-11-19-wildlife-postload-fill-1-review.md) |
+| Wildlife navigation inputs [WILDLIFE-NAV-INPUTS-1](tasks/wildlife-nav-inputs-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `889143ba` | Not started; contract/reproduction only | Frozen reportback directly to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -850,3 +851,23 @@ Remain UNWIRED; stop before navigation/raster/graphics. No c2-zero preprocessing
 V9 repair, global/World/native/tag/default or other-lane change. Executor ordinary-
 pushes its task branch and reports directly here for review/next release.
 Main untouched.
+
+## Latest dispatch — first-call fill reviewed; navigation-input reproduction released
+
+FILL889143ba/source db2240a6 is independently locally APPROVED, no P1/P2.
+51 receipts verified; Debug13+1required, ASan13+1required and original1 retained
+green. Isolated real leaf:8486fish/1559grass/6339unchanged,0new draws. No ordered
+postload or World publication. P3: controls-first.log is empty, so its historical
+failure-text retention claim is withdrawn and correction assigned as next first
+doc edit. No gate repeat. Exact FILL CI44456284511 remains pending.
+
+Corrected POSTLOAD1628ba18/CI44447642251, GFXad2a1a23/CI44449632964 and
+INPUTS263958ed/CI44452465008 now have all12 jobs green at exact reviewed heads
+and are ACCEPTED within their bounded scopes. Receipts appended to reviews.
+
+[WILDLIFE-NAV-INPUTS-1](tasks/wildlife-nav-inputs-1.md) is RELEASED after independent
+scope review: prove exact extrema/halving and execute a valid V9 reproduction,
+then assess callers/replay compatibility before any production route correction.
+No runtime routing/identity change, secondary-raster port or World integration.
+Executor ordinary-pushes its task branch and reports directly here for review
+and next release. Main untouched.

@@ -76,3 +76,13 @@ third-call leaf and its independent reference/causal/digest checks. Do not wire 
 before fill/navigation or change World/native/default/identity. The catalogue,
 navigation discrepancy and raster inputs/consumers remain explicit follow-ups.
 Executor reports directly for review and next release; main untouched.
+
+
+## Exact-head CI closeout — 2026-11-19
+
+**ACCEPTED within the reviewed bounded scope.** Run [44447642251](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44447642251)
+has all12 jobs successful at `1628ba18a5b6eefb55684afc3091ba3be9fa10c8`.
+Independent review remains applicable; no job retried or gate repeated. Jobs API
+receipt SHA-256: `8153a2de0444c9acc13495ff391ad50bd843d864e9db581a0566ab96e7bbe6f7`.
+Pending-CI status only is superseded. Limits remain; Windows owns stacking and
+landing, main untouched.

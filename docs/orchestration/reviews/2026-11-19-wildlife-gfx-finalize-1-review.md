@@ -50,3 +50,13 @@ scope-reviewed and RELEASED. Close the concrete catalogue producer/type2/type11
 profile and lifetime contract needed by first-call fill; no engine wiring or
 unrelated algorithm port. Executor reports directly for review and next release.
 Main untouched.
+
+
+## Exact-head CI closeout — 2026-11-19
+
+**ACCEPTED within the reviewed bounded scope.** Run [44449632964](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44449632964)
+has all12 jobs successful at `ad2a1a23bbc4fe877c18f0e7bf8f4ce0180270b5`.
+Independent review remains applicable; no job retried or gate repeated. Jobs API
+receipt SHA-256: `16d4d91e6757a43fd50da25b47c61a8143eb2c9118b4fc68263c2921c4023d66`.
+Pending-CI status only is superseded. Limits remain; Windows owns stacking and
+landing, main untouched.

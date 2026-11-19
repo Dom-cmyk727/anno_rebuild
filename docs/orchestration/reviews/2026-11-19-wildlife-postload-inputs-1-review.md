@@ -50,3 +50,13 @@ precomputed-ground/profile inputs, reference first, full-field causal controls,
 and no production wiring. Stop before navigation/raster/graphics; no identity/
 default/other-lane change. Executor reports directly for review and next release.
 Main untouched.
+
+
+## Exact-head CI closeout — 2026-11-19
+
+**ACCEPTED within the reviewed bounded scope.** Run [44452465008](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44452465008)
+has all12 jobs successful at `263958edb83daa290aeb674f5b2b30c0655c5bb4`.
+Independent review remains applicable; no job retried or gate repeated. Jobs API
+receipt SHA-256: `66e806c76e5ed4bc32882b95835b4f7f4ba1c11d2d3f4ba98789083bb1bcb08c`.
+Pending-CI status only is superseded. Limits remain; Windows owns stacking and
+landing, main untouched.

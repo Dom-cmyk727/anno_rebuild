@@ -16947,3 +16947,63 @@ unsafe partial callbacks, Windows FP capture, production integration. No origina
 QUESTIONs: before broader implementation, bind other city/type providers and unmatched climate profiles;
 otherwise the proposal explicitly refuses them. No policy decision or production change made here.
 Independent orchestrator review pending; stop at this bounded handoff.
+
+
+## 2026-11-19 — WILDLIFE-GROUND-PREPARE-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-GROUND-PREPARE-1`, base `54798a4b5f5bc8a2c65874ea375441b7cca9e21f`.
+- Exact dispatch `97f65165178d6f8ca26105b4fc9dd9d38edf4c10`; no board/main merge/rebase.
+- Reference-first `559f22ef`; frozen source `92c17db16f235e5d0db213093de9a25e3c61a2d3`, tree `c20b4b5819c3e6baa46b855dfd074ab99a6597e8`.
+- [Acceptance/API](../sim/wildlife-ground-prepare.md); [raw receipts and hashes](evidence/wildlife-ground-prepare-1.md).
+- `prepare_wildlife_ground(const WildlifeGroundInput&)` returns Result<owned byte vector,string>.
+- Full-island supplied-fact mathematical profile only; no partial parameter, city/provenance seal or loader claim.
+- Explicit N/A/F/V facts preserve null/absent/failed/successful-zero distinctions; missing fact refuses, including word 0.
+- Validate geometry/product/lengths/kernel/lookup/facts, bind sorted whole words, then immutable two-pass arithmetic.
+- Byte lookup/blend, per-term division, centre-zero skip, clipped aligned 5×5, final clamp/low-nibble merge.
+- No FP/RNG/metadata changes, original callbacks, fake FRUCHTBAR, fill bypass or production caller.
+- 24 authored vectors; asymmetric 3×3 at (17,-11), corners/edges/interior, high ids/whole words and four states.
+- Reference exits 0/1/2 correctly; 25 CLI controls; actual echo-only variant rejected at changed expectation.
+- C++ four cases: all vectors, single-precondition refusals, huge arithmetic without huge allocation, owned output lifetime.
+- Private actual-source legal control: 4,596/4,596 assertions; seven wrong implementations each fail intended output.
+- Intended assertion failures: aggregate 1, guard 3, byte product 2, whole byte 22, in-place 1, signed byte 3, transpose 1.
+- Canonical source/binary unchanged by probes; initial harness stopped before compile on Ninja link-command shape.
+- Prior saturated width failure retained as history only; S10 is the meaningful 260-versus-4 control.
+- Growth parser remains out of scope; real short row retains ZERO cells, so future test needs nonzero prior staging.
+- Debug and ASan/UBSan canonical gates, jobs 1, threads 2, admission on; two separate required contracts each.
+
+```text
+# cache/wildlife-ground-prepare-1/debug-final.log: ground contract, postload contract, main selection
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=21 executed=21 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-ground-prepare-1/asan-final.log: ground contract, postload contract, main selection
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=21 executed=21 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- No canonical failure, memory refusal, timeout, skip, empty/incomplete result or sanitizer diagnostic; no whole rerun.
+- Selected terrain/graphics/prefix ownership and four synthetic fill controls; original-file cases explicitly excluded.
+- No selected asset prerequisite; unchanged picture contract outside numerical scope, no renderer claim.
+- Both dev/ASan targets build; 0 compiler warnings, inherited duplicate-library linker diagnostic retained.
+- Strict O3/Werror: two changed TUs Apple Clang 21 / GCC 15.3; shadow control refused; format 23.1.3/lint/diff pass.
+- Caller/scope audit: only helper/tests; no World/native/tag/default/command/registry/PRNG changes or existing pin/fixture bytes moved.
+- Closeout: 12 scoped files, 5 local links, 73 manifest/22 published hashes verified; docs-check.log SHA in evidence.
+- Exact final head/tree/CI sent directly before CI completes; final docs-only publication preserves tested code.
+- Host M5 Max / 18 logical / 48 GiB / macOS 27.0.1; other jobs/coordinator/owner awake unchanged.
+
+Decisions and reasoning:
+- Separate supplied computation from original source/city certification; never treat missing facts as a null descriptor.
+- Expose only full islands, rather than guess partial scratch neighbours; selected kernel is supplied, not an engine cap.
+- Use genuinely 2D unsaturated hand outputs and actual wrong-code failures, with legal setup past validation.
+- Return owned output from immutable views; retain original fill validator and all previous identity/default boundaries.
+
+NOT_RUN: original/HE/Windows runtime, LeakSanitizer, full suite/corpus/pins/warnings, source/provider binding,
+prep-to-fill composition and World/live wildlife. Independent review pending orchestrator; no review agents.
+QUESTIONs: none blocking this numerical leaf; broader source binding/composition requires a separate release.

@@ -190,6 +190,27 @@ says who is doing what, where the work is, and what it waits on.
   (`<ciso646>` under Clang with libstdc++ 15; a GCC 15 null-dereference in `freight_state.hpp`; run
   44493276095). The pin restores the documented GCC 13 / Clang 18 (CI 44500826347 green). Branches merge
   origin/main to get green. A move to GCC 15 is its own later packet.
+- **FREEZE from 2026-11-19 afternoon** (owner: "have the executors finish all open tasks or tasks they are currently
+  working on and you do your review just as before. After that another freeze, i.e. no further tasks because i
+  need to save usage for now. We will then resume later on"). Final state of the Windows lanes:
+  - **ACCEPTED, to stack when work resumes:**
+    - FLAKE-RESIZE-1 `ea8bb893` (CI 44508802341);
+    - WATER-SUBMERGED-1 `05db2101` (CI 44517577603 after one apt-get infra rerun): the per-pixel submerged
+      pass runs in enhanced water too (`GpuLimits::submerged_over_objects`, default on), shaded with
+      enhanced's sea colour; the new GPU test changes 100 % of the pier's submerged mask and 0 pixels
+      outside it, and 0 of 1,768 with the fix reverted. Nit for later: the fixed 0.7 blend alpha as a
+      named parameter. The owner's viewer check is open;
+    - UI-CATNAV-1 `51cf9c48` (CI 44527711925; main merged after the GCC 15 image failure): a category tab shows
+      its grid and keeps the armed type (View.dll `0x1002bf90`, HE ui_10 10:08); OQ-773/774. The owner's
+      check is open;
+    - UI-GHOST-1 R2 `7a51050d` (CI 44509323099), whose behaviour the owner saw working in ui_10.
+  - **Waiting:** UI-HARVEST-ICON-1 `1e7fbee2` (CI green) for the owner's forester test; BUILDINGS-REF-2
+    `60a26f0d` (docs) for its CI.
+  - **Approved but not started:** ROADS-0 `c3489403`, ROADS-1 `df15310b`, ROADS-3 `0e8a15c9`, UI-GHOST-2
+    `5f4957f3` (packets only).
+  - **Unlanded candidates 6-10** still wait for the Mac's GATE-RUN cause (the magnifier `--gpu` cases) and
+    the skip-list update. The Mac lane runs on its own schedule.
+  - Nothing runs on the Windows PC; the UI lane and the Windows executor confirmed "frozen".
 - **FLAKE-RESIZE-1 ACCEPTED** 2026-11-19, head `ea8bb893` (origin/main with the CI pin merged in; CI 44508802341
   green, 12/12). Earlier note, kept: head `11dd877a` (fix `b3304fd1`). Correction:
   CI 44493276095 on `11dd877a` FAILED in the three Linux C++ jobs (`anno_sim_replay_g3_run` failed, many sim

@@ -18201,3 +18201,63 @@ Decisions and reasoning:
 - Use positive flat 248 to isolate table-Y and callback-X/Z words without underflow/zero ambiguity.
 - Preserve all prior evidence, and rerun only the new source-bound case under both profiles.
 QUESTIONs: none within correction. STOP for orchestrator re-review; ordered batch waits for release.
+
+### WILDLIFE-CREATE-BATCH-1 — READY FOR REVIEW
+
+2026-11-19; independent orchestrator review pending. Branch task/WILDLIFE-CREATE-BATCH-1.
+Tested `7f579a185b0420bcac2385b18daa77330e9b90a2`, tree `685dba89020d6e22df64cffbc3e08e71d9b31a88`; publication adds docs/report only.
+Base 41f6cf99, no merge/rebase. [Contract](../sim/wildlife-create-batch.md),
+[evidence](evidence/wildlife-create-batch-1.md). Whole-source admission versus reached diagnostic prefix explicit.
+Owned ordered source composition binds ordinary geometry once, takes labelled per-token manager facts,
+derives home/prior, preserves sidecars/resources, complete optional-field presence and original input owners.
+Null needs no success-only id/time; success writes id/time/occupied/goods only, leaves high-bit/byte11 unknown.
+One shared creation core preserves legacy known-input validation; narrow release adapter shares bounded cleanup.
+Authored mixed head [1001,1000,7,6,2,1,0,2000], reversed input order, HP 5/17 and known-zero facts distinguish paths.
+Later token 7 failure retains exact [1001,1000] prefix; descriptor/source mismatch is eager admission with no prefix.
+Original Tutorial token 21/type 528/home [111,45], XYZ [42dfaaab,3ff5c28f,42375555], supplied id 321/time 65538:
+saved id 321/time 70/goods 0/occupied true/pos 47, high-bit/byte11 unknown. HP 40 from retained raw oracle.
+Draw domains unchanged: original 4745/0/2, authored 100/5/10 (nonflat prefix 96), unused suffixes retained.
+These are already materialized input counts, NOT newly executed interleaved native draw histories.
+Empty end clears only first home-position occupancy even with wrong saved id; repeated end leaves replacement.
+Duplicate later match, neighboring/resource/unknown fields untouched; needed unknown position refuses.
+Five new cases: four authored 212 assertions, unchanged original 51; 10 legacy create/end regressions.
+Five actual-source mutants fail intended semantics: Null zero-fill, wrong target, reversed visits,
+premature success publication, release writes to untouched fields. Legal control passes; sources/binaries retained.
+One mutation harness anchor mismatch preserved; resumed only two unexecuted mutants, not counted as a kill.
+Strict AppleClang 21/GCC 15.3 O3/Werror pass; first GCC unchecked test-vector access warning preserved,
+fixed with at(0), only affected TU rerun. Format 23.1.3/lint/diff/links pass. Inherited duplicate-library linker warning retained.
+Frozen 1039 identities verified; actual binaries preserved; all 293 fixture bytes/pins/expectations unchanged.
+Prior 1206 artifacts across 12 manifests verified; unchanged reference/arithmetic receipts reused, not rerun.
+Debug, two required original checks plus 13 remaining unique cases:
+`cache/wildlife-create-batch-1/debug.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=13 executed=13 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+ASan/UBSan, same 15 unique cases (LSan disabled):
+`cache/wildlife-create-batch-1/asan.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=13 executed=13 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+No memory refusal/timeout/rerun; host memory admission on, jobs 1/internal 2, original assets required.
+Log SHA256 Debug `6f68affbd10fae62a4fbd2b6b6e223992e7b3c145e9293c87967337e3a59d6cf`; ASan `7d12631ea22997b0899369110d48db1b09cd5a16da6c1514e9ad3d16f55c2e2d`.
+Closeout 114 artifacts SHA256 `75549d6ec0f2c4afbba21c0e392446f89aa9a1e406e1fe958f1e793b35462e7f`; exact commands and binaries in linked evidence.
+CI exact pushed head read immediately after ordinary push; pending status reported separately to orchestrator.
+NOT_RUN: full/heavy/opening/pins/scale, Windows/HE/native runtime/CW/allocator/World, nonempty cleanup, LSan.
+Decisions and reasoning:
+- Emit success-only writes, preserving unknowns without inventing packed zero; share established known-input core.
+- Source admission has no execution claim; reached failure retains exact diagnostic prefix, no fake native rollback.
+- Share bounded release transition but preserve original no-ID-guard first match and optional resource facts.
+- No extra draws, state/tag/default/Rules/identity change; use focused gates and untouched sealed arithmetic receipts.
+QUESTIONs: none in this conditional packet; native manager/World remains a separate dependency. STOP for review.

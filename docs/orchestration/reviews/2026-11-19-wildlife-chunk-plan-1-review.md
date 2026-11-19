@@ -78,3 +78,15 @@ as a locally reviewed stacked continuation while hosted CI is pending. Independe
 scope-reviewed work composes eligibility and ordered species selection with supplied
 facts and exact draw accounting; it stops before live creation or unresolved numeric
 policy. Main and other lanes remain untouched.
+
+## Hosted failure update — 2026-11-19
+
+CI44522148816 is terminal FAIL, not acceptance. MSVC build job135553390406
+fails C4244/WX on int-to-uint16_t template conversion through std::optional.
+Linux Release job135553390583 fails dependency installation with exit100 before
+configure/build/tests; its root setup cause is not established. Other leaf jobs
+succeeded and the aggregate failed. Public jobs response SHA256:
+`f77010cbe2934c1d947227822f2c0d6eca2e649f25c3a4d6a03591dbe427b7d6`.
+Independent bounded semantic/evidence approval remains, but the portability
+correction is required. [Finite correction](../tasks/wildlife-plan-ci-close-1.md)
+will run on the reviewed descendant; no old failed receipt is rewritten.

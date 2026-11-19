@@ -62,8 +62,9 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Animal creation effects [WILDLIFE-CREATE-EFFECTS-1](tasks/wildlife-create-effects-1.md) | ACCEPTED; bounded owned creation effects | `25bab774208c9e610b43447e247d99cc1aba0195`; tested `37c144b1` | [44508278589](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44508278589), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-create-effects-1-review.md) |
 | Animal end/release effects [WILDLIFE-RELEASE-EFFECTS-1](tasks/wildlife-release-effects-1.md) | ACCEPTED; P3 closed, bounded release effects | `901a8467f766825ae9683cb41dee33522a9aff39`; tested `33fe219c` | [44511432981](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44511432981), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-release-effects-1-review.md) |
 | Animal species source [WILDLIFE-SPECIES-LOAD-1](tasks/wildlife-species-load-1.md) | ACCEPTED; bounded source-backed species plan | `f5f1c9fa7f0eca4d6263147797022ff1c5e6d771`; tested `4acf5545` | [44515114872](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44515114872), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-species-load-1-review.md) |
-| Wildlife chunk planning [WILDLIFE-CHUNK-PLAN-1](tasks/wildlife-chunk-plan-1.md) | LOCAL REVIEW APPROVED; CI pending | `95d2eb0f4bf09c559413ef380fba3fd4281939ff`; tested `ef8fcb48` | [44522148816](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44522148816), pending | [Review](reviews/2026-11-19-wildlife-chunk-plan-1-review.md) |
-| Wildlife materialization planning [WILDLIFE-MATERIALIZE-PLAN-1](tasks/wildlife-materialize-plan-1.md) | RELEASED; locally reviewed stacked continuation | Base `95d2eb0f4bf09c559413ef380fba3fd4281939ff` | Ordered eligibility and species plans; no live creation | Direct reportback to Mac orchestrator |
+| Wildlife chunk planning [WILDLIFE-CHUNK-PLAN-1](tasks/wildlife-chunk-plan-1.md) | LOCAL SEMANTICS APPROVED; CI FAIL, correction released | `95d2eb0f4bf09c559413ef380fba3fd4281939ff`; tested `ef8fcb48` | [44522148816](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44522148816), MSVC build and Linux dependency setup fail | [Review](reviews/2026-11-19-wildlife-chunk-plan-1-review.md) |
+| Wildlife materialization planning [WILDLIFE-MATERIALIZE-PLAN-1](tasks/wildlife-materialize-plan-1.md) | LOCAL SEMANTICS APPROVED; portability blocked | `1c027079fd0d431fae1613df839f1bde9c38d2bc`; tested `49c9ddb3` | [44528637255](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44528637255), pending | [Review](reviews/2026-11-19-wildlife-materialize-plan-1-review.md) |
+| Wildlife planning portability [WILDLIFE-PLAN-CI-CLOSE-1](tasks/wildlife-plan-ci-close-1.md) | RELEASED; narrow typed-conversion repair | Base `1c027079fd0d431fae1613df839f1bde9c38d2bc` | Preserve old failures; exact-head MSVC proof required | Direct reportback to Mac orchestrator |
 | Windows dual-edition navigation [WIN-NAV-EDITIONS-1](tasks/windows-nav-editions-1.md) | Owner-requested HANDOFF READY; Windows intake pending | Accepted diagnosis `74d50bfe`, production base `889143ba` | GOG and HE verification requested; no repair released | Owner forwards to Windows orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
@@ -1291,3 +1292,21 @@ or missing required facts stop with diagnostics; no invented live spawn, coordin
 manager, World, state/default/identity or global-PRNG change. Windows navigation/FP
 work remains separate. Executor ordinary-pushes only its task branch and reports
 here for independent review and next release. Main and shared boards untouched.
+
+## Materialization review; finite portability correction
+
+Materialization1c027079 preserves the bounded planning scope; evidence review
+verified114 receipts and1023 frozen identities. Debug covers29 unique cases across
+a preserved workflow failure and corrected remainder, ASan29 passes. No first-run
+clean whole gate is claimed. Seven actual mutants distinguish intended semantics.
+
+Predecessor CHUNK95d2 hosted CI44522148816 is FAIL: MSVC reports a narrowing
+std::optional conversion; Linux Release failed apt setup before compiling source.
+These are distinct failures, not permission to weaken gates. Both packets await
+portability closure; neither is accepted merely on local reviews.
+
+WILDLIFE-PLAN-CI-CLOSE-1 is RELEASED on1c027079 for correctly typed constants and
+any same-cause changed-packet sites, focused checks and exact-head hosted proof.
+No warning suppression, semantic change, old-history rewrite or broad repair.
+Executor pushes only its task branch and reports here promptly; gameplay planning
+resumes after the small correction is reviewed. Other lanes and main untouched.

@@ -17025,3 +17025,22 @@ users. The fertility comment that the resolution indented is rewrapped by clang-
 **NOT_RUN:** the GPU path in a real window (the owner's test), macOS, the full suite.
 
 READY FOR REVIEW.
+
+## UI-GHOST-1 addendum — merge of origin/main (CI pinned to ubuntu-24.04) — READY FOR REVIEW
+
+Head `0068c34b` went red on the Linux jobs because main pinned them to ubuntu-24.04 (`a6468efd`; CI run 44495678229).
+`origin/main` merged as one clean merge commit `e7118670` (parents `0068c34b` and `a6468efd`, no rebase, **no
+conflicts**). The only code that came in is `.github/workflows/ci.yml`; the rest is docs and task packets.
+
+**Short gate** (MSVC Release, the usual env, after checking that no other cl/link or WSL compile ran; the build was
+up to date, no warnings): the twelve required tests each ran alone and passed, `selected=1 executed=1 failed=0` per
+test: the six oracles (`live_screen_matches_oracle`, `ui_dynamic_draw_check`, `info_panel_gog_compare`,
+`info_panel_rotation_gog_compare`, `selected_house_pixel_check`, `ui_panels_match_gog`),
+`viewer_wiring_ui_ghost`, `_ghost_world`, `_ghost_pixel_check`, `_start_view`, `_status_island` and `_buildcat`
+(`cache/gates/gate-main-merge2.log`). The runner's closing line reads `selected=0` because it ran them as required
+contracts, so nothing was left for the main selection. The first run (`gate-main-merge.log`) was the same.
+
+**NOT_RUN:** WSL (no code of this branch changed since the clean WSL run on `a03131cb`; the merge brought only the CI
+file), the wider lanes (the merge brought no code), macOS. CI is not polled.
+
+READY FOR REVIEW.

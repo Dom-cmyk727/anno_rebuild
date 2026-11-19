@@ -157,13 +157,27 @@ def string(s): return u64(len(s)) + s
 def u32s(items): return u64(len(items)) + b''.join(u32(x) for x in items)
 
 
-def section_bytes(base):
-    """§9.7: u32 base version 1, existing base bytes, u64 empty extension count.
+def section_bytes(base, version=1):
+    """§9.7: u32 base version (1; header and islands 2 since ISLAND-CROPS-1 1b), existing base
+    bytes, u64 empty extension count.
 
     Base may contain child digests in the hierarchical stream; only top-level
     sections use this envelope. Registry/object substreams stay unframed.
     """
-    return u32(1) + base + u64(0)
+    return u32(version) + base + u64(0)
+
+
+# ISLAND-CROPS-1 1b: SimConfig::crops (header section base 2) and Island::crops (islands section
+# base 2). The crop mask's first goods id and width (AnnoWelt 0x10089933, the dword +0xac).
+CROP_MASK_FIRST, CROP_MASK_BITS = 0x38, 32
+HEADER_VERSION, ISLANDS_VERSION = 2, 2
+
+
+def crop_tables_bytes():
+    """SimConfig::crops: mask_first_goods, mask_bits, base_goods (the bits of 0xF009, AnnoWelt
+    0x10089897), anbau_first/last_goods (0x100898dc, 0x1008992c), anbau_name_cap (0x10089954)."""
+    return (u32(CROP_MASK_FIRST) + u32(CROP_MASK_BITS) + u32s([0x38, 0x3B, 0x44, 0x45, 0x46, 0x47])
+            + u32(0x38) + u32(0x44) + u32(13))
 
 
 def goods_names():
@@ -302,6 +316,7 @@ def config_bytes():
     # stream 128: billed_goods_first, billed_goods_last, resident_cargo_slots, house_type_stride (L3)
     b += b''.join(u32(x) for x in [0x1A, 0x28, 3, 20])
     b += u64(7) + b''.join(string(n) for n in (b'POLAR',b'TUNDRA',b'NORD',b'PRAERIE',b'DSCHUNGEL',b'STEPPE',b'WUESTE')) + u32(3) + u32(2000)
+    b += crop_tables_bytes()  # header section base 2 (ISLAND-CROPS-1)
     return b
 
 
@@ -588,7 +603,7 @@ def building_bytes(serial, island, type_id, x, y, byte0e, tag, payload, kontor_i
 
 def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, terrain=None,
                   cities=None, next_serial=1, sweep=(0, 0, 0, 0, 0), e300=0, objmgr=(0, 0),
-                  ring=(0, 0), lock=0, city_cursor=-1, kontor_counter=1):
+                  ring=(0, 0), lock=0, city_cursor=-1, kontor_counter=1, crops=None):
     tiles = [[0, 0, NEUTRAL_OWNER, 0, 2, 0, 0, 0, 0, 0] for _ in range(w * h)]
     at = 0
     for owner, length in owner_runs:
@@ -615,6 +630,9 @@ def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, te
     b = (u32(slot) + struct.pack('<i', x0) + struct.pack('<i', y0) + u32(w) + u32(h)
          + u32(climate) + u8(lock) + struct.pack('<i', city_cursor) + u32(kontor_counter)
          + u64(0)  # players_present (stream 120): empty set
+         # crops (islands base 2): no ANBAU record -> the constructor value 0xFFFFFFFF
+         # (AnnoWelt 0x1008cbdf), every goods id of the mask
+         + u32s(list(range(CROP_MASK_FIRST, CROP_MASK_FIRST + CROP_MASK_BITS)) if crops is None else crops)
          + u32(next_serial) + u64(td))
     b += u16(sweep[0]) + b''.join(u32(v) for v in sweep[1:])   # sweep: stamp, grow x/y, fauna x/y
     b += u16(e300)                    # event300_stamp
@@ -759,7 +777,8 @@ def islands_digest(by_slot):
     """The islands scope: u64 slot count (highest slot + 1), one child scope per slot
     (an absent slot hashes as the single byte 0)."""
     n = max(by_slot) + 1 if by_slot else 0
-    return fnv(section_bytes(u64(n) + b''.join(u64(by_slot.get(i, fnv(u8(0)))) for i in range(n))))
+    return fnv(section_bytes(u64(n) + b''.join(u64(by_slot.get(i, fnv(u8(0)))) for i in range(n)),
+                             ISLANDS_VERSION))
 
 
 # The registry digest of synthetic::make_synthetic_types() (the golden test in
@@ -886,7 +905,7 @@ def state_hash(registry, cursor, ms, last_tick, players, full_tick=False, island
     t = (ms >> 1) & M32
     figures = figures_digest(t & 0xFFFF if steps > 0 else 0)
     timers = timers_monopoly_digest(t if steps > 0 else 0, monopoly if steps > 0 else None)
-    return fnv(u64(fnv(section_bytes(header))) + u64(fnv(section_bytes(clock_rng))) + u64(fnv(section_bytes(settings_bytes(*world))))
+    return fnv(u64(fnv(section_bytes(header, HEADER_VERSION))) + u64(fnv(section_bytes(clock_rng))) + u64(fnv(section_bytes(settings_bytes(*world))))
                + u64(ids) + u64(players) + u64(islands) + u64(figures) + u64(events)
                + u64(timers) + u64(fnv(section_bytes(script_runtime_bytes(context=context)))))
 

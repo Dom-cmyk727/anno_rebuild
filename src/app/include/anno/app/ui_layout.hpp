@@ -52,8 +52,9 @@ struct UiElement {
     std::string shot;
     /// `align centre` (UI-INFO-1): a text box. The text image (assets::render_text's canvas, as
     /// wide as its glyph advances) is drawn at x = pos_x + size_w / 2 - text_w / 2 (both
-    /// divisions integer, rounding down), y = pos_y (docs/re/ui.md section 2.5). Empty for every
-    /// sprite element.
+    /// divisions integer, rounding down), y = pos_y (docs/re/ui.md section 2.5). `align right`
+    /// (UI-TABS-1 stage B, section 5.5): x = pos_x + size_w - text_w, y = pos_y + text_dy. Empty
+    /// for every sprite element.
     std::string align;
     /// UI-WINDOW-1: how `pos` moves in a larger layer (UiAnchor).
     UiAnchor anchor = UiAnchor::TopLeft;
@@ -69,12 +70,29 @@ struct UiElement {
     /// `rotate_right` +1 (GOG View.dll click handlers 0x10030440 and 0x10030480, docs/re/ui.md
     /// section 2.5). Absent for every other element.
     std::optional<int> turn;
+    /// UI-INFO-2b: `figure <id>`, a FigurenHeader.dat entry the element draws: on
+    /// `info_preview_arrows`, the entrance arrows of the info panel's picture (1573, AnnoGame.dll
+    /// 0x1000bb60; docs/re/ui.md section 2.5). The bound 65535 is load_figure_facings' id type.
+    /// Absent for every other element.
+    std::optional<int> figure;
     /// UI-TABS-1 (docs/re/ui.md 5.4): `view <name>` on a main tab names the view it shows; on a
     /// sub-tab, with `subtab <k>`, the view whose column holds it (k counts from 0). `body
     /// <panel>` is the `panel` group sub-tab k shows. Empty / absent for every other element.
     std::string view;
     std::optional<int> subtab;
     std::string body;
+    /// UI-TABS-1 stage B (docs/re/ui.md 5.5): a live figure row. `value <name>` names the figure
+    /// (balance_rows.hpp: `player.<k>`, `city.<k>`), drawn while the panel `page <panel>` shows.
+    /// With `align right` the text image's right edge lies on pos_x + size_w; `text_dy`
+    /// (signed) is the text's top relative to pos_y; `clip box` keeps only the text's pixels
+    /// inside the pos/size rectangle; `negative_rgb RRGGBB` (hex) paints the font's level 1 in
+    /// that colour when the figure is below 0 (else level 1 is white, as every info text). Empty /
+    /// 0 / false / absent for every other element.
+    std::string value;
+    std::string page;
+    int text_dy = 0;
+    bool clip_box = false;
+    std::optional<std::uint32_t> negative_rgb;
 };
 
 /// One `click` line of hud.txt: either a rectangle centre (`click <name> pos <x> <y>`) in drawable
@@ -200,6 +218,14 @@ struct ConstructionLayout {
     /// nullptr when (category, col, row) is empty or not in the file.
     [[nodiscard]] const ConstructionCell* cell(const std::string& category, int col, int row) const;
 };
+
+/// UI-BUILDCAT-1: the construction menu's category tab for `category`, hud.txt's element
+/// `viewbautab_<index - 1>` (construction.txt `index`, 1-based), or nullptr when hud.txt has none
+/// or it lacks a position or size. The tab count is construction.txt's category count, not a
+/// constant (View.dll 0x1002bb4f builds one 42 x 46 VIEWBAUTAB gadget per category; docs/re/ui.md
+/// section 2.4).
+[[nodiscard]] const UiElement* construction_category_tab(const HudLayout& hud,
+                                                         const ConstructionCategory& category);
 
 /// UI-WINDOW-1: where the 1024 x 768 reference layout lands in a UI layer of `ui_w` x `ui_h`
 /// pixels (at least the reference; ui_transform.hpp). Built by `place_hud` from hud.txt alone.

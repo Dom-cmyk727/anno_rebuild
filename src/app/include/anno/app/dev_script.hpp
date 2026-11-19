@@ -71,7 +71,10 @@
 //   rdown X Y | rup X Y   the right button pressed / released over the sea tile (a gesture in two
 //                         steps: a focus loss or Esc between them cancels it)
 //   click-land X Y        left click on the ground of tile (X, Y); hover-land X Y moves the pointer
-//                         there without a button
+//                         there without a button; hover-sea X Y moves it over the sea surface of
+//                         tile (X, Y) without a button (UI-STATUS-1 B)
+//   hover_px X Y          the pointer moves to drawable pixel (X, Y) without a button (UI-STATUS-1
+//                         B: onto chrome, where the status bar keeps the last map tile)
 //   lpan DX DY            a left-button drag by (DX, DY) window points from the window centre
 //   hover_px X Y          the pointer moves to drawable pixel (X, Y) with no button (UI-GHOST-1)
 //   ldown_px X Y          a left press at drawable pixel (X, Y) with no release (a release lost

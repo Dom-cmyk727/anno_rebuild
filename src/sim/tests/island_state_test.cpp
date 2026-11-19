@@ -580,7 +580,7 @@ TEST_CASE("world create does not depend on the executor") {
 TEST_CASE("island fields are counted") {
     // The canaries of state_fields.hpp, restated: a member added to a persistent
     // island type without a line in its fields() function fails the build there.
-    CHECK(sim::field_count<sim::Island>() == 20);
+    CHECK(sim::field_count<sim::Island>() == 21); // + crops (islands base 2, ISLAND-CROPS-1)
     CHECK(sim::field_count<sim::Drought>() == 10);
     CHECK(sim::field_count<sim::SweepState>() == 5);
     CHECK(sim::field_count<sim::CityRing>() == 2);
@@ -608,7 +608,8 @@ TEST_CASE("island fields are counted") {
     // (7), reserved (1), tiles: 3 dims + 6 x 10 columns, cities: the slot count (no slot in this
     // island).
     // + the ore-object count, + the claims count (stream 126, an empty map: one primitive)
-    CHECK(prims == 11 + 1 + 5 + 1 + 2 + 2 + 12 + 7 + 1 + 1 + 3 + 60 + 1 + 1);
+    // + the crop list's count (islands base 2; a default Island holds no crops)
+    CHECK(prims == 11 + 1 + 5 + 1 + 2 + 2 + 12 + 7 + 1 + 1 + 3 + 60 + 1 + 1 + 1);
 }
 
 TEST_CASE("islands scope stream layout") {
@@ -618,7 +619,7 @@ TEST_CASE("islands scope stream layout") {
     // without either: u64 slot count, then per slot a presence byte and the island;
     // the tiles of an island are 23 bytes each.
     Stream want;
-    want.u32(1); // islands base version
+    want.u32(2); // islands base version (2 since ISLAND-CROPS-1)
     want.u64(4);
     auto island = [&](const sim::Island& is, std::int32_t x0, std::int32_t y0, std::uint32_t wd,
                       std::uint32_t ht, std::uint32_t city_no, std::uint32_t city_owner) {
@@ -633,6 +634,12 @@ TEST_CASE("islands scope stream layout") {
         want.i32(is.city_cursor);    // stream 119
         want.u32(is.kontor_counter); // stream 119
         want.u64(0);                 // players_present (stream 120): an empty set
+        // crops (islands base 2): no ANBAU record in the synthetic spec, the constructor value
+        // 0xFFFFFFFF (AnnoWelt 0x1008cbdf): goods 0x38..0x57
+        want.u64(32);
+        for (std::uint32_t g = 0x38; g <= 0x57; ++g) {
+            want.u32(g);
+        }
         want.u32(1);
         want.u64(is.terrain ? is.terrain->digest : 0);
         // sweep (u16 stamp, 4 x u32), event300 (u16), objmgr (u16, u32), ring (u16,
@@ -1314,11 +1321,12 @@ TEST_CASE("drought record stream layout") {
     const std::vector<std::uint8_t>& b = ia.data();
     // index, x0, y0, w, h, climate, lock (1 byte, stream 118), next_serial, terrain digest, sweep
     // (18), event300, objmgr (6), ring (6), plus city_cursor and kontor_counter (8, stream 119):
-    // and the empty players_present set (u64 count, stream 120):
-    // 4 * 7 + 1 + 8 + 8 + 8 + 18 + 2 + 6 + 6 = 85 bytes, then the presence byte.
-    REQUIRE(b.size() > 86 + want.v.size());
-    CHECK(b[85] == 1);
-    CHECK(std::equal(want.v.begin(), want.v.end(), b.begin() + 86));
+    // and the empty players_present set (u64 count, stream 120), the empty crops set (u64 count,
+    // islands base 2): 4 * 7 + 1 + 8 + 8 + 8 + 8 + 18 + 2 + 6 + 6 = 93 bytes, then the presence
+    // byte.
+    REQUIRE(b.size() > 94 + want.v.size());
+    CHECK(b[93] == 1);
+    CHECK(std::equal(want.v.begin(), want.v.end(), b.begin() + 94));
     // Read back, every field.
     sim::Island back;
     sim::ReadArchive r(b);

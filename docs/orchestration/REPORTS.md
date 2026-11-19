@@ -14850,6 +14850,1933 @@ landing candidate's own build): both pass, run directly with `python3 -I tools/l
 
 READY FOR REVIEW.
 
+## UI-TABS-1 stage B — READY FOR REVIEW (Windows, 2026-11-17)
+
+- Continued on `task/UI-TABS-1` from `ae5164d9` (no rebase, no origin/main merge). Commits
+  `253947b2` (figures), `814796d1` (drawing), `de514933` (tests), `e0ad1234` (re + OQs),
+  `662e5c83` (selected-house test), this entry. No `src/sim`/`src/render`/`src/formats` change;
+  no pixels, frames or strings in git.
+- Code read, GOG static ([ui.md 5.5](../re/ui.md#55-the-balance-pages-ui-tabs-1-stage-b-2026-11-17)):
+  rows are text gadgets `0xb1c` 195 x 15, align `0x1c6` = 1, font `[+0x5c0]` (as the info boxes);
+  positions come from the pages' layout functions (city `0x1006c4c0`, overview `0x1007fcf0`):
+  (page x + 35, page y + C - 244), C = 323..533, 633; page (779, 244), so gadgets at (814, C).
+  `_itoa` radix 10 (`0x1008d919`), no separator; balance `0x1c5` = `0xff0000` below 0. City
+  `0x1006c0f0`: pop, stat0, stat1+stat2, stat4, stat5, stat2, r1-r2-r3+r4-r5 (military twice),
+  knowledge/256. Getter `0x1002dc70`: stats 0/4/5 shown 15x/105. Overview `0x1007f8f0`: sums over
+  the cities plus player `+0x9c` (`0x1001c0f0`) 4, 5, 2+3. Answers OQ-655 signs, OQ-651 positions.
+- Measured: glyph-match 0 differing px on every row of `hud_idle_running` (0 0 15 0 0 16 -31),
+  `f15_kontor`, `r2_tab_help` (0 0 15 0 0 0 -15 0): right edge = gadget edge 1009, top = gadget
+  y - 3, cut to the gadget, red (255,0,0). HE `HE_UI_1.mp4` 44.5 s (0 0 0 0 0 17 -17), `ui_5.mp4`
+  405 s (120 91 248 0 0 0 -157 9): GOG positions x 0.75 within 1 px (`cache/ui-tabs-1b/sbs_*.png`).
+- Built: hud.txt `player_row_0..6`, `city_row_0..7` (`value`, `page`, `align right`, `text_dy`,
+  `clip box`, `negative_rgb`); `balance_rows.hpp`; `draw_balance_rows` in both UI paths; snapshot
+  copies (city accounts, `accounts_live` = `Rules::city_booking`, scale from SimConfig); facts
+  `hud.row.<value>`; masks `balance_row_0..7`; `anno_ui_mock --rows`.
+- Drawn: overview 0 (sum of populations), 1-2 (sums) with live accounts or no city; city page 0,
+  1-6 with live accounts. EMPTY: overview 3-6 (player terms the sim does not feed, OQ-694), city 7
+  (no knowledge object, OQ-695), every account row while `city_booking` is off.
+- QUESTIONS: (1) a sim feed for `Player::upkeep_a/b` (unit upkeep; HE shows 17 for the start
+  ship) and `stat_a/b`; (2) a city knowledge object (city `+0x320`, slot `+0x20`); (3) frozen
+  accounts with booking off: show or keep empty (now empty); (4) the "?" page shows the status
+  bar's city until a Kontor click opens it (OQ-691).
+- OQs: 691 which city, 692 text rule/cut/refresh, 693 stat 4/5 names vs labels (sim
+  `trade_sales` prints as "Purchase costs"), 694, 695.
+- Tests: `balance_rows_test.cpp` 10 cases (itoa incl. int64 limits, HE 6:45, doubled military,
+  rows 3/4 by index, 15/105, empty rows, overflow, hud.txt rows, parser); wiring
+  `ui_balance_rows` (lan5 living), `_original`, `_no_city`; `ui_balance_rows_compare` (composer
+  vs 3 GOG shots exact; controls wrong figure / text_dy -2 / no red / no cut fail on the expected
+  rows; window CPU vs composer 0 of 43875 px).
+- Changed existing test: `selected_house_pixel_check` failed in gate B-01 on the deselected
+  overview's live "0" (72 px); it now skips masks.txt `live-digits` rects as
+  `live_screen_compare.py` does. A's tests and the oracle-shot tests are unchanged.
+- Failure proof: figures not passed on -> 3 wiring scripts FAIL (`hud.row.player.0 is 'empty'`),
+  `ui_balance_rows_compare` FAIL; mutants (military once; stat 4/5 swapped) -> 2 unit cases FAIL;
+  restored (`cache/ui-tabs-1b/failure-proof*.log`).
+- Gate `run_selected.py` msvc Release, game dir, GOG shots, HE captures, rotation shots, head
+  `662e5c83`, `cache/gates/ui-tabs-1-B-02.log` (sha256 `11b0b238...f864`): 9 required contracts
+  PASS, selection `COUNTS: selected=85 executed=85 failed=0 empty=0 skipped=0 ... incomplete=0
+  sanitizer_lines=0` `VERDICT: PASS`. B-01 (head `e0ad1234`) FAIL on the selected-house check.
+- Test names ok; clang-format 23.1.3; `ui_layout.py validate` ok. WSL: GCC/Clang without GPU
+  clean; with GPU only the known `extensions_test.cpp` (ANNO_EXTENSION_ORACLE_FILE).
+- NOT_RUN: GPU window live (composer checked), Linux/Mac CI, HE live run, origin/main merge.
+- Decisions: account rows only with live accounts; rows by statistic index, not sim name;
+  64-bit, empty on overflow (no 32-bit wrap); "?" page = status bar city; a fact is the row's
+  text even while its page is hidden.
+
+## UI-STATUS-1 stage A: READY FOR REVIEW (Windows, 2026-11-17)
+
+- Base origin/main `09315620`, packet `3608be57`, branch `task/UI-STATUS-1`. Commits: `9b844677` (re), then this entry.
+  Docs only: `docs/re/ui.md` 5.6, `docs/open-questions.md`. No code, no pixels, no listings in git; the helper scripts
+  are in `cache/ui-status-1/`. Stage B not started.
+- **The rule** (GOG `AnnoFrame.dll`, static read, [ui.md 5.6](../re/ui.md#56-the-status-bars-island-ui-status-1-stage-a-2026-11-17)):
+  - The point is the frame cursor's map tile, not the view centre (`0x100052a0`, `tViewedInfo` `+0x1c`, SetCursor
+    `0x10007e00`). It is re-read every frame by the frame tick `0x10005a10`.
+  - The counters (`tStadtInfo` `0x10009920`) follow the city whose **territory** holds the tile (owner nibble,
+    island slot `+0xec`):
+    - an own city shows the four materials (wares `0x29..0x2c` / 256) and the residents;
+    - a foreign city shows only the residents, and only if its property-0 mask has the player;
+    - no city shows gold only; with a building armed, the building's corners select an own city.
+  - The fertility row (`0x10009770`) needs the island's discovery word `+0xa6` (property `0xe`, the rebuild's
+    `players_present`). The segments come from the climate mask (jump table `0x10009904`, = `raw_climate_mask`),
+    minus `0xf009` and minus 7, ascending, at most 4, at x 547 + 40k. BALKEN is 100 if island property 11 has the
+    bit, else 50. Open sea hides the row at once; sea inside an island's chunks hides it after 2 s.
+  - The cost row's code is located for UI-STATUS-2 (5.6, groups table).
+- **HE re-check:** fertility before the founding = the discovery rule (high). The 20 s gap and the hide at 02:04.5 =
+  territory, not island, for the counters (medium / medium-high). Recipe for the owner in 5.6.
+- **Owner comparison** (5.6, last table). Three points need an owner decision (OQ-703): (1) counters by territory,
+  not by island; (2) **fertility icons over every discovered island, own or not**; (3) residents over a foreign city
+  that knows him.
+- **OQs:** 622 PARTLY ANSWERED; 700 (cursor tile over the panel), 701 (writers of `+0xa6` besides founding: ship
+  reveal?), 702 (meaning of the half bar; the sim has no island property 11), 703 (owner decision).
+
+| Requirement | Positive proof | Counterexample / control | Evidence |
+|---|---|---|---|
+| Segment choice | NORD `0xf949` minus `0xf009` minus 7 gives 6, 8, 11 = the three icons on GOG `hud_idle_running` (2.3) | Without the `0xf009` filter, NORD would give 0, 3, 6, 8 (four slots, 0 first): the shot refutes it | `0x100098aa`-`0x100098e4` |
+| Counters by territory | HE 02:04.5: M hides, F stays (the tile is still on the island) | An island rule would hide F with M | `0x100053bf`, island `0x100860c0` |
+| Point = cursor tile | `tViewedInfo +8` is written only by SetCursor `0x10007e00` | The camera vector `+0x15bc` is not read on the path | `0x100041f0` |
+| Discovery flag | getter `0x10087c30` case `0xe` = word `+0xa6` | The player property 7 is not read on the path | `0x10009797`-`0x100097c2` |
+
+- **Gates:** none run. Docs only, and the PC was asked to stay quiet (no build, no ctest, no agree.py). CI not polled
+  (dispatch instruction). NOT_RUN: everything executable; any HE capture (recipe written instead).
+- **Decisions and reasoning:**
+  - I used the user-site capstone/pefile (`python` without `-I`, as `tools/disasm.py` documents). `python -I` was
+    used only for the doc edits, which keep CRLF.
+  - I followed the bar's feeder through `tStadtInfo` instead of reading every bar slot. It answers all the packet's
+    questions; the bar's mouse/tooltip slot `+0x2c` (`0x10064290`) is left for the tooltip packet.
+  - The status bar's flag is called "discovery word" and tied to `players_present`, not `Player::discovery`, because
+    the getter address shows the island word. Its other writers are an OQ, not a guess.
+  - I kept the owner differences as decisions (OQ-703), not as defaults: a feel matter.
+  - The +1 texture-index offset is marked P/L: it agrees with every measured element, but the group's load order was
+    not read.
+  - I did not chase the 1-pixel EINWOHNER x (code 400, `hud.txt` 401): it is left to B's pixel check.
+- **QUESTION for B:** with no island property 11 in the sim, B draws the icons without bars or with none? The packet
+  rule says draw nothing for a missing source. This needs the UI lane's call with OQ-702.
+
+READY FOR REVIEW.
+
+## UI-STATUS-1 stage B: READY FOR REVIEW (Windows, 2026-11-17)
+
+- Base `57109f85` (A accepted; OQ-703 answered "Like original"). Commits `42482bbc` (feat), `aeb95c6c` (docs),
+  `e20e1e74` (test name), `1fa3c45f` (fix), then this entry. No `src/sim`, `src/render` or `src/formats` change, no
+  new sim field, no pixels in git. The rule and the rebuild's table are in
+  [ui.md 5.6](../re/ui.md#56-the-status-bars-island-ui-status-1-stage-a-2026-11-17).
+- **What changed:**
+  - `status_bar.hpp/.cpp` (new, pure):
+    - `pick_status`: the island is the one whose rectangle holds the tile; the city comes from the tile's owner.
+      An own city shows materials and residents; a foreign city that knows the player shows residents; anything
+      else shows gold. An armed building's corners are tried on island land outside every territory.
+    - `fertility_segments`: the climate mask without `0xf009` and without 7, at most the hud.txt slots.
+    - `FertilityRow`: hides now, or after 2 s on the window clock; land cancels the hide.
+  - Published `TerritoryView`: each island's slot, climate and `discovered_by` (`players_present` plus the city
+    owners, E9). It also carries `land` (vertex height > 0, reused per terrain digest, compared by content) and the
+    climate mask.
+  - `CityCounters` now also lists foreign cities that know the player. `PlaySnapshot::local_player` is new.
+  - Viewer `update_status_bar`: every frame, on the CPU and GPU paths, it reads the cursor tile with `pick_point`
+    (split out of `FrameProjection::pick`). It keeps that tile while the pointer is on chrome (OQ-700).
+    `centre_tile()` and R4's "Always show my city" are removed.
+  - Draw (all three ui_mock paths): the materials and the residents are gated separately. hud.txt `rosh_46/48/51`
+    became `rosh_0..3` (x 547 + 40k, `tex_id` 40 + segment); the oracles draw each slot's shot `segment`.
+  - Bars: not drawn, a named placeholder (hud.txt comment; masks.txt `balken_0..3`, OQ-702).
+  - New facts: `hud.status.tile`, `.island`, `.city`, `hud.fertility`, `hud.fertility.pending`. `hud.counters`
+    now reads `gold` / `residents` / `materials+residents`. New script verbs: `hover-sea`, `hover_px`.
+- **Changed tests and scripts, and why:**
+  - `viewer_wiring_ui_counters_centred` and its script are removed (they tested the centre rule). Its replacement
+    is `viewer_wiring_ui_status_island`.
+  - `ui_counters_before_founding.script` and `live_screen_hud_idle.script`: `hidden` became `gold` (the new fact
+    names), and both now check that the row is hidden.
+  - `construction_menu_draw_check.script` hovers the developer city (1130, 516) before its screenshots.
+  - `live_screen_compare.py`: the slot names changed. hud_idle on the ship start masks the three slots: before the
+    first founding no island is discovered (OQ-701), while the GOG shot shows the row.
+  - `tools/ui_layout.py` and the C++ `compose_screen`: they draw the slots from hud.txt `segment`.
+- **Tests:** `status_bar_test.cpp` has 12 cases: every climate, with the always-set and slot-count controls; own
+  territory; own island outside its territory; a foreign city, known and unknown; open sea; sea within the rectangle
+  (delay, cancel, no re-arm); undiscovered; two own cities; corner order; a climate with no segment; no height
+  column; hud.txt slots.
+  - `viewer_wiring_ui_status_island` (lan5): own territory, the panel keeping the tile while the camera moves,
+    open sea, a foreign island, undiscovered island 10, and sea inside island 1 with the 2 s hide.
+  - Not on lan5: own island outside the territory (the developer start owns the whole rectangle), a known foreign
+    city, two own cities. These are covered by the unit tests.
+- **Gate:** `run_selected.py --build-dir build/msvc --config Release --select
+  '^anno_app_tests\.(status bar|hud |ui |dev script|construction menu|selection|minimap|play)|^viewer_wiring_|^live_screen_matches_oracle$|^ui_dynamic_draw_check$|^info_panel|^selected_house|^ui_panels_match_gog$|^ui_mock_matches_oracle$|^ui_subtabs_compare$|^ui_window_matches_he$'
+  --exclude 'opt-in measure' --jobs 8 --asset-policy required` with the 7 oracle/new tests `--require-test`.
+  - Head `1fa3c45f`, `cache/gates/ui-status-1-B-03.log` (sha256 `40f48ebfb15b...`):
+    `COUNTS: selected=144 executed=144 failed=0 empty=0 skipped=0`, `VERDICT: PASS`.
+  - B-01 failed the test-name preflight (a `;` in a case name). B-02 had one failure, `play: the tutorial's
+    territory...` (`land` compared by pointer; fixed in `1fa3c45f`), and one opt-in skip, now excluded.
+- **Failure proof:** `update_status_bar` was given the old view-centre point (temporary, restored):
+  - `ui_status_island` FAILs at line 15 (the centre always yields a tile);
+  - a copy without the no-tile checks FAILs at the decisive step: `hud.status.tile is '1002,322', it was
+    '1140,516'` after `look 1000 320` with the pointer on the panel (`cache/ui-status-1/failure-proof-centre*.log`);
+  - restored: PASS.
+- **Pixels and measurements:**
+  - Residents icon x: GOG `r2_construction_public` and `f13_hud_cursor_map` give sprite-sad 4.74 at 401, against
+    29.5 at 400 and 30.6 at 402. hud.txt's 401 stays; the 1-pixel gap to the code's 400 is likely the sprite inside
+    the 40-px ACCESS rectangle (the decoded sprite is 38 wide).
+  - `ANNO_PUBLISH_STATS`, lan5 script run: snapshot build median 552 us, p95 1160 us; turn max 10.8 ms (the
+    first collection of the land tests). No base run to compare against.
+  - The play test's 20 cold `collect_territory_view` calls take 190 us each.
+- clang-format 23.1.3 (`anno1503-T10c/cache/cfpkg`) is clean on every changed C++ file. `ui_layout.py validate` and
+  `self-test` pass; self-test had failed on stage A's `\|` in a 5.6 table row, fixed in `aeb95c6c`.
+- **NOT_RUN:** the WSL GCC/Clang warning check (`check_unix_warnings.sh`), CI (not polled), the GPU window path
+  live, and the owner's viewer test.
+- **Decisions and reasoning:**
+  - `discovered_by` adds the city owners to `players_present`. A fixed map's developer start does not set the word,
+    but the original's registration always does (E9). This is a derivation, not a new field.
+  - The island is found by rectangle, not by the original's 8 x 8 chunks. They agree for 8-aligned templates.
+  - A tile inside an island's rectangle with no height column counts as land, so synthetic islands show the row.
+  - Gold keeps the existing gate: it is drawn once there is a city. The original draws gold always; changing that
+    is outside this packet.
+  - No hide delay is armed for a row that is already hidden (the original re-asks only on a new tile).
+  - `hud.status.island` is `none` before any tile, `sea` over open sea.
+  - A foreign city's goods are never published.
+- **QUESTION:** none new. Gold before the founding, and a ship reveal of islands (OQ-701), are left as they are.
+
+READY FOR REVIEW.
+
+**Addendum (review fix, gold before the first founding):** `e1d2e1d8` publishes the local player's money
+whenever that player exists (`PlaySnapshot::has_local_player`; `costs_waived` moved with it) and draws the gold
+figure in every mode, 0 when the world has no local player (the original's Update(zeros), `0x10009949`; there is
+no such session today). New fact `hud.gold`; `ui_counters_before_founding`, `live_screen_hud_idle` and
+`ui_status_island` check `hud.gold != none`. The gold digits stay masked as live digits (masks.txt `gold_digits`) in
+the live_screen comparison. No other test expected no gold before founding (`git grep -n counters`). Gate
+`cache/gates/ui-status-1-B-04.log` (sha256 `c2563f9dac18...`), head `e1d2e1d8`, select
+`^anno_app_tests\.(status bar|hud |play|command outcome)|^viewer_wiring_ui_counters_before_founding$|^viewer_wiring_ui_status_island$|^live_screen_matches_oracle$|^ui_dynamic_draw_check$`
+(`--exclude 'opt-in measure'`, the four named tests `--require-test`): `COUNTS: selected=59 executed=59 failed=0
+empty=0 skipped=0`, `VERDICT: PASS`. clang-format 23.1.3 clean on the changed files.
+
+READY FOR REVIEW.
+
+## UI-STATUS-1 stage C: READY FOR REVIEW (Windows, 2026-11-17; docs only)
+
+- Base `c58dab37`; this commit adds `docs/re/ui.md` 5.6 "Stage C", a `production.md` 4.3 note, OQ-701/702 (partly
+  answered) and OQ-704..706. GOG static reads (`py -3.14`, scripts in `cache/ui-status-1/`). No HE run (recipe
+  written). No code, no build, no test.
+- **Q1, when the fertility row appears** (OQ-701):
+  - The discovery word `+0xa6` is written by: the constructor; the `DISCOVER` loader `0x100899b6`; founding
+    registration `0x100862c5`; a city's owner change `0x1002e283`-`0x1002e2a1`; and the reveal with flag 4
+    (`0x10080c1d`-`0x10080c58`). All D.
+  - Founding calls the reveal with flags 1, which does not write the word. The flag-4 path runs through world slot
+    `+0xcc` (`0x1009d9b0`: x, y, r, flags, player; per 8 x 8 chunk island), but its caller is **not found** (OQ-704;
+    the only five-argument calls, in the event handler `0x1007f960`, pass flags 0).
+  - A ship's approach shows the row per the manual (p. 11) and HE (00:52-01:41): medium confidence, not D.
+  - 1503 has no "explore the island" text or command (`Texte.dat` P); exploring is the Scout's job ("Resource
+    discovered"). A click on an undiscovered island was not read (OQ-705).
+- **Q2, the bars** (OQ-702):
+  - The segments are the crops, ware `0x38 + i`, named by `WARE_ANBAU` line i (tooltip `%a`, `0x10064e54`-`0x10064e92`).
+    The order is grain, tobacco, spices, flax, sugarcane, cotton, wine, cocoa, hops, silk, indigo, herbs, so NORD
+    shows wine, hops and herbs. D + P.
+  - There are two levels only, 100 (crop bit in property 11) and 50; no 0 %. D.
+  - Property 11 comes from the `ANBAU` record (loader `0x10089871`; all 465 templates list every crop, so 100 % on a
+    template island, P) and, in a new game, from link placement (`0xF009 | raw marks`). D.
+  - Readers: the status bar, the AI (CompLogic, 10 sites), and the **crop-growth test** island slot `+0x140` =
+    `0x100817c0`. That test takes fertility nibble × 10, sets it to 0 when the climate forbids the crop, **halves it
+    when property 11 lacks the crop**, then maps L = (v+5)/10 to a 4 x 8 dither table (`0x100c9c28`: 16 of 32 cells
+    answer "1" at 50 %, none at 100 %). D.
+  - "1 = does not grow" is L (OQ-706).
+- **Q3, own resources and citizens:** the 5.6 territory rule is re-confirmed, D. Before founding: gold, plus the row
+  over discovered islands. Own territory: materials and residents. Own island outside the territory: gold only, or
+  the corner rule when a building is armed. A foreign city: residents only if it knows the player.
+- **Q4, HE recipe** (ui.md 5.6 stage C, 5 steps):
+  1. Sail the start ship towards a new island with the mouse on it (distance, persistence).
+  2. A second own ship and an AI ship.
+  3. A click on an undiscovered island.
+  4. The same farm on a 50 % and on a 100 % island (output after 10 minutes).
+  5. A scout.
+- **Stage D plan** (each packet one concern; "parsed today" says where the data is read now):
+
+| # | Kind | Packet | Data parsed today? | Size |
+|---|---|---|---|---|
+| D1 | (b) sim | **Island crop mask (property 11):** decode the `ANBAU` record (names → ware `0x38..0x44` bits, base `0xF009`, POLAR 0) with round-trip and corpus tests; an `Island` field in state (ADR 0006 extension tag or number, orchestrator); set at link placement to `0xF009 | raw marks`; save and hash | `ANBAU`: **no** (`docs/formats/insel.md` lists it as size-only, OQ-024; `tools/map2_opening.py` only names it). Raw marks: **yes**, `src/sim/src/island_links.cpp` `resolve_island_links` → `ResolvedLink::raw_marks`, used today only for the `LinkRawMaterials` warning (`scenario_formats.cpp` ~2151) | 3-4 h |
+| D2 | (a) UI | **The bars:** `TerritoryIsland` publishes the crop mask; `STATUSBAR_BALKEN` (5 x 29 at slot x + 25) drawn at 100 / 50 with the offset H − ⌊H·v/100⌋ + 1 (`0x10065890`); drop masks.txt `balken_*`; pixel check on `hud_idle_running`'s bars | needs D1 (the mask); everything else is in the app | 2-3 h |
+| D3 | research (docs) | **The reveal trigger:** read the ship tick and the scout for the world `+0xcc` flag-4 call (OQ-704); the owner's HE recipe 1, 2, 5 | n/a | 2-3 h |
+| D4 | (b) sim | **The reveal:** the trigger D3 finds (ship proximity or scout) ORs the player into `Island::players_present`, deterministic, per tick as the original | `DISCOVER`: **yes** (`scenario_formats.cpp` ~1211 → `players_present`); founding: **yes** (`founding.cpp` 470); owner change: not modelled; the trigger: **no** | 3-4 h after D3 |
+| D5 | research (docs) | **The crop-growth answer:** what "1" from slot `+0x140` does (the counter at `0x1008b364`, the two scaling flags), OQ-706; HE recipe 4 | n/a | 2 h |
+| D6 | (b) sim + (c) owner | **The growth rule:** the fertility nibble grid (`0x10084370` from `Wachstum.dat`) and the slot `+0x140` test with the property-11 halving. It changes farm output against today's rebuild, so its default goes to the owner as a `rules` option (the orchestrator raises it) | `FRUCHTBAR`: **yes**, raw (`src/formats/src/insel.cpp` 183 → `Terrain::fertility`); the rebuilt nibble grid and the `Wachstum.dat` tables: **no** in the sim (`Wachstum.dat` keyed file is readable by `tools/text.py`); crop climate masks: not read | 4-6 h, split after D5 |
+| — | (a) UI, later | Crop names in the bar's tooltip (`WARE_ANBAU`), with the tooltip packet (OQ-541) | **yes**, Texte.dat (`formats` data-text) | in that packet |
+
+  Order: D1 → D2 (the bars, visible to the owner), D3 → D4, D5 → D6 (owner decision before D6's default).
+- **Decisions and reasoning:**
+  - I stopped the OQ-704 hunt at the sweep of five-argument `+0xcc` calls. A register-held flag needs the ship
+    tick read, which is its own packet (D3) and too big for this one.
+  - "1 = does not grow" is left as L: the caller's counter was not read to its consumer.
+  - The bars' two levels and their source are D. The farm effect is D in arithmetic but not in meaning, so D6 waits
+    for D5.
+  - The OQ numbers used are 704-706, so 707-709 remain reserved.
+
+READY FOR REVIEW.
+
+**Stage C addendum (2026-11-17): corrections from the UI lane's independent check, and the updated stage D plan.**
+- **What I verified myself, all agreeing with the check:**
+  - the ship call `0x1004222e`-`0x10042273` (radius 14, flags 5, only while `(state & 7) == 1`);
+  - the scout call at `0x100365dc` (radius 8, flags 7);
+  - AnnoScene's clear `0x1000898f`-`0x100089d3`;
+  - the second owner-change OR at `0x100a869d`;
+  - the drought "+2" on the tile's object id (`0x1008b2d9`, `0x1008b2e5`);
+  - the table index `[(y − y0) & 3][(x − x0) & 7]`.
+
+  I have no disagreements. My first version had five errors: it called `0x1008041f`/`0x100804ca` world calls
+  (they are island SetHitPoints calls); it said a ship reveal was unproven; it read the "+2" as a counter; it gave
+  the wrong table index; and it said a crop the climate forbids has no icon (wine on WUESTE does have one).
+- **Docs:** `ui.md` 5.6 stage C rewritten, and the main table's climate-mask row annotated. Updated:
+  `production.md` 4.3 (the crop test, the dry-variant chain, the recoveries), `annoscene.md` §5 step 10 (the
+  overwrite is unconditional, on the INSELLNK path only, with random marks; the set-up clear), `annowelt.md`
+  (new section: the `+0xa6` writers, the reveal flags, world `+0xcc`/`+0x130`, island `+0xcc` = SetHitPoints),
+  `insel.md` (ANBAU semantics; 29 templates lack KARTOFFEL, 6 lack KRÄUTER, named).
+- **OQs:**
+  - 701 and 702: answered.
+  - 704: answered. Still open: the reach edge, the start-of-game discovered state, the scout's deposit pass.
+  - 705: answered. Still open: a foreign building on an undiscovered island.
+  - 706: answered. Still open: the output loss, a farm built after a well, objects 749/753/757.
+  - New OQ-707: desert islands show wine, which cannot grow there.
+  - OQ numbers 708-709 stay free.
+- **HE recipe**, now six steps in 5.6 stage C:
+  1. the start-of-game discovered state;
+  2. the reveal distance from a moving ship, and an anchored ship revealing nothing;
+  3. a click on an undiscovered island;
+  4. 50 % against 100 % (dry fields, output);
+  5. desert wine;
+  6. the scout.
+- **Stage D plan (updated; D3 and D5 are answered and dropped):**
+
+| # | Kind | Packet | Data parsed today? | Size |
+|---|---|---|---|---|
+| D1 | (b) sim | **Island crop list (property 11):**<br>- decode `ANBAU` (names → ware `0x38..0x44` bits, base `0xF009`, 0 for climate 0) with round-trip and corpus tests;<br>- add an `Island` field (state number or extension tag per ADR 0006, the orchestrator decides);<br>- on INSELLNK links, overwrite it with `0xF009 \| raw marks`;<br>- save and hash it | `ANBAU`: **no** (`insel.md` semantics only, not decoded; `tools/map2_opening.py` names it). Raw marks: **yes**, `src/sim/src/island_links.cpp` `resolve_island_links` → `ResolvedLink::raw_marks` (used today only for the `LinkRawMaterials` warning, `scenario_formats.cpp` ~2151) | 3-4 h |
+| D2 | (a) UI | **The bars:**<br>- publish the crop list in `TerritoryIsland`;<br>- draw `STATUSBAR_BALKEN` at 100 / 50;<br>- drop the `balken_*` masks;<br>- pixel check on `hud_idle_running`.<br>Keeps the raw-climate segment table, with desert wine (OQ-707) as the original shows it | needs D1 | 2-3 h |
+| D4 | (b) sim | **Discovery by a moving ship and by the scout:**<br>- a moving ship ORs its owner into `Island::players_present` for every island owning an 8 x 8 chunk within ± 14 tiles, every movement step;<br>- the scout does the same within ± 8 tiles on its own island;<br>- deterministic, no PRNG.<br>The map set-up clear and the owner-change path are optional extras | `DISCOVER`: **yes** (`scenario_formats.cpp` ~1211 → `players_present`). Founding: **yes** (`founding.cpp` 470). Ship movement steps: **yes** (sim navigation). The chunk map: **no** (approximate with island rectangles in 8-aligned chunks, as status_bar does). The scout: not in the sim | 3-4 h (ship); scout later |
+| D6 | (b) sim + (c) owner | **The dry-tile growth rule:**<br>- rebuild the fertility nibble grid (`0x10084370` from `Wachstum.dat`);<br>- add the crop test with the well/drought modifiers, the HEAD[0x13] climate check and the property-11 halving;<br>- turn tested tiles dry (712 → 714, 713 → 715) at its six callers.<br>**This changes farm output against today's rebuild** (at 50 % half the fields of a farm die; on desert, wine dies entirely), so its default goes to the owner as a `rules` option (the orchestrator raises it) | `FRUCHTBAR` raw: **yes** (`src/formats/src/insel.cpp` 183 → `Terrain::fertility`). The rebuilt nibble grid, `Wachstum.dat` tables, HEAD[0x13] climate masks: **no** in the sim. Dry variants 714/715: in `Anlagen.dat` (formats parse it) | 4-6 h, split (grid, test, callers) |
+
+  Order: D1 → D2 (visible bars). D4 is independent. D6 waits for the owner's default.
+- Docs only. No build; `ui_layout.py self-test` ok.
+
+READY FOR REVIEW.
+
+**UI-STATUS-1 merge addendum (2026-11-17): stacked on the UI-TABS-1 B candidate.**
+- Merged `refs/candidates/ui-tabs-b` (`004a26f4`) into task/UI-STATUS-1 as merge commit `9c1ca082` (no rebase).
+  Follow-up `85128f58` initialises `HudCounters::rows` (see the WSL result below).
+- **Conflicts and their resolutions** (both behaviours kept):
+  - `src/app/CMakeLists.txt`: both test files, `status_bar_test.cpp` and `balance_rows_test.cpp`. All three
+    `viewer_wiring_ui_balance_rows*` cases and `viewer_wiring_ui_status_island` are registered;
+    `ui_counters_centred` stays removed.
+  - `play.hpp` `CityCounters`: both fields kept, `own` and `accounts`. `own` now defaults to true; foreign
+    known cities are published with false. The island rectangle fields stay removed: only the old centre rule
+    used them.
+  - `ui_mock.hpp` `HudCounters`: both members, `fertility` and `rows`.
+  - `play.cpp`: both publish blocks, the balance pages' `accounts_live`/`stat_shown_*` and the local player's
+    money with `has_local_player`.
+  - `viewer.cpp`:
+    - members: both, the status bar's `status_tile_`/`status_pick_`/`fertility_row_` and the balance pages'
+      `hud_rows_`;
+    - counters: the status bar's `shown` city for the counters. The "?" city page now shows the status bar's
+      city when it is the local player's, else the player's first city. TABS-1 B used R4's `centred`, which no
+      longer exists.
+    - `balance_rows.cpp` skips cities that are not the player's own in the overview's sums: `CityCounters` now
+      also lists foreign known cities.
+  - `docs/re/ui.md`: §5.5 "The balance pages" and then §5.6 "The status bar's island". §5.5 notes the new city
+    page choice.
+  - `docs/open-questions.md`: OQ-690 and 691-695, then 700-707.
+  - `REPORTS.md`: both sides' entries.
+- **Gates** (env as before, `--jobs 8`, on `9c1ca082`):
+  - a. TABS-1 B's selection and its 9 `--require-test`: `cache/gates/ui-status-1-merge-tabs.log` (sha256 `75c400dfce76...`):
+    `selected=85 executed=85 failed=0 empty=0 skipped=0`, PASS.
+  - b. STATUS-1 B-03 plus the B-04 lanes (`--exclude 'opt-in measure'`, 8 `--require-test`):
+    `cache/gates/ui-status-1-merge-status.log` (sha256 `13f2a85280dd...`): `selected=150 executed=150 failed=0 empty=0
+    skipped=0`, PASS.
+  - After `85128f58`: `ui_status_island`, `ui_balance_rows`, `ui_counters_before_founding`,
+    `live_screen_matches_oracle` and `ui_balance_rows_compare` ran again (`cache/gates/ui-status-1-merge-fix.log`):
+    5 of 5 executed and passed.
+- **WSL** `check_unix_warnings.sh` (no other run was going):
+  - First run, on `9c1ca082`: FAILED under GCC 13 and Clang 18 with `-Wmissing-field-initializers` at
+    `viewer.cpp`, `HudCounters` missing `rows` (`cache/ui-status-1/wsl-warnings-01.log`).
+  - After `85128f58`: GCC with GPU clean, GCC without GPU clean, Clang with GPU clean, Clang without GPU clean,
+    rc 0.
+- clang-format 23.1.3 is clean on the touched C++ files.
+
+READY FOR REVIEW.
+
+## RENDER-DIRECT-1b — the resident atlas pages, built on the CPU, proven texel-exact, every gate green — READY FOR REVIEW (task/RENDER-DIRECT-1b, from `origin/task/RENDER-DIRECT-1a` `5fb98192`, merged `origin/main` `09315620` then `4dfdd9b7`, head `c550124f`)
+
+**The unit and its interface.** New `anno_render` unit `src/render/include/anno/render/atlas_pages.hpp`,
+`src/render/src/atlas_pages.cpp`: `build_atlas_pages(frames, page_size, padding, threads) -> AtlasPages`.
+`AtlasFrameInput{id, image}` in, one call to the existing `AtlasResidency::ensure`/`place` for packing (no
+second packer), then per-frame texel work on `threads` workers. `AtlasPages{level0, level1, placements,
+oversized, duplicate_ids}`: `level0`/`level1` are `page_size`²/`(page_size/2)`² RGBA8 buffers per layer;
+`placements` gives each frame's layer/x/y/width/height at both levels; `oversized`/`duplicate_ids` name
+anything not placed, never dropped silently. Nothing here is read by any render path yet (RENDER-DIRECT-1c
+uploads and draws from these pages).
+
+**Rounding rules, each cited.** Premultiply: `c' = (c·a + 127) / 255` per channel, integer, half up
+(`premultiply_pixel`) - round to nearest for every input, since 255 is odd and no product lands on a half
+(review, confirmed). Dilation: every slot texel outside the frame copies the nearest frame texel, clamped
+to the edge, premultiplied the same way. One mip level: each level-1 texel is the 2×2 box of level 0,
+summed per channel and rounded half up, `(s + 2) / 4`.
+
+**Thread safety, reasoned and proven.** Every slot's width/height is rounded up to the next even number
+before packing, so every slot's own origin is also even and the page-wide mip grid never has to average
+texels from two different frames' slots at a boundary - the fact that makes per-frame worker threads safe
+with no shared lock on the per-texel path. Proven by a hash-equality test (1 vs. 8 threads, 200 synthetic
+frames and, separately, a duplicated-id case).
+
+**Step 1, the budget default.** `cb_atlas_budget_bytes`'s 256 MiB non-discrete default is now 384 MiB
+(OQ-096); the default-and-clamp logic is `atlas_budget_bytes_before_sprite(atlas_budget_mb, adapter_type,
+max_layers, layer_bytes)` (`gpu.hpp`), a pure function `cb_atlas_budget_bytes` (`gpu.cpp`) calls. 9/9
+assertions, no GPU device opened.
+
+**Step 4, the texel-exact proof, every frame, every scene the packet names.**
+- **Synthetic** (`atlas_pages_test.cpp`): 1×1, odd sizes, a frame exactly filling a page, alpha 0/255
+  edges, the thread-hash case, a duplicated-id case (review F3), a case asserting the mip rectangle fields
+  directly on an even- and an odd-sized frame (review F4). 8 `TEST_CASE`s, **120/120 assertions**.
+- **Game files**, split by what each scene needs to load (orchestrator, after F2): `Scenes/0010SingleEndlos/
+  02_1024_easy_128.sze` and `Scenes/0100Kampagne01/S01_01_01.sze` stay in `anno_render_tests`
+  (`atlas_pages_corpus_test.cpp`); `data/maps/lan5.txt` moved to `anno_app_tests`
+  (`atlas_pages_lan5_test.cpp`) - a fixed map needs `app::load_play`/`load_placed_scene`, and
+  `anno_render_tests` must not depend on `anno_app_core` to stay below it (`anno_render_gpu_tests`'s own
+  link is the one, pre-existing exception, not a precedent to extend). The frame-gathering and the checker
+  (`collect_static_water`, `check_pages_against_source`) live in one shared header,
+  `anno/test/atlas_pages_check.hpp` (`src/test_support`, header-only - test_support's own library gets no
+  render/assets dependency), included by both binaries instead of copied. **Every frame, every level-0
+  texel of its own rectangle, and every texel of its own mip rectangle checked against the decoder
+  directly** (review F2: an earlier revision sampled every 7th frame and excluded `lan5.txt` on a
+  proportionality call that turned out to rest on an unreleased Debug build's own timing - both reverted;
+  the deviation should have gone to the orchestrator before being built, not reported afterward). Native
+  MSVC Release, `ANNO1503_GAME_DIR` set: the two `.sze` scenes **50,755,526/50,755,526 assertions**;
+  `lan5.txt` **39,965,981/39,965,981 assertions**.
+
+**No frame found unequal.** 0 failures across every proof case above.
+
+**A dangling-buffer bug, found twice, same class, both in this task's own new test code.** First:
+`sze::Scene::parse(read_all(sze_file))` fed a temporary straight into `parse()`; `formats::sze::Scene` holds
+spans into it, not a copy. Second, while debugging the first: `fig::FigurenHeader::parse(read_all(dir /
+"FigurenHeader.dat"))`, same pattern - `formats::figuren::Entry` holds spans too. Both fixed by binding a
+named buffer first; confirmed under AddressSanitizer and the plain build. Exhaustively grepped every call
+site of `FigurenHeader::parse`/`AnlagenFile::parse`/`sze::Scene::parse`/`insel::islands`/`TexFile::parse`
+across `src/` and `tools/`: no other instance anywhere, in engine code or otherwise.
+
+**Step 5, the bench table (`bench_frame --atlas-build <scene|-> out.tsv`), Release numbers (review F1).**
+The first numbers were measured on the `dev`/WSL preset, which is `CMAKE_BUILD_TYPE` Debug
+(`CMakePresets.json:10`) against `docs/perf/README.md`'s own Release convention - a real mistake, caught
+before this branch's first push could be trusted. Rerun on the native `msvc` Release build, the same
+20-scene subset (the orchestrator's own selection: 1a's `atlas_report.tsv`, top 10 by `pack_bytes` for
+groups 0+1+2 at 2048 px/2 px/one_level, plus the 10 rows nearest the sorted median index of 519) plus
+`single38.sze` and `lan5.txt`. **The byte columns matched the Debug run exactly - 200 fields compared
+across the 20-scene subset, 0 mismatches (F1's own free consistency check).** Every wall-time number below
+is the Release figure, about 19-24x faster than the retired Debug numbers on the same scenes (e.g.
+`endless02.sze` 27.45 s -> 1.30 s; `lan5.txt` 12.84 s build / 1m37s wall (app-layer load included) -> 0.70
+s total) - the scale of the Debug/Release mistake, not a tuning result:
+
+| | static+water bytes (the Static-class budget's own figure) | figures bytes | total wall | collect | pack |
+|---|---|---|---|---|---|
+| worst 10 | 280.0-360.0 MiB | 20.0 MiB (every scene, 1 page) | 0.84-1.30 s | 0.76-1.20 s | 0.068-0.100 s |
+| median 10 | 80.0-140.0 MiB | 0 (no start units on these `.scp` templates) | 0.18-0.36 s | 0.15-0.32 s | 0.022-0.038 s |
+
+**Finding, confirmed in Release: `collect` dominates, not `pack`, 85.3-92.4% of static wall time** (median
+90.1%) across all 22 scenes - the same shape as the retired Debug numbers (88-94%, median 90.8%): the
+balance between the two phases does not depend on optimisation level, even though the absolute times do
+(both sped up by roughly the same factor). `pack` is genuinely parallel (`static_cpu_ms` still exceeds
+wall time on every scene) but too small a share to matter. Not fixed here (step 5's "no blind
+optimisation"): named as a RENDER-DIRECT-1c finding - `FrameTable`/`SpriteCache` are already thread-safe
+(`shared_mutex`, both), the same primitives `build_atlas_pages`'s own worker split already uses, so
+`collect`'s per-island/per-group traversal could be split the same way with no new synchronization design.
+
+**Review F5, resolved: the iGPU's own adjacent-pair case, from real decoded pages - both pairs hold, no
+finding for the owner.** `--atlas-build` now also builds groups {0,1} and {1,2} separately per scene
+(`collect_static_water_groups`, generalised from an all-three-groups-only helper to take any group list).
+Worst pair 0+1: **340.0 MiB** (`endless02.sze`) against the iGPU's 384 MiB - **44 MiB headroom**, matching
+1a's own sizing-only estimate for this quantity almost exactly (same figure, a different specific scene).
+Worst pair 1+2: only **100.0 MiB** (`01_1024_easy_256.sze`). Neither pair exceeds 384 MiB anywhere measured.
+
+**Peak process memory**, Release, across all 22 scenes: **1,645,867,008 bytes (1,569.6 MiB, `endless02.sze`)**
+worst, 545.0 MiB (`D_080x080_0016_2B_Afrika.scp`) least - **higher** than the retired Debug run's own worst
+(967 MiB, the same scene): plausible and not investigated further - Release finishes about 20x faster, so
+more of the run's own transient allocations are live at the same instant rather than freed between them.
+
+**Separately, own commit: `play_gpu_test.cpp:75`'s `MESSAGE` streamed a `const char* adapter_name` raw,
+printing its address instead of its text - fixed with `std::string(adapter_name)`.**
+
+**No render-path or draw-call change.** Touched: `atlas_pages.hpp/.cpp` (new), `atlas_pages_test.cpp`/
+`atlas_pages_corpus_test.cpp` (new/revised), `atlas_pages_lan5_test.cpp` (new, `anno_app_tests`),
+`atlas_pages_check.hpp` (new, `src/test_support`, header-only), `gpu.hpp`/`gpu.cpp` (the budget default
+extraction only), `gpu_test.cpp` (new case), `bench_frame/main.cpp` (`--atlas-build`), `play_gpu_test.cpp`
+(the `MESSAGE` fix), docs. Nothing under any shader, draw call or compositor function changed.
+
+**Decisions and reasoning.**
+- Reused `AtlasResidency::ensure`/`place` for the real build, not a second packer.
+- Rounded every slot's own size up to even before packing (not after) so the thread-safety invariant holds
+  by construction.
+- Moved the Debug/Release mistake's fix (F1) and the architecture fix (F2's file split) ahead of trusting
+  any number in this report, rather than reporting Debug figures with a caveat: a caveat a reader skims
+  past is not the same protection as a number that was never wrong in the first place.
+- Generalised `collect_static_water_all_groups` to `collect_static_water_groups(scene, groups, ...)` (an
+  explicit group list) for F5, rather than writing a second, pair-specific function: one implementation for
+  "all three groups" and "one adjacent pair" to drift from.
+- A missing named scenario file (game directory set) or a missing `lan5.txt` (repo checkout) is now a
+  `FAIL` with its path, not a skip - CLAUDE.md's own rule, caught by the CI evidence preflight's
+  classified-skip-message self-test before this branch's first push, fixed before the second.
+- Ran the orchestrator's 20-scene subset, not the full corpus, named with its exact selection rule so the
+  two buckets are reproducible, not hand-picked; the F1/F5 rerun used the identical subset for a clean
+  before/after comparison.
+
+**Gates.**
+- clang-format 23.1.3: clean on every touched file.
+- WSL GCC 13 / Clang 18 `-Werror`, whole tree, after both `origin/main` merges (brings UNIX-WARN-1 and
+  LAYER-CHECK-1): clean on all four configurations (GCC/Clang, viewer+GPU on and off) - the pre-existing
+  `extensions_test.cpp` failure RENDER-DIRECT-1a's own report noted is gone (UNIX-WARN-1, not this task).
+  Caught a real GCC-only warning first (`-Werror=range-loop-construct`): the shared checker's
+  `for (const auto [dx, dy] : {...})` over a small `std::pair` initializer list copied each element;
+  `const auto&` instead. Fixed, rebuilt, re-verified (same assertion counts), clean on the rerun.
+- `layer_check_contract`/`layer_check_self_test` (LAYER-CHECK-1, new to this branch via the second merge):
+  both pass.
+- `anno_render_tests`: the 8 synthetic cases (120/120) plus the two `.sze` game-file scenes
+  (50,755,526/50,755,526), native MSVC Release.
+- `anno_app_tests`: the `lan5.txt` case (39,965,981/39,965,981), native MSVC Release.
+- `anno_render_gpu_tests`' budget-default case (no GPU device opened): 9/9.
+- **The RTX 4090 gate: run, confirmed on real hardware.** `anno_render_gpu_tests` from `build/msvc`,
+  `ANNO_GPU_ADAPTER=RTX`. The log names "NVIDIA GeForce RTX 4090 (Vulkan)" throughout (checked on the
+  single case that prints it first, then the whole run). **119/119 test cases, 2,450,492/2,450,492
+  assertions, 0 failed.** (An earlier attempt on the WSL/Linux build never reached the real adapter at all
+  - "ANNO_GPU_ADAPTER=RTX matches no adapter; using the default", falling back to WSL's own software
+  Vulkan adapter - killed once noticed, not a result, not repeated here.)
+- CI preflight (`python3 -I tools/test/run_selected.py --preflight-only`, the exact CI step): PASS, after
+  the skip-vs-fail fix above (the orchestrator's earlier CI run on `c7a1e77b` had caught the original
+  wording before this fix).
+- `--atlas-build`'s F1/F5 rerun ran alone on this PC, as asked, once the owner's recording was done and the
+  orchestrator released the machine.
+
+## RENDER-DIRECT-1c — the resident atlas pages uploaded to the GPU, proven exact by readback and sampling, both adapters — READY FOR REVIEW (task/RENDER-DIRECT-1c, from `origin/task/RENDER-DIRECT-1b` `95a5ace6`, head `cf9e2cc4`)
+
+**The unit.** New `anno_render_gpu` module, `src/render/include/anno/render/atlas_upload.hpp` /
+`src/render/src/atlas_upload.cpp`: opens no device of its own (the caller's `gpu::Context`) and touches no
+`GpuFrame` state - "a new unit, not a change to the chunk compositor" (the packet's own words, confirmed by
+`git diff` against the task base: nothing under `GpuFrame::render`, the chunk build, the viewer, `--png`, or
+any digest changed). `upload_atlas_pages(ctx, pages, budget_bytes)` makes one 2D texture array, RGBA8Unorm
+(matching the existing sprite atlas's format family, `new_atlas`/`gpu.cpp` - never `*Srgb`, `GpuFrame::
+create`'s own "a sRGB target would convert twice" rule), `page_size` x `page_size` x `pages.level0.size()`
+layers, **2 mip levels** written straight from `AtlasPages::level0`/`level1` (no GPU-generated mips - that
+would silently redo RENDER-DIRECT-1b's own box filter, untested against it). Usage `TextureBinding | CopyDst
+| CopySrc` (`CopySrc` for the readback proof).
+
+**The refusal, named not truncated.** `atlas_upload_refusal(layers, page_size, max_array_layers,
+max_dimension_2d, needed_bytes, budget_bytes)` - a pure function, no device, checked against three
+conditions in order (no layers / layer count over `maxTextureArrayLayers` / page size over
+`maxTextureDimension2D` / `atlas_pages_bytes(pages)` over `budget_bytes`); `upload_atlas_pages` reads the
+real device's limits and calls this for the decision, so the decision itself is unit-tested with zero GPU
+(the packet's own acceptance item).
+
+**Which groups: `resident_atlas_groups(adapter_type, zoom_group, group_count)`.** A discrete adapter holds
+every group (ADR 0007 decision 2); any other adapter holds the pair `{zoom_group, zoom_group + 1}`, clamped
+to `group_count - 2` at the top of the range, a single group when `group_count <= 1`. Pure and total, tested
+without a GPU for discrete/integrated/CPU/unknown adapter kinds and `group_count` in {0, 1, 2, 3}.
+**Resolved the orchestrator's review question** (why `zoom_group + 1` and never `zoom_group - 1`): derived
+from `docs/render/iso.md`'s own "Choosing the level" hysteresis mechanism - while the picture is shown on
+group g, the continuous zoom position is bounded so it is always strictly between `tile_w(g)` and
+`tile_w(g + 1)`, never between `tile_w(g)` and `tile_w(g - 1)` (that interval is where the picture has
+already switched to `g - 1`, since the scale on `g` there would exceed `max_upscale`). So `g + 1` is the
+only neighbour `g` can be adjacent to while `g` is the group shown, not an arbitrary pick between two
+equally plausible ones. Full derivation in `docs/render/atlas.md` section 11.
+
+**The placement-to-UV rule: `sample_placement`, realized as `textureLoad`, no sampler.** Every pass in
+`gpu.wgsl` already reads a resident texture with `textureLoad` only, never a filtered sampler
+("textureLoad, never filtered, so cached chunks and sprites stay exact", `gpu.wgsl`'s own comment); no
+`WGPUSampler` object exists anywhere in this codebase. The new shader `src/render/shaders/atlas_upload.wgsl`
+follows that convention: `textureLoad(atlas_tex, origin + floor(pos.xy), layer, level)` at the destination
+pixel's own integer index - exact at every texel, the nearest-sampler-at-texel-centres rule the packet asks
+for, with the rounding ambiguity a true sampler could introduce at a rectangle's edge removed by
+construction.
+
+**Readback (step 2) and sampling (step 3): both proofs, both adapters, by name (`ANNO_GPU_ADAPTER=RTX` /
+the Radeon iGPU, `play_gpu_test.cpp`'s own adapter-pinning pattern reused as `on_named_adapter`).**
+- Synthetic (4 placements - 1x1, odd size, alpha edges, a larger frame): readback and sampling both exact on
+  the 4090 and the Radeon.
+- `data/maps/lan5.txt`'s static+water: every group on the 4090 (3 groups, 1090 placements/pass,
+  **39,966,623 assertions**), the adjacent pair {0,1} on the Radeon (`resident_atlas_groups(IntegratedGPU,
+  0, 3)`, 2 groups, **38,094,953 assertions**) - readback and sampling both exact on both adapters.
+- `Scenes/0010SingleEndlos/02_1024_easy_128.sze` groups 0+1 (the worst adjacent pair, 340 MiB,
+  RENDER-DIRECT-1b review F5's own finding), readback only (the packet names this dataset for step 2, not
+  step 3): exact on both adapters.
+
+`ctx.errors` checked at 0 after every case. Neither adapter needed `ANNO_REQUIRE_GPU` - both were present
+and opened cleanly throughout.
+
+**Step 4, measured on the orchestrator's quiet-PC slot (confirmed idle first: no `check_unix_warnings`/
+`cc1plus`/`clang` in WSL, no `cl.exe`/`ctest`/`cmake`/`anno_*`/`MSBuild` on Windows), `msvc` Release,
+`ANNO1503_GAME_DIR` set, both real adapters by name:**
+
+| Scene | Adapter | Groups resident | Layers | VRAM (upload only) | Upload (fenced) | Readback |
+|---|---|---|---|---|---|---|
+| lan5.txt | RTX 4090 (all 3) | 0,1,2 | 10 | 200.0 MiB | 22.74 ms | 117.02 ms |
+| lan5.txt | Radeon iGPU (adjacent pair) | 0,1 | 9 | 180.0 MiB | 78.18 ms | 70.12 ms |
+| 02_1024_easy_128.sze worst pair | RTX 4090 | 0,1 (separate) | 1+1 | 40.0 MiB | 4.62 ms | 11.65 ms |
+| 02_1024_easy_128.sze worst pair | Radeon iGPU | 0,1 (separate) | 1+1 | 40.0 MiB | 2.76 ms | 16.75 ms |
+
+Per-layer VRAM (20,971,520 B at `page_size = 2048`) matches `atlas_pages_bytes`'s own formula exactly - no
+device-vs-formula discrepancy to account for. The Radeon's upload is slower than the 4090's on the largest
+group (74.77 ms vs. 16.63 ms, 7 layers) - expected for an integrated part without the 4090's discrete memory
+bandwidth; its readback is faster on that same group (56.52 ms vs. 98.96 ms), plausibly because `mapAsync`
+over its unified-memory heap skips the 4090's discrete-VRAM copy-back (not investigated further - a wall-
+time observation, not a correctness claim). Neither adapter's `maxTextureArrayLayers`/`maxTextureDimension2D`
+binds at these layer counts. Full tables in `docs/render/atlas.md` section 11 and `docs/perf/README.md`.
+
+**No render-path or draw-call change.** Touched: `atlas_upload.hpp`/`.cpp` (new, `anno_render_gpu`),
+`atlas_upload.wgsl` (new shader), `atlas_upload_test.cpp` (new, `anno_render_gpu_tests`), one `shaders.hpp`/
+`CMakeLists.txt` embed-text entry (`anno_embed_text`, following `gpu.wgsl`/`fluid.wgsl`'s own pattern), docs.
+Nothing under `GpuFrame::render`, the chunk build, the viewer, `--png`, or any digest changed; the existing
+GPU test suite (127 pre-existing cases) passed unchanged alongside the new ones.
+
+**Decisions and reasoning.**
+- Extracted `atlas_upload_refusal` as a separate pure function from `upload_atlas_pages` (which needs a
+  device for `wgpuDeviceGetLimits`) specifically so the refusal decision is unit-tested with zero GPU - the
+  packet's own acceptance item, not achievable if the check stayed inline in the device-reading function.
+- Reused `play_gpu_test.cpp`'s adapter-pinning pattern (`on_named_adapter`: pin by name, skip if absent, fail
+  only under `ANNO_REQUIRE_GPU`) rather than inventing a second one.
+- No `WGPUSampler` object introduced: `sample_placement` realizes "nearest sampler, texel centres" as an
+  exact `textureLoad`, following the codebase's existing textureLoad-only convention rather than being the
+  first caller to add a sampler.
+- Resolved the orchestrator's pair-neighbour question from first principles (`iso.md`'s own hysteresis
+  bound), not by picking a plausible-sounding default - `g + 1` is provably the only neighbour possible
+  while `g` is shown, not a 50/50 guess between `g - 1` and `g + 1`.
+- No change to `GpuFrame::render` or any existing shader: the new shader module and the new C++ unit are
+  additive, so the existing 127-case suite needed no update to accommodate this task, only to keep passing.
+- No guesses went to `open-questions.md`: every design choice here traces either to the packet text itself
+  or to existing codebase/doc evidence (`iso.md`, `gpu.wgsl`'s own comment, `GpuFrame::create`'s own sRGB
+  rule, `play_gpu_test.cpp`'s own pinning pattern) - none of it is a genuine open question.
+
+**Gates.**
+- clang-format 23.1.3: clean on every touched file (one self-inflicted mishap during development - running
+  clang-format over `src/render/CMakeLists.txt` by accident mangled it into pseudo-C++ formatting; caught via
+  the disk-change diff, `git checkout`-reverted, both intended edits redone by hand with `Edit`, not
+  reformatted again).
+- WSL GCC 13 / Clang 18 `-Werror`, whole tree, all four configurations (GCC/Clang, viewer+GPU on and off):
+  clean.
+- `anno_render_gpu_tests`, native MSVC Release, `ANNO_GPU_ADAPTER=RTX`, full suite: **129/129 test cases,
+  80,512,304/80,512,304 assertions, 0 failed**, adapter named throughout ("NVIDIA GeForce RTX 4090
+  (Vulkan)").
+- `anno_render_gpu_tests`, native MSVC Release, every Radeon-named case (`--test-case=*Radeon*`, default
+  adapter selection): **4/4 test cases, 38,095,006/38,095,006 assertions, 0 failed**, adapter named
+  throughout ("AMD Radeon(TM) Graphics (Vulkan)").
+- Step 4's two measurement cases ran alone, as asked: the shared PC was checked idle first (recorded above),
+  the orchestrator was told once each check and once the run was done.
+- CI preflight (`python -I tools/test/run_selected.py --preflight-only`, the exact CI step): PASS.
+
+READY FOR REVIEW.
+
+## RENDER-DIRECT-1c addendum — review F1/F2 resolved, a real device finding on the Radeon — READY FOR REVIEW (same branch, commit `a6329831`)
+
+**F1, fixed: the real worst case, not the wrong scene.** `worst_pair_scene`'s "worst pair, 340 MiB"
+case uploaded `02_1024_easy_128.sze` - RENDER-DIRECT-1b's own review F5 names `endless02.sze`
+(`Scenes/0011SingleEndlosAddon/endless02.sze`) as both the worst adjacent-pair scene (groups 0+1,
+340 MiB) and the worst all-three-group scene (360 MiB), so the real worst case had never been
+uploaded. Now uploads `endless02.sze`'s real resident set as ONE combined page set per adapter -
+every group `resident_atlas_groups` names folded into one shared `FrameTable`/`SpriteCache` (the
+last call's own return already holds every earlier group's frames too, since `collect_static_
+water`'s final pass walks the whole table from id 0 - exactly `bench_frame`'s own
+`collect_static_water_groups`, the function RD-1b's 340/360 MiB figures were measured with, not a
+different method): all three groups (18 layers, 360 MiB) on the 4090, the adjacent pair {0,1} (17
+layers, 340 MiB) on the Radeon.
+
+**F2, fixed: a real device budget, not a tautology.** Every budget passed to `upload_atlas_pages`
+in this file was `atlas_pages_bytes(pages)` - always exactly what is being uploaded, so the
+refusal path was never exercised by a real number. The `endless02.sze` case now computes the real
+budget the compositor would compute on the opened device: `atlas_budget_bytes_before_sprite` from
+`wgpuDeviceGetLimits`'s own `maxTextureArrayLayers`, the per-frame sprite (Hot) atlas's own
+footprint stated as 0 bytes (this standalone unit test holds no `GpuFrame`/Hot atlas of its own to
+measure a real one from - the same convention RD-1b's own F5 finding already used for its CPU-side
+44 MiB (Radeon)/152 MiB (4090) headroom figures, so this proves those already-accepted numbers
+hold for a real GPU upload, not a new, tighter claim). Needed vs. allowed is reported via
+`MESSAGE` on every run: RTX 4090 needed 377,487,360 against 536,870,912 allowed; Radeon needed
+356,515,840 against 402,653,184 allowed. One new case, `refused_one_byte_short`, proves a budget
+one byte short is refused through `upload_atlas_pages` itself (not only the pure
+`atlas_upload_refusal` tested without a GPU), on both adapters.
+
+**Finding for the owner, surfaced by F1/F2 together, not a bug in the fix: the Radeon's calculated
+budget fits, but the real device still refuses the allocation.** `endless02.sze`'s real pair on
+the Radeon needs 356,515,840 bytes, *inside* the calculated 402,653,184-byte budget - the
+arithmetic says it fits - but `wgpuDeviceCreateTexture` itself refused the single 17-layer texture
+with "Not enough memory left". This is the review's own anticipated category ("that's a finding
+for the owner, not a fix") under a different failure signature than expected: a real
+single-allocation ceiling below the device's own configured/reported memory, not a
+budget-arithmetic overrun. **Recorded, not patched: a calculated budget that fits is necessary but
+not sufficient on this adapter - a resident set this large needs either more than one texture
+resource (a stage 2/3 upload-granularity design question, explicitly out of this packet's "no
+draw pass/streaming" scope) or a smaller real budget than 384 MiB to actually allocate as one
+texture on this hardware.** The RTX 4090 uploaded the full 18-layer, 360 MiB set with no issue -
+the same combined-upload method, a different real limit.
+
+**A second, genuine bug found and fixed while investigating, not merely a reporting gap.**
+`upload_atlas_pages` had no error scope around `wgpuDeviceCreateTexture`/`wgpuQueueWriteTexture`:
+on the real device refusal above, the WGPU handle came back non-null but device-invalidated, and
+the function returned `out` as a *success* holding it - the caller (`check_pages_on_gpu`) then
+tried to read it back and hit a byte-mismatch `REQUIRE` failure, not a named refusal, which would
+have misreported a real allocation failure as a readback/correctness bug in this task's own proof.
+Fixed by wrapping both the texture creation and every `wgpuQueueWriteTexture` call in one
+validation + out-of-memory error scope (`submit`'s own push/pop pattern, reused), returning a
+descriptive error naming the layers/needed/budgeted bytes when either scope catches something.
+Confirmed fixed by rerunning the Radeon case: it now returns the clean, named refusal shown above
+instead of a readback mismatch.
+
+**Test case name/structure changes.** `check_pages_on_gpu` lost its `budget_bytes` parameter
+(every remaining caller always passes the tautological budget, so the parameter was dead weight
+after the refactor below) and gained a sibling, `verify_readback` (the byte-for-byte readback loop
+alone, extracted so `worst_pair_scene` can call it on an already-uploaded texture after handling
+its own, possibly-refused upload separately - `check_pages_on_gpu` itself is unchanged for every
+other caller). The two `02_1024_easy_128.sze`-named `TEST_CASE`s are renamed to name
+`endless02.sze` and the real finding (all three groups / the adjacent pair, not "340 MiB" as a
+flat label repeated for both scenes). Two new `TEST_CASE`s (`refused_one_byte_short` on each
+adapter).
+
+**Gates, rerun on this commit.**
+- clang-format 23.1.3: clean on all three touched files.
+- WSL GCC 13 / Clang 18 `-Werror`, whole tree, all four configurations: clean.
+- `anno_render_gpu_tests`, native MSVC Release, `ANNO_GPU_ADAPTER=RTX`, full suite: **131/131 test
+  cases, 80,512,458/80,512,458 assertions, 0 failed** (122 pre-existing cases unchanged, 9 of this
+  file's own, 2 more than the previous round's 7 - the `endless02.sze` pair is now one case per
+  adapter instead of none, plus `refused_one_byte_short` per adapter).
+- `anno_render_gpu_tests`, native MSVC Release, every Radeon-named case (`--test-case=*Radeon*`,
+  default adapter selection): **5/5 test cases, 38,095,006/38,095,006 assertions, 0 failed**
+  (one more than the previous round: `refused_one_byte_short` on the Radeon).
+- CI preflight: PASS.
+- These are correctness runs (no quiet-PC slot requested or needed, per the review's own note);
+  the step 4 timing rows from the previous round are untouched and still indicative/measured as
+  reported there.
+
+**Decisions and reasoning.**
+- Combined every resident group into ONE page set for `endless02.sze` (not one upload per group,
+  as the previous revision did for `02_1024_easy_128.sze`) because that is what any adapter
+  actually holds resident at once - uploading groups separately would not have reproduced RD-1b's
+  own combined-set byte figures, and would not have surfaced the real allocation-ceiling finding
+  above (which only appears for the single large resource, not for two smaller separate ones - the
+  earlier, separately-uploaded 02_1024_easy_128.sze pair, 1+1 layers, never came close to this
+  limit).
+- Took the per-frame sprite atlas's footprint as 0 bytes, stated and documented, rather than
+  building a real `GpuFrame`/Hot atlas inside this standalone unit test to measure one: matches
+  RD-1b's own F5 convention exactly, keeps this unit test free of a `GpuFrame` dependency (the
+  task's own "a new unit, not a change to the chunk compositor" boundary), and is explicitly named
+  as a stated assumption in both the code and this report, not asserted as the true runtime figure.
+- Reported the real device refusal as a finding, not a workaround: did not shrink the upload, did
+  not silently split it into per-group textures, did not lower the stated budget to make the case
+  "pass" quietly - the review's own instruction ("that's a finding for the owner, not a fix") is
+  honoured even though the actual failure mode (a real allocator ceiling under an in-budget number)
+  is a stronger finding than the budget-arithmetic miss the review anticipated.
+- Fixed the error-scope gap in `upload_atlas_pages` because it is a real correctness bug in this
+  task's own code, found while making the F1/F2 fix honestly report what the real device did -
+  not fixing it would have let a genuine device refusal masquerade as a readback/correctness
+  failure in this unit's own proof, which is exactly the kind of silent-wrongness CLAUDE.md's
+  evidence policy exists to prevent.
+- Left the step 4 timing section of this report and `docs/perf/README.md` untouched: the review
+  said these are correctness runs needing no quiet slot, and marked new timing rows as optional/
+  indicative, not required for this round.
+
+READY FOR REVIEW.
+
+## RENDER-DIRECT-1d — the Radeon's real allocation ceiling, measured and diagnosed — READY FOR REVIEW (task/RENDER-DIRECT-1d, from `origin/task/RENDER-DIRECT-1c` `f148638e`, new worktree)
+
+**Scope, as the packet asked: measurement and diagnosis only.** No production code changed; OQ-096b's 384 MiB non-discrete default is NOT touched. One new file, `src/render/tests/adapter_memory_diag_test.cpp` (`anno_render_gpu_tests`), answering the orchestrator's three questions about RENDER-DIRECT-1c review F1/F2's Radeon finding (`endless02.sze`'s real pair, 356,515,840 bytes, fits the calculated 402,653,184-byte budget but the real device still refuses the single 17-layer texture: "Not enough memory left").
+
+**Question 1, answered: a single-resource ceiling, not the heap's own total capacity - but small enough that even one of the two groups alone can exceed it.** `endless02.sze`'s pair uploaded as two SEPARATE per-group textures: group 1 (4 layers, 83,886,080 bytes/80.0 MiB) allocated; group 0 (14 layers, 293,601,280 bytes/280.0 MiB) was refused even on its own. Splitting the pair by zoom group is not always enough to make a resident set fit.
+
+**Question 2, answered: DXGI's own memory facts** (`DXGI_ADAPTER_DESC`/`IDXGIAdapter1::GetDesc1`, matched to the already-opened wgpu adapter by `vendorID`/`deviceID` - `WGPUAdapterInfo`/webgpu.h has no memory-size fields at all):
+
+| Adapter | DedicatedVideoMemory | DedicatedSystemMemory | SharedSystemMemory |
+|---|---|---|---|
+| RTX 4090 | 25,310,527,488 B (24,138.0 MiB) | 0 | 16,704,471,040 B (15,930.6 MiB) |
+| Radeon iGPU | 488,390,656 B (465.8 MiB) | 0 | 16,704,471,040 B (15,930.6 MiB, same shared pool) |
+
+**Question 3, answered: the real single-resource ceiling, found by bisecting the layer count of a single 2048×2048 texture array with RENDER-DIRECT-1c's own error-scope detection: 12 layers (251,658,240 bytes, 240.0 MiB) allocate on the Radeon; 13 layers (272,629,760 bytes, 260.0 MiB) are refused.** Consistent with question 1 (group 1 at 80.0 MiB well under, group 0 at 280.0 MiB well over), and about **52% of the 465.8 MiB `DedicatedVideoMemory`** DXGI reports for this adapter (question 2) - a real allocator-level restriction, not simply "the dedicated VRAM is smaller than the budget."
+
+**For the owner, prepared not decided: `docs/open-questions.md` OQ-727.** OQ-096b's 384 MiB non-discrete default is well above the real ~240 MiB single-resource ceiling found on this adapter. Three non-exclusive options, none implemented: (a) lower the non-discrete default below the real per-resource ceiling; (b) split any resident set above a configured per-resource size into more than one texture at upload time (a stage 2/3 upload-granularity design, separate from the *total* budget number); (c) measure the real ceiling at runtime per-adapter instead of hardcoding a number that is specific to this PC's Radeon/driver/Vulkan combination on 2026-11-17 and may not transfer elsewhere.
+
+**Gates.**
+- clang-format 23.1.3: clean.
+- WSL GCC 13 / Clang 18 `-Werror`, whole tree, all four configurations: clean.
+- `anno_render_gpu_tests`, native MSVC Release, `ANNO_GPU_ADAPTER=RTX`, full suite: **134/134 test cases, 80,512,071/80,512,071 assertions, 0 failed** (131 pre-existing plus this file's own 3 diagnostic cases - the DXGI case runs both adapters by name within itself).
+- `anno_render_gpu_tests`, native MSVC Release, every Radeon-named case (`--test-case=*Radeon*`, default adapter selection): **8/8 test cases, 38,095,019/38,095,019 assertions, 0 failed**.
+- CI preflight: PASS.
+- No quiet slot needed or requested, per the packet's own note (allocation outcomes, not timings).
+
+**Decisions and reasoning.**
+- Tolerated a real device refusal as a reportable finding, not a hard test failure, for both the per-group split (question 1) and the bisection's own expected refusals (question 3's `layers_allocate` just returns a bool) - following RENDER-DIRECT-1c review F1/F2's own precedent: a real, named device outcome is data for the owner, not a bug in the proof, as long as it is the SPECIFIC named refusal expected (checked where it matters) and not some other, unexplained failure.
+- Built the bisection's probe pages as all-zero dummy buffers (`dummy_pages`) rather than real decoded scene frames: allocation-size testing needs only the right byte counts, and a real-frame version would have made every bisection step as slow as a full scene decode for no added evidence.
+- Called `wait_idle` after every bisection probe so a released texture's memory has a chance to be reclaimed before the next attempt - without it, back-to-back allocate/release cycles could show stale pressure and report a falsely low ceiling.
+- Duplicated `on_named_adapter`/`read_all`/`load_scene_direct` from `atlas_upload_test.cpp` rather than sharing them: both files already duplicate small per-binary helpers by this project's own established convention (`atlas_upload_test.cpp`'s own doc comment on `load_scene_direct`), and a new header for helpers only two files in one binary use would be more machinery than the ~30 lines it replaces.
+- Added DXGI as a Windows-only diagnostic dependency of the test binary only (not of `anno_render_gpu`/`anno_render`), guarded by `#if defined(_WIN32)`/`#ifdef WIN32` in both the CMakeLists.txt link and the source file - wgpu's own `WGPUAdapterInfo` has no memory-size fields to read instead, and this question is explicitly about what the OS/API expose, which on this project's Windows dev host means DXGI.
+- Did not touch OQ-096b's default or design a split-upload path: both are the owner's call (the packet's own "don't change the default. Prepare the options and numbers"), recorded as OQ-727 rather than acted on.
+
+READY FOR REVIEW.
+
+## RENDER-DIRECT-1d addendum — renumbered OQ-691 to OQ-727, and the orchestrator's follow-up question answered — READY FOR REVIEW (same branch, commit `70c25b66`)
+
+**Renumbering.** OQ-691-695 was already taken by UI-TABS-1 B (in candidate `c01d5806`). Checked `docs/orchestration/STATUS.md`'s "OQ number reservations" first this time, per the orchestrator's instruction - the next free number is 727. Renumbered everywhere: `docs/open-questions.md`'s heading and both cross-references (`docs/render/atlas.md` §13, this report).
+
+**Question 4 (the follow-up): does the Radeon's heap hold the real worst pair's full bytes once split under the per-resource ceiling, and where does the total heap stop?** New `TEST_CASE` in `src/render/tests/adapter_memory_diag_test.cpp` (same file, same branch):
+
+- `endless02.sze`'s real combined 17-layer pair split 12+5 at an arbitrary layer boundary (not either group's own layer count - `slice_pages`, a new helper, slices the already-built real `AtlasPages` rather than rebuilding dummy data, so the split texture's content is the real scene bytes, not a stand-in): **both halves allocated, both held resident at once, both byte-exact on readback** (first and last layer of each checked while the other half stayed resident) - **356,515,840 bytes (340.0 MiB) total**, confirming splitting under question 3's ~240 MiB ceiling does hold the real worst case's full bytes.
+- Continuing to add more 2048×2048, 12-layer (240 MiB) dummy blocks on top of that 340 MiB (`try_hold_another`, a new helper: every earlier texture stays resident, unlike `layers_allocate`'s own isolated single-resource test), one at a time, held resident, to find the TOTAL heap's own stopping point: **29 additional whole blocks also allocated** before a further whole block was refused; bisecting one more, smaller block on top found 0 additional layers fit (even 1 more layer was refused at that point). **Largest total found: 7,654,604,800 bytes (≈7,300.0 MiB, ≈7.3 GiB).**
+- This is far above both `DedicatedVideoMemory` (465.8 MiB) and even approaches half of `SharedSystemMemory` (15,930.6 MiB, question 2) - **the total heap is nowhere near the binding constraint for a 384 MiB budget; only the per-resource ceiling (question 3, ~240 MiB) is.** Updated `docs/render/atlas.md` §13 and OQ-727 with both new findings and a revised option ranking: option (a) "keep the 384 MiB default, split per-resource above the ceiling" now has the least evidence against it of the three prepared options, since the total-heap finding removes the main reason a smaller total default would have been needed.
+
+**Gates, rerun on this commit.**
+- clang-format 23.1.3: clean.
+- WSL GCC 13 / Clang 18 `-Werror`, whole tree, all four configurations: clean.
+- `anno_render_gpu_tests`, native MSVC Release, `ANNO_GPU_ADAPTER=RTX`, full suite: **135/135 test cases, 80,512,767/80,512,767 assertions, 0 failed** (one more case than the previous round: question 4).
+- `anno_render_gpu_tests`, native MSVC Release, every Radeon-named case (`--test-case=*Radeon*`): **9/9 test cases, 38,095,031/38,095,031 assertions, 0 failed**.
+- CI preflight: PASS.
+- No quiet slot needed or used, per the orchestrator's own note (allocation outcomes, not timings).
+
+**Decisions and reasoning (this addendum).**
+- Built the split pair's two textures from the REAL combined `AtlasPages` (`slice_pages`, a new layer-range copy), not from fresh dummy data: question 4 asks whether splitting holds the real worst case's bytes, which a dummy-data test could not answer - only the heap-stop search past that point (which has no more real data to exhaust) uses dummy blocks.
+- Capped the whole-block search at 32 iterations (`kMaxWholeBlocks`, `REQUIRE_MESSAGE` if exceeded) as a safety net against a runaway loop, even though 7.3 GiB (29 blocks) made it obviously finite in practice on this adapter.
+- Checked `docs/orchestration/STATUS.md`'s reservation list before taking a number this time, as asked, rather than guessing the next unclaimed-looking one.
+
+READY FOR REVIEW.
+
+## RENDER-DIRECT-1c CI fix — the named-adapter skip order, matched to play_gpu_test.cpp's own — READY FOR REVIEW (merged from `task/RENDER-DIRECT-1c` `50de7c24`/`465741b8`)
+
+**The failure.** CI run `44095685040` failed on `cpp (linux-gcc)` ("test" step) then `gate`: eight `atlas_upload_test.cpp` cases reported `SKIPPED(gpu)` on lavapipe (no adapter named "RTX 4090"/"Radeon"), and `linux-gcc` does not pass `--allow-skip gpu` (`ci.yml`: every OTHER job does; `linux-gcc` is the one job meant to run the real GPU parity path on lavapipe for real, OQ-089/GATE-1c item 2) - so an unallowed `gpu` skip there fails the gate.
+
+**Root cause, found by comparing against `play_gpu_test.cpp`'s own two named-adapter cases (which pass on the SAME job, SAME lavapipe, confirmed by reading a known-green run's own log, `44051159572`'s `cpp (linux-gcc)` job):** `play_gpu_matches_cpu` checks `anno::test::game_dir()` FIRST, before ever calling `list_adapters()`/`pick_adapter()`. CI's `linux-gcc` runner has no game files at all, so that check skips as `required-asset` (allowed everywhere via `--asset-policy unavailable`) before the function ever reaches the adapter-naming logic. Every one of this file's own adapter-pinned helpers (`synthetic_and_lan5`, `worst_pair_scene`, `measure_adapter`) did the OPPOSITE order: `on_named_adapter` (which calls `pick_adapter` immediately) ran FIRST, so on a game-file-less, differently-named-adapter runner they always hit the "no adapter named ..." skip (classified `gpu` by `ctest_verdict.py`'s own `GPU|adapter|RTX|Radeon|Metal|Vulkan` pattern) before ever reaching the `required-asset` check that would have been allowed. `refused_one_byte_short` had no `game_dir()` dependency at all and was pinned to each named adapter for no reason tied to what it tests - it always hit the `gpu` skip on CI, with no `required-asset` escape available at all.
+
+**The fix, two parts, matching how the already-passing cases avoid this:**
+1. **Reordered** `game_dir()`/scene-loading to run BEFORE `on_named_adapter` in `lan5_on_named_adapter` (renamed from `synthetic_and_lan5`, its synthetic-only part moved out - see below), `worst_pair_scene`, and `measure_adapter` - the same order `play_gpu_test.cpp`'s `play_gpu_matches_cpu` already uses. No behavior change on this PC (game files are present, so the check passes through either order); on a game-file-less runner the function now skips as `required-asset` before it would otherwise reach the adapter-naming logic.
+2. **Made two cases adapter-agnostic**, since neither needs a specific named adapter to mean anything: the synthetic-pages correctness proof (split out of `synthetic_and_lan5` into its own `TEST_CASE`, using `gpu::headless_context()` with no pin) and `refused_one_byte_short` (merged from two adapter-pinned cases into one adapter-agnostic one). Both now run on whatever adapter is actually available - lavapipe on CI's `linux-gcc`, for real, which is OQ-089's own point ("the GPU parity tests run on a real adapter in this job... a missing adapter must fail the job, not skip").
+
+**No correctness change.** Every renamed/reordered function's own body is unchanged; only the ORDER of two independent early-return checks (and, for the two merged cases, which adapter opens) moved. Re-verified: full suite 131/131 (unchanged count: two cases renamed in place, one new adapter-agnostic case added, two adapter-pinned refusal cases merged into one - net zero), 80,508,175/80,508,175 assertions, on the RTX 4090; 4/4 Radeon-named cases, 38,091,107/38,091,107 assertions (one fewer named case than before, since the refusal case is no longer Radeon-named - by design).
+
+**Verified the fix's actual mechanism, not just reasoned about it:** ran the game-file-dependent cases with `ANNO1503_GAME_DIR` unset (on this PC, where the named adapters ARE present) - all six skipped with `"skipping: ANNO1503_GAME_DIR not set"` (the `required-asset` message), never reaching the adapter-pick code at all, confirming the reorder's own guarantee independent of whether an adapter happens to be present.
+
+**Step 1 (run the CI preflight and the linux-gcc GPU step locally in WSL on lavapipe), partially possible on this host:** `python -I tools/test/run_selected.py --preflight-only` run natively on Windows: PASS (WSL has no `cmake`/`ninja` at all on this host per `CLAUDE.md`'s own note - confirmed: `cmake -P ...` fails with "No such file or directory: 'cmake'" - so the preflight's own `cmake`-based `CheckTestNames.cmake` step cannot run inside WSL here, and a full `cmake --preset dev`/`ctest` build+run on lavapipe is not possible on this host either, same reason). WSL DOES have the lavapipe Vulkan ICD installed (`lvp_icd.x86_64.json`) but no build toolchain to use it with. Verified the skip-order fix by other means instead (above): reading a known-green CI run's own log for the exact classification `ctest_verdict.py` gives, and reproducing the "required-asset wins first" order locally on Windows with the game dir unset.
+
+**Gates.**
+- clang-format 23.1.3: clean.
+- WSL GCC 13 / Clang 18 `-Werror`, whole tree, all four configurations: clean.
+- CI preflight (native Windows, WSL's own cmake-based preflight step not runnable here): PASS.
+- `anno_render_gpu_tests`, native MSVC Release, `ANNO_GPU_ADAPTER=RTX`, full suite: 131/131, 80,508,175/80,508,175 assertions, 0 failed.
+- `anno_render_gpu_tests`, native MSVC Release, every Radeon-named case: 4/4, 38,091,107/38,091,107 assertions, 0 failed.
+- CI: pushed, run pending at the time of this report - see the follow-up message to the orchestrator for the result.
+
+**Decisions and reasoning.**
+- Fixed the ORDER of two pre-existing, correct checks rather than adding a new skip-suppression mechanism: the two checks (`game_dir()`, adapter pick) were already both there and both correct in isolation; only their sequence determined which allowed category a CI runner's skip falls into.
+- Merged `refused_one_byte_short`'s two adapter-pinned cases into one adapter-agnostic case rather than keeping both and also adding a third, agnostic one: nothing about a budget-refusal check needs the owner's specific hardware names, so pinning it was never load-bearing, unlike the readback/sampling correctness cases this file also runs per adapter to prove the upload path works on each specific GPU.
+- Did not touch `play_gpu_test.cpp` itself: it already has the right order; this packet copies its pattern, not its code.
+
+READY FOR REVIEW.
+
+## RENDER-DIRECT-1d CI fix round 2 — the diagnostic file's own skip issue, then the bisection made opt-in — READY FOR REVIEW (same branch, commits `849aa4c4`, `6374c2be`, `bdcb77f2`)
+
+**Round 1 (`849aa4c4`): the diagnostic file inherited RENDER-DIRECT-1c's own named-adapter skip issue.** `adapter_memory_diag_test.cpp` didn't exist when that fix was written. Same two techniques: questions 1 and 4 (both need `endless02.sze`) check `game_dir()` before `on_named_adapter`; question 3 (pure bisection, no game-file dependency) falls back to whatever adapter is available via a new `on_preferred_or_any_adapter` instead of skipping when "Radeon" is absent.
+
+**Round 2 (`6374c2be`): the fallback itself hung two CI jobs.** `linux-gcc-release`/`linux-clang-asan` have no Vulkan ICD, so the fallback opened llvmpipe/OpenGL; the bisection's doubling search is bounded only by the device's own reported `maxTextureArrayLayers`, far more permissive there than on real hardware, so it tried to allocate tens of GiB of dummy probe data and was killed on timeout (exit 143). First fix: skip the bisection outright on a CPU adapter type or non-Vulkan/Metal/D3D12 backend (RENDER-DIRECT-1c's own adapter-agnostic-case check), plus a 256-layer practical ceiling as a second guard. This fixed those two jobs but broke `linux-gcc` itself: lavapipe reports `adapter_type` CPU even over its own Vulkan backend (it is a software Vulkan implementation), so the same skip caught it too - and `linux-gcc` is the one job that disallows a `gpu`-classified skip at all (`ANNO_REQUIRE_GPU=1`, OQ-089's own point: it runs the GPU parity tests for real there).
+
+**Round 3 (`bdcb77f2`): made the bisection opt-in instead (the owner's technical call, via the orchestrator).** `ANNO_MEASURE_TEXTURE_CEILING=1` gates the whole case; unset, it skips with a message `ctest_verdict.py`'s own `OPT_IN` pattern (`\bset ANNO_[A-Z0-9_]+=`) classifies before its `GPU` pattern ever gets a chance to - `opt-in` is allowed on every job, `linux-gcc` included, so the conflict is sidestepped entirely rather than traded for a different one. Removed the CPU/backend skip (no longer needed); kept the 256-layer `kPracticalCeiling` as the bound for whoever opts in on a software adapter. No other GPU correctness case in this file or `atlas_upload_test.cpp` touched - they keep running on lavapipe for real.
+
+**Reproducing this section's own Radeon figures:**
+```bash
+ANNO_MEASURE_TEXTURE_CEILING=1 ./anno_render_gpu_tests --test-case="*question 3*"
+```
+Documented in `docs/render/atlas.md` §13 alongside the figures it reproduces.
+
+**Gates.** Rounds 1-2 were pushed without a local build (the PC was held for the orchestrator's own candidate 8 lanes); GitHub CI was the check each round, confirming the two-steps-forward-one-back sequence above. Round 3 (this commit) is pushed the same way; CI on this head is the pending check - 1d is accepted once every job is green.
+
+**Decisions and reasoning.**
+- Did not guess at round 2's own fix (CPU/backend skip) being final: when it broke a job that had been passing, reported the conflict precisely (lavapipe's own adapter_type vs. its backend) rather than picking one of the two options that seemed obvious, since the owner's own `ANNO_REQUIRE_GPU=1` policy on `linux-gcc` is deliberate (OQ-089) and not mine to override by guessing.
+- Chose the opt-in switch over either alternative once given it: it is the only option that does not change what already runs on lavapipe for real (every other GPU correctness case in both files), consistent with "don't change lavapipe's real GPU path."
+
+READY FOR REVIEW.
+
+## UI-MINIMAP-2 — READY FOR REVIEW (Windows, 2026-11-17)
+
+- Base origin/main `09315620`, packet `11203d0d`, release `1d766083`, branch `task/UI-MINIMAP-2`.
+  Commits `96f735b0` (feat), `b8e706c3` (test), `d1a06be4` (docs), this entry. No `src/sim`,
+  `src/render`, `src/formats` change.
+- Change: in the continuous zoom the magnifier's stages are the built levels' tile widths, then
+  halvings of the narrowest (`kMagnifierStageFactor` 2, the derived levels' own reduction) while
+  wider than the wheel's end, then that end itself (`magnifier_stages`, pure, `minimap.hpp`). The
+  end is `zoom_floor(levels(), zoom_min_tile())` (`zoom.hpp`): the clamp `zoom_target_after`
+  already used, now named, so the magnifier stops exactly where the wheel does (the UI lane
+  accepted the floor instead of `zoom_min_tile()` alone). Built at each press (window size).
+  Stepped zoom unchanged (the original's 0..2 clamp, AnnoFrame `0x10007710` / `0x10007692`).
+  Owner decision 2026-11-17, `ui_6.mp4`. Facts `zoom.target`, `zoom.min_tile` (thousandths of a
+  pixel), `zoom.at_min` (the script grammar cannot compare two facts).
+- Tests: `minimap_test.cpp` "minimap magnifier stages: halvings past level 2, then the wheel's end
+  itself" (several halvings then the exact minimum, a short last hop 4.9, a minimum on a halving,
+  one extra stage, none at or above level 2 / for 0 / -1 / no levels, a one-level list, minus to
+  the end and plus back to level 0, starts between stages); `app_test.cpp` `zoom_floor` checks in
+  "zoom over derived levels". Wiring cases `viewer_wiring_ui_magnifier_range` (continuous, lan5 at
+  1024 x 768: - 20 -> 10 -> 5 -> 2.5 -> ... until nothing changes, `zoom.at_min == 1`; + back to
+  84 and stops; - 42 -> 20 -> 10) and `viewer_wiring_ui_magnifier_range_stepped` (`--zoom-mode
+  stepped`: - stops at 20, + at 84). Both run in the GPU window (`--gpu`, label `gpu`,
+  `RESOURCE_LOCK gpu`): the CPU wiring default is never continuous. They are the first
+  CTest-registered `--gpu` viewer_wiring cases; on the RTX 4090 (Vulkan) about 4 s each.
+- Failure proof (viewer's `stages` reverted to `level_w` locally, `anno1503` rebuilt, not
+  committed): `viewer_wiring_ui_magnifier_range` FAIL `line 23 (expect): zoom.target is '20000',
+  expected == 10000`; a scratch script with the end check alone (15 presses of -, then
+  `expect fact zoom.at_min == 1`) FAIL `zoom.at_min is '0', expected == 1`. Restored and rebuilt:
+  the case passes (`cache/gates/ui-minimap-2-failure-proof.log`, `ui-minimap-2-restored.log`).
+- Gate `run_selected.py` msvc Release, game dir, GOG shots, HE captures, rotation shots, head
+  `d1a06be4`, select `^anno_app_tests\.(minimap|zoom|ui |hud )|^viewer_wiring_ui_minimap|
+  ^viewer_wiring_ui_magnifier|^live_screen_matches_oracle$|^ui_dynamic_draw_check$|
+  ^ui_panels_match_gog$`, required: both magnifier cases, `live_screen_matches_oracle`,
+  `ui_dynamic_draw_check`. `cache/gates/ui-minimap-2-01.log` (sha256 `7b5a4985...7399`):
+  `COUNTS: selected=61 executed=61 failed=0 empty=0 skipped=0 ... incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`. Build without warnings; clang-format 23.1.3 clean on the changed files.
+- NOT_RUN: WSL GCC/Clang warning check, Linux/Mac CI (pushed, not polled), the owner's viewer test
+  (magnifier - until it stops, then the wheel must not go further; + back in).
+
+| Requirement | Positive proof | Negative control | Evidence | Reviewer disposition |
+|---|---|---|---|---|
+| - reaches the wheel's end | `zoom.at_min == 1` (wiring); unit walk to 1.1 | reverted viewer: at_min 0 | gate 01; failure proof | pending |
+| One halving per press, short last hop a stage | unit 1.1 / 1.5 / 4.9 / 5.0 / 14.142; wiring 10000 / 5000 / 2500 | reverted viewer: line 23 FAIL | gate 01; failure proof | pending |
+| + walks back to level 0 | unit walk; wiring 84000, then unchanged | n/a | gate 01 | pending |
+| No extras at or above level 2 | unit 20 / 25 / 0 / -1 | n/a | gate 01 | pending |
+| Stepped keeps the clamp | `viewer_wiring_ui_magnifier_range_stepped` | n/a | gate 01 | pending |
+
+READY FOR REVIEW.
+
+## UI-MINIMAP-2 fix round R2 — READY FOR REVIEW (Windows, 2026-11-17)
+
+- From the owner's `ui_7.mp4` (0:48-1:58): his "nothing changed" was the UI-STATUS-1 build
+  (without this change); new request: the magnifier's + must also reach the wheel's closest
+  zoom-in. Commits `cae67317` (feat), `4083113c` (test), `227d02ea` (docs), this entry, on
+  `cc6991d2`.
+- Change: `zoom_ceiling(levels)` (`zoom.hpp`, the upper clamp of `zoom_target_after`, factored out
+  like `zoom_floor`). `magnifier_stages(built, min_tile, max_tile = 0)`: closest first, the
+  ceiling, then doublings of the widest built level while narrower (widest first), the built
+  levels, the far side as before. Same rules (no duplicate within 1e-6, none when the ceiling is not
+  above level 0, built at each press). At the original levels 84 x sqrt 2 = 118.794 < 168, so the
+  ceiling alone. Stepped zoom unchanged. Facts `zoom.max_tile`, `zoom.at_max`.
+- Tests: `minimap_test.cpp` new case "minimap magnifier stages: doublings past level 0, then the
+  wheel's closest zoom-in" (ceiling alone at 118.8, several doublings at 400, a short hop at 170,
+  a ceiling on a doubling, none at 84 / 60 / 0 / -1 / default / no levels, both sides at once, plus
+  to the ceiling and minus back to the far end, a start between 84 and the ceiling, the clamp
+  without a ceiling); `app_test.cpp` two `zoom_ceiling` checks. `ui_magnifier_range.script`: after
+  the far end a wheel notch outwards changes nothing; + until nothing changes, then
+  `zoom.at_max == 1`, `zoom.target == 118794`, one more + and a wheel notch inwards change
+  nothing; - back 84 -> 42 -> 20 -> 10. `ui_magnifier_range_stepped.script`: `zoom.max_tile >
+  84000` and `zoom.at_max == 0` at level 0 (the clamp holds).
+- Failure proof (viewer's `zoom_ceiling` argument dropped locally, i.e. `cc6991d2`'s stages with the
+  new facts; `anno1503` rebuilt, not committed): `viewer_wiring_ui_magnifier_range` FAIL
+  `line 108 (expect): zoom.at_max is '0', expected == 1`, every far-side check before it passing
+  (`cache/gates/ui-minimap-2-failure-proof-r2.log`). Restored, full rebuild, gate below.
+- Gate `run_selected.py` msvc Release, same env, selection and required tests as -01, head
+  `227d02ea`, `cache/gates/ui-minimap-2-02.log` (sha256 `972fd8a9...d9b1`):
+  `COUNTS: selected=62 executed=62 failed=0 empty=0 skipped=0 ... incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS` (one more than -01: the new unit case). Build without warnings; clang-format
+  23.1.3 clean on the changed files.
+- NOT_RUN: WSL GCC/Clang warning check, Linux/Mac CI (pushed, not polled), the owner's retest on
+  this branch's build.
+
+| Requirement | Positive proof | Negative control | Evidence | Reviewer disposition |
+|---|---|---|---|---|
+| + reaches the wheel's closest zoom-in | `zoom.at_max == 1`, `zoom.target == 118794` (wiring); unit walk to 118.8 | ceiling dropped: line 108 FAIL | gate 02; failure proof R2 | pending |
+| The wheel goes no further at either end | wiring `wheel 1` / `wheel -1` leave `zoom.target` unchanged | n/a | gate 02 | pending |
+| Doublings, short last hop, no duplicate | unit 400 / 170 / 168 | n/a | gate 02 | pending |
+| No near extras when the ceiling is not above level 0 | unit 84 / 60 / 0 / -1 / default | n/a | gate 02 | pending |
+| Stepped keeps the clamp | `ui_magnifier_range_stepped` (`zoom.at_max == 0` at 84) | n/a | gate 02 | pending |
+
+READY FOR REVIEW.
+
+## RE-HE-PRODUCTION-1 — History Edition production, worker and cart code against the GOG reading — READY FOR REVIEW
+
+Branch `task/RE-HE-PRODUCTION-1`, research only (docs). Owner request `he_01.mp4` 7:30. The full result is in `docs/re/forestry.md` §8, summarized in `production.md` ("HE comparison"). HE side: `AnnoWeltAddOn.dll` (x86, RTTI) and the running x64 `AnnoWelt.dll`, plus both `AnnoGame` builds. Module sha256 values are in §8.
+
+**Result.** Every function the forester (job `0x2a`, `tRouteMaeher`: step A find/claim/walk, step B wait/cut/+256, step C home), the farm and small-farm ticks, the growth visit, the claim/candidate/cut island slots, the send and the market cart's pickup use is **identical**: same logic recompiled, read D or S in both HE modules, with addresses in the §8.2 table. None is "relocated only", because a different compiler built HE. **One rules difference (changed):** HE converts `PROD3` at load in SSE single precision, which makes `need1` of 1010 and 3979 different (HE 7/4, GOG 6/3 at 53 or 64 bits); none of the forester or farm values differ. That settles OQ-032 for HE. **One open precision difference:** the figure tick is single precision in HE and x87 in GOG (new OQ-710). Data: `Anlagen.addon` = GOG `Anlagen.dat`. The 801 and 809 gameplay records are equal in HE `.dat`/`.classic` too; only `COLORS`, graphics and `VERSION2` differ, plus 709's gold cost in `.classic`. Figures 101/102/106/107/109/110/203/220 are equal. Small farm: line 0's figure 106 runs the forester's route on potato fields (709 → 708), capacity 3 t and 7.0 s per field, so up to three fields per trip and no separate sowing step. Line 1's animals run `tRouteWeide`, whose step B is the same cut on `GRAS`.
+
+**Changed files:** `docs/re/forestry.md` (§8, status line), `docs/re/production.md` (HE section), `docs/open-questions.md` (OQ-032 HE line, OQ-710), `docs/research/he-vs-gog-comparison.md` (one correction line). No code, no tests, and no original bytes or listings.
+
+**Gates:** docs only, so no build or test lane applies. `git diff --check` is clean. Evidence came from read-only scripts in the session scratchpad (RTTI lister, side-by-side function tables, token comparer, exact-rounding `PROD3` emulator over all 921 entries), not committed. Commit `836863a5`.
+
+**NOT_RUN:**
+- Every runtime observation: forestry NOT_RUN-1/2, and whether OQ-710 ever moves a tick. These need the HE runner.
+- The other modes of the claim read/write and the candidate list.
+- `tJobWalkRohstWeide`'s tile filter.
+- The fur trapper tick.
+- The HE64 job factory and the attach/release functions.
+- The HE64 route-type table start.
+
+**Decisions and reasoning:**
+- **Verdict scale.** "identical" means same logic recompiled; "relocated only" means byte-identical except for addresses; "changed" means a behavioural difference. HE was built by MSVC 14.16 and GOG by MSVC 6, so nothing can be "relocated only". Claiming it would overstate the evidence.
+- **Both HE modules.** HE86 carries the class names and the same architecture, so it is the precise twin. HE64 is what `Anno1503.exe` runs, which matters for the owner rule "HE for live behaviour". The key functions (farm tick, step A, callback, step B arrival, cut, claim, candidates, growth visit, small farm line, status helper) were therefore read in HE64 as well, not inferred from HE86.
+- **Locating functions.** HE86 functions were located by RTTI, with tables matched slot by slot. HE64 functions were located by content (constants and call patterns), not by slot arithmetic. HE64's tables reorder some slots (prod and island tables shift by one in places), so arithmetic would have picked wrong functions; the farm tick at HE64 row 35 is shared by both farm classes and is not the tick.
+- **Depth.** Where token comparison showed only compiler differences, the label is S. Every function with a real token difference was read (D): farm tick, send, small farm, cut, claim and candidates mode 0, growth visit, cart score.
+- **`PROD3` conversion.** The integers were checked over all 921 entries with exact rational rounding (24/53/64 bits against HE single), not a few spot values. HE computes every step in single precision, so its values follow from the code without a runtime capture.
+- **OQ numbers.** Main ends at OQ-690, `task/UI-TABS-1` uses 691-695, and UI-STATUS-1 holds 700-709. The new question takes **OQ-710**; 711-719 are left unused. The HE result for OQ-032 is a line in OQ-032 itself, not a new question, because it settles HE's side of that question.
+- **The `he-vs-gog-comparison.md` correction.** Its §5 "growth sweep" compared the 300 s event slot. A one-line correction there points to §8.2 rather than leaving a wrong lead.
+
+**QUESTIONs:** none.
+
+READY FOR REVIEW.
+
+## ISLAND-CROPS-1 stage 1a — ANBAU decoded in formats — READY FOR REVIEW
+
+Branch `task/ISLAND-CROPS-1` (base `df716283`). Commits: `3d16d3d7` feat(formats) (parser, writer,
+`Island::crops`, anno-dump and `tools/insel.py`), `4d05b8ba` test(formats) (unit + corpus tests, five
+synthetic fixtures), `3477dffd` docs (insel.md "ANBAU", OQ-708, OQ-024 update), then this report.
+
+**What changed:**
+- `anno::formats::insel::CropList { std::vector<std::string> names; parse(Bytes); write(); }` and
+  `Island::crops()` -> `Result<std::optional<CropList>, std::string>`. Names are raw byte strings
+  without their NUL, in record order; no ware lookup in `formats`. An empty payload is an empty list.
+  Refused (never in the corpus, OQ-708): bytes after the last NUL ("name not terminated"), an empty
+  name ("empty name"), a second ANBAU record ("twice"). The writer refuses an empty name or one holding
+  a NUL. No name-count limit in `formats`.
+- `anno-dump insel` / `tools/insel.py dump`: new line `  ANBAU count=<n> names=<a,b,...>` (bytes
+  0x21-0x7e other than `,` and `\` as they are, others as `\xHH`) or `  ANBAU BAD <reason>`
+  (exit 1); the existing `RECORD ANBAU size= hash=` line is unchanged.
+- Fixtures (our own bytes, built from `old.scp`'s INSEL4 island): `fixtures/synthetic/insel_synthetic/`
+  `crops.scp` (`GETREIDE`, `KR\xC4UTER`, `A,B\C`), `crops_empty.scp`, `crops_unterminated.scp`,
+  `crops_empty_name.scp`, `crops_twice.scp`. They are also in agree.py's fixture case.
+- `docs/formats/insel.md`: ANBAU has its own row and a decoded section (layout, corpus facts, original
+  loader semantics cited from task/UI-STATUS-1 `0ee20000` docs/re/ui.md 5.6 C and docs/re/annowelt.md,
+  the rebuild's refusals), dump format, implementation and test lists. `docs/open-questions.md`:
+  OQ-708 (malformed-ANBAU loader behaviour), OQ-024 update.
+
+**Corpus (P, `anno_formats_tests.ANBAU corpus`, and a separate byte scan with `tools/insel.py`):**
+1,133 ANBAU records = 465 templates (`Scenes/Islands`, 21 INSEL4 among them) + 668 scenario islands
+(50 `.sze`); exactly one per island; all 1,133 re-encode byte-identically. 13,686 names, 13 distinct,
+3-13 per record (847 list all 13), payload sizes 30-135 bytes. Every payload ends with NUL; no empty
+payload, no empty name, no duplicate name, no trailing bytes or padding; every list is a subset in the
+canonical order GETREIDE ... KARTOFFEL. Scan facts confirmed: all 465 templates have ANBAU, 29 lack
+KARTOFFEL, 6 lack KRÄUTER (D_128x128_0015_1B_Azteken, N_128x128_0023_1B, N_256x256_0002_2B,
+N_256x256_0006_2B, Pr_080x080_0003_2B, T_080x080_0001_0B_Po).
+
+**Gate (this PC, msvc Release; run on the working tree at `df716283` + the diff later committed
+unchanged as `3d16d3d7`..`3477dffd`, diff sha256 `48c50e01...` in the log's provenance):**
+- `cmake --preset msvc` + `cmake --build --preset msvc`: exit 0, no warnings/errors.
+- clang-format 23.1.3 (`E:\anno1503-worktrees\.scratch-cfpkg`) `--dry-run --Werror` on the 5 changed
+  C++ files: clean.
+- `tools/test/run_selected.py --select '^anno_formats_tests\.|^anno_dump_agrees_with_python$' --jobs 8`,
+  `ANNO1503_GAME_DIR=E:\anno1503\game\app`, `ANNO_TEST_THREADS=16`, required `anno_formats_tests.ANBAU
+  corpus` and `anno_dump_agrees_with_python`: `selected=86 executed=86 failed=0 empty=0 skipped=0`,
+  VERDICT PASS. Log `cache/gates/island-crops-1a-01.log` (+ `.inventory.json`).
+- `python -I tools/agree.py --commands insel --game-dir ...`: 4 of 4 cases agree (fixtures dump and
+  `--full`, 10 files each; corpus 515 files; `--full` Single_01.sze). Log
+  `cache/gates/island-crops-1a-agree-insel.txt`.
+- `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh` (no other run going, checked with pgrep): exit 0;
+  GCC 13.3 and Clang 18.1.3, 417 files with viewer+GPU and 83 without GPU, all clean; both negative
+  controls failed as expected. Log `cache/gates/island-crops-1a-unixwarn.log`.
+
+**Failure proof:** `CropList::write` changed locally to drop the final NUL, `anno_formats_tests` rebuilt,
+`ANBAU corpus` run: Failed, `1133 failed` assertions (one per record, insel_corpus_test.cpp line 251, the
+byte-identity check). Restored with `git checkout`, rebuilt, the 4 ANBAU cases pass again; never
+committed. Logs `cache/gates/island-crops-1a-failure-proof.log`, `cache/gates/island-crops-1a-restored.log`.
+
+| Acceptance (packet stage 1a) | Result |
+|---|---|
+| Spec: ANBAU decoded record, layout, corpus edge cases, moved out of the OQ-024 row | done (insel.md) |
+| Parser in `src/formats`, raw byte strings, `Result`, clear errors | done (`CropList::parse`, `Island::crops`) |
+| Real writer, parse -> write byte-identical | done (`CropList::write`) |
+| Synthetic round-trip tests (own bytes) | 3 unit cases + 5 fixtures, pass |
+| Corpus test over every ANBAU record, counts, 29/6 template check | `ANBAU corpus`, pass: 1,133 / 29 / 6 |
+| anno-dump insel + tools/insel.py print names; agree.py on insel | 4/4 agree; CTest agree pass |
+| formats lanes + insel corpus | 86/86 executed, pass |
+| check_unix_warnings in WSL | clean |
+| CI green | NOT_RUN here (pushed; not polled) |
+
+**NOT_RUN:** CI (pushed, not polled); macOS/Linux execution of the tests (the WSL step is compile-only);
+the Mac game-file run (not required for a formats-only stage).
+
+**Decisions and reasoning:**
+- Malformed cases are refused, not repaired: the corpus never shows them and the original loader's split
+  loop was not read (OQ-708). An empty payload is accepted as an empty list, the natural inverse of the
+  writer for no names.
+- Two ANBAU records are refused ("twice") rather than taking the first or last: which one the original
+  keeps is not read.
+- No 13-name cap in `formats` (the loader's cap belongs to the sim's config, if at all; CLAUDE.md
+  "No hardcoded limits").
+- The dump escapes `,` and `\` so a name list stays splittable; the only non-ASCII corpus byte is 0xC4.
+- The constructor value of island property 11 (`+0xac`) for an island without ANBAU was not seen in
+  this stage; the island property setter/reset notes (OQ list, "reset zeroes +0xb0..+0xbf") do not
+  cover `+0xac`. It stays for 1b to read or make an OQ (orchestrator answer 4); every corpus island has
+  ANBAU, so it matters only for islands built some other way.
+
+READY FOR REVIEW.
+
+## UI-PRODBAR-1 stage A — the placement productivity bar read (docs only) — READY FOR REVIEW
+
+Branch `task/UI-PRODBAR-1` (base origin/main `4dfdd9b7`). Docs only: no code, builds or tests. The packet asked
+for stage A only, so the work stops after A. Evidence:
+- GOG 2.0.0.5 static disassembly (`adis.py`, plus our own `cache/prodbar/{dall,vt,xref,disc,anl,anl2}.py`, not
+  committed);
+- `Anlagen.dat`, `FigurenHeader.dat`, `Data/Wachstum.dat` and `help/*.htm`, read only;
+- the HE crops `c4_bar_a.png`, `c4_bar_b.png` and `s6_forester.png` (pixels only).
+
+The original was not started.
+
+**What the bar is.** It is the original's **fertility indicator** (`Fruchtbarkeitsbalken`; the game's help pages
+name it), not the building's running productivity. The full rule with addresses is in `docs/re/ui.md` **4.1**.
+Short form:
+- **Who:** only `tCursorAnlageDefault` and its editor twin draw it: the draw `0x10048450` calls `0x10047940`
+  (its only caller). It shows only while the ghost is valid, and in a multi-placement only for the last ghost (D).
+- **Which buildings:** input 0 is goods `0x38`-`0x4b` **and** the crop object HEAD u16 `[0x28]` ≠ 0 (D). That is:
+  - forester, grain, flax, hops, spices, tobacco, sugar, silk, dye, cotton, wine, herbs;
+  - sheep, cattle and small farm (object 1).
+
+  Fisher, hunter, trapper, whaler, quarries, mines and workshops show no bar (P, `Anlagen.dat`).
+- **Area:** a midpoint-circle disc of radius HEAD `[0x11]` around the footprint. The footprint is excluded and
+  the disc is clamped to the island rectangle. Forester r = 5 → 88 tiles (D + E).
+- **Good tile:**
+  - the crop test `0x100817c0` does not answer "dry". That test uses fertility from the `Wachstum.dat` grid,
+    the well bit, the climate mask, and island property 11 (halves); drought is ignored for trees and grass;
+  - **and** the island placement predicate `0x1007c790` accepts the crop object there: overlappable objects
+    only, mean corner height ≥ 32 (D).
+- **Value:** trunc(10 · good / N). It is drawn as frame `value` of figure **1557** (`Fruchtbarkeit.PCX`, 11 frames
+  of 54 × 12 in 3 zoom groups) (D + P).
+- **Anchor:** the footprint centre at height byte 8 × 0.04 + HEAD f32 `[0x14]` (D).
+- **Update:** recomputed on every draw (D).
+- **Same value as production?** No. Nothing stores or reads it (D).
+
+**HE cross-check:**
+- **10/10 inland** fits: meadow Proz 99-100 gives no dry tile.
+- **6/10 near the coast** can be produced: beach Proz 0-47 and water tiles in the island rectangle that fail
+  the height test. The exact value needs the map, so it is a qualitative fit, medium confidence (OQ-716 recipe).
+- The help's "at most 50 %" when the status bar shows the crop at 50 % is reproduced exactly (L = 5 → 16 of 32
+  cells healthy).
+
+**Acceptance table (evidence contract; stage A is a read, so the proofs are code reads and data scans)**
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Reviewer disposition |
+|---|---|---|---|---|
+| value = trunc(10·good/N) | `lea eax,[eax+eax*4]; shl eax,1; idiv`, 0 when N = 0 | rounding would give 59/88 → 7; trunc gives 6 | `0x10047de4`-`0x10047dfa` | pending |
+| The disc | emulated row tables r 3/4/5 = 3,3,3,2 / 4,4,3,3,1 / 5,5,5,4,3,2 → 36/52/88 tiles for 3 × 3 | the 11 × 11 work square would be 112 for r = 5 | `0x10047a5b`-`0x10047d1a`, `cache/prodbar/disc.py` | pending |
+| Eligibility | 801 (input `BAUM` 0x46, object 104) has a bar | 810 fisher: input `FISCH` 0x47 is in range, but object 0 → returns at `0x10047a21` | `anl.py`; `0x10047a19` | pending |
+| Frame = value | figure 1557 has exactly 11 frames (0..10) | a 10-frame sprite would overrun at 10/10 | `anno-dump figuren --full` | pending |
+| Valid only | the draw branches on `B+0x2e4` before the ghost and the bar | refused → yellow rectangle `0x10041050`, no bar | `0x10048464`-`0x1004846b` | pending |
+
+**UI lane vs sim: the split**
+
+*UI lane (read-only app work, about 3 h, stage B as planned).*
+- **B1, about 1 h:**
+  - load figure 1557's frames (3 zoom groups × 11), with the loader `ship_layer.cpp` already uses;
+  - draw frame `value` with its bottom-centre anchor at the projected point (footprint centre, height byte 8 ×
+    0.04 + HEAD `[0x14]`);
+  - only while the ghost is valid, and only on the last ghost.
+- **B2, about 1 h:** eligibility (input 0 range, HEAD `[0x28]`, the climate tree table `0x1002137c`); the disc
+  enumerator and the scaling as a pure function over two sim queries; recomputed on every draw.
+- **B3, about 1 h:**
+  - tests: the three disc tables and their counts; scaling edges (N = 0; 59/88 → 6, not 7); eligibility from
+    `Anlagen.dat` (801 yes, 810 no);
+  - a viewer shot against the HE crops (offset, OQ-718).
+
+Until the sim queries exist, stage B should draw **no bar**, with a named placeholder (proposal, OQ-715).
+
+*Sim (proposal for the orchestrator). The rules involved are sim rules, and the farms need them too (dry
+fields, OQ-706), so they are not bar-only. About 10-12 h, as four packets within the 2-4 h cap:*
+- **S1, about 2 h:** island property 11 (`ANBAU`, plus `0xF009 | raw marks` at link placement). This is the
+  UI-STATUS-1 stage D1 proposal; one packet serves both.
+- **S2, about 4-5 h:** the fertility nibble grid. Rebuilt from `Wachstum.dat` (`0x10084370`): Proz per texture
+  cell, the HEAD `[0x19]` blend under raw objects, the per-climate 5 × 5 weights `0x100ca008`, cap 10. It is
+  derived state, rebuilt on load and when a raw object changes, integer-only. A Python oracle checks it over the
+  shipped islands. Owner/orchestrator question: whether it is hashed or saved (proposal: derived, neither).
+- **S3, about 2-3 h:** the crop test `0x100817c0` as a const sim query:
+  - table `0x100c9c28`, the climate mask, the property-11 halving and the `ROHSTWACHS` next-id rule;
+  - the well bit, behind a seam ("no wells") until wells exist;
+  - the chunk drought flag, if S13's drought state holds it, else the same kind of seam.
+- **S4, about 2 h:** the placement class for single-quad tile objects (flag word `& 3 == 1`): rounded mean of
+  the 4 corners ≥ 32, plus the existing-object compatibility. It extends `placement_rule` and
+  `tools/placement_ref.py`, and emulates `0x1007c790` on `0x29` objects. Player fields and tree planting need
+  it as well.
+
+Order: S1 → S2 → S3 → S4. Then stage B wires the bar to the two queries. B1 can land earlier with the
+placeholder.
+
+**OQs:**
+- OQ-715: what stage B draws before the sim queries exist (orchestrator/owner);
+- OQ-716: the exact HE values at known tiles; the **HE recipe** for the owner is in the OQ (about 10 minutes,
+  video only);
+- OQ-717: do the farms harvest in the same disc?
+- OQ-718: the drawer's arguments and the exact screen offset;
+- OQ-719: the pasture object 1 of the sheep and cattle farms and the small farm; is the bar always 0 on POLAR?
+
+**Docs changed:**
+- `docs/re/ui.md`: new section 4.1, "The placement productivity bar";
+- `docs/re/production.md`: HEAD rows `[0x14]` and `[0x1a]/[0x2a]/[0x28]/[0x26]`, and 4.2b, the indicator as a
+  reader of 4.3;
+- `docs/open-questions.md`: OQ-715..719.
+
+Cross-references to UI-STATUS-1's unlanded text (OQ-702, OQ-706, `production.md` 4.3's crop test) name that
+branch. Placement in the files avoids its hunks: ui.md §4 instead of §5, production.md 4.2b and §2.4 rows
+instead of 4.3. A textual conflict is still likely at the end of `open-questions.md` (both append).
+
+**NOT_RUN:** any build or test (docs only, as the packet says); the original and the HE (not started; recipe
+written); a per-tile emulation of `0x1007c790` for `0x29` objects (S4's job); the sprite's pixels (stage B
+decodes them).
+
+**Decisions and reasoning:**
+- I called the bar "fertility indicator" in the rule, with "productivity bar" in the heading. The game's own
+  help names it so, and the code reads soil tests, not production. The packet's title keeps the owner's word.
+- I gave the sim parts as proposals with sizes and did not fold them into stage B. The crop test and the
+  tile-object placement are rules shared with the drought tick and field placement. An app-side copy would be a
+  second source of truth.
+- The ui.md section went under §4 (placement) as 4.1, not after 5.6. That keeps it out of UI-STATUS-1's
+  unlanded §5 hunks and next to the placement text it extends.
+
+READY FOR REVIEW.
+
+### UI-PRODBAR-1 stage A, fix round 1 — the UI lane's independent check (4 skeptics, 1 critic) — READY FOR REVIEW
+
+Input: `cache/wf/verify-summary.txt` (critic §1). The core held: who draws it, which buildings, the disc counts
+36/52/88, trunc(10·good/N), and figure 1557. I re-checked each correction myself before writing it.
+
+**Accepted and verified:**
+- **Draw gates.** `[B+0x48] < [B+0x50]` (`0x10048491`-`0x1004849d`), the registry lookup non-null
+  (`0x100484e3`-`0x100484e8`), and the projection non-zero (`0x10047de0`, `je 0x10047e23`). All three are in
+  `ui.md` 4.1 and OQ-715.
+- **Disc centre.** The disc is centred on the footprint's centre cell(s); r 1 gives 0 tiles on a 3 × 3 and
+  r 2 gives 16. Re-emulated.
+- **Height test.** (b) is AnnoWelt `0x1007c790`. The height is the **floor** of the four-corner mean
+  (`AnnoGame 0x10008fd3`: `cdq`/`and 3`/`sar 2`). The threshold 32 is now D via `0x1007b340`/`0x1007b3a0`
+  (1.28f / 0.04f).
+- **Polar halving.** "Trees and pasture never halved" was wrong for `ANBAU`-loaded polar islands. I re-read it
+  myself: `0x10089885`-`0x10089897` starts property 11 at 0 for climate 0 (else `0xF009`), and the name loop
+  stops at goods `0x44` (`0x1008992c`), so `BAUM`/`GRAS` cannot be listed. The rows were rewritten.
+- **50 % cap.** It is about 50 %, not at most 5/10: 3-6/10 for r 3 farms, 4-5/10 for r 4 and r 5 (`cap.py`
+  re-run). The confidence went from high to medium. OQ-716 step 5 now expects 4-6/10 and has a control step.
+- **OQ-719.** Partly answered (D): object 1 mask `0xfe` → 0/10 for sheep, cattle and small farm on POLAR.
+  The polar forester depends on the island source.
+- **Frame = value.** Now D (the value is the drawer's 3rd argument) + P; the drawer's internals are unread.
+  Frame 0 is a 2 px red sliver (index 235). The ramp is 234, 234, 237…244 (`sp1557.py` re-run). All zoom groups
+  are 54 × 12.
+- **Smaller tags.**
+  - The well bit's name is L, and the factor order is spelled out.
+  - The climate test uses the passed object's mask.
+  - `B+0x2e5` = multi is L.
+  - "No reader" is D (locals) + L (no global xref).
+  - The exclusion reasons are given per building.
+  - "Property 7 = climate" is cited, not re-read.
+
+**Kept, with the reason:**
+- **Crop-table index.** It stays `(y − y0) & 3` / `(x − x0) & 7` with the **island** origin, pinned at
+  `0x100817dd`/`0x100817e9` (subtracting words `+4`/`+6`) through `0x100819b9`-`0x100819d6`. A skeptic's
+  `y & 3` / `x & 7` agrees only when the island origin is aligned to 8 in x and 4 in y. That is now written in
+  the row, so S3 can start from it.
+
+**New open point, without a new OQ id:** when `0x10084370` rebuilds the nibble grid. It has no direct caller,
+only the island vtable slot `+0x1a4` (data refs `0x100cadd0`, `0x100ca340`, `0x100ca6d4`). I added it to OQ-715
+because the reserved range 715..719 is used up; it can move to its own OQ if the UI lane hands out an id.
+
+**Sim split (revised):**
+- **S1 dropped.** Island property 11 is ISLAND-CROPS-1 1b, already in flight (1a decoded `ANBAU`; 1b stores
+  the field, including the climate-0 → 0 loader case and the `0xF009 | marks` link path).
+- **S2a, about 2 h:** the `Wachstum.dat` Proz table per texture cell, with a format/oracle check.
+- **S2b, about 3 h:** the `0x10084370` grid build: the HEAD `[0x19]` blend, the per-climate 5 × 5 weights
+  `0x100ca008`, cap 10, and a Python oracle over the shipped islands.
+  - It needs the trigger read first (OQ-715) or a stated assumption.
+  - Whether the grid is hashed or saved goes to the owner (proposal: derived, neither).
+- **S3, about 2-3 h:** the crop test `0x100817c0` as a const query.
+  - It covers the table index as pinned above, the ×2/3 → ×133/100 order, the property-11 halving and the
+    next-id goods rule; the well bit and the drought flag sit behind named seams.
+  - It also takes the crop-object resolver (registry `+0x7c`, climate tree table `0x1002137c`), so the UI holds
+    no second copy.
+  - It depends on ISLAND-CROPS-1 1b and S2b.
+- **S4, about 2 h:** the placement class for flag word `& 3 == 1` (floor of the mean ≥ 32, the per-object
+  overlap table verified, not assumed). It is independent of S2-S3 and can go first or in parallel.
+
+Order: ISLAND-CROPS-1 1b, S2a → S2b and S4 in parallel; then S3; then stage B wiring. New sim work is about
+9-10 h in four packets.
+
+**Stage B (revised):**
+- **B1, about 1 h:** all four gates, the sprite and the anchor. It has no visible output until the sim queries
+  exist (placeholder `fertility-indicator-needs-sim`, OQ-715); its acceptance is a test on an injected value.
+- **B2, smaller:** the disc and the scaling only. The crop-object resolver moves to S3.
+- **B3a, now:** the disc tables 36/52/88, the scaling edges, eligibility (801 yes, 810 no).
+- **B3b, after S2-S4 and OQ-716:** the pixel check against HE.
+
+**Changed:** `docs/re/ui.md` 4.1, `docs/re/production.md` 4.2b, OQ-715/716/718/719. Docs only; no build or test.
+NOT_RUN as before.
+
+READY FOR REVIEW.
+
+## UI-HARVEST-ICON-1 stage A (docs only), 2026-11-17
+
+**Branch** `task/UI-HARVEST-ICON-1`, base origin/main `4dfdd9b7`. Stage A only, as released. No code, builds or tests;
+small single-threaded Python scripts in the worktree's git-ignored `cache/uhi/`. Delivered: `docs/re/ui.md` §11
+"Status icons above buildings", OQ-720..724 in `docs/open-questions.md`, one pointer line in `docs/re/production.md`
+§4.1. Existing notes checked first: `git grep` over `origin/task/*` found OQ-033 and `production.md` §3/§4.1 (the
+`+0x0d` bits, `0x10073010`), nothing on the icon pictures or the drawing.
+
+**Findings.**
+- **The icon set** (D `0x10073114`, table `0x100c92b0` = 1555, 1570, 1572, 1571; P `FigurenHeader.dat`): code 0 →
+  1555 "Zzz" (switched off), 1 → 1570 `KeinRohstoff` (sheaf + leaf + spinning "?"), 2 → 1572 `KeinLager` (barrel and
+  sack + "?"), 3 → 1571 `KeineStrasse` (paved tile + "?"). All `BEWOHNTYPE PRODSYMBOL`, 16 frames per zoom group,
+  `ANIM` 80 ms, kind `tHausAnim`. No ToolGfx ACCESS names and no tooltips: they are world figures. The English help
+  pages name them (`help/Auslastung.htm`, `IH_Lager_Voll.htm`, `IH_Betrieb_Strasse_Fehlt.htm`,
+  `Produktion_stilllegen.htm`).
+- **The HE "vertical red-to-yellow bar" is the question mark turned edge-on** (H, high): HE 8:56 matches frame k =
+  5/13 of 1570, 8:52 shows its curl (frames 1-3/14-15). **The bar measures nothing.** The icon the owner saw over the
+  forester is 1570.
+- **Triggers** (D): icon 0 from the switch helper `0x10072a60` → `0x10073010(0, old)` (`0x10072aca`): on exactly
+  while switched off. Icons 1/2 from the status helper `0x10072ed0` once the condition has lasted the repeat
+  interval (workshop 45 000 t; farm 60 000 missing / 45 000 full; mine 30 000 / 45 000; small farm 75 000; whaler
+  `0x10073720` 90 000 / 45 000, new), removed by the next producing step (`0x10072fb0(0x0e)`). Icon 3 replaces a due
+  code 1 (non-crop, non-animal input) or code 2 when `0x10071f40` / `0x10072390` return 0 (meaning "no road" is
+  likely, OQ-720). The forester's input BAUM (70) is in the crop range, so it always shows icon 1.
+- **Drawing** (D `0x10073010`): owner gate (Volk 1); the building's old icon objects removed; one new island
+  object for the **lowest** set bit among 0-3 (Zzz first), at the **footprint centre**, height = type float `+0x8` +
+  building byte `+0x0f` · 0.04 (inputs OQ-721); re-created at every step while due. All three zoom groups have
+  frames. No blink or fade.
+- **The rebuild:** the sim holds codes 1-2, the icon bits, the time and `shows_icons` (`StatusTracker`) and
+  `switched_on`; no code 3; the play snapshot copies no status.
+
+**Acceptance table (stage A).**
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Disposition |
+|---|---|---|---|---|
+| Icon ids by code | table bytes `13 06 22 06 24 06 23 06` at `0x100c92b0`, read by `0x10073114` | the nearby `Symbole` figures (1556 ore, 1557 fertility, 1573/1574 road connection) are in no table | D + P | pending review |
+| HE icon = 1570, bar = "?" edge-on | `cmp.py`: HE 8:56 vs frame 5/13; 8:52 vs frames 1-3 | a growth bar would not reappear as the "?" curl; the sheaf part is identical in both HE frames | H | pending review |
+| Icon 0 = switched off | `0x10073010(0, old)`; the caller pushes new, then old (`0x100684cd`) | read the other way round, the Zzz would show while running; the early return on `old == new` makes `old = !new` | D | pending review |
+| Code 3 rewrite | `0x10072f77`-`0x10072f83` | crop/animal inputs skip it (`0x10072f51`-`0x10072f67`) | D | pending review; meaning OQ-720 |
+| One icon, lowest bit | loop `0x100730d3`-`0x100730e4` stops at the first set bit below 4 | bit 4 is never drawn (`cmp edi, 4`) and no direct caller sets it | D | pending review |
+
+**Stage B plan (2-3 h, UI lane, after this review).**
+1. A read-only per-turn list in `PlaySnapshot`: for each building of the local player whose payload has a
+   `StatusTracker`: (building id, footprint x, y, w, h, icon code), code = 0 if `shows_icons` and a line is switched
+   off, else the lowest set bit of `status.icons` among 1-2; buildings without an icon are left out. Same pattern as
+   `map_figures` (collect function + shared_ptr; rule 0.2: no state, stream, hash or draw change).
+2. The viewer draws figure 1555/1570/1572 (1571 kept in the table for later) at the footprint centre, frames from
+   `assets::figure` per zoom group, anchor from the frame header, lifted per the OQ-721 default; frame =
+   (game ms / 80) mod 16 (OQ-722 default); the local player's buildings only (OQ-723 default).
+3. Tests: the collect function on a world fixture (switched-off workshop → 0; farm with icon bit 1 → 1; bits 1 and 2
+   → 1; `shows_icons` false → none; another player's building → none); a picture check of the icon against the
+   decoded frame at each zoom; the owner checks the forester case in the viewer.
+
+**UI / sim split.**
+- **UI lane (read-only app work), stage B, about 2-3 h:** everything above. Icons 0, 1, 2 need no new sim state: codes
+  1/2 and the icon bits are in `StatusTracker`; icon 0 is derived from `switched_on` and `shows_icons`.
+- **Sim (proposal for the orchestrator), not in this packet:** code 3 "no road". (a) RE of `0x10071f40`
+  (`0x100720e1`-`0x10072382`) and `0x10072390` (OQ-720), about 2-3 h docs only. (b) A sim packet: `Status::NoRoad = 3`,
+  the rewrite in `StatusTracker::report` with a predicate per building class, the predicate itself (a road/supplier
+  reachability query; 3-4 h if the existing road graph answers it, more if it needs a new search), tests and the
+  state-stream note (the code field already has 3 bits, no layout change). Until then the rebuild shows icon 1 or 2
+  where the original shows the road icon; the forester and the farms are not affected. Optional, about 1 h: set
+  `icons` bit 0 in the switch command if the orchestrator wants the bits to mirror the original byte instead of
+  deriving icon 0.
+
+**HE recipe for the owner (optional; closes OQ-722 and OQ-723, checks icons 0 and 2).** A running History Edition game,
+closest zoom, sound off:
+1. Select a working forester and switch it off (the "Zzz" button in its panel): a "Zzz" should appear over it at once.
+   Record 10 s at 60 fps; switch it on and note when the "Zzz" goes.
+2. Find a building with the sheaf (or barrel) icon and record 10 s at 60 fps without moving the camera (OQ-722: frames
+   per turn of the "?", and a jump about once a second or not).
+3. With a computer opponent in the game: look at its farms early on and note whether any icon shows over them (OQ-723).
+4. Optional: save with a "Zzz" showing, load, and note whether it is there at once (OQ-724).
+
+**Decisions and reasoning.**
+- The "bar" was settled from the decoded frames, not by searching for a bar draw: the edge-on frames reproduce both
+  HE captures, and `0x10073010` passes no value to the icon.
+- Icon 0 is derived app-side, not added to the sim: the original's bit 0 is a function of the switch state and the
+  owner gate, both already in the sim.
+- OQ-723's default (own buildings only) is the narrower choice: it matches what the owner saw and is easy to widen.
+- `production.md` gets one pointer line; the full reading lives in `ui.md` §11, so it is written down once.
+
+READY FOR REVIEW.
+
+### UI-HARVEST-ICON-1 stage A, fix round 1 (2026-11-17)
+
+The UI lane's independent check (3 skeptics, 1 critic; `cache/uhi/wf/verify-summary.txt`) confirmed the table, the
+triggers, the "bar" as the spinning "?" and the split. I re-read every correction against the bytes before writing it;
+I agree with all of them. Changed in `docs/re/ui.md` §11 and OQ-722:
+- **(a) 16-bit due test.** `0x10072ed0` masks the elapsed time to 16 bits (`and ecx, 0xffff` at `0x10072f1a`) and
+  returns while `repeat > elapsed` (`jg` at `0x10072f20`), re-read. So the small farm's icon 1 (75 000, `0x1006f57c`)
+  and the whaler's icon 1 (90 000, `0x10073a5a`) never appear. The small farm is ISS-150 / `production.md` §4.5, which
+  §11 had contradicted. The whaler is a new case of the same issue (unported; whether to add an ISS row now or at the
+  port is the orchestrator's call). Added the small farm's code 2, 45 000 (`0x1006f5f3`), and the mod-65 536 wrap.
+  E13 rewritten.
+- **(b) Two-line switch.** Re-read `0x10069080`-`0x10069113`: the callers at `0x100690b0` and `0x1006910c` pass new =
+  this line OR the other line, so the Zzz shows only when every line is off. "1 = running" is marked L. A failed owner
+  gate stores no bit.
+- **(c) Drawn icon ≠ passed code.** `0x10073010` sets or clears bit `code`, then draws the lowest set bit 0-3. Added
+  the consequences: switching on with bit 1 set shows KeinRohstoff at once; a set bit 1 hides a later bit 2 until the
+  clear. Every direct caller of the helper passes input 0.
+- **(d)** The `ANIM` field is stated as (0, 16, 80); its unit and the real period are U (OQ-722).
+- **(e) Frame divisor: /40 chosen.** It is the original's confirmed `ANIM_ms / 2` (`annowelt.md`). OQ-722's stage B
+  default is now (game ms / 40) mod 16: 0.64 s per turn if the tick is a millisecond. The tick unit and the
+  no-restart behaviour are labelled adaptations.
+- **(f)** "No blink or fade" is limited to `0x10073010`/`0x10072ed0`; the draw side is not traced.
+- **(g)** "Frames exist for groups 0-2" is P; "drawn at all zooms" is L. The height-source vtables
+  `0x1002185c`/`0x10021a88`/`0x10021bbc` come from a heuristic scan (L).
+- **(h) Owner gate.** It is now written as `[+0x10].slot+0x1c` → `slot+0xc4(3)` == 1. I re-read slot `+0xc4` =
+  `0x1001bea0` (vtable `0x100c2238`): argument 3 → jump table `0x1001bf04` → `0x1001beb3` = u16 `[ecx+0x7a]` (D). That
+  the field is the player's Volk is OQ-033 (L, not re-traced). Side issue in tracked code: the comment on
+  `StatusTracker::shows_icons` in `production.hpp` still says "possibly human player". That is for the orchestrator
+  (code, not this docs packet).
+- **(i)** Frame 13 fits HE 8:56 best. At 8:52 only the curl is visible, because the cursor covers the icon. BAUM = 70 is
+  cited from `forestry.md`, not re-disassembled. Other orange icons in the HE frames were not checked.
+- **(j)** `0x10072fb0` acts only when a bit of the mask is set. "Cleared by the next producing step" is L: not every
+  call site's gate was traced (e.g. `0x1006a0d4`, gated by `+0x29 == 0`).
+
+**Stage B plan (replaces the one above; UI lane, read-only app work, about 3 h).**
+1. **Snapshot.** `PlaySnapshot` gets a per-turn list, collected like `map_figures`, with no state, stream, hash or draw
+   change in the sim. Each entry has: building id, footprint x/y/w/h, sprite height for the lift, and the icon.
+   - The icon is the lowest of {Zzz, bit 1, bit 2}, each counted only where `shows_icons` holds.
+   - Zzz = every line switched off: one switch byte, or all lines of a two-line building.
+   - Bits 1 and 2 come from `status.icons`. The sim never sets bit 0; it is not read.
+2. **Drawing.**
+   - The figure is 1555, 1570 or 1572, at the footprint centre, per zoom group from `assets::figure`, with the frame
+     anchor.
+   - Frame = (game ms / 40) mod 16 on the global clock, with no restart (OQ-722).
+   - The lift is the building's sprite height (OQ-721).
+   - Each of these is labelled an adaptation in the docs.
+3. **Visibility.** Own buildings only (OQ-723) is provisional and can change the "feeling", so the owner confirms that
+   default, or it becomes a `rules` option.
+4. **Known divergence, documented in the packet:** where the original rewrites a due code 1 (non-crop input) or a due
+   code 2 (any input) to code 3, the rebuild shows icon 1 or 2. The small farm's never-shown icon 1 falls out of the
+   sim's u16 test with no extra code.
+5. **Tests.** A collect-function fixture with these cases:
+   - a switched-off workshop → Zzz;
+   - a two-line building with one line off → none, both off → Zzz;
+   - icon bits 1 and 2 → 1;
+   - switch-on while bit 1 is set → 1;
+   - `shows_icons` false → none;
+   - another player's building → none;
+   - a small farm missing input for 80 000 t → none.
+
+   Plus a picture check of the icon against the decoded frame at each zoom, and an owner check of the forester case.
+
+**Sim proposal for the orchestrator: code 3 "no road".**
+- (a) RE packet, docs only, about 2-3 h: `0x100720e1`-`0x10072382` (rest of `0x10071f40`) and `0x10072390`, to close
+  OQ-720.
+- (b) Sim packet, 3-4 h if the existing road graph answers the query, about 6 h if it needs a new search:
+  - `Status::NoRoad = 3`;
+  - the rewrite in `StatusTracker::report` with a predicate per building class;
+  - the predicate itself;
+  - tests.
+
+  The code field keeps its width, but a new value appears in the saved building payload and in the checksummed state,
+  so the packet notes the save and checksum impact (the state-stream version, if the stream checks enum ranges).
+
+The UI then adds figure 1571 with no further RE.
+
+READY FOR REVIEW.
+
+## UNITS-REF-1 — UNITS.md, the reference of every moving figure — READY FOR REVIEW
+
+Branch `task/UNITS-REF-1` from origin/main `4dfdd9b7`, docs and one read-only tool. Owner request 2026-11-17 via the orchestrator.
+
+**Result.** `docs/UNITS.md` follows the structure of BUILDINGSOBJECTS: quick answers, a gap table against the rebuild, Part A inventory counts, Part B the figure-type record, Part C code → class, Part D by group (D1-D11), Part E GOG against HE, Part F open questions. New D reads:
+- **The figure-type loader** `AnnoGame 0x1000fe00`: every `HEAD`/`LOGIC` byte → type field → getter, plus the `BEWOHNTYPE`, `FORSCHTYPE`, `WARE`, `BAUWARE` and `OBJECTPOS` records.
+- **The figure factory** `AnnoWelt 0x1009a110`: every BEWOHNTYPE code (1-based) → constructor, vtable and size, with HE86's RTTI class names (e.g. 113 `tBewohnerSchiffPlayer`, 98-109 and 111 `tBewohnerSoldat`, 81 `tBewohnerVogel`).
+- **Birds on ships:** at a decision, with chance 1 in 10, bird type 513 scans ±10 tiles for a class-113 ship, perches and follows it. It lets go when the ship's state `+0x8c(0)` has bit 1 or 2 set. The logic uses CRT `rand`, so it is cosmetic.
+
+**GOG/HE:** all 368 entries have byte-identical gameplay records (P; `PATH`/`VERSION2` differ in 370-376 and 453 only). The loader, the code table, the factory and the bird logic are identical by structure in HE86 (S).
+
+**Not settled:** the combat and price field meanings are L, from value patterns (OQ-751). The army's command path is not traced (OQ-753).
+
+**Changed files:**
+- `docs/UNITS.md` (new);
+- `tools/units_inventory.py` (new; `python -I`, read-only, `ANNO1503_GAME_DIR`, `--he-dir`, writes `cache/units/inventory.md`);
+- `docs/open-questions.md` (OQ-751..754; OQ-023 narrowed);
+- pointers in `docs/formats/figuren.md` and `docs/re/annowelt.md`.
+
+**Gates:**
+- `git diff --check` is clean.
+- The generator ran with GOG and HE: 368 types, 50 BEWOHNTYPEs, 8 entries differing outside graphics, under one second.
+- No build or test lane applies to docs plus a cache-writing tool. CI is read after the push.
+
+**NOT_RUN:**
+- The HE x64 module's unit code.
+- The soldier and ship ticks, and combat.
+- Runtime observation of the bird perch (HE).
+- The `LOGIC` consumers (OQ-751).
+
+**Decisions and reasoning:**
+- **Codes are 1-based.** The name table I read first gave 0-based indices. The factory's `dec eax` and the existing docs (annowelt, wildlife, fisher: MAEHER 1, ZIVILIST 33, SHIP 113) show the class code is index + 1. I relabelled the whole map and checked it: every HE86 class name lands where its name says (49 deer → `tBewohnerWildTierNew`, 50 → `...Wolf`, 113 → `...SchiffPlayer`). The earlier off-by-one never reached the doc.
+- **Meanings marked L, not D.** Combat and price meanings come from value patterns over 368 types, not from a consumer. They stay L with OQ-751 rather than being stated as fact. Where the repo already reads a field (`[0x25]` founding range, `[0x13]`/`[0x26]` ship crew, HP reader `0x100498e0`), I cite that read.
+- **No per-figure table in git.** As for BUILDINGS-REF-1, the generator writes the 368 rows to `cache/`, and the doc keeps the field map, counts and findings. Identifier names (BEWOHNTYPE, `WARE` values like `PIRATSCHIFF`) are code identifiers, not `Texte.dat` text, so they appear. `PATH` strings stay out.
+- **The generator's path.** `tools/units_inventory.py` imports the repo's `tools/figuren.py` relative to its own file, not through an absolute `E:\` path, so it runs from any checkout.
+- **Bird trigger depth.** I read the search and the release to the instruction. The meaning of the ship's state bits and the bird's action length are left to OQ-752 rather than guessed from the name "idle".
+- **OQ count.** Main ends at OQ-690, 691-695 are on `task/UI-TABS-1`, 700-709 are UI-STATUS-1's, and 725 and 750 are held. I asked the orchestrator to reserve 751-754 and used those.
+- **Scope kept to one doc.** Ship navigation, cargo, founding, fisher, whaler, hunter and wildlife are settled elsewhere and are pointed to, not repeated, per the packet.
+
+**QUESTIONs:** none.
+
+**Follow-ups noticed:**
+- `docs/glossary.md` still calls BEWOHNTYPE "unconfirmed (OQ-023)".
+- `src/sim/src/types.cpp` `kBewohn` maps 21 of 57 names (gap 1). The fix is data from Part C.
+
+READY FOR REVIEW.
+
+## FERTILITY-1 stage 1a — placement class for single-quad tile objects — READY FOR REVIEW
+
+Branch `task/FERTILITY-1a` (base origin/main `4dfdd9b7`, packet `docs/orchestration/tasks/fertility-1.md`
+"Stage 1a" and answer 2). Commits: `00c631eb` re(annowelt), `9d936f6d` feat(sim), `30103625` test(sim),
+`6684c7da` docs(sim), then this report.
+
+**The rule, as read (D; `adis.py`, capstone, on the pinned GOG DLLs):**
+- **Class:** the type's own flag word (`word [type+0x12]`) `& 3 == 1` selects the four-vertex mean, before any
+  window or class test (AnnoGame `0x10008f99`-`0x10008fac`). All 291 shipped such types are `0x29`
+  (`ROHSTOFF` 180, `ROHSTWACHS` 81, `ROHSTDUERR` 30; PRODTYPE 225-227, group `0xe1`).
+- **Height:** `(p[0] + p[1] + p[stride] + p[stride+1]) >> 2` (with `cdq; and edx,3`; floor for the
+  non-negative sum), the four vertices of the record's origin tile whatever the footprint and rotation
+  (`0x10008fae`-`0x10008fd9`). The vertex pointer and stride W+1: AnnoWelt `0x1007cb50`-`0x1007cb91`.
+- **Overlap:** island step `0x1007c8ad`-`0x1007c912` calls type slot `+0x6c` (`0x10008920`) per non-zero id under
+  the whole rotated footprint. For a placed group `0xe1`: existing flag word `& 0x20` returns 1 (`0x10008931`),
+  caller flag `0x10000000` returns 0 (`0x10008945`, never set by these callers), and the group switch
+  (`0x10008974`-`0x10008a12`) has no `0xe1` case, so it ends at `0x10008a3e` (0). So the verdict per existing
+  object is exactly "its flag word has bit `0x20`". That is 352 registry types that share the tile (the three
+  raw-material PRODTYPEs, `RUINE` `0x26`, `STEIN` `0x3a`), and 569 that refuse. This resolves the L of `ui.md`
+  4.1 row (b) at code level.
+- **Skipped classes:** `A & 0x7000` in {`0x4000`, `0x2000`} accepts (`0x1007cbc2`-`0x1007cbd6`); group `0x141`
+  accepts (`0x1007cbd8`-`0x1007cbe9`).
+- **Threshold:** `rec[8] >= ftol([0x100e339c] / [0x100c9c20])` (`0x1007cbeb`-`0x1007cc06`). `[0x100c9c20]` =
+  0.04f; `[0x100e339c]` = 0 in the image, written by `0x1007b340` (0.04f x 16.0f -> `[0x100e2d88]`) and
+  `0x1007b3a0` (doubles it -> 1.28f). `f32(1.28)/f32(0.04)` = 32.0, the same value the section 2 emulation read.
+
+**Code:** `placement_rule` gets `Class::TileObject` (`F <= 0xffff`, `F & 3 == 1`, bit `0x10` still `Other`)
+and `tile_object_height`. It is pure and integer only, with no new state. `PlacementParams` gets
+`level_exempt_classes = {0x4000, 0x2000}` (cited). `min_level` (32) has its source comment completed. Oracle
+`tools/placement_ref.py`: `terrain_class` marks the class supported (`place()` already transcribed the path),
+plus the new `tilecorpus` command.
+
+**Tests (all new cases executed, see the gate):**
+- `placement_tile_object_test.cpp`, 6 unit cases:
+  - the floor: 128 -> 32 accept, 127 -> 31 refused, 131 -> 32;
+  - slopes allowed; no 0xf0 quantisation (accept 50);
+  - the east boundary column reads 0;
+  - `min_level` is read from the params;
+  - overlap: stone and 0x29 share the tile; a building or a road refuses; occupancy comes before height;
+    a 3 x 3 checks its whole footprint;
+  - each skipped class, with the configurable list and group (an empty list refuses, the group stays);
+  - rotation: a 3 x 1 is out of bounds at rot 0/2 and fits at rot 1/3 with the same origin quad 36;
+  - the 3 x 3 reads only its origin quad;
+  - Unsupported: no terrain, bit 0x10, an unknown id.
+- Vectors T-1..T-12 added to `placement_vectors.txt`: the oracle file now holds 89 cases, 0 mismatches.
+- **Corpus:** `tile object: placement_rule agrees with the oracle over every shipped island tile` and ctest
+  `placement_tile_corpus_reference_agrees`.
+  - Inputs: ROHSTWACHS 1 (1 x 1 crop object) and ROHSTOFF 3215 (3 x 3), at every tile of all 1,133 islands of
+    the 515 `.scp`/`.sze` files, 17,206,784 tiles per type.
+  - Result: accept 12,672,094, low 18,647,018, occupied 2,595,308, bounds 499,148, unsupported 0.
+  - Agreement: 2,266/2,266 digest lines, C++ = oracle = the file.
+  - The occupancy model is the corpus's own: every footprint tile of a GELAENDE/FLUESSE/PROD2 item, the first
+    item wins. It tests the rule, not the loader.
+
+**Fixture/golden/replay changes (complete list):**
+1. `placement_vectors.txt` R-20 (renamed `road_single_quad_tile_object`, a data-defined STRASSE `0x4185`):
+   `unsupported` became `accept 48`, because `F & 3 == 1` is now the tile-object class and class `0x4000` skips
+   the level test.
+2. `placement_rule_test.cpp` "the ordinary class predicate ..." row `0x0085`: `Unsupported` became accepted,
+   height 48, for the same reason.
+3. New: `placement_vectors.txt` T-1..T-12 (the count rose from 77 to 89); `tile_object_corpus.txt`.
+
+No golden, replay, scenario-corpus hash or state hash changed. A `BuildCmd` never reaches the class: a type
+without a building list that is not a land road is `Unsupported` before the placement rule (`apply.cpp`
+step 1). The scenario loader does not call `placement_rule`. The gate's scenario, replay, save, founding and
+determinism cases all pass unchanged. **No visible change in any existing test map.**
+
+**Failure proof (each mutation applied, rebuilt, run, then reverted):**
+- C++ M1, ceiling `(sum + 3) >> 2`: 3 cases fail. The vectors fail, the floor case fails (127 -> accepted),
+  and the corpus has 1,299 of 2,266 lines differ.
+- C++ M2, exemptions ignored: 2 cases fail, the vectors (T-7/T-8/T-9, R-20) and the skipped-classes case. The
+  corpus does not catch it, because no shipped tile object has an exempt class or group; the vectors carry
+  that rule.
+- Oracle mutations, against the vectors:
+  - threshold 31: T-2 fails;
+  - ceiling mean: T-1, T-2 fail;
+  - class unsupported again: 26 mismatches;
+  - no `0x2000` exemption: T-7 and the coast case fail;
+  - crop overlaps everything: T-6 fails.
+
+**Gate:**
+- `cmake --build --preset msvc`: clean, no warnings.
+- clang-format 23.1.3 `--dry-run --Werror`: clean on the 4 changed C++ files.
+- `run_selected.py`, gate log `cache/gates/fertility-1a-02.log`: `selected=448 executed=446 failed=0 empty=0
+  skipped=2 (opt-in 2) incomplete=0 sanitizer_lines=0`, VERDICT PASS.
+  - Selector: the sim placement, tile-object, stand-in, build-terrain, founding, determinism, replay, save,
+    scenario, salt, quarry, road and build cases, plus the placement Python oracles.
+  - Required: the corpus pair, the vectors and the skipped classes. No memory refusals.
+  - Run `-01` was stopped part-way for the UI lane's QUIET and is void. Its empty lock directory was removed
+    before `-02`.
+- `check_unix_warnings.sh` (WSL, GCC 13 / Clang 18 `-O3 -Werror`): clean: the negative controls fail as expected; GCC 417 + 83 files and Clang 417 + 83 files are clean, exit 0 (log `cache/gates/fertility-1a-unix-warnings.log`; a first attempt failed to start with a WSL path error, exit 127, and compiled nothing).
+
+**NOT_RUN:**
+- The re-run of `tools/placement_emulate.py` (no `unicorn` on this host). The earlier 25,000-case run included
+  two `0x29` types with 0 mismatches, but did not count them separately.
+- The WSL `-O1` sanitizer lane.
+- The app lane and the full suites: the orchestrator's, at landing.
+- macOS.
+
+**Acceptance table:**
+
+| Requirement | Positive proof | Negative control | Evidence | Disposition |
+|---|---|---|---|---|
+| Floor of the four-corner mean >= 32 | 128 -> 32, 131 -> 32 accepted | 127 -> 31 refused; M1 ceiling fails 3 cases + 1,299 corpus lines | unit case, T-1/T-2, corpus | pending review |
+| Threshold in config with source | `PlacementParams::min_level` 32, cited | `min_level = 33` refuses 32 | unit case | pending |
+| Overlap verified in code | stone, 0x29 share | building, road -> Occupied; oracle "overlaps everything" fails T-6 | `0x10008931`/`0x10008a3e`, unit case, T-4..T-6 | pending |
+| Skipped classes kept | 0x4000, 0x2000, group 0x141 accept 16 | empty list or group 0 refuses; M2 fails | unit case, T-7..T-9 | pending |
+| Rotation | rot 1/3 fit with the origin quad | rot 0/2 out of bounds | unit case, T-12 | pending |
+| Oracle = C++ on real terrain | 2,266/2,266 lines | M1 changes 1,299 lines | corpus pair | pending |
+| No gameplay/fixture drift | 446 executed, 0 failed incl. scenario/replay/save | - | gate `-02` | pending |
+
+**Decisions and reasoning:**
+- **The class predicate** is `F & 3 == 1` with bit `0x10` excluded and `F <= 0xffff`, not "flag word == 0x29".
+  The original branches on `& 3` only (`0x10008fa1`). Bit `0x10` would add the coverage test, which is
+  evidenced for the mountain class only, so it stays Unsupported.
+- **The skipped classes are a vector in `PlacementParams`**, not a literal, following CLAUDE.md "no hardcoded
+  limits". Only the tile-object branch reads it; the coast and road paths keep their own documented
+  behaviour.
+- **The corpus is a shared digest file**, not a C++ copy of the oracle. The file holds counts and FNV only (the
+  precedent is `fisher_runtime_census.txt`). Both the Python oracle (ctest, about 98 s) and the C++ case compare
+  against it.
+- **Two corpus types:** the packet asked for one crop object. The 3 x 3 ROHSTOFF was added because it is the
+  only shipped type where the footprint (bounds, overlap) and the quad differ.
+- **The corpus occupancy model is stated as the corpus's own**, so it is not mistaken for a loader claim. The
+  sim loader keeps one tile object per origin tile.
+- **No new OQ:** nothing was guessed. The one unread point, the `0x29` share of the old emulation, is NOT_RUN,
+  not a question.
+
+READY FOR REVIEW.
+
+## ISLAND-CROPS-1 stage 1b — the island's crop list in the World — READY FOR REVIEW
+
+Branch `task/ISLAND-CROPS-1`, on 1a `4bebe08e`. Commits: `8f1fb74d` feat(sim), `ce885392` test(sim)
+(cases and hand transcriptions), `28c7c227` test(sim) (oracle, goldens, legacy fixture), `dd584141`
+docs, then this report. Versioning as accepted by the orchestrator (2026-11-17): section bases
+header 2 and islands 2, global `kStateHashVersion` 139 unchanged (state.md §9.7, ADR 0006 item 4).
+
+**What changed:**
+- `SimConfig::crops` (`CropTables`, header section base 2): `mask_first_goods` 0x38 (AnnoWelt
+  `0x10089933`), `mask_bits` 32 (the dword `+0xac`, `0x1008cbdf`), `base_goods` {0x38, 0x3B, 0x44,
+  0x45, 0x46, 0x47} = 0xF009 (`0x10089897`, AnnoScene `0x100085a2`), `anbau_first/last_goods`
+  0x38..0x44 (`0x100898dc`, `0x1008992c`), `anbau_name_cap` 13 (`0x10089954`); `validate()`, and
+  `links.raw_kinds <= crops.mask_bits`.
+- `Island::crops` (islands section base 2, after `players_present`): ascending unique goods ids;
+  `validate_island` checks the set. `IslandSpec::crops` optional: no ANBAU record = the constructor
+  value 0xFFFFFFFF (`0x1008cbdf`) = ids 0x38..0x57.
+- Loader (`island_crops`, scenario_formats.cpp): base set unless climate 0, then each name via
+  `goods_by_name` inside the ANBAU range, at most 13 names (unknown counted). Unknown name: new warning
+  `UnknownCropName`, text says the original skips silently (`0x10089931` -> `0x10089943`). Second
+  record refused "twice (ADAPTATION: the original keeps the last record)".
+- INSELLNK: base set + `0x38 + k` per raw mark (AnnoScene `0x100085a2`-`0x100085cf`, unconditional);
+  `LinkRawMaterials` removed (its slot in the kind list is `UnknownCropName`). Fixed maps get the
+  base set (their marks are not link marks; fixed-map.md).
+- No reader: production, AI and UI do not read the field (D2 reads it later).
+- Docs: state.md §3.2 (write table, order, adaptation), §9.3 island line, §9.7; insel.md loader edge
+  cases; OQ-708 updated (mostly answered), OQ-709 new (bits 13-31 readers); fixed-map.md.
+
+**Changed fixtures, each with its reason (all moved by the header/islands section bytes; no
+behaviour change, no reader exists):**
+- `fixtures/synthetic/sim/pins.txt`: 50 pins moved. Oracle-owned, hand-copied from
+  `tools/sim_stream.py` (now transcribing CropTables and the constructor crop list): empty_world,
+  g0_step1/100/1000, g1_players_step100/700, s5_islands_create/step100/city_created/locked_create,
+  s6_g1_create/step100 (empty_registry unchanged). Self-baselines re-recorded by `pins.py regen`:
+  k3_tick2450/2500/59950/60000/60050/70000, leather_changed_command, leather_checkpoint_0..8,
+  leather_end, m2_found_session, p1_g7_create, s10_g2_end, s11_g3_checkpoints/end,
+  s12_g4_checkpoints/end, s13_g5_checkpoints/end, s7_g1_mp_checkpoints/mp_end/sp_end,
+  supply_tick110000/150000/190000/270000/310000/350000/430000, t24_g6_checkpoints/end.
+- `fixtures/synthetic/sim/current/`: g2.log, g3.log, g4.log, g5.log, g6.log, cargo_load.log,
+  cargo_load_wrong.log, cargo_unload.log, cargo_unload_wrong.log, m2_found.log, m2_found_wrong.log,
+  loop_checkpoints.txt (embedded saves and hashes), scenario_corpus.txt (create hashes; UnknownRecord
+  minus one per ANBAU scope; LinkRawMaterials column -> UnknownCropName=0).
+- New `fixtures/synthetic/sim/legacy139s1/` (g2.log, g2.save, README): the outgoing current/g2.log
+  (global 139, every section base 1), refused by a new identity test with "section header: base
+  version 1 is not supported (this build reads 2)".
+- The historical `fixtures/synthetic/sim/scenario_corpus.txt` is unchanged; the test maps its rows
+  (`with_decoded_crops`).
+
+**Corpus (P):** 50 scenarios with links: 668 INSEL5 islands with an ANBAU list, 229 link islands
+holding the base set plus only raw-mark goods (350 mark goods beyond the base), 0 unknown names,
+0 islands left at the constructor value.
+
+**Gate (this PC, msvc Release, tree = the committed heads):**
+- build: exit 0, no warnings; clang-format 23.1.3 clean on all changed C++ files.
+- `python -I tools/sim_stream.py --check`: goldens agree.
+- `python -I tools/pins.py check --area sim --jobs 8` (sim suite, replay, population_oracles_agree,
+  integration_stream_reference_*, highmap_digest_reference_agrees): `selected=1711 executed=1690
+  failed=0 empty=0 skipped=21 (opt-in=18, other=3)`, ctest 100 % of executed; VERDICT FAIL only for
+  the 3 known "other" skips: the ship-start symlink rows ("Dem Client fehlt ein erforderliches
+  Recht": this account cannot create symlinks; same as earlier reports). Log
+  `cache/gates/island-crops-1b-01.log`.
+- `run_selected.py` formats lanes + `anno_dump_agrees_with_python` + the crop sim cases, required the
+  crop corpus, ANBAU corpus and agree tests: `selected=95 executed=95 failed=0`, PASS. Log
+  `cache/gates/island-crops-1b-02.log`.
+- WSL `check_unix_warnings.sh` (after the other session's run ended, pgrep empty): exit 0; GCC 13.3
+  and Clang 18.1.3, 417 files with viewer+GPU and 83 without GPU, all clean; both negative controls
+  failed as expected. Log `cache/gates/island-crops-1b-unixwarn.log`.
+
+**Failure proof:** with the INSELLNK assignment removed locally (`s.spec.islands.back().crops = ...`),
+4 of 6 selected tests fail: `scenario links resolve ...` (2 assertions), `scenario links with raw
+materials ...` (2, the base+0x3E set and the 0xF049 word), `fixed map: the loader builds ...`
+(REQUIRE crops), and the crop corpus case. Restored, rebuilt: 6/6 pass. Never committed. Logs
+`cache/gates/island-crops-1b-failure-proof.log`, `cache/gates/island-crops-1b-restored.log`.
+
+| Acceptance (stage 1b) | Result |
+|---|---|
+| Field as ordered goods-id set, config with original defaults and addresses | done |
+| Sources: ANBAU (climate-0 base), no record (constructor value), INSELLNK (base + marks) | done |
+| Unknown-name warning cites the original's silence | done |
+| 13-name cap from config, unknown names counted | done |
+| Second ANBAU record: ADAPTATION in code and docs | done |
+| Word test vs the original for a template and an INSELLNK island | done |
+| Save round trip, hash change only in islands, section base bump, legacy refusal | done |
+| Every changed golden listed with its reason | above |
+| Sim lanes and changed fixtures | 1690/1690 executed pass (3 known symlink skips) |
+| check_unix_warnings | clean |
+| Mac full game-file run, CI | NOT_RUN here (orchestrator) |
+
+**Decisions and reasoning:**
+- Bits 13-31 are kept as goods ids (faithful word); OQ-709 says readers decide.
+- The INFO climate is read first whatever the record order (all shipped islands have INFO first).
+- `UnknownCropName` reuses `LinkRawMaterials`' position in the kind list so the corpus rows keep their
+  column order.
+
+## UI-INFO-2b — the build preview's entrance arrows and one scale for all four turns — 2026-11-17 — READY FOR REVIEW
+
+Branch `task/UI-INFO-2b` (base `4dfdd9b7`, packet `92105fe1`); code `97a554b1`, docs `d9e44fb6`.
+
+**What changed.** The info panel picture is the building **and its green entrance arrows**, composed in one canvas sized over all four turns and drawn at one scale for every turn; CPU and GPU share `draw_info_content`. New `anno::app::info_preview` (`entrance_arrows`, `project`, `place_arrow`, `arrow_frame`, `compose`, `scaled_size`), `TexCache::preview_canvas` cached per (type, rotation); the scaled path keeps OQ-612's nearest sampler but at the original's size. Reference `tools/ui_layout.py` (`anlagen_entrance_arrows`, `figure_frames`, `preview_parts`, `preview_canvas`, `preview_scaled_size`). Data: `hud.txt` `element info_preview_arrows figure 1573` (new `figure` key, C++ parser, README). Docs: `docs/re/ui.md` 2.5 (new table), OQ-612 update, OQ-624 resolved (view term open), OQ-711..714. Packet text: OQ range 711..714 (UI lane).
+
+**Evidence per rule** (GOG; addresses in `docs/re/ui.md` 2.5):
+- Arrow data: loader 0x10009e3e..0x10009edf reads `OBJECTPOS`/`CONPO2` (6-byte name, u16 size, 3 bytes per arrow: x3, y3, side) into type +0x22c/+0x6b; slot 0xa8 = 0x1000bb60 makes the parts. The editor recompute 0x1000d2a0 (flood fill over WALKMASK from ENTRANCE, called only from the property setters 0x1000eace/0x1000ef5d) reproduces 181 of 185 stored records.
+- Arrow sprite: `[type+0xc]->0x6c(0x625)->0x20(0x600, 0)` = FigurenHeader 1573 `Strassenanschluss01`, 8 frames; frame = ((d << 2) >> 1) & 7 (AnnoDisplay 0x100055b0 / 0x100052c7; direction count OQ-711).
+- Place: corner + third(x3) + 0.167 + half-tile side offset, turned with the footprint, direction (r + side) & 3 (tables 0x100217c4, 0x10021a84, 0x10021828; cases 0x1000bbc8..0x1000bdc0).
+- Camera/rect: View 0x10088af0 (59.1633, Ry 135 deg, Rx 42 pi/256); rect = trunc(point) - anchor (AnnoDisplay 0x1000ac80, 0x10030e10).
+- Canvas: max width/height over four turns, turn centred (halving toward zero), building then arrows (View 0x1001d797..0x1001da82).
+- Scale/box: s = max(1, W/135, H/135) as f32, size trunc(W/s) x trunc(H/s), position trunc((135 - size)/2) via gadget properties 0x19a/0x19b (0x1001db7f..0x1001dbfc, 0x1001e3b5..0x1001e478).
+
+**Gate** (MSVC Release, `ANNO1503_GAME_DIR`, `ANNO_TEST_THREADS=16`, `ANNO_UI_ORACLE_SHOTS`, `ANNO_UI_HE_CAPTURES`, `ANNO_UI_ROTATION_SHOTS`): `run_selected.py --jobs 8 --select 'live_screen_matches_oracle|ui_dynamic_draw_check|info_panel|info panel|info preview|selected_house_pixel_check|ui_panels_match_gog|ui_window_matches_he|ui_mock_matches_oracle|ui placement|viewer_wiring_ui_|viewer_wiring_construction|construction menu|ui layout|hud layout'` with the eight oracle tests `--require-test`: `selected=39 executed=39 failed=0 empty=0 skipped=0 incomplete=0 sanitizer_lines=0`, `VERDICT: PASS` (`cache/gates/ui-info-2b-01.log`). Build: only `anno_app_tests anno1503 anno_ui_mock` (clean, no warnings; a full-tree build was stopped for time, other libraries untouched). clang-format 23.1.3 `--dry-run --Werror` on the changed C++: clean. `ui_layout.py validate` and `self-test`: ok.
+
+**GOG counts.** Whole box 0 px on `f12_info_stall_1310` and `f12_info_stall_1314` (both now in `PREVIEW_PROVEN`; were 5 253 / 5 094). Every scaled shot improved (preview px, main -> branch): 801 6 472 -> 6 317, 1301 6 213 -> 5 402, 1302 9 304 -> 8 477, 501 5 902 -> 5 325, 807 8 472 -> 8 209, 805 5 007 -> 4 506, 809 6 774 -> 6 436, 1023 11 237 -> 10 263, 1001 6 524 -> 5 057, 810 9 216 -> 7 768. Rotation shots: 501 still nearest at the expected turn in all 13 (e.g. 5 325 at 0 vs 6 800..7 153); 2520 exact as before.
+
+**Failure proof.** `figure 1573` removed from `hud.txt` (no arrows): `info_panel_gog_compare` exit 1, 1310 5 247 px, 1314 5 094 px (`cache/gates/failure-proof-no-arrows.log`), restored. Variants against the same shots: without the arrows' shadow 174 / 402 px; points half a pixel off in x or y: 351 / 382 px (1314). Unit `info preview: one canvas ...` asserts height 31 where a per-turn fit gives 17; `... truncates toward zero` asserts -41 where floor gives -42.
+
+**Cross-check c7/c6.** Market 1301: tools 3, wood 7, bricks 0, stone 0, gold 250, upkeep 10 = ours. Small farm 809 (c6 is the placed building's panel): upkeep 20, outputs `WARE` ALKOHOL, NAHRUNG = Alkohol and food. No difference. Arrows: market six, farm four, at the sides and directions the crops show (video-scaled: places, not pixels); the market's flag (second sprite set) is missing (OQ-712).
+
+| Requirement | Positive proof | Counterexample | Evidence | Disposition |
+|---|---|---|---|---|
+| Arrows drawn at every turn | stalls 0 px at turn 0; unit placement at 4 turns | no arrows 5 247 / 5 094 px | info_panel_gog_compare, `info preview` tests | pending |
+| One canvas and scale over 4 turns | unit canvas 55 x 31; stalls centred exactly | per-turn fit 17 high | `info preview` tests | pending |
+| Window = reference | info_panel_pixel_check (801, 1301, 1302, 2520), rotation_check | its wrong-type control | gate | pending |
+| Scaled types not worse | 10 of 10 fewer px | - | gog compare log | pending |
+| Hit width (item 3) | not done | - | OQ-714 | QUESTION |
+
+**Owner test.** `anno1503 --play data\maps\lan5.txt --construction-menu on --game-dir E:\anno1503\game\app --layout data\ui`; B: Markthaupthaus (public), Kleine Farm, Pionierhaus; click each rotate arrow 4x; beside `c7`/`c6`: green arrows on the same sides, pointing out, turning with the building; the picture keeps one size while turning. Expected gaps: no market flag (OQ-712), scaled pixels (OQ-612), no arrows on the map ghost (OQ-713).
+
+**Capture recipes (not run).** (a) OQ-624 turns 1-3: Citizen start, B, public, stall 1310, right rotate arrow 1, 2, 3 times, full shot after each; the same for 1314. (b) OQ-714: public tab, nothing armed, left click at (815, grid row 0's centre y), shot: cell armed or category switched?
+
+**NOT_RUN.** `check_unix_warnings.sh` (another run was active in WSL, `pgrep` pid 103438); WSL sanitizer lane and the full suites (orchestrator's); GPU window run of the new picture (the shared draw path is the CPU-checked one); look-at-it-yourself in the live window (reference renders checked instead: `cache/re/ref_4turns.png`).
+
+**Decisions and reasoning.**
+- Arrows from stored CONPO2, not the flood fill: the game loads CONPO2; 0x1000d2a0 runs only from the editor setters. 140 types the fill would arrow have no CONPO2 and get none.
+- Side > 3 skipped (261, 1571 carry 215); CONPOS (1542) not read: the original's reader leaves the side byte unset.
+- Pixels past the frame width kept (blitters never consult it, docs/formats/anlagen.md).
+- Set 0 only (OQ-712): extra sets only matter on scaled types, which cannot be checked exactly yet.
+- Figure id as layout data; direction count = frame count (OQ-711).
+- f32 scale emulation: 300 x 150 gives 134, not 135 (0x1001dbb0/0x1001dbd9), asserted in the unit test.
+- Item 3 (hit width) not done for time: OQ-714 + recipe. Map ghost arrows: not read, so not drawn (OQ-713).
+
+**QUESTIONs.** 1. OQ-713: read the ghost's draw path and draw its arrows next? 2. OQ-714: hit width by code read or capture? 3. OQ-712: compose the extra sprite sets (market flag) in a follow-up?
+
+**Addendum (2026-11-17, after the UI lane's review): the WSL check.** Waited until no other `check_unix_warnings` run was active, then `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh` once (`cache/gates/unix-warnings-01.log`): GCC 13 viewer+GPU **FAILED** on one file, `src/app/tests/info_preview_test.cpp` (`-Werror=array-bounds` inside `std::vector::insert` of a small vector, a GCC 13 -O3 false positive); GCC without GPU, Clang 18 with and without GPU: clean (418 / 85 files). Fix: the test's OBJECTPOS bytes are one vector literal instead of three inserts (same 49 bytes, same assertions). Re-check of the changed files with the script's exact flags (`cache/gates/one_file_check.sh`, GCC 13 and Clang 18, with and without the GPU defines, `info_preview_test.cpp` and `info_preview.cpp`): 8 of 8 OK (`cache/gates/unix-warnings-02-info-preview.log`). MSVC rebuild of `anno_app_tests anno1503`: clean; `run_selected.py --select 'info preview'`: `selected=6 executed=6 failed=0 skipped=0`, PASS (`cache/gates/ui-info-2b-02.log`). clang-format clean. The whole script was not rerun (only the one failing file changed).
+
+## UI-PRODBAR-1 stage B (B1 + B3a) — the fertility indicator, app side, behind its named placeholder — READY FOR REVIEW
+
+Branch `task/UI-PRODBAR-1`. UI lane, read-only app work: **no sim change**. The packet's "Stage B (released
+2026-11-17)" section has the scope. OQ-726 (the nibble-grid rebuild trigger) was split out of OQ-715 first,
+at `c73325f5`.
+
+**What landed:**
+- **`src/app/{include/anno/app,src}/fertility_indicator.*`:** pure functions for the rule of `docs/re/ui.md`
+  4.1. It reads only the type registry the app already has (`input_goods`, `head_raw[0x28..0x29]`,
+  `action_radius` = HEAD[0x11]) and the island rectangle. It contains:
+  - **`FertilityGates`:** the original's five gates in its order: preview valid `B+0x2e4`, last ghost,
+    `[B+0x48] < [B+0x50]`, registry lookup, projection. The projection is tested after the count, as at
+    `0x10047de0`.
+  - **`fertility_crop_object`:** input 0 in `0x38..0x4b` and HEAD u16 `[0x28]` != 0.
+  - **`fertility_row_half_widths`:** the midpoint-circle loop in the original's unsigned 32-bit arithmetic
+    and its signed loop compare, plus the r ≤ 3 widening.
+  - **`fertility_area`:** centre cells, up/down rows in the original's order, clamp to the island,
+    footprint left out.
+  - **`fertility_value`:** trunc.
+  - **`FertilityTileSource`:** the two sim tests. The placement test runs only where the crop is not dry.
+  - **`fertility_decision`** and **`fertility_label`**.
+  - **`load_fertility_frames`:** figure 1557, through the existing `load_figure_facings`.
+  - **`blend_fertility_frame`:** a CPU blend with clipping.
+- **The viewer:** it has no tile source, so the decision stops at the named placeholder
+  `fertility-indicator-needs-sim` (OQ-715) and **nothing is drawn**. The new fact `tool.fertility` reports
+  it (`none`, `gate:<name>`, `not-eligible`, the placeholder, or `frame <k>`). Comments mark both preview
+  draw sites (GPU overlay, CPU blend) as the place the bar goes once a source exists.
+- **The window's gate inputs** (an adaptation; the rebuild has no `B+0x2e4`):
+  - preview valid = the window's `PlacementKnowledge` does not refuse;
+  - last ghost = always (one ghost);
+  - rect non-empty = the footprint extent has tiles;
+  - type found = the armed type;
+  - projected = a drawn pointer frame.
+
+**Acceptance table**
+
+| Requirement | Positive proof | Negative control / failure proof | Evidence | Disposition |
+|---|---|---|---|---|
+| Disc = the original's table and order | r 3/4/5 tables; 3 × 3 counts r1 0, r2 16, r3 36, r4 52, r5 88; centre (11, 21) | not the 11 × 11 square (112) nor the grown footprint (160); corner (6, 16) out, (6, 21) in | `fertility indicator: row half-widths…`, `…disc tile counts…` | pending |
+| Even footprint, rotation, clamp | 4 × 3 → 40 (36 + 4); rotation 1 uses 3 × 4; clamped = unclamped filtered | — | `…two-cell centre…`, `…clamps the disc` | pending |
+| trunc(10·good/N) | 59/88 → 6, 87/88 → 9, N = 0 → 0 | **mutation run:** rounding instead of trunc fails 2 assertions (59/88, 87/88) | `…the value is trunc(10 times good / N)` | pending |
+| Building check | 801 → 104, 811 → 712, 807 → 1 (Anlagen.dat); range ends `0x38`/`0x4b` | 810 (in range, object 0) and 805 (out of range) refused; **mutation run:** accepting object 0 fails 3 assertions (synthetic fisher, Anlagen 810, decision NotEligible) | `…which types show it…`, `…801 shows it…` | pending |
+| Gates | each of the five closed alone → `gate:<name>`; projection closed after the count (N = 88) | an earlier gate stops before the count (N = 0) | `…every gate closes the bar on its own` | pending |
+| Placeholder | null source → `fertility-indicator-needs-sim`; not-eligible wins over it | — | `…named placeholder` | pending |
+| Count with a source | hand count 48 of 88 → frame 5; placement asked 48 times (only where not dry) | — | `…hand-counted frame` | pending |
+| Sprite | figure 1557: 11 facings × 3 groups, 54 × 12, anchor (27, 12); consecutive frames differ | — | `…the sprite is figure 1557…` | pending |
+
+**Failure proof (executed):**
+- **Mutation:** `fertility_value` rounding, and the object-0 check removed, both at once.
+- **Result:** 12 cases, 4 failed, 5 assertions failed, each named above.
+- **Restore:** reverted and rebuilt; 12/12 pass.
+
+**Gates run:**
+- **Build:** `cmake --preset msvc`, then `cmake --build --preset msvc`: clean, no warnings.
+- **clang-format 23.1.3:** the four changed C++ files are clean.
+- **Focused gate:** `run_selected.py --jobs 8`, log `cache\gates\ui-prodbar-1-B-02.log`.
+  - **Verdict:** **PASS**, selected 93, executed 93, failed 0, empty 0, skipped 0, incomplete 0, sanitizer
+    lines 0.
+  - **Selection:**
+    - the 12 fertility cases;
+    - the hud/ui/selection/construction `anno_app_tests`;
+    - `^viewer_wiring_`;
+    - the oracle tests as required tests: `live_screen_matches_oracle`, `ui_dynamic_draw_check`,
+      `info_panel_gog_compare`, `selected_house_pixel_check`, `ui_panels_match_gog`.
+  - **Run 01 failed in preflight:** a `*` in one test name, which CheckTestNames refuses. The case was
+    renamed, and run 02 is the evidence.
+- **WSL `check_unix_warnings.sh`:** GCC 13 and Clang 18, viewer with and without GPU: all clean, negative
+  controls caught. It ran before the two test-name string edits (names only).
+
+**NOT_RUN:**
+- the full suite (only changed lanes, owner rule);
+- macOS;
+- a visible bar: none can show until the sim's tile source exists;
+- B3b, the pixel check against HE (after S2-S4 and OQ-716).
+
+**Decisions and reasoning:**
+- The crop-object climate replacement (registry `+0x7c`, table `0x1002137c`) is **not** in the app. The tile
+  source receives HEAD[0x28] as is, because the critic's review moved that resolver into sim S3 (no second
+  source of truth). With the forester's 104 it never changes anything.
+- I added the `tool.fertility` fact but no new viewer_wiring script. With no source it can only ever read
+  the placeholder or a gate. A script checking it belongs to the packet that adds the source.
+- The sprite is loaded through `load_figure_facings` with 11 "facings". That is the existing loader's rule
+  (`facings[k]` = frame k of each group), so no new decode path was needed.
+
+READY FOR REVIEW.
+
+**UI-PRODBAR-1 B addendum (the 98 against 93):** the 5 tests the `--select` regex lists but the B-02 main run (93) does not hold are exactly the 5 `--require-test` oracle tests (`live_screen_matches_oracle`, `ui_dynamic_draw_check`, `info_panel_gog_compare`, `selected_house_pixel_check`, `ui_panels_match_gog`). The gate runs each in its own one-test call before the main selection, and all 5 passed there (`COUNTS: selected=1 executed=1 failed=0`, log lines 38-171). So 93 + 5 = 98, nothing was dropped, and there was no rerun.
+
+## UI-INFO-2d — OBJECTPOS in formats, arrows on placed pictures, the preview's further sprite sets — 2026-11-17 — READY FOR REVIEW
+
+Branch `task/UI-INFO-2d` (base `1a6f5ef5`, packet `f6eb90fd`); step 1 `db01efbc`, step 3 `0d8a9daa`.
+
+**Step 1: OBJECTPOS in formats.** New `anno::formats::objectpos` (`ObjectPos::parse` -> `Result`, `to_bytes`, `conpo2()`): sub-records of a 6-byte name, a u16 size and the data; CONPO2 decoded to (x3, y3, side), every other sub-record and odd side bytes kept raw (AnnoGame loader 0x10009e3e..0x10009edf). `src/app` now works on the decoded list only (`info_preview::entrance_arrows(const ObjectPos&)`). Tests: synthetic, malformed, and `objectpos corpus` (426 records byte-identical; 184 CONPO2, 852 arrows, never two per type; side 215 kept on 261 and 1571; CONPOS kept on 1542; names FIRE 281, SCHUSS 102, WPLANE 60, AUSPOS 15, HIMAP 11). Spec: `docs/formats/anlagen.md` "OBJECTPOS". anno-dump does not print OBJECTPOS, so no agree case applies; the Python oracle (`ui_layout.anlagen_entrance_arrows`) gave the same counts. Failure proof: CONPO2 name test inverted -> 2 cases fail (`with_conpo2`, `arrows`, synthetic, odd sides; `cache/gates/failure-proof-step1.log`), restored.
+
+**Step 2: arrows on a placed building's picture - skipped.** The rebuild has no panel that shows a placed building's picture: the selected-house panel draws a fixed portrait (`house_portrait`, Pioniere.tex), not a View 0x1001d760 picture; no production or other building panel exists. When one is built it should call `info_preview` (OQ-736 maps the 8 other callers).
+
+**Step 3: the further sprite sets (OQ-712).** Read: type set slots +0x244 (16 bytes: display object, x, height, y; property 0x17 0x1000c13b), slot 0xa0 (0x1000b8c0) = sets whose display object's slot 0x60 is 0, 0xa4 (0x1000ba10) = the others (tHausAnim 0x100046f0 returns its frame time), 0x1001d000 draws 0xa0, 0xa4, then 0xa8; offsets turned with the footprint (jump table 0x1000b9f4); the height adds to the caller's point (0x1000b9b2). Measured: the set prefix's f32 at bytes 4..15 as (x, height, y) - best of eight readings (OQ-750). C++ `info_preview` (`SetPart`, `turn_offset`, `project_raised`) and the reference `preview_set_parts` do it. GOG preview px before -> after: 801 6 317 -> 5 911, 1301 5 402 -> 5 279 (flag), 1302 8 477 -> 8 428 (flag), 1023 10 263 -> 7 799; all others unchanged, stalls 0. `info_panel_gog_compare` now fails if a scaled type exceeds these counts. Failure proof: reference with one set slot -> 801, 1301, 1302, 1023 exceed their bounds (`cache/gates/failure-proof-step3.log`), restored. Window = reference: `info_panel_pixel_check` exact for 801, 1301, 1302, 2520.
+
+**Gates.** MSVC Release, game files, the UI shot variables, `run_selected.py --jobs 8` over `^anno_formats_tests\.`, the info preview/hud/ui/construction `anno_app_tests` cases, `^viewer_wiring_ui_` and the oracle tests (all required): step 1 `selected=119 executed=119 failed=0 skipped=0` PASS (`cache/gates/ui-info-2d-01.log`); step 3 `selected=120 executed=120 failed=0 skipped=0` PASS (`ui-info-2d-02.log`). Build: `anno_formats_tests anno_app_tests anno1503 anno_ui_mock`, no warnings. clang-format 23.1.3 clean. `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`: GCC 13 and Clang 18, with and without GPU (420 / 85 files): all clean (`cache/gates/unix-warnings-2d.log`).
+
+| Requirement | Positive proof | Counterexample | Evidence | Disposition |
+|---|---|---|---|---|
+| OBJECTPOS read in formats, round trip | 426 byte-identical, counts | inverted name test fails | objectpos tests | pending |
+| Preview pixels unchanged by step 1 | stalls 0 px, pixel check exact | - | gate 01 | pending |
+| Placed pictures carry arrows | n/a: no such panel | - | step 2 note | skipped |
+| Further sets composed, no type worse | 4 types better, rest equal | one-slot reference exceeds bounds | gog compare, unit test | pending |
+
+**Owner test.** `anno1503 --play data\maps\lan5.txt --construction-menu on --game-dir E:\anno1503\game\app --layout data\ui`: B, public tab, Markthaupthaus - the flag above the right side of the roof, as in `c7`, at every turn; the Kontor's flag; the forester's fence. The placed farm's panel with its arrows cannot be tested yet (no such panel).
+
+**NOT_RUN.** WSL sanitizer lane and the full suites (orchestrator's); GPU window capture (shared draw path); the live-window look (reference renders checked).
+
+**Decisions and reasoning.**
+- `conpo2()` keeps the last CONPO2 (the loader re-allocates +0x22c per CONPO2); no type has two.
+- The app skips side > 3 and CONPOS for drawing; formats keeps them.
+- No anno-dump command added for OBJECTPOS (the packet's agree step is conditional on one).
+- Set offsets from the prefix by measurement (OQ-750), not from code; draw order and turn from code.
+- Four set slots kept as a named constant with its address (the original's count), both in C++ and the reference.
+- Per-type no-worse bounds added to the GOG compare, as the packet's "no type may get worse".
+
+**OQs.** OQ-711 resolved (8 directions, AnnoDisplay 0x10005cb0) and OQ-713 closed (no ghost arrows), both from BUILDINGS-REF-1 part C; OQ-712 resolved; OQ-750 new. OQ-725 and OQ-755 unused.
+
+**For BUILDINGSOBJECTS (part C).** (1) The arrow data now lives in `anno::formats::objectpos` with a byte-identical writer; corpus: 426 OBJECTPOS records, sub-record names and counts as above. (2) Part C 1.2: the CONPOS loader writes byte 1 and then 0 to the y slot and never writes the side byte (a heap buffer), so "side left 0" is not guaranteed. (3) Part C 4: the rebuild has no placed-building picture yet; the selected-house panel's portrait is not a composer picture. (4) The picture also composes the type's further sprite sets (slots +0x244, 0xa0 still / 0xa4 animated), drawn before the arrows; the offsets' source is OQ-750.
+
+## UI-BUILDCAT-1: the construction menu's category column (2026-11-17)
+
+Branch `task/UI-BUILDCAT-1`, base origin/main `4dfdd9b7`, code head `89265776`.
+
+**Why the column was missing.** No draw path ever drew it. `data/ui/hud.txt` held one element
+`viewbautab_0` at (779, 302) (the part of tab 0 right of the panel edge), used only as the hit
+rectangle; `compose_screen` (C++ and Python), `draw_live_screen_xrgb` (CPU window) and
+`draw_live_screen_rgba_into` (GPU overlay) had no call for it. `masks.txt` `category_column`
+(779, 300) 29 x 400 hid the area from the GOG comparison, and `live_screen_matches_oracle` /
+`ui_mock_matches_oracle` compare against the Python oracle, which did not draw it either, so all
+checks agreed on "nothing there".
+
+**Evidence.**
+- GOG View.dll `0x1002bb4f`: copies `VIEWBAUTAB`; loop `0x1002bb93`..`0x1002bc8e` (`inc ebp; cmp
+  ebp, 8`) creates one gadget class `0xb0d` per category, size `push 0x2e; push 0x2a` (42 x 46,
+  `0x1002bbea`), property `0x198` = texture `esi` (+2 per tab, `0x1002bc88`), `0x1c9` = the k-th
+  `TOOLTIP:BAUMENUTAB` line (`0x1002bc6e`). No position in the loop (OQ-759).
+- Positions measured, sprite-565 exact: tab k at (762, 303 + 46k); all eight tabs 1879/1879 px
+  (tab 0 1880/1880) on `f13_construction_open`, `f13_hover_cat_{public,roads,farms}`,
+  `r2_construction_open`, `r2_place_pioneer_house`, `r2_info_pioneer_house`; on each
+  `r2_construction_<c>` the seven other tabs exact and the clicked tab in its selected frame
+  (17 + 2k) under the hover tooltip (rows click_y-23..-8). No hover frame. Not clipped: the tabs
+  stick out left of the panel like the other views' sub-tab columns.
+- HE (pixels only): `ui_9.mp4` 2:25 (`cache/ui-buildcat-1/he_ui9_145.png`): eight tabs stacked left
+  of the grid, the open category (ornamental) coloured.
+
+**Changes.**
+- `hud.txt`: `viewbautab_0..7` (pos, 42 x 46, frames 16+2k / 17+2k, `panel construction`);
+  `masks.txt`: `category_column` removed.
+- `construction_category_tab()` (ui_layout): tab = `viewbautab_<index-1>` of construction.txt, so
+  the count is the category count, no constant.
+- `draw_category_tabs()` in `compose_screen`, `draw_live_screen_xrgb`, `draw_live_screen_rgba_into`
+  (grid and info/placement panel both); `tools/ui_layout.py compose_screen` the same.
+- Hit test (OQ-714): each tab's gadget rectangle (x 762..803). Grid column 0 (808..857) is the grid's;
+  804..807 is nothing. The tabs are a press area while the menu shows (`ui_hit` panel
+  `construction`, viewer.cpp), so a press at x 762..778 is not a map click.
+- Facts `ui.category`, `ui.category_tab`.
+- Docs: docs/re/ui.md 2.4 row rewritten, mask row updated; OQ-759 (where the column position comes
+  from, hit-test slot unread). OQ-714 lives on `task/UI-INFO-2b` (not on this base); its answer is in
+  docs/re/ui.md 2.4 and should be copied into OQ-714 when INFO-2b lands. BUILDINGSOBJECTS.md is not on
+  this base either; part B section 1 can add: "category column x 762..803, tab k y 303 + 46k".
+
+**Tests.**
+- `construction_menu_test.cpp`: "one tab per category" (pos, size, frames, every row) and "the
+  column/grid boundary" (803 tab, 804/806 none, 808..820 on row 0 a cell, never a category switch);
+  the old band test updated to x 762.
+- `viewer_wiring_ui_buildcat` (new script `ui_buildcat.script`): key B, then a press at x 770 (left of
+  the panel) on each of the eight tabs, `ui.category` and `ui.category_tab` each time; x 803 still the
+  tab, x 806 nothing, x 762 military, `selection.clicks == 0`.
+- `ui_panels_match_gog`: new column check, every tab on each of the eight `r2_construction_*` shots
+  (all 8 x 8 tabs 0 bad, 14342-14426 px per shot), tooltip band masked; its control (public column vs
+  the farms shot) must fail: worst tab 0.0926 > 0.02.
+- `live_screen_matches_oracle`: the eight `viewbautab_*` rectangles added (live vs oracle exact).
+- `ui_mock_matches_oracle`: nine screens exact with the tabs in both composers.
+
+**Failure proof** (orchestrator's case included: main's drawing code, column unmasked).
+`src/app/src/ui_mock.cpp` replaced by main's `4dfdd9b7` version (no tab drawn), rebuilt, data and tests
+as in this branch, then restored and rebuilt:
+- `ui_panels_match_gog` FAIL: every category, e.g. `column public ... 8825 px, 5992 bad, worst tab
+  0.8271 (bound 0.02)` (`cache/ui-buildcat-1/failproof_ui_panels.log`).
+- `live_screen_matches_oracle` FAIL: `construction_public: 18400 of 287790 ... differ`, elements
+  `viewbautab_0..7` 1150 each plus `mainuntergrund` 9200 (`failproof_live_screen.log`).
+- `ui_mock_matches_oracle` FAIL: 15033 px per construction screen, first (769, 303)
+  (`failproof_ui_mock.log`).
+- For contrast, main's own Python GOG comparison (`compare_screen`, 8 % of the whole screen) with only
+  the mask removed still passes on all eight r2 shots (0.049-0.079,
+  `cache/ui-buildcat-1/oldproof_compare_screen.txt`): a whole-screen fraction cannot see a 42 px column,
+  which is why the new check is per tab.
+
+**Gate.** msvc Release, game dir, GOG shots, HE captures, rotation shots, head `89265776`,
+`run_selected.py --select 'hud|ui |ui_|construction|selection|^viewer_wiring_ui_|^viewer_wiring_construction|live_screen_matches_oracle|ui_dynamic_draw_check|info_panel_gog_compare|selected_house_pixel_check|ui_panels_match_gog|ui_mock_matches_oracle' --jobs 8`
+with all six oracle tests and `viewer_wiring_ui_buildcat` required, `cache/gates/ui-buildcat-1-01.log`
+(sha256 `012f320e...53cc3`): `COUNTS: selected=71 executed=71 failed=0 empty=0 skipped=0 ...
+incomplete=0 sanitizer_lines=0`, `VERDICT: PASS`. clang-format 23.1.3 clean. WSL: `check_unix_warnings.sh` GCC 13 and Clang 18, with and without GPU, all clean (negative controls fail as expected).
+NOT_RUN: GPU window live (the GPU overlay shares `draw_category_tabs`; `--renderer gpu` is a manual
+check), Linux/Mac CI.
+
+**Owner test (default rules, the developer city):** `anno1503 --play data/maps/lan5.txt
+--construction-menu on --layout data/ui` (no `--rules living`). Press B: eight tabs left of the grid,
+public coloured. Click each tab (also on its left part, over the map): its tab turns coloured, the
+others grey, the grid and the plank follow. Click grid column 0 right next to the column: it arms or
+locks the cell, never switches the category. Compare with HE `ui_9` 2:25-2:30.
+
+**Decisions and reasoning:**
+- Tab per category by name convention `viewbautab_<index-1>` instead of new layout keys: no parser
+  change, the count follows construction.txt.
+- Hit area = the drawn rectangle (the measured gadget), not the old click band; the class's hit-test
+  slot is still unread (OQ-759), but no shot contradicts it.
+- The selected frame is the open category's, also while the placement panel shows
+  (`r2_place_pioneer_house` shows public selected).
+
 ## UI-GHOST-1 — the placement ghost as the original shows it (stages A and B) — READY FOR REVIEW
 
 Branch `task/UI-GHOST-1`, base origin/main `4dfdd9b7`. Packet `docs/orchestration/tasks/ui-ghost-1.md`. Commits:

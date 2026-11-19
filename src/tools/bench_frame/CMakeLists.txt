@@ -1,6 +1,11 @@
 # bench_frame: frame benchmark of the viewer pipeline (docs/perf/README.md).
 add_executable(bench_frame main.cpp)
 target_link_libraries(bench_frame PRIVATE anno_app_core)
+if(WIN32)
+  # --atlas-build's own peak-memory column (RENDER-DIRECT-1b step 5): GetProcessMemoryInfo, same
+  # as anno_test_support's peak_launcher (src/test_support/CMakeLists.txt).
+  target_link_libraries(bench_frame PRIVATE psapi)
+endif()
 anno_target_defaults(bench_frame)
 if(ANNO_HAVE_WGPU)
   target_link_libraries(bench_frame PRIVATE anno_render_gpu)

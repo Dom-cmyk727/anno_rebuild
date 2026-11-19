@@ -115,6 +115,27 @@ Domain of the agreement: footprints 1..5 x 1..4, islands 2..12 tiles square, lev
 * Upgrade rewrite targets: the original does not validate the rewritten type; the port must (contract A4).
 * Original-runtime capture of a real build click (preview byte, wire byte, building byte `0x0f`): **NOT_RUN**.
 
+## 3a. The single-quad tile objects, flag word `& 3 == 1` (FERTILITY-1 1a, 2026-11-17; D)
+
+Re-read for FERTILITY-1 stage 1a with `adis.py` (capstone) on the pinned DLLs above, the whole path a tile object takes through the island function with caller flags 0 (the fertility bar's call `0x1007c790(&{crop id, x, y, rot 0, byte 8 = 0}, 0, 0)`, `docs/re/ui.md` 4.1 row (b), task/UI-PRODBAR-1) or with the UI preview flag `0x2000000`:
+
+| Step | Address | What the code does |
+|---|---|---|
+| Bounds | `0x1007c7ce`-`0x1007c879` | the rotated footprint (`rec[6]` via the jump table at `0x1007cc2c`, slots `+0x50`/`+0x54`) inside `[x0, x0 + W] x [y0, y0 + H]`; a 3 x 3 tile object (`ROHSTOFF` 3215) is tested with its whole footprint |
+| Flags | `0x1007c88a`-`0x1007c898` | `A = caller flags | type slot +0x60` (the flag word `0x29`) |
+| Occupancy | `0x1007c8ad`-`0x1007c912` | per non-zero object id under the footprint, type slot `+0x6c` (`AnnoGame 0x10008920`) of the placed type with `(existing, A)`; 0 refuses |
+| Coverage | `0x1007c955` | skipped: `A & 0x10` is clear for `0x29` |
+| Height | `0x1007cb48`-`0x1007cbbf` | without `0x1000000`: type slot `+0x68` (`AnnoGame 0x10008f90`) with the vertex pointer `island+0x14 + (y - y0) * (W + 1) + (x - x0)` and the stride `W + 1`; a negative result refuses, else the byte goes to `rec[8]` |
+| Mean | `AnnoGame 0x10008f99`-`0x10008fd9` | `F = word [type + 0x12]` (the type's own flag word, not `A`); `F & 3 == 1` returns `(p[0] + p[1] + p[stride] + p[stride + 1] + 3 * (sum < 0)) >> 2` (`cdq; and edx, 3; add; sar 2`), the floor of the mean for the non-negative byte sum; no window, no class test, no rotation |
+| Exemptions | `0x1007cbc2`-`0x1007cbe9` | `A & 0x7000` equal to `0x4000` or `0x2000` accepts; else slot `+0x5c` (PRODTYPE) with group `((p - 1) & ~0x1f) + 1 == 0x141` accepts |
+| Threshold | `0x1007cbeb`-`0x1007cc06` | `ftol([0x100e339c] / [0x100c9c20])`, `rec[8] >= ` it accepts. `[0x100c9c20]` = `0a d7 23 3d` = 0.04f; `[0x100e339c]` is 0 in the image and is written only by the initialisers `0x1007b340` (`fld [0x100c9c20]; fmul [0x100c127c]` = 16.0f; `fstp [0x100e2d88]`) and `0x1007b3a0` (`fld [0x100e2d88]; fadd st0, st0; fstp [0x100e339c]`): 1.28f. `f32(1.28) / f32(0.04)` = 32.0 exactly (the emulation of §2 read 32 too) |
+
+**The overlap row for a crop object (resolves the L of `ui.md` 4.1 row (b)).** Every shipped single-quad type has PRODTYPE 225-227 (`ROHSTOFF`, `ROHSTWACHS`, `ROHSTDUERR`), group `0xe1`. Slot `+0x6c` (`0x10008920`-`0x10008a44`, read in full): existing flag word `& 0x20` returns 1 (`0x10008931`), then `A & 0x10000000` returns 0 (`0x10008945`; never set by these callers), then the switch on the placed group (`0x10008974`-`0x10008a12`) has no case `0xe1` and ends at `0x10008a3e` (`xor eax, eax`). So for a placed crop or tree the verdict per existing object is exactly "its flag word has bit `0x20`". Over `Anlagen.dat` that is 352 types that share the tile (`ROHSTOFF` 180, `ROHSTWACHS` 81, `ROHSTDUERR` 30, `RUINE` 32 (`0x26`), `STEIN` 29 (`0x3a`)) and the other 569 that refuse (every building, road, wall, `FELSEN`, `KLIPPE`, river and sea object). (P: `placement_ref.py` registry loader; D: the code.)
+
+**Evidence for the rule's transcription.** `tools/placement_ref.py place()` already transcribed this path; the emulation of §3 drew types 8 (`226`, `0x29`) and 21 (`225`, `0x29`) among its 23 random types, and its 21,214 compared cases had 0 mismatches. That run did not count the `0x29` cases separately, and it was not re-run here (no `unicorn` on this host: NOT_RUN). `placement_ref.py engine_place` and the engine's `placement_rule` now support the class (`docs/sim/ship-placement.md` section 2a).
+
+**Real-file check (P).** `placement_ref.py tilecorpus`: the crop object 1 (`ROHSTWACHS`) and the 3 x 3 `ROHSTOFF` 3215 at every tile of all 1,133 islands of the 515 `.scp`/`.sze` files (17,206,784 tiles each), on the island's `HEIGHT` grid and the occupancy of its `GELAENDE`/`FLUESSE`/`PROD2` items: 12,672,094 accepts, 18,647,018 below the threshold, 2,595,308 occupied, 499,148 out of bounds (the 3 x 3 at the east and south edges), 0 unsupported. The engine agrees on every line (`fixtures/synthetic/sim/tile_object_corpus.txt`). The occupancy model there is the corpus's own (every footprint tile of an item, the first item wins), not a claim about the loader.
+
 ## 4. Type slot `+0x6c` (placement compatibility), all rows (D, E)
 
 `0x10008920`, `this` = placed type `P`, argument 1 = existing object's type `X`, argument 2 = `A`. Whole listing read (`05-type-slot6c.asm`, 143 instructions). Groups are `G(p) = ((p-1) & ~0x1f) + 1`:
@@ -141,7 +162,7 @@ Domain of the agreement: footprints 1..5 x 1..4, islands 2..12 tiles square, lev
 |---|---|---|---|---|---|
 | **ordinary land** | `F & 0x7017 == 0x0004` | **352** (`PIONIER` 52, `DENKMAL` 28, `ZIERDE` 26, `HANDWERK` 24, `MARKT` 24, `PLANTAGE` 21, `MARKTSTAND` 18, `ZAUN` 15, `KAPELLE` 14, ...) | `0x0084` x 344, `0x0004` x 8 | **254** (groups 0x61: 81, 1: 67, 0x41: 44, 0x21: 24, 0x81: 20, 0xa1: 18) | `v`, accepted iff `v >= 32` |
 | **evidenced coast** | `F & 0x7017 == 0x2007` | **30** (`KONTOR` 13, `PIER` 11, `FISCHER` 3, `WERFT` 2, `WALFAENGER` 1) | `0x2087` x 30 | **19** (`KONTOR` 13, `FISCHER` 3, `WERFT` 2, `WALFAENGER` 1) | `mx & 0xf0`; coast class accepts without the 32 test |
-| tile object, single quad | `F & 3 == 1` | 291 | `0x0029` | 0 | average |
+| tile object, single quad | `F & 3 == 1` | 291 | `0x0029` | 0 | floor of the four-corner mean, accepted iff `>= 32` unless class `0x2000`/`0x4000` or group `0x141` (section 3a; supported since FERTILITY-1 1a) |
 | road, bridge, ramp, pier on road | `F & 0x7000 == 0x4000` | 35 | `0x4186 x15, 0x4386 x18, 0x4087 x2` | 0 | accepted at once |
 | wall, road on slope | `F & 0x7000 == 0x1000` | 52 | `0x1886 x41, 0x1186 x8, 0x1386 x3` | 0 | rule decoded, building not implemented |
 | mountain/quarry helper | `F & 0x7000 == 0x3000` | 12 (`MINE` 8, `STEINBRUCH` 4) | `0x3096` | **12** | **U** (section 3) |

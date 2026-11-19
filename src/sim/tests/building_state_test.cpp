@@ -388,7 +388,7 @@ TEST_CASE("field count canary per struct") {
     CHECK(sim::field_count<sim::BuildGoods>() == 2);
     CHECK(sim::field_count<sim::TradeEntry>() == 3);
     CHECK(sim::field_count<sim::IslandIndexCache>() == 2); // derived, no field list
-    CHECK(sim::field_count<sim::Island>() == 20);          // cache* (claims: stream 126)
+    CHECK(sim::field_count<sim::Island>() == 21); // cache* (claims: stream 126), crops (base 2)
     CHECK(sim::field_count<sim::PlacementRecord>() == 6);
     // (* = derived, not in the stream). Every Payload alternative has a stream tag.
     // 10 since part Q (stream 137): tag 9 is the Quarry payload (the claim set, quarry-bricks.md

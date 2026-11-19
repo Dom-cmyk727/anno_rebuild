@@ -1,8 +1,11 @@
 // Island corpus tests over all .scp templates and .sze scenarios (needs
 // ANNO1503_GAME_DIR). Figures: docs/formats/insel.md.
 #include <algorithm>
+#include <filesystem>
 #include <map>
 #include <set>
+#include <string>
+#include <vector>
 
 #include <doctest/doctest.h>
 
@@ -217,4 +220,68 @@ TEST_CASE("placed objects corpus") {
     CHECK(dups["PROD2"] == 485);
     CHECK(overlap_swap == 115);
     CHECK(overlap_plain == 1350);
+}
+
+TEST_CASE("ANBAU corpus") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping ANBAU corpus: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto scp = anno::test::files_with_ext(*dir / "Scenes", "scp");
+    const auto sze = anno::test::files_with_ext(*dir / "Scenes", "sze");
+    std::size_t template_records = 0, scenario_records = 0, names = 0;
+    std::map<std::string, std::size_t> per_name;
+    std::vector<std::string> no_kartoffel, no_kraeuter;
+    auto check_file = [&](const std::filesystem::path& path, bool is_template) {
+        const auto buf = anno::test::read_file(path);
+        auto is = insel::islands(buf);
+        INFO(path.string());
+        REQUIRE(is);
+        for (const auto& i : is.value()) {
+            auto crops = i.crops();
+            REQUIRE(crops);
+            REQUIRE(crops.value().has_value()); // every island has one ANBAU record
+            const auto& list = *crops.value();
+            // parse -> write is byte-identical to the record's payload.
+            const auto raw = i.record("ANBAU");
+            REQUIRE(raw);
+            auto written = list.write();
+            REQUIRE(written);
+            CHECK(written.value() == anno::formats::ByteBuffer(raw->begin(), raw->end()));
+            (is_template ? template_records : scenario_records) += 1;
+            names += list.names.size();
+            for (const auto& n : list.names) {
+                ++per_name[n];
+            }
+            if (is_template) {
+                auto has = [&](const std::string& n) {
+                    return std::find(list.names.begin(), list.names.end(), n) != list.names.end();
+                };
+                if (!has("KARTOFFEL")) {
+                    no_kartoffel.push_back(path.stem().string());
+                }
+                if (!has("KR\xC4UTER")) {
+                    no_kraeuter.push_back(path.stem().string());
+                }
+            }
+        }
+    };
+    for (const auto& path : scp) {
+        check_file(path, true);
+    }
+    for (const auto& path : sze) {
+        check_file(path, false);
+    }
+    MESSAGE("ANBAU records: templates " << template_records << ", scenario islands "
+                                        << scenario_records << ", names " << names);
+    CHECK(template_records == 465);
+    CHECK(scenario_records == 668);
+    CHECK(names == 13686);
+    CHECK(per_name.size() == 13);
+    CHECK(no_kartoffel.size() == 29);
+    std::sort(no_kraeuter.begin(), no_kraeuter.end());
+    CHECK(no_kraeuter == std::vector<std::string>{"D_128x128_0015_1B_Azteken", "N_128x128_0023_1B",
+                                                  "N_256x256_0002_2B", "N_256x256_0006_2B",
+                                                  "Pr_080x080_0003_2B", "T_080x080_0001_0B_Po"});
 }

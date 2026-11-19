@@ -1,0 +1,60 @@
+# UI-BUILDCAT-1: the construction menu's category column (docs/re/ui.md 2.4). Eight tabs,
+# hud.txt viewbautab_<k> at x 762..803, y 303 + 46k, 46 high (View.dll 0x1002bb4f). Key B opens
+# the menu on public. A press on each tab selects its category; the press is at x 770, left of
+# the 779 column edge, where only the tab is drawn (it is chrome while the menu shows, not the
+# map). The open category's tab is the one drawn selected (ui.category_tab). x 803 is still the
+# tab, x 806 (between the tab and grid column 0 at 808) changes nothing (OQ-714).
+# Launch: --play data/maps/lan5.txt --construction-menu on --layout data/ui
+resize 1024 768
+wait frames 5
+look 1140 516
+expect fact ui.category == none
+key b
+wait frames 5
+expect fact ui.tab == construction
+expect fact ui.category == public
+expect fact ui.category_tab == viewbautab_0
+click_px 770 372
+wait frames 3
+expect fact ui.category == roads
+expect fact ui.category_tab == viewbautab_1
+click_px 770 418
+wait frames 3
+expect fact ui.category == farms
+expect fact ui.category_tab == viewbautab_2
+click_px 770 464
+wait frames 3
+expect fact ui.category == workshops
+expect fact ui.category_tab == viewbautab_3
+click_px 770 510
+wait frames 3
+expect fact ui.category == coastal
+expect fact ui.category_tab == viewbautab_4
+click_px 770 556
+wait frames 3
+expect fact ui.category == mines
+expect fact ui.category_tab == viewbautab_5
+click_px 770 602
+wait frames 3
+expect fact ui.category == military
+expect fact ui.category_tab == viewbautab_6
+click_px 770 648
+wait frames 3
+expect fact ui.category == ornamental
+expect fact ui.category_tab == viewbautab_7
+click_px 770 326
+wait frames 3
+expect fact ui.category == public
+expect fact ui.category_tab == viewbautab_0
+click_px 803 418
+wait frames 3
+expect fact ui.category == farms
+expect fact ui.category_tab == viewbautab_2
+click_px 806 326
+wait frames 3
+expect fact ui.category == farms
+click_px 762 602
+wait frames 3
+expect fact ui.category == military
+expect fact selection.clicks == 0
+quit

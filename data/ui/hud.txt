@@ -13,9 +13,18 @@ element baumat_wood pos 192 735 size 30 30 file toolgfx/statusbar.tex access STA
 element baumat_bricks pos 252 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_BAUMAT tex_id 38 segment 2 anchor bottom method sprite-sad shot r2_construction_public
 element baumat_marble pos 312 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_BAUMAT tex_id 39 segment 3 anchor bottom method sprite-sad shot r2_construction_public
 element einwohner pos 401 733 size 38 35 file toolgfx/statusbar.tex access STATUSBAR_EINWOHNER tex_id 53 anchor bottom method sprite-sad shot r2_construction_public
-element rosh_46 pos 547 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 46 segment 6 anchor bottom method sprite-sad shot hud_idle_running
-element rosh_48 pos 587 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 48 segment 8 anchor bottom method sprite-sad shot hud_idle_running
-element rosh_51 pos 627 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 51 segment 11 anchor bottom method sprite-sad shot hud_idle_running
+# UI-STATUS-1 B: the four ROSHTOFFE slots of the fertility row (AnnoFrame 0x10063a17..0x10063a61:
+# x = 547 + 40k, y = the bar row + 2; docs/re/ui.md 5.6). tex_id is STATUSBAR_ROSHTOFFE's id 40 =
+# segment 0; the live window draws tex_id + the segment the island under the cursor gives (its
+# climate, status_bar.hpp). `segment` is the segment the oracle shots show in that slot: every GOG
+# shot shows a NORD island's row, 6, 8, 11 (sprite-sad on hud_idle_running, tex ids 46, 48, 51);
+# slot 3 (667, only DSCHUNGEL islands fill it) is on no shot. The original's green bar
+# STATUSBAR_BALKEN (5 x 29 at x + 25 in each slot, 0x100656b0) is a named placeholder, not drawn:
+# its length comes from island property 11, which the sim does not hold (OQ-702).
+element rosh_0 pos 547 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 40 segment 6 anchor bottom method sprite-sad shot hud_idle_running
+element rosh_1 pos 587 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 40 segment 8 anchor bottom method sprite-sad shot hud_idle_running
+element rosh_2 pos 627 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 40 segment 11 anchor bottom method sprite-sad shot hud_idle_running
+element rosh_3 pos 667 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 40 anchor bottom method code
 element fragezeichen pos 746 733 size 34 35 file toolgfx/statusbar.tex access STATUSBAR_FRAGEZEICHEN tex_id 1 anchor after-statusbar method sprite-sad shot hud_idle_running
 element weltkarte pos 779 0 size 245 248 file toolgfx/fenster.tex access WELTKARTE tex_id 2 anchor right method sprite-sad shot hud_idle_running
 # UI-MINIMAP-1 fix F1: the scroll's rolled left end, fenster.tex id 3 (34 x 47, the texture after
@@ -51,7 +60,20 @@ element lupe_minus pos 826 153 size 19 21 file toolgfx/fenster.tex access KARTEP
 element karteplus_access size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 40 method inc-size
 element karte_nordung size 256 133 file toolgfx/fenster.tex access KARTE_NORDUNG tex_id 52 method inc-size
 element plankegross pos 783 252 size 241 48 file toolgfx/fenster.tex access PLANKEGROSS tex_id 1019 anchor right panel player,player_list,info,main_menu method sprite-sad shot r2_construction_public
-element viewbautab_0 pos 779 302 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 16 frame_idle 16 frame_selected 17 anchor right method view-dll
+# UI-BUILDCAT-1: the construction menu's eight category tabs, viewbautab_<k> for construction.txt
+# `index` k+1. View.dll 0x1002bb4f: VIEWBAUTAB, one 42 x 46 gadget per category (0x1002bbea),
+# texture 0x198 = VIEWBAUTAB + 2k (0x1002bc88 add esi, 2), loop cmp ebp, 8 (0x1002bc8b). Selected =
+# +1. Positions: sprite-565 exact (1879/1879 px per tab) on f13_construction_open and every
+# r2_construction_* shot, x 762, y 303 + 46k (docs/re/ui.md 2.4). `panel construction`: the
+# press area while the construction menu shows (ui_hit; they stick out left of the column).
+element viewbautab_0 pos 762 303 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 16 frame_idle 16 frame_selected 17 anchor right panel construction method sprite-565 shot r2_construction_public
+element viewbautab_1 pos 762 349 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 18 frame_idle 18 frame_selected 19 anchor right panel construction method sprite-565 shot r2_construction_roads
+element viewbautab_2 pos 762 395 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 20 frame_idle 20 frame_selected 21 anchor right panel construction method sprite-565 shot r2_construction_farms
+element viewbautab_3 pos 762 441 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 22 frame_idle 22 frame_selected 23 anchor right panel construction method sprite-565 shot r2_construction_workshops
+element viewbautab_4 pos 762 487 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 24 frame_idle 24 frame_selected 25 anchor right panel construction method sprite-565 shot r2_construction_coastal
+element viewbautab_5 pos 762 533 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 26 frame_idle 26 frame_selected 27 anchor right panel construction method sprite-565 shot r2_construction_mines
+element viewbautab_6 pos 762 579 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 28 frame_idle 28 frame_selected 29 anchor right panel construction method sprite-565 shot r2_construction_military
+element viewbautab_7 pos 762 625 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 30 frame_idle 30 frame_selected 31 anchor right panel construction method sprite-565 shot r2_construction_ornamental
 element baukosten size 32 29 file toolgfx/B_Baukosten.tex access image001.pcx tex_id 1 method inc-size
 element betriebskosten pos 815 674 size 40 37 file toolgfx/B_Betriebskosten.tex access image001.pcx tex_id 1 anchor right method sprite-sad shot r2_info_pioneer_house
 # UI-INFO-1: not drawn. The upkeep icon the shots show here is INFOUNTERGRUND id 33's own pixels:
@@ -97,9 +119,15 @@ element info_upkeep pos 852 684 size 145 25 file toolgfx/mainsmall.zei align cen
 # frame 0, centred in the box, reduced to RGB565 the way the 16-bit frame shows it): the whole
 # 135 x 135 box is pixel-identical on r2_info_dirt_road, f12_info_field_104, f12_info_field_708.
 # info_preview_shadow pos is the shadow's offset from the sprite (its silhouette in 66,65,66),
-# not a screen position. Larger sprites and the 1 x 1 stalls do not follow this rule yet (OQ-612).
+# not a screen position. UI-INFO-2b: the picture is the building and its entrance arrows
+# (Anlagen OBJECTPOS/CONPO2, drawn with FigurenHeader entry `figure`, the green
+# "Strassenanschluss" arrows: AnnoGame.dll 0x1000bb60 asks figure 0x625 for its display object)
+# composed in one canvas sized over all four turns, centred; the shadow is that canvas's
+# silhouette. Exact on f12_info_stall_1310 and f12_info_stall_1314. Canvases larger than the box
+# are drawn at the original's scaled size with a placeholder sampler (OQ-612).
 element info_preview pos 844 360 size 135 135 anchor right method sprite-565 shot r2_info_dirt_road
 element info_preview_shadow pos 5 10 method sprite-565 shot r2_info_dirt_road
+element info_preview_arrows figure 1573 method view-dll shot f12_info_stall_1310
 element no_klick pos 860 305 size 50 50 file toolgfx/fenster.tex access NO_KLICK tex_id 56 anchor right method sprite-sad shot r2_construction_public
 element option_exit pos 927 660 size 92 100 file toolgfx/fenster.tex access OPTION_EXIT tex_id 1492 anchor right method sprite-sad shot r2_options
 element rating_bg pos 0 0 size 1024 768 file toolgfx/fenster.tex access STATISTIK_UNTERGRUND tex_id 1509 method sprite-sad shot f15_rating
@@ -213,6 +241,37 @@ element info_subtab_5 pos 762 533 size 42 46 file toolgfx/fenster.tex access VIE
 element info_subtab_6 pos 762 579 size 42 46 file toolgfx/fenster.tex access VIEWINFOSTADTTAB tex_id 673 frame_idle 673 frame_selected 674 view info subtab 6 body info_tab_6 anchor right panel info,info_tab_1,info_tab_2,info_tab_3,info_tab_4,info_tab_5,info_tab_6,info_tab_7 method sprite-565 shot r2_tab_help
 element info_subtab_7 pos 762 625 size 42 46 file toolgfx/fenster.tex access VIEWINFOSTADTTAB tex_id 675 frame_idle 675 frame_selected 676 view info subtab 7 body info_tab_7 anchor right panel info,info_tab_1,info_tab_2,info_tab_3,info_tab_4,info_tab_5,info_tab_6,info_tab_7 method sprite-565 shot r2_tab_help
 element info_build_stop pos 858 674 size 112 60 file toolgfx/fenster.tex access VIEWINFOSTADTAUSBAUSTOP tex_id 678 anchor right panel info method sprite-565 shot r2_tab_help
+# UI-TABS-1 stage B (docs/re/ui.md 5.5): the balance pages' figure rows, text gadgets class 0xb1c
+# 195 x 15 (size: View.dll 0x1006c859, 0x1008002c `push 0xf; push 0xc3`), alignment property
+# 0x1c6 = 1 (0x1006c86d, 0x10080040; the info panel's centred boxes set 2), font = the page's
+# [+0x5c0] as the info panel's boxes (0x1006c884, 0x10080057; 0x100300e5). Positions from the
+# pages' layout functions (city 0x1006c4c0, player 0x1007fcf0): x = page x + 35.0f (0x1009e75c),
+# y = page y + C - 244.0f (0x1009c3f0) with C = 323, 353, 383, 413, 443, 473, 533, 633
+# (0x1009c610, 0x100a0a6c, 0x1009cf70, 0x100a0a68, 0x100a0a64, 0x100a0a60, 0x100a0a5c, 0x1009f478);
+# the page sits at (779, 244): its deny button, 79.0f / 674.0f (0x1009deec / 0x100a0a58), is
+# measured at (858, 674). Text: right edge on the gadget's right edge, top 3 rows above the
+# gadget, cut to the gadget (method glyph-match: MainSmall.zei by the assets::render_text advance
+# rule, levels 255,255,255 / 0,0,0 / 66,61,66; 0 differing pixels after RGB565 on every row of
+# hud_idle_running (0 0 15 0 0 16 -31), f15_kontor (0 0 15 0 0 0 -15 0) and r2_tab_help row 0;
+# the '1' glyph's top outline row falls above the gadget and is not drawn). The balance row is
+# red below 0: colour property 0x1c5 = 0xffffff, 0xff0000 below 0 (0x1006c32f..0x1006c357,
+# 0x1007fb63..0x1007fb90), glyph-matched red on both shots. `value` names the figure
+# (src/app balance_rows.hpp), `page` the panel it is drawn on.
+element player_row_0 pos 814 323 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value player.0 page player anchor right method glyph-match shot hud_idle_running
+element player_row_1 pos 814 353 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value player.1 page player anchor right method glyph-match shot hud_idle_running
+element player_row_2 pos 814 383 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value player.2 page player anchor right method glyph-match shot hud_idle_running
+element player_row_3 pos 814 413 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value player.3 page player anchor right method glyph-match shot hud_idle_running
+element player_row_4 pos 814 443 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value player.4 page player anchor right method glyph-match shot hud_idle_running
+element player_row_5 pos 814 473 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value player.5 page player anchor right method glyph-match shot hud_idle_running
+element player_row_6 pos 814 533 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value player.6 page player negative_rgb ff0000 anchor right method glyph-match shot hud_idle_running
+element city_row_0 pos 814 323 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value city.0 page info anchor right method glyph-match shot f15_kontor
+element city_row_1 pos 814 353 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value city.1 page info anchor right method glyph-match shot f15_kontor
+element city_row_2 pos 814 383 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value city.2 page info anchor right method glyph-match shot f15_kontor
+element city_row_3 pos 814 413 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value city.3 page info anchor right method glyph-match shot f15_kontor
+element city_row_4 pos 814 443 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value city.4 page info anchor right method glyph-match shot f15_kontor
+element city_row_5 pos 814 473 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value city.5 page info anchor right method glyph-match shot f15_kontor
+element city_row_6 pos 814 533 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value city.6 page info negative_rgb ff0000 anchor right method glyph-match shot f15_kontor
+element city_row_7 pos 814 633 size 195 15 file toolgfx/mainsmall.zei align right text_dy -3 clip box value city.7 page info anchor right method glyph-match shot f15_kontor
 element menu_bk pos 779 301 size 245 467 file toolgfx/fenster.tex access OPTION_BACKGROUND tex_id 1475 anchor right panel main_menu,options_load,options_save,options_music,options_speech method sprite-565 shot r2_options
 element menu_statistics pos 793 348 size 94 82 file toolgfx/fenster.tex access ADDON_SPIELERSTATISTIK tex_id 1580 anchor right panel main_menu method sprite-565 shot r2_options
 element menu_tab_0 pos 762 303 size 42 46 file toolgfx/fenster.tex access OPTION_TABS tex_id 1477 frame_idle 1476 frame_selected 1477 view options subtab 0 body main_menu anchor right panel main_menu,options_load,options_save,options_music,options_speech method sprite-565 shot r2_options

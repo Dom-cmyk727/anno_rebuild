@@ -80,8 +80,8 @@ std::string_view warning_kind_name(ScenarioWarningKind kind) {
         return "LinkUnresolved";
     case ScenarioWarningKind::LinkOresUnplaced:
         return "LinkOresUnplaced";
-    case ScenarioWarningKind::LinkRawMaterials:
-        return "LinkRawMaterials";
+    case ScenarioWarningKind::UnknownCropName:
+        return "UnknownCropName";
     case ScenarioWarningKind::LinkTreasureUnplaced:
         return "LinkTreasureUnplaced";
     case ScenarioWarningKind::LinkTreasuresCapped:
@@ -129,7 +129,7 @@ std::vector<ScenarioWarningKind> all_warning_kinds() {
             ScenarioWarningKind::LinkNamesTemplate,
             ScenarioWarningKind::LinkUnresolved,
             ScenarioWarningKind::LinkOresUnplaced,
-            ScenarioWarningKind::LinkRawMaterials,
+            ScenarioWarningKind::UnknownCropName,
             ScenarioWarningKind::LinkTreasureUnplaced,
             ScenarioWarningKind::LinkTreasuresCapped,
             ScenarioWarningKind::LinkTemplatePlayers,
@@ -1108,6 +1108,55 @@ std::uint32_t link_climate(const std::string& path) {
     return 0;
 }
 
+/// Island property 11 from the ANBAU record (docs/formats/insel.md "ANBAU", D AnnoWelt
+/// 0x10089871-0x10089965): the base set, or nothing when the climate byte is 0
+/// (0x10089885-0x10089897), then per name, for at most crops.anbau_name_cap names (0x10089954,
+/// unknown names counted), the goods of that name if it lies in anbau_first_goods ..
+/// anbau_last_goods (0x100898dc-0x1008993d). No ANBAU record: `out` stays nullopt, the
+/// constructor value (0x1008cbdf). The climate is INFO[0] whatever the record order; the original
+/// uses the climate byte as loaded so far (INFO precedes ANBAU in every shipped island, P).
+/// ADAPTATION: a second ANBAU record, an empty name and bytes after the last NUL refuse the load
+/// (formats::insel::Island::crops); the original lets the last record win (it re-stores the base
+/// at 0x1008988f/0x10089897), skips an empty name and reads past the payload (OQ-708).
+std::optional<std::string> island_crops(const insel::Island& isl, const std::string& path,
+                                        std::uint64_t base, std::uint32_t climate,
+                                        const TypeRegistry& types, const SimConfig& config,
+                                        Warnings& warn, std::optional<std::vector<GoodsId>>& out) {
+    auto list = isl.crops();
+    if (!list) {
+        return path + ".ANBAU: " + list.error() +
+               (list.error() == "twice" ? " (ADAPTATION: the original keeps the last record)" : "");
+    }
+    if (!list.value()) {
+        return std::nullopt;
+    }
+    std::uint64_t at = base;
+    for (const formats::chunk::Chunk& rec : isl.records) {
+        if (rec.name() == "ANBAU") {
+            at = base + rec.offset;
+        }
+    }
+    const CropTables& t = config.crops;
+    std::set<GoodsId> crops;
+    if (climate != 0) {
+        crops.insert(t.base_goods.begin(), t.base_goods.end());
+    }
+    const std::vector<std::string>& names = list.value()->names;
+    for (std::size_t n = 0; n < names.size() && n < t.anbau_name_cap; ++n) {
+        const std::optional<GoodsId> g = types.goods_by_name(names[n]);
+        if (!g || *g < t.anbau_first_goods || *g > t.anbau_last_goods) {
+            warn.add(ScenarioWarningKind::UnknownCropName, path + ".ANBAU", "ANBAU", at,
+                     "name " + std::to_string(n) + " (\"" + names[n] +
+                         "\") names no crop goods; the original skips it silently "
+                         "(0x10089931 -> 0x10089943)");
+            continue;
+        }
+        crops.insert(*g);
+    }
+    out = std::vector<GoodsId>(crops.begin(), crops.end());
+    return std::nullopt;
+}
+
 /// One island record (INSEL5) → IslandSpec at (x0, y0) in table slot `slot`: the
 /// climate, the terrain columns and the placed items, with the warnings of their
 /// records (`base` is the file offset of the island's first record, `head_offset` the
@@ -1147,6 +1196,9 @@ std::optional<std::string> island_from_insel(const insel::Island& isl, const std
     is.w = isl.width;
     is.h = isl.height;
     is.climate = (*info)[0];
+    if (auto e = island_crops(isl, path, base, is.climate, types, config, warn, is.crops)) {
+        return e;
+    }
     // Terrain: the HEIGHT and GFXID grids (P, insel.md "Blocks") and FRUCHTBAR
     // (P, w × h bytes); a missing column stays empty (OQ-060 shape).
     std::vector<std::uint8_t> height;
@@ -1196,6 +1248,9 @@ std::optional<std::string> island_from_insel(const insel::Island& isl, const std
             }
             is.kontor_counter = counter;
             continue;
+        }
+        if (name == "ANBAU") {
+            continue; // decoded before the loop (island_crops)
         }
         if (name == "LOCKED") {
             // D AnnoWelt 0x10089c0c–0x10089c32: the loader copies the record's bytes to island
@@ -2148,11 +2203,21 @@ std::optional<std::string> place_island_links(LoadedScenario& s, const LinkResol
                          ") of the link's template: no city's PROD/ENTRY names it, not placed "
                          "(OQ-151)");
         }
-        // D 0x100085a2–0x100085cf: island property 11 = 0xF009 | the marks, also with none.
-        const std::string marks_raw = kinds_list(r.raw_marks);
-        warn.add(ScenarioWarningKind::LinkRawMaterials, path, "INSELLNK", l.offset,
-                 "island property 11 = 0xF009 | raw materials {" + marks_raw +
-                     "} (0x100085a2) has no field");
+        // D 0x100085a2–0x100085cf: island property 11 = 0xF009 | (1 << k for every raw mark
+        // k), unconditionally (polar included), after the template's own ANBAU load inside world
+        // +0x88 (0x10008522). As goods ids: the base set and mask_first_goods + k.
+        std::set<GoodsId> link_crops(config.crops.base_goods.begin(),
+                                     config.crops.base_goods.end());
+        for (std::size_t k = 0; k < r.raw_marks.size(); ++k) {
+            if (r.raw_marks[k] == 0) {
+                continue;
+            }
+            if (k >= config.crops.mask_bits) { // SimConfig::validate keeps raw_kinds <= mask_bits
+                return who + ": raw mark " + std::to_string(k) + " is outside the crop mask";
+            }
+            link_crops.insert(config.crops.mask_first_goods + static_cast<GoodsId>(k));
+        }
+        s.spec.islands.back().crops = std::vector<GoodsId>(link_crops.begin(), link_crops.end());
         const std::string marks_ore = kinds_list(r.ore_marks);
         if (!marks_ore.empty()) {
             warn.add(ScenarioWarningKind::LinkOresUnplaced, path, "INSELLNK", l.offset,

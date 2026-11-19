@@ -50,6 +50,8 @@ Records (name: count over 368 entries; payload sizes):
 | `FORSCHTYPE`, `WARE`, `BAUWARE` | 19, 89, 27 | strings (short, NUL-terminated) | P (sizes); content ? OQ-023 |
 | `LOGIC` | 368 | 28–44 bytes; contains `1.0f` values; ? OQ-023 | P |
 | `SCHUSSPOS`, `OBJECTPOS` | 7, 24 | 12–156 bytes; ? OQ-023 | P |
+
+**Field map (UNITS-REF-1, 2026-11-17, D):** the loader `AnnoGame 0x1000fe00` maps `HEAD`, `LOGIC`, `BEWOHNTYPE`, `ROUTETYPE`, `FORSCHTYPE`, `WARE`, `BAUWARE` and the `OBJECTPOS` sub-records (`SCHUSS`, `FLAGGE`, `FIRE`, `SHOTWI`) to type fields and getters. The full map and the meanings are in [`docs/UNITS.md`](../UNITS.md) Part B (meanings partly L, OQ-751). `tools/units_inventory.py` decodes every entry into `cache/units/`.
 | `PATH` | 368 | NUL-terminated string, source directory, e.g. `Effekt_Feuerwerk02\` | P |
 | `COLORS` | 368 | colour tables, see below | P |
 | `HAEUSER` | 368 | sprite sets, see below (empty in 1 entry) | P |

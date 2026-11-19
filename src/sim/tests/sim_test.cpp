@@ -515,7 +515,7 @@ TEST_CASE("state_hash relational properties") {
     sim::WriteArchive rules_bytes;
     fields(rules_bytes, base.rules());
     sim::StateHasher header;
-    header.u32(1); // section base version
+    header.u32(2); // section base version (2 since ISLAND-CROPS-1: SimConfig::crops)
     header.u32(sim::kStateHashVersion);
     header.u64(0x00314b424e4f4345ULL);
     header.u32(sim::kPrngTimelineVersion);
@@ -567,7 +567,7 @@ TEST_CASE("state_hash relational properties") {
     CHECK(tree.root.children[4].hash == players.value());
     // The islands scope of a world without islands: the u64 slot count 0.
     sim::StateHasher islands;
-    islands.u32(1); // section base version
+    islands.u32(2); // section base version (2 since ISLAND-CROPS-1: Island::crops)
     islands.u64(0);
     islands.u64(0); // no extensions
     CHECK(tree.root.children[5].hash == islands.value());

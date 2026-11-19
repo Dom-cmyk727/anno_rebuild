@@ -16,6 +16,7 @@
 #include <iostream>
 #include <map>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -532,6 +533,40 @@ std::map<std::string, CityStatisticsImport> city_statistics_imports() {
     REQUIRE(result.size() == 50);
     return result;
 }
+/// ISLAND-CROPS-1 1b: ANBAU is decoded (island property 11), so the historical row loses one
+/// UnknownRecord per scope that read an ANBAU (once per record_scope and name: "islands" when the
+/// file has an INSEL5 island, "link_templates" when it placed a link; every shipped island has
+/// one, docs/formats/insel.md "ANBAU"), and the LinkRawMaterials column (one per placed link)
+/// becomes UnknownCropName=0 in the same position.
+std::string with_decoded_crops(std::string row) {
+    const auto field = [&](const std::string& key) {
+        const auto at = row.find(" " + key + "=");
+        REQUIRE(at != std::string::npos);
+        const auto from = at + key.size() + 2;
+        const auto end = row.find(' ', from);
+        REQUIRE(end != std::string::npos);
+        return std::pair{from, end};
+    };
+    const auto value = [&](const std::string& key) {
+        const auto [from, end] = field(key);
+        return std::stoul(row.substr(from, end - from));
+    };
+    const auto islands = value("islands");
+    const auto placed = value("links_resolved");
+    REQUIRE(value("LinkRawMaterials") == placed);
+    const auto scopes = (islands > placed ? 1U : 0U) + (placed > 0 ? 1U : 0U);
+    {
+        const auto [from, end] = field("UnknownRecord");
+        const auto old = std::stoul(row.substr(from, end - from));
+        REQUIRE(old >= scopes);
+        row.replace(from, end - from, std::to_string(old - scopes));
+    }
+    const auto at = row.find(" LinkRawMaterials=");
+    const auto end = row.find(' ', at + 1);
+    row.replace(at + 1, end - at - 1, "UnknownCropName=0");
+    return row;
+}
+
 std::string with_imported_city_statistics(std::string row) {
     const auto inputs = city_statistics_imports();
     const auto name = row.substr(0, row.find(' '));
@@ -776,8 +811,9 @@ TEST_CASE(
     for (const auto& r : results) {
         REQUIRE(historical.contains(r.name));
         CHECK(without_identity(r.line) ==
-              without_identity(with_imported_city_statistics(with_restored_research_production(
-                  with_recognized_player_records(historical.at(r.name))))));
+              without_identity(with_decoded_crops(
+                  with_imported_city_statistics(with_restored_research_production(
+                      with_recognized_player_records(historical.at(r.name)))))));
     }
 
     // The per-file counts against the committed expectations.
@@ -1315,4 +1351,89 @@ TEST_CASE("integration corpus: accepted supply counts and restored research comp
         CHECK(normalized !=
               with_restored_research_production(normalized)); // applying twice is a wrong reading
     }
+}
+
+TEST_CASE("scenario corpus: every island gets its crop list (ISLAND-CROPS-1)") {
+    // Island property 11 over the 50 shipped scenarios with their links: every INSEL5 island
+    // has an ANBAU record (P, docs/formats/insel.md "ANBAU"), so none keeps the constructor
+    // value; every placed link island holds SimConfig::crops' base set plus only goods of its
+    // raw marks (D AnnoScene 0x100085a2-0x100085cf); no name is unknown.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto types = original_registry(*dir);
+    const std::vector<fs::path> files = scenario_files(*dir);
+    REQUIRE(files.size() == 50);
+    const anno::sim_load::IslandTemplates templates = anno::sim_load::scan_island_templates(*dir);
+    struct Got {
+        std::string name, error;
+        std::uint64_t insel5 = 0, links = 0, unknown_names = 0, constructor_value = 0, bad_link = 0,
+                      link_marks = 0;
+    };
+    const auto results = anno::test::parallel_indexed(
+        files.size(),
+        [&](std::size_t i) {
+            Got g;
+            g.name = rel_name(*dir, files[i]);
+            const sim::SimConfig cfg;
+            auto resolved = anno::sim_load::load_scenario_with_links(
+                anno::test::read_file(files[i]), templates, *types, cfg, {},
+                original_component::actor_free_units());
+            if (!resolved) {
+                g.error = resolved.error();
+                return g;
+            }
+            const sim::LoadedScenario& s = resolved.value().loaded;
+            for (const sim::ScenarioWarning& w : s.warnings) {
+                g.unknown_names += w.kind == sim::ScenarioWarningKind::UnknownCropName ? 1U : 0U;
+            }
+            const std::size_t first_link = s.spec.islands.size() - s.links_placed;
+            const std::set<sim::GoodsId> base(cfg.crops.base_goods.begin(),
+                                              cfg.crops.base_goods.end());
+            for (std::size_t k = 0; k < s.spec.islands.size(); ++k) {
+                const auto& crops = s.spec.islands[k].crops;
+                if (!crops) {
+                    ++g.constructor_value;
+                    continue;
+                }
+                if (k < first_link) {
+                    ++g.insel5;
+                    continue;
+                }
+                ++g.links;
+                const std::set<sim::GoodsId> got(crops->begin(), crops->end());
+                for (const sim::GoodsId b : base) {
+                    g.bad_link += got.count(b) == 0 ? 1U : 0U;
+                }
+                for (const sim::GoodsId c : got) {
+                    if (base.count(c) == 0) {
+                        ++g.link_marks;
+                        g.bad_link +=
+                            c - cfg.crops.mask_first_goods < cfg.links.raw_kinds ? 0U : 1U;
+                    }
+                }
+            }
+            return g;
+        },
+        anno::test::parallel_options());
+    std::uint64_t insel5 = 0, links = 0, unknown = 0, constructor_value = 0, bad = 0, marks = 0;
+    for (const Got& g : results) {
+        INFO(g.name);
+        CHECK_MESSAGE(g.error.empty(), g.error);
+        insel5 += g.insel5;
+        links += g.links;
+        unknown += g.unknown_names;
+        constructor_value += g.constructor_value;
+        bad += g.bad_link;
+        marks += g.link_marks;
+    }
+    MESSAGE("crop lists: INSEL5 islands " << insel5 << ", link islands " << links
+                                          << ", link marks beyond the base " << marks);
+    CHECK(insel5 == 668);
+    CHECK(links == 229);
+    CHECK(constructor_value == 0);
+    CHECK(unknown == 0);
+    CHECK(bad == 0);
 }

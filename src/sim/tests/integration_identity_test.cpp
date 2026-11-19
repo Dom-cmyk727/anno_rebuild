@@ -297,15 +297,15 @@ TEST_CASE("combined identity139: valid native and replay artifacts 134 through 1
 
     auto foreign_section = good;
     REQUIRE(foreign_section.initial_save[20] == 0);
-    REQUIRE(island_test::get32(foreign_section.initial_save, 29) == 1);
-    island_test::put32(foreign_section.initial_save, 29, 2);
+    REQUIRE(island_test::get32(foreign_section.initial_save, 29) == 2); // header base 2
+    island_test::put32(foreign_section.initial_save, 29, 3);
     island_test::reseal(foreign_section.initial_save);
     auto unchanged_world = world;
     const auto unchanged_bytes = unchanged_world.save();
     const auto section_refusal = sim::replay(unchanged_world, foreign_section);
     REQUIRE_FALSE(section_refusal.ok());
     CHECK(section_refusal.error().find(
-              "section header: base version 2 is not supported (this build reads 1)") !=
+              "section header: base version 3 is not supported (this build reads 2)") !=
           std::string::npos);
     CHECK(unchanged_world.save() == unchanged_bytes);
 
@@ -335,4 +335,29 @@ TEST_CASE("combined identity139: valid native and replay artifacts 134 through 1
     REQUIRE_FALSE(corrupt.ok());
     CHECK(corrupt.error() == "replay refused: initial save checksum differs");
     CHECK(target.value().save() == before);
+}
+
+TEST_CASE("identity: the sections-v1 predecessor of global 139 is refused by its section base") {
+    // ISLAND-CROPS-1 1b moved the header and islands sections to base 2 (SimConfig::crops,
+    // Island::crops). legacy139s1 holds the outgoing current/g2.log and its initial save: the
+    // same global 139 and outer replay identity, every section base 1. The native save is refused
+    // by the header's base version, before any field is read; the replay log still decodes (its
+    // outer identity is unchanged) and replaying it refuses the same way. No migration.
+    const auto base = std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "legacy139s1";
+    const auto bytes_of = [](const std::filesystem::path& path) {
+        std::ifstream in(path, std::ios::binary);
+        REQUIRE_MESSAGE(in.good(), path.string());
+        return std::vector<std::uint8_t>{std::istreambuf_iterator<char>(in), {}};
+    };
+    const auto save = bytes_of(base / "g2.save");
+    REQUIRE(island_test::get32(save, 8) == sim::kStateHashVersion); // the frame's stream version
+    REQUIRE(island_test::get32(save, 29) == 1);                     // header base 1
+    const auto f = script_test::make();
+    const auto refused = sim::World::load(save, f.types.registry);
+    REQUIRE_FALSE(refused.ok());
+    CHECK(refused.error().find("section header: base version 1 is not supported (this build "
+                               "reads 2)") != std::string::npos);
+    const auto log = sim::read_log(bytes_of(base / "g2.log"));
+    REQUIRE_MESSAGE(log.ok(), (log.ok() ? std::string() : log.error()));
+    CHECK(log.value().initial_save == save);
 }

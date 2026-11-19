@@ -715,6 +715,108 @@ TEST_CASE("minimap magnifier: one press is one built level, clamped at both ends
     CHECK(app::magnifier_target({}, 20.0, true) == std::nullopt);
 }
 
+// ---- UI-MINIMAP-2: the continuous zoom's magnifier reaches the wheel's furthest zoom-out ----
+
+TEST_CASE("minimap magnifier stages: halvings past level 2, then the wheel's end itself") {
+    // Owner decision 2026-11-17 (ui_6.mp4): the magnifier's - goes as far as the wheel.
+    const std::vector<double> built = {84.0, 42.0, 20.0};
+    using V = std::vector<double>;
+    using W = std::optional<double>;
+    // Several halvings, then the exact minimum (0.625, the next halving, is below 1.1).
+    CHECK(app::magnifier_stages(built, 1.1) == V{84.0, 42.0, 20.0, 10.0, 5.0, 2.5, 1.25, 1.1});
+    CHECK(app::magnifier_stages(built, 1.5) == V{84.0, 42.0, 20.0, 10.0, 5.0, 2.5, 1.5});
+    // A minimum just below a halving: the short last hop is still a stage.
+    CHECK(app::magnifier_stages(built, 4.9) == V{84.0, 42.0, 20.0, 10.0, 5.0, 4.9});
+    // A minimum on a halving: that width once, as the last stage.
+    CHECK(app::magnifier_stages(built, 5.0) == V{84.0, 42.0, 20.0, 10.0, 5.0});
+    // A minimum between level 2 and its first halving: one extra stage.
+    CHECK(app::magnifier_stages(built, 14.142) == V{84.0, 42.0, 20.0, 14.142});
+    // A minimum at or above level 2, or none: no extra stages (a small scene, a large window).
+    CHECK(app::magnifier_stages(built, 20.0) == built);
+    CHECK(app::magnifier_stages(built, 25.0) == built);
+    CHECK(app::magnifier_stages(built, 0.0) == built);
+    CHECK(app::magnifier_stages(built, -1.0) == built);
+    CHECK(app::magnifier_stages({}, 1.0).empty());
+    // The levels are data: one built level of 32 halves to 16 and 8, then the end 7.
+    CHECK(app::magnifier_stages({32.0}, 7.0) == V{32.0, 16.0, 8.0, 7.0});
+
+    // Minus from level 2 walks every stage and stops on the minimum; plus walks back to level 0.
+    const auto stages = app::magnifier_stages(built, 1.1);
+    double z = 20.0;
+    for (const double want : {10.0, 5.0, 2.5, 1.25, 1.1}) {
+        const auto next = app::magnifier_target(stages, z, false);
+        REQUIRE(next.has_value());
+        CHECK(*next == want);
+        z = *next;
+    }
+    CHECK(app::magnifier_target(stages, z, false) == std::nullopt); // the wheel's end
+    for (const double want : {1.25, 2.5, 5.0, 10.0, 20.0, 42.0, 84.0}) {
+        const auto next = app::magnifier_target(stages, z, true);
+        REQUIRE(next.has_value());
+        CHECK(*next == want);
+        z = *next;
+    }
+    CHECK(app::magnifier_target(stages, z, true) == std::nullopt); // level 0
+
+    // A view the wheel left between two stages goes to the next stage in the pressed direction.
+    CHECK(app::magnifier_target(stages, 7.0, false) == W(5.0));
+    CHECK(app::magnifier_target(stages, 7.0, true) == W(10.0));
+    CHECK(app::magnifier_target(stages, 1.2, false) == W(1.1));
+    CHECK(app::magnifier_target(stages, 1.2, true) == W(1.25));
+    CHECK(app::magnifier_target(stages, 30.0, false) == W(20.0));
+    // Without extra stages the clamp at level 2 stays.
+    CHECK(app::magnifier_target(app::magnifier_stages(built, 20.0), 20.0, false) == std::nullopt);
+}
+
+TEST_CASE("minimap magnifier stages: doublings past level 0, then the wheel's closest zoom-in") {
+    // Fix round R2 (owner, ui_7.mp4): the magnifier's + goes as close as the wheel.
+    const std::vector<double> built = {84.0, 42.0, 20.0};
+    using V = std::vector<double>;
+    using W = std::optional<double>;
+    // The wheel's ceiling at the original levels: 84 * sqrt 2 = 118.79, below the first doubling
+    // (168), so the ceiling alone is the one extra stage.
+    CHECK(app::magnifier_stages(built, 20.0, 118.8) == V{118.8, 84.0, 42.0, 20.0});
+    // Several doublings, widest first, then the built levels.
+    CHECK(app::magnifier_stages(built, 20.0, 400.0) == V{400.0, 336.0, 168.0, 84.0, 42.0, 20.0});
+    // A ceiling just above a doubling: the short last hop is still a stage.
+    CHECK(app::magnifier_stages(built, 20.0, 170.0) == V{170.0, 168.0, 84.0, 42.0, 20.0});
+    // A ceiling on a doubling: that width once.
+    CHECK(app::magnifier_stages(built, 20.0, 168.0) == V{168.0, 84.0, 42.0, 20.0});
+    // A ceiling at or below level 0, or none: no extra stages on that side.
+    CHECK(app::magnifier_stages(built, 20.0, 84.0) == built);
+    CHECK(app::magnifier_stages(built, 20.0, 60.0) == built);
+    CHECK(app::magnifier_stages(built, 20.0, 0.0) == built);
+    CHECK(app::magnifier_stages(built, 20.0, -1.0) == built);
+    CHECK(app::magnifier_stages(built, 20.0) == built);
+    CHECK(app::magnifier_stages({}, 1.0, 100.0).empty());
+    // Both sides at once.
+    const auto stages = app::magnifier_stages(built, 1.1, 118.8);
+    CHECK(stages == V{118.8, 84.0, 42.0, 20.0, 10.0, 5.0, 2.5, 1.25, 1.1});
+
+    // Plus from level 2 walks to the ceiling and stops there; minus walks back to the far end.
+    double z = 20.0;
+    for (const double want : {42.0, 84.0, 118.8}) {
+        const auto next = app::magnifier_target(stages, z, true);
+        REQUIRE(next.has_value());
+        CHECK(*next == want);
+        z = *next;
+    }
+    CHECK(app::magnifier_target(stages, z, true) == std::nullopt); // the wheel's closest zoom-in
+    for (const double want : {84.0, 42.0, 20.0, 10.0, 5.0, 2.5, 1.25, 1.1}) {
+        const auto next = app::magnifier_target(stages, z, false);
+        REQUIRE(next.has_value());
+        CHECK(*next == want);
+        z = *next;
+    }
+    CHECK(app::magnifier_target(stages, z, false) == std::nullopt);
+
+    // A view the wheel left between level 0 and the ceiling: the next stage in that direction.
+    CHECK(app::magnifier_target(stages, 100.0, true) == W(118.8));
+    CHECK(app::magnifier_target(stages, 100.0, false) == W(84.0));
+    // Without the ceiling the clamp at level 0 stays.
+    CHECK(app::magnifier_target(app::magnifier_stages(built, 1.1), 84.0, true) == std::nullopt);
+}
+
 // ---- UI-MINIMAP-1 fix round: F1, the scroll's rolled left end ----
 
 TEST_CASE("minimap scroll: the rolled left end is chrome left of the column at any width") {

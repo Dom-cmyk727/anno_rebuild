@@ -240,6 +240,7 @@ Steam threads (History Edition, app 2820110) are cited by full URL inline.
 | ID | Issue | Versions | Evidence | Sources | Rebuild implication |
 |---|---|---|---|---|---|
 | ISS-150 | The small farm's (`UNIVERSAL`, 809) "missing input" message never appears: its repeat interval is 75,000 ticks, but the status helper measures the elapsed time in 16 bits (≤ 65,535). The status code is still set. | GOG 2.0.0.5 | D | `docs/re/production.md` §4.5 (`AnnoWelt.dll` `0x1006f572`, `0x10072f1a`) | FAITHFUL by default (`small_farm_step`); RULE candidate: raise it (e.g. a wider timer or an interval ≤ 65,535). |
+| ISS-151 | The whaler's (`WALFAENGER`, tick `0x10073720`) "missing input" status icon and message never appear: its repeat interval is 90,000 ticks, but the status helper measures the elapsed time in 16 bits (≤ 65,535). The status code is still set; its "storage full" (45,000) works. Same cause as ISS-150. The whaler is not ported yet. | GOG 2.0.0.5 | D | `docs/re/ui.md` §11.2 (`AnnoWelt.dll` `0x10073a50`, `0x10073a5a`, `0x10072f1a`) | FAITHFUL by default when the whaler is ported (the shared `StatusTracker` reproduces it); RULE candidate as ISS-150. |
 
 ---
 

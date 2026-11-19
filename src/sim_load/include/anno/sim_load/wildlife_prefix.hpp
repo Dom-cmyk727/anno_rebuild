@@ -28,9 +28,10 @@ struct PrefixBoundary {
 struct PrefixHeader {
     PrefixSource source;
     std::string tag;
-    std::uint64_t records = 0; // Completed object/spawn items; setup headers have zero.
+    std::uint64_t records = 0; // Completed typed items; setup headers have zero.
     std::optional<std::uint64_t> water_mask_updates; // Engaged only after GELAENDE epilogue.
     std::optional<std::uint64_t> fertility_updates;  // Engaged after FRUCHTBAR, even if unchanged.
+    std::optional<std::uint64_t> bergwerk_nodes_added; // Engaged after the whole header.
 };
 struct PrefixResource {
     PrefixSource source;
@@ -47,6 +48,23 @@ struct PrefixSpawn {
     std::optional<std::uint64_t> next_in_chunk;
     // Successful load domain: category 0, unoccupied. NO guessed figure id.
 };
+// BERGWERK2 resource-list records, NOT OCCUR ore occurrences or tonnage.
+// Contract/primary closure: docs/sim/wildlife-bergwerk.md.
+struct PrefixBergwerkEntry {
+    PrefixSource source;
+    std::uint32_t local_x = 0, local_y = 0, world_x = 0, world_y = 0;
+    std::uint8_t rotation = 0;
+};
+struct PrefixBergwerkNode {
+    std::uint64_t entry = 0, chunk = 0;
+    std::uint8_t offsets = 0, rotation = 0, mask = 0x10, kind = 1;
+    std::optional<std::uint64_t> next;
+};
+struct PrefixBergwerkChunk {
+    // Only the represented resource-presence bit; not the full original cache.
+    std::uint8_t resource_flags = 0;
+    std::optional<std::uint64_t> head;
+};
 struct PreparedIsland {
     std::uint32_t slot = 0, climate = 0;
     std::shared_ptr<const sim::Terrain> terrain;
@@ -55,6 +73,9 @@ struct PreparedIsland {
     std::vector<PrefixResource> resources;
     std::vector<PrefixSpawn> spawns; // Source chronology, never prepend visit order.
     std::vector<std::optional<std::uint64_t>> chunk_heads;
+    std::vector<PrefixBergwerkEntry> bergwerk_entries;
+    std::vector<PrefixBergwerkNode> bergwerk_nodes;
+    std::vector<PrefixBergwerkChunk> bergwerk_chunks;
     bool complete_local_records = false;
 };
 struct PreparedPrefix {

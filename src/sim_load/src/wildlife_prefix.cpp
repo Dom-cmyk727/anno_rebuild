@@ -4,6 +4,7 @@
 #include <set>
 
 #include <anno/formats/sha256.hpp>
+#include <anno/formats/tagged.hpp>
 #include <anno/sim_load/wildlife_prefix.hpp>
 namespace anno::sim_load {
 namespace ri = sim::resource_import;
@@ -116,7 +117,7 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
              ++setup_end) {
             const auto& header = raw.records[setup_end];
             const auto name = header.name();
-            prepared.headers.push_back({source(setup_end), std::string(name), 0, {}, {}});
+            prepared.headers.push_back({source(setup_end), std::string(name), 0, {}, {}, {}});
             if (name == "INFO") {
                 if (header.payload.size() != 12) {
                     setup_error = PrefixBoundary{source(setup_end), "INFO", "strict INFO length"};
@@ -196,7 +197,7 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
         for (std::uint64_t h = setup_end; h < raw.records.size(); ++h) {
             const auto& header = raw.records[h];
             const auto name = header.name();
-            prepared.headers.push_back({source(h), std::string(name), 0, {}, {}});
+            prepared.headers.push_back({source(h), std::string(name), 0, {}, {}, {}});
             if (name == "GELAENDE") {
                 const auto block = formats::insel::Block::parse(header.payload);
                 if (!block || block.value().data.size() % 6 != 0) {
@@ -238,6 +239,68 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
                     return PrefixFailure{out.boundary->reason, std::move(out)};
                 }
                 prepared.headers.back().water_mask_updates = closed.value();
+            } else if (name == "BERGWERK2") {
+                const auto records = formats::tagged::parse_records(header.payload);
+                if (!records) {
+                    stop({source(h), "BERGWERK2", records.error()});
+                    return PrefixFailure{out.boundary->reason, std::move(out)};
+                }
+                // Original matrix, AnnoWelt 0x1008c2ed..0x1008c39e; not spawn-head geometry.
+                constexpr std::int64_t edge = 8;
+                const auto nx = (std::int64_t{raw.width} + edge - 1) / edge;
+                const auto ny = (std::int64_t{raw.height} + edge - 1) / edge;
+                if (prepared.bergwerk_chunks.empty())
+                    prepared.bergwerk_chunks.resize(static_cast<std::size_t>(nx * ny));
+                const auto before = prepared.bergwerk_nodes.size();
+                for (std::uint64_t r = 0; r < records.value().size(); ++r) {
+                    const auto& record = records.value()[r];
+                    if (record.name != "ENTRY")
+                        continue; // Original 0x10078a36 skips unknown tagged payloads.
+                    if (record.payload.size() != 4) {
+                        stop({source(h, r), "BERGWERK2", "ENTRY must contain one u32"});
+                        return PrefixFailure{out.boundary->reason, std::move(out)};
+                    }
+                    const auto word = formats::u32_le(record.payload, 0);
+                    const auto lx = word & 0xfffU;
+                    const auto ly = (word >> 12) & 0xfffU;
+                    const auto rotation = static_cast<std::uint8_t>((word >> 24) & 3U);
+                    const auto x = static_cast<std::uint16_t>(lx + raw.x);
+                    const auto y = static_cast<std::uint16_t>(ly + raw.y);
+                    // Original 0x10077e63..0x10077e93: 3x4 or 4x3, not type metadata.
+                    const std::int64_t w = (rotation & 1U) ? 4 : 3;
+                    const std::int64_t height = (rotation & 1U) ? 3 : 4;
+                    std::vector<std::pair<std::uint64_t, std::uint8_t>> nodes;
+                    for (auto by = y / edge * edge; by < y + height; by += edge)
+                        for (auto bx = x / edge * edge; bx < x + w; bx += edge) {
+                            // C truncating division matches the original signed idiom.
+                            const auto cx = (bx - raw.x) / edge;
+                            const auto cy = (by - raw.y) / edge;
+                            if (cx < 0 || cy < 0 || cx >= nx || cy >= ny) {
+                                stop({source(h, r), "BERGWERK2",
+                                      "resource chunk outside island matrix"});
+                                return PrefixFailure{out.boundary->reason, std::move(out)};
+                            }
+                            const auto dx = static_cast<std::uint8_t>(x - bx);
+                            const auto dy = static_cast<std::uint8_t>(y - by);
+                            nodes.emplace_back(
+                                static_cast<std::uint64_t>(cy * nx + cx),
+                                static_cast<std::uint8_t>((dx & 15U) | ((dy & 15U) << 4)));
+                        }
+                    const auto entry = static_cast<std::uint64_t>(prepared.bergwerk_entries.size());
+                    prepared.bergwerk_entries.push_back({source(h, r), lx, ly, x, y, rotation});
+                    for (const auto& [chunk, offsets] : nodes) {
+                        auto& target = prepared.bergwerk_chunks[chunk];
+                        const auto index =
+                            static_cast<std::uint64_t>(prepared.bergwerk_nodes.size());
+                        prepared.bergwerk_nodes.push_back(
+                            {entry, chunk, offsets, rotation, 0x10, 1, target.head});
+                        target.head = index;
+                        target.resource_flags |= 2;
+                    }
+                    ++prepared.headers.back().records;
+                }
+                prepared.headers.back().bergwerk_nodes_added =
+                    prepared.bergwerk_nodes.size() - before;
             } else if (name == "FRUCHTBAR") {
                 const auto effect = session.apply_fertility(header.payload);
                 if (!effect) {

@@ -9,6 +9,7 @@
 #include <anno/formats/anlagen.hpp>
 #include <anno/formats/annogame.hpp>
 #include <anno/formats/chunk.hpp>
+#include <anno/formats/tagged.hpp>
 #include <anno/sim_load/original_registry.hpp>
 #include <anno/sim_load/wildlife_prefix.hpp>
 #include <anno/test/game_dir.hpp>
@@ -613,6 +614,194 @@ TEST_CASE("wildlife prefix: fertility empty low terrain has no implicit fill and
     }
 }
 
+namespace {
+Buffer bergwerk_base(std::uint16_t x = 16, std::uint16_t y = 24) {
+    Buffer b;
+    for (const auto v : std::vector<std::uint16_t>{x, y, 16, 16})
+        fmt::put_u16_le(b, v);
+    fmt::put_u32_le(b, 19);
+    append(b, packed("INFO", Buffer(12, 0)));
+    append(b, packed("HEIGHT", block(0, 0, 16, 16, Buffer(256, 48))));
+    return b;
+}
+Buffer bergwerk_entry(std::uint32_t x, std::uint32_t y, std::uint32_t rotation,
+                      bool long_form = false, std::uint32_t upper = 0) {
+    Buffer word, out;
+    fmt::put_u32_le(word, x | (y << 12) | (rotation << 24) | upper);
+    REQUIRE(fmt::tagged::write_record("ENTRY", long_form, word, out));
+    return out;
+}
+} // namespace
+
+TEST_CASE(
+    "wildlife prefix: bergwerk typed nodes preserve packed axes and duplicate prepend chronology") {
+    const auto types = registry();
+    Metadata meta;
+    const auto pe = fake_pe();
+    auto b = bergwerk_base();
+    append(b, packed("GELAENDE", block(1, 0, 1, 1, object(104))));
+    append(b, packed("BERGWERK2", {}));
+    Buffer first;
+    REQUIRE(fmt::tagged::write_record("OTHER", false, Buffer{9, 8, 7}, first));
+    append(first, bergwerk_entry(7, 6, 1, false, 0xfc000000U));
+    const auto parsed = fmt::tagged::parse_records(first);
+    REQUIRE(parsed);
+    Buffer encoded;
+    REQUIRE(fmt::tagged::write_records(parsed.value(), encoded));
+    CHECK(encoded == first); // Existing small-record format round-trip, including ignored bits.
+    append(b, packed("BERGWERK2", first));
+    append(b, packed("FRUCHTBAR", Buffer(256, 2)));
+    append(b, packed("BERGWERK2", bergwerk_entry(7, 6, 1, true)));
+    append(b, packed("HIRSCH", fmt::insel::encode_hirsch(
+                                   std::vector<fmt::insel::HirschRecord>{{0, 0, 0x80, 7, 10}})));
+    auto file = scene({packed("INSEL5", b)});
+    const auto original = file;
+    const auto result = load::prepare_wildlife_prefix(file, meta.entries, pe, *types, inputs(),
+                                                      std::vector<std::uint32_t>{4, 7});
+    REQUIRE(result);
+    CHECK(file == original);
+    file.clear();
+    file.shrink_to_fit();
+    b.clear();
+    const auto& out = result.value();
+    const auto& is = out.islands[0];
+    REQUIRE(is.bergwerk_entries.size() == 2);
+    REQUIRE(is.bergwerk_nodes.size() == 8);
+    REQUIRE(is.bergwerk_chunks.size() == 4);
+    CHECK(is.headers[3].bergwerk_nodes_added == 0);
+    CHECK(is.headers[4].bergwerk_nodes_added == 4);
+    CHECK(is.headers[6].bergwerk_nodes_added == 4);
+    CHECK(is.headers[4].records == 1);
+    CHECK(is.headers[6].records == 1);
+    const std::vector<std::uint8_t> offsets{0x67, 0x6f, 0xe7, 0xef};
+    for (std::uint64_t i = 0; i < 2; ++i) {
+        const auto& e = is.bergwerk_entries[i];
+        CHECK(e.local_x == 7);
+        CHECK(e.local_y == 6);
+        CHECK(e.world_x == 23);
+        CHECK(e.world_y == 30);
+        CHECK(e.rotation == 1);
+        CHECK(e.source.header == (i == 0 ? 4 : 6));
+        CHECK(e.source.record == (i == 0 ? 1 : 0));
+        for (std::uint64_t c = 0; c < 4; ++c) {
+            const auto& n = is.bergwerk_nodes[i * 4 + c];
+            CHECK(n.entry == i);
+            CHECK(n.chunk == c);
+            CHECK(n.offsets == offsets[c]);
+            CHECK(n.rotation == 1);
+            CHECK(n.mask == 0x10);
+            CHECK(n.kind == 1);
+            if (i == 0)
+                CHECK_FALSE(n.next);
+            else
+                CHECK(n.next == c);
+        }
+    }
+    for (std::uint64_t c = 0; c < 4; ++c) {
+        CHECK(is.bergwerk_chunks[c].head == c + 4);
+        CHECK(is.bergwerk_chunks[c].resource_flags == 2);
+    }
+    CHECK(out.consumed == 2);
+    CHECK(is.resource.consumed == 1);
+    CHECK(is.resource.variation[0] == 66);
+    CHECK(is.resource.tiles.object(0) == 104);
+    CHECK(is.resource.tiles.phase(0) == 7);
+    CHECK(is.resource.tiles.item_height(0) == 48);
+    REQUIRE(is.spawns.size() == 1);
+    CHECK(is.spawns[0].draw_before == 1);
+    CHECK(is.spawns[0].timestamp == 8);
+    CHECK(is.terrain->fertility == Buffer(256, 2));
+    CHECK(sim::terrain_matches(*is.terrain));
+}
+
+TEST_CASE(
+    "wildlife prefix: bergwerk rotations signed chunk division and footprint ends are exact") {
+    const auto types = registry();
+    Metadata meta;
+    const auto pe = fake_pe();
+    for (std::uint32_t rotation = 0; rotation < 4; ++rotation) {
+        auto b = bergwerk_base();
+        append(b, packed("BERGWERK2", bergwerk_entry(5, 4, rotation)));
+        const auto result = load::prepare_wildlife_prefix(scene({packed("INSEL5", b)}),
+                                                          meta.entries, pe, *types, inputs(), {});
+        REQUIRE(result);
+        const auto& is = result.value().islands[0];
+        REQUIRE(is.bergwerk_nodes.size() == ((rotation & 1U) ? 2 : 1));
+        CHECK(is.bergwerk_nodes[0].offsets == 0x45);
+        CHECK(is.bergwerk_nodes[0].chunk == 0);
+        if (rotation & 1U) {
+            CHECK(is.bergwerk_nodes[1].offsets == 0x4d);
+            CHECK(is.bergwerk_nodes[1].chunk == 1);
+        }
+        CHECK(result.value().consumed == 0);
+        CHECK(is.resource.variation == Buffer(256, 0));
+        CHECK(is.resource.tiles.object(0) == 0);
+    }
+    auto b = bergwerk_base(7, 24);
+    append(b, packed("BERGWERK2", bergwerk_entry(0, 0, 0)));
+    const auto result = load::prepare_wildlife_prefix(scene({packed("INSEL5", b)}), meta.entries,
+                                                      pe, *types, inputs(), {});
+    REQUIRE(result);
+    const auto& is = result.value().islands[0];
+    REQUIRE(is.bergwerk_nodes.size() == 2);
+    CHECK(is.bergwerk_nodes[0].chunk == 0); // (-7)/8 truncates to 0, not floor -1.
+    CHECK(is.bergwerk_nodes[1].chunk == 0); // (8-7)/8 also 0; preserve original collision.
+    CHECK(is.bergwerk_nodes[0].offsets == 7);
+    CHECK(is.bergwerk_nodes[1].offsets == 15);
+    CHECK(is.bergwerk_nodes[1].next == 0);
+    CHECK(is.bergwerk_chunks[0].head == 1);
+}
+
+TEST_CASE(
+    "wildlife prefix: bergwerk adapter contract refuses malformed entries before completion") {
+    const auto types = registry();
+    Metadata meta;
+    const auto pe = fake_pe();
+    Buffer short_entry, long_entry, oversized_entry;
+    REQUIRE(fmt::tagged::write_record("ENTRY", false, Buffer(3, 0), short_entry));
+    REQUIRE(fmt::tagged::write_record("ENTRY", false, Buffer(5, 0), oversized_entry));
+    REQUIRE(fmt::tagged::write_record("ENTRY", true, Buffer(4, 0), long_entry));
+    long_entry[6] = 255; // Extended length now claims 0xff0004, beyond the input.
+    for (const auto& bad :
+         {short_entry, oversized_entry, long_entry, Buffer{1}, bergwerk_entry(4095, 4095, 0)}) {
+        auto b = bergwerk_base();
+        append(b, packed("GELAENDE", block(1, 0, 1, 1, object(104))));
+        append(b, packed("BERGWERK2", bergwerk_entry(7, 6, 1)));
+        append(b, packed("BERGWERK2", bad));
+        const auto result =
+            load::prepare_wildlife_prefix(scene({packed("INSEL5", b)}), meta.entries, pe, *types,
+                                          inputs(), std::vector<std::uint32_t>{4});
+        REQUIRE_FALSE(result);
+        REQUIRE(result.error().diagnostic);
+        const auto& out = *result.error().diagnostic;
+        REQUIRE(out.boundary);
+        CHECK(out.boundary->tag == "BERGWERK2");
+        CHECK(out.boundary->source.header == 4);
+        CHECK_FALSE(out.islands[0].headers.back().bergwerk_nodes_added);
+        CHECK(out.islands[0].headers[3].bergwerk_nodes_added == 4);
+        CHECK(out.islands[0].bergwerk_entries.size() == 1);
+        CHECK(out.islands[0].bergwerk_nodes.size() == 4);
+        CHECK(out.islands[0].resource.variation[0] == 64);
+        CHECK(out.consumed == 1);
+    }
+    // ENTRY validation is per source item; earlier entries in this header stay diagnostic.
+    auto b = bergwerk_base();
+    auto payload = bergwerk_entry(7, 6, 1);
+    append(payload, short_entry);
+    append(b, packed("BERGWERK2", payload));
+    const auto result = load::prepare_wildlife_prefix(scene({packed("INSEL5", b)}), meta.entries,
+                                                      pe, *types, inputs(), {});
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().diagnostic);
+    const auto& out = *result.error().diagnostic;
+    REQUIRE(out.boundary);
+    CHECK(out.boundary->source.record == 1);
+    CHECK(out.islands[0].headers.back().records == 1);
+    CHECK_FALSE(out.islands[0].headers.back().bergwerk_nodes_added);
+    CHECK(out.islands[0].bergwerk_nodes.size() == 4);
+    CHECK_FALSE(out.complete_local_records);
+}
+
 TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported boundary") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
@@ -645,9 +834,9 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
     CHECK_FALSE(out.islands[0].complete_local_records);
     CHECK(out.boundary->source.island == 0);
     CHECK(out.boundary->source.slot == 11);
-    CHECK(out.boundary->source.header == 50);
+    CHECK(out.boundary->source.header == 51);
     CHECK(out.boundary->source.record == 0);
-    CHECK(out.boundary->tag == "BERGWERK2");
+    CHECK(out.boundary->tag == "OCCUR");
     CHECK(out.boundary->reason.find("unsupported intervening header") != std::string::npos);
     const auto raw_islands = fmt::insel::islands(bytes);
     REQUIRE(raw_islands);
@@ -670,11 +859,61 @@ TEST_CASE("wildlife prefix: original Tutorial stops at its first unsupported bou
         CHECK((is.resource.variation[i] & 15U) == (fertility[i] & 15U));
         CHECK((is.resource.variation[i] & 240U) == high[i]);
     }
-    std::cout << "FERTILITY_REAL header=49 bytes=16384 changed=8160 next=50/BERGWERK2\n";
+    std::cout << "FERTILITY_REAL header=49 bytes=16384 changed=8160\n";
+    REQUIRE(raw.records[50].name() == "BERGWERK2");
+    CHECK(raw.records[50].payload.size() == 108);
+    REQUIRE(is.bergwerk_entries.size() == 9);
+    REQUIRE(is.bergwerk_nodes.size() == 20);
+    CHECK(is.headers[50].records == 9);
+    CHECK(is.headers[50].bergwerk_nodes_added == 20);
+    CHECK_FALSE(is.headers[51].bergwerk_nodes_added);
+    // The installed payload is independently read here without publishing its records.
+    const auto payload = raw.records[50].payload;
+    std::vector<std::optional<std::uint64_t>> heads(is.bergwerk_chunks.size());
+    std::uint64_t node_index = 0;
+    for (std::uint64_t i = 0; i < is.bergwerk_entries.size(); ++i) {
+        const auto packed_word = fmt::u32_le(payload, i * 12 + 8);
+        const auto expected_x = (packed_word % 4096 + raw.x) % 65536;
+        const auto expected_y = ((packed_word / 4096) % 4096 + raw.y) % 65536;
+        const auto expected_rotation = (packed_word / 16777216) % 4;
+        const auto& e = is.bergwerk_entries[i];
+        CHECK(e.world_x == expected_x);
+        CHECK(e.world_y == expected_y);
+        CHECK(e.local_x == packed_word % 4096);
+        CHECK(e.local_y == (packed_word / 4096) % 4096);
+        CHECK(e.rotation == expected_rotation);
+        CHECK(e.source.header == 50);
+        CHECK(e.source.record == i);
+        const auto width = expected_rotation % 2 ? 4U : 3U;
+        const auto height = expected_rotation % 2 ? 3U : 4U;
+        for (auto by = expected_y - expected_y % 8; by < expected_y + height; by += 8)
+            for (auto bx = expected_x - expected_x % 8; bx < expected_x + width; bx += 8) {
+                const auto chunk = ((by - raw.y) / 8) * ((raw.width + 7U) / 8) + (bx - raw.x) / 8;
+                REQUIRE(node_index < is.bergwerk_nodes.size());
+                const auto& n = is.bergwerk_nodes[node_index];
+                CHECK(n.entry == i);
+                CHECK(n.chunk == chunk);
+                CHECK(n.offsets == ((expected_x - bx) % 16 | ((expected_y - by) % 16) * 16));
+                CHECK(n.rotation == expected_rotation);
+                CHECK(n.mask == 16);
+                CHECK(n.kind == 1);
+                CHECK(n.next == heads[chunk]);
+                heads[chunk] = node_index++;
+            }
+    }
+    CHECK(node_index == 20);
+    std::uint64_t active = 0;
+    for (std::uint64_t i = 0; i < heads.size(); ++i) {
+        CHECK(is.bergwerk_chunks[i].head == heads[i]);
+        CHECK(is.bergwerk_chunks[i].resource_flags == (heads[i] ? 2 : 0));
+        active += heads[i].has_value();
+    }
+    CHECK(active == 8);
+    std::cout << "BERGWERK_REAL header=50 entries=9 nodes=20 chunks=8 next=51/OCCUR\n";
     CHECK(out.islands[0].resources.size() == 4760);
     CHECK(out.islands[0].spawns.empty());
     CHECK(out.consumed == 4589);
-    REQUIRE(out.islands[0].headers.size() == 51);
+    REQUIRE(out.islands[0].headers.size() == 52);
     CHECK(out.islands[0].headers[33].records == 0);
     REQUIRE(out.islands[0].headers[33].water_mask_updates);
     REQUIRE(out.islands[0].headers[34].water_mask_updates);

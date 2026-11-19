@@ -174,3 +174,12 @@ Historical frozen boundaries above remain predecessor evidence; current executio
 continues once through header 49 and stops before BERGWERK2 header 50. Global
 post-island callbacks and the previously documented derived-cache integration
 remain outside this transient projection.
+
+## BERGWERK2 continuation (2026-11-19)
+
+The [resource-list header contract](wildlife-bergwerk.md) adds owned typed entries,
+per-chunk nodes, prepend links and the represented presence bit. This is separate
+from OCCUR ore occurrences and quantities; normal scenario/deposit imports remain
+unchanged. The same stream processes header 50, then stops before OCCUR header 51.
+Historical frozen boundaries remain predecessor evidence; post-island/global
+initialization and the existing omitted-cache integration obligations are unchanged.

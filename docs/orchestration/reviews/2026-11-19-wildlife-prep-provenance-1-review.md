@@ -54,3 +54,16 @@ No reused-world, global PRNG, navigation/raster/graphics or whole-postload/World
 claim follows. Those calls and the absent-data producer remain later dependencies.
 Ground-facts predecessor CI is still separately pending; continuation is not a
 waiver or terminal acceptance. Executor reports directly here; main untouched.
+
+
+## Exact-head hosted closeout, 2026-11-19
+
+ACCEPTED within the reviewed bounded provenance scope at corrected head
+`0a30d44a6214b2c3e1d6859fb5a65b7c1c3b4719`, with its P3 retention wording
+independently re-reviewed and closed. All12 exact-head jobs, including five C++
+lanes and aggregate gate, succeeded in
+[44494353183](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44494353183).
+Public jobs receipt SHA256
+`9640fb0b00ada7b1053e4d405085cfb7e4cf01eda51434f81e4ff32133db3f07`.
+No test rerun; earlier pending status is historical. The absent-data path remains
+partial, and no whole-loader or original-runtime claim is added.

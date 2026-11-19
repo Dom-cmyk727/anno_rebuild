@@ -17997,3 +17997,61 @@ Decisions and reasoning:
 - Keep resource payloads typed and unknown spawn fields unknown; explicit disjoint flag context prevents invented zeroes.
 - Reuse reviewed local stages, with three draw domains and completed failure artifacts; no native-runtime completeness claim.
 QUESTIONs: none within this bounded profile. STOP for orchestrator review; no gameplay continuation started.
+
+## WILDLIFE-ORDINARY-GEOMETRY-1 — 2026-11-19 — READY FOR CONTRACT REVIEW
+
+Branch `task/WILDLIFE-ORDINARY-GEOMETRY-1`, reviewed base 1f8d45a2; dispatch d9a75f89 G0–G5, no merge/rebase.
+Tested `9de8277650b1ca87386fb64606694fb0b8b92793`, tree `dabfca4d1d991b349be982585bd010257040709c`; later delta documentation/report only.
+[Read/next contract](../re/wildlife-ordinary-geometry.md), [receipts](evidence/wildlife-ordinary-geometry-1.md).
+G0: actual imported Tutorial token 21/header 71/position 47 selects type 528 after saved goods 0 search.
+Actual completed tile 419/kind 225/output 70, not cave; island receiver remains distinct from manager/type.
+G1: Welt 0x10092cad–0x10092cf9 origin u16/chunk u8/packed 3-bit arithmetic, 32-bit registers, maximum 67582.
+Four outcomes 0/1/2/3 =low-low/high-low/high-high/low-high; exact operation/spill table in note.
+Constants a=11184811/2^26, scale 1; high=(tile+1)*scale-scale*a, not separately rounded 5/6.
+Tile 1 nearest high 0x3feaaaab versus shortcut 0x3feaaaaa: hand-derived distinguishing control.
+At fixed RC horizontal PC 24/53/64 invariant on original widths; no new engine cap/rounding policy.
+G2: three island tables 0x100ca19c/0x100ca530/0x100cac2c +0xa0 all 0x10084cc0; constructor proof named.
+Provider 0x10084cc0–0x10084e00 truncates X/Z, reads I+0x14/W+1 four unsigned corners, float-table lookup.
+Not object height/GFX/mean; exact triangles A/C/B then B/C/D via 0x100b5390–0x100b569b.
+Edge bounds inclusive, first triangle wins diagonal; binary32 spills and asymmetric retained heights specified.
+Both failures return initialized +0; no safe native outside-grid bounds check or invented border policy.
+Prepared Terrain owns interior HEIGHT; proved fresh final row/column zero; runtime custom corners unavailable.
+G3: table 0x1007c760 retained c additions + binary32 stores; c=5368709/2^27, not h/25 multiplication.
+Independent table/callback PC/RC parameters. Known startup PC 53 does not establish runtime RC/thread/CW.
+Reference uses integer/Fraction rounding only; no host float or chosen faithful original numeric context.
+Normal finite interior subset stated; subnormal/nonfinite/negative table and directed signed-zero endpoint refuse.
+G4: 25 hand vectors = 14 position/4 table/7 height, expectations authored before first run; all first agree.
+Nonflat 4 offsets, exact/ULP diagonal, large 67582, directed RC, PC 24/53 table 6, original flat 48 witness.
+Tutorial world 111/45 local 87/21 corners 48/48/48/48: table 53/nearest Y 0x3ff5c28f, authored draw 6.
+No original runtime execution claim; source SHA and source/table/spill proof in evidence.
+Public CLI contract 11 checks; wrong expected exits 1; empty/malformed/missing/unknown profile exits 2.
+3 actual mutants rejected: rounded-high shortcut, doubled height-table scale, strict diagonal.
+Echo-only reference fails contract on deliberately wrong expected output; no self-baseline claim.
+Initial wrapper readonly-zsh-status failure preserved; negative ran already, no gate interrupted/restarted.
+G5 `cache/wildlife-ordinary-geometry-1/reference-gate.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+2 unique required/main checks, 0 skips/empty/incomplete/refusals/timeouts, no whole-gate rerun.
+Log SHA256 `bd67d0d379e713277aa51274ab57e4f76484f1048d3ee53f383c9119d4873c18`; six tested input hashes/copies retained.
+Two Python CTest registrations/configure only, no C++ build or sanitizer needed for this reference packet.
+JSON/syntax/diff/new file links and lint pass; 0 src changes, pins unchanged, prior 116 import artifacts intact.
+Closeout 33 artifacts SHA256 `effe2f012ae17bf4c53e416587d4647c4512fd6ccca0e0eb698d9135d18f0fa3`; actual primary listings private/cache-only.
+Hosted exact-head CI read after ordinary own-branch push; no hosted acceptance inferred while pending.
+Proposed next: conditional source-geometry adapter ->existing creation-effects with explicit table/CW provenance.
+No World/manager/coordinates policy or native success inferred. Observe actual runtime context first or keep it supplied.
+[Windows observation proposal](../testing/wildlife-ordinary-geometry-capture.md) reuses raster card safeguards, no dispatch.
+Known unknowns: original helper entry CW/thread, actual initialized table profile, arbitrary runtime corner changes.
+NOT_RUN: original/HE/x87 runtime, Windows card/adapters, production geometry/World/save/default/identity,
+C++ builds/ASan, broad/full/heavy/opening/pins/renderer/raster/nav/caves/predators/animal AI.
+Decisions and reasoning:
+- Pin island receiver and two-triangle spill schedule before reference; never substitute an average or renderer API.
+- Keep exact rational arithmetic, stored binary32 values and two independent numeric contexts separate.
+- Supply/validate unknown runtime profiles explicitly; never turn a successful authored flat patch into native parity.
+- Reuse reviewed source bindings/FP history and run only the two new public reference checks.
+QUESTIONs: no guessed rule. Orchestrator disposition needed for conditional adapter versus Windows observation first.
+STOP for independent contract review; no production implementation started.

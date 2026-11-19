@@ -15,7 +15,8 @@ Zero-extend origin words I+4/+6, chunk bytes +0/+1, and packed spawn byte +8;
 `tz = origin_z + 8*chunk_z + ((packed >> 3) & 7)`. Packed high bits ignored.
 The additions use 32-bit registers; the source-width maximum is 67582, so no
 signed overflow occurs on this actual byte/word profile. This is not an engine cap.
-The already reviewed actual tile type is ordinary (not kind 0x145). Selection
+The already reviewed completed cell has actual object 419, kind 225, output-0
+goods 70 (independent final-field oracle row 47), so it is ordinary, not 0x145. Selection
 ultimately yields figure type 528: the horizontal branch precedes species selection,
 so 528 does not itself choose the position. Receiver remains the same island.
 
@@ -209,3 +210,17 @@ identity receipts are in the handoff; original execution and original CW remain 
 reuses existing identity/context safeguards. No separate Windows assignment or
 new owner FP policy is requested here. The orchestrator may release a conditional
 source-geometry implementation or obtain those runtime facts first.
+
+## Acceptance reconciliation (independent review pending)
+
+| Requirement | Distinguishing evidence | Current result |
+|---|---|---|
+| Real ordinary receiver | island tables +0xa0 all 0x10084cc0; actual 419/kind225, selected528 distinct | D/P, no manager substitution |
+| Four horizontal choices | authored four offsets; tile-1 high shortcut mutant | 14 position vectors agree; mutant rejected |
+| Terrain provider | I+0x14/W+1, raw corners vs object height, two triangle edge spills | D, 7 height vectors agree |
+| Branch boundary | exact diagonal versus next X ULP; strict-edge actual mutant | first versus second decision distinguished |
+| Stored table/profile | retained c additions; independent PC24/53 table6 | 4 table vectors agree; wrong scale rejected |
+| No chosen original CW | explicit independent profiles, unknown/malformed profile refused | conditional only; Windows NOT_RUN |
+| Oracle cannot echo | changed expected fails, echo-only fails contract | executed negative control |
+| Source witness | raw Tutorial four corners48/current tile419; authored draw6 | raw decode plus flat-height hand example, not original execution |
+| No engine/state changes | no src delta, unchanged pins/import artifacts | preservation receipts retained |

@@ -48,3 +48,13 @@ arithmetic/compatibility decision remains separate and pending.
 
 The executor ordinary-pushes its task branch and reports directly to this
 orchestrator for review and the next bounded task. Main untouched.
+
+## Terminal CI and acceptance
+
+RASTER-CONTRACT `8217e1879aead7fa3b451c155b060f0a05405874` is now **ACCEPTED**
+within the conditional research scope. CI 44461780207 has all 12 jobs successful
+at that exact head, including all five C++ jobs and the aggregate gate. Hosted
+jobs receipt SHA-256:
+`64f467fae84f1d679d8a2247a829835a576cc1965265490d5d696f2ad0de9a1e`.
+No local gate repeated. Original runtime FP conditions remain unobserved; the
+subsequent reviewed capture card is a request, not completed Windows evidence.

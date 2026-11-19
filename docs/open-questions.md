@@ -3913,3 +3913,48 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Question:** View.dll `0x1002bb4f` creates the eight `VIEWBAUTAB` gadgets (class `0xb0d`, 42 x 46) without a position in that loop. Which code or resource places tab k at (762, 303 + 46k), and does the gadget class's hit test use the full gadget rectangle?
 - **What we know:** the positions are measured, sprite-565 exact on nine GOG shots (docs/re/ui.md 2.4); the other views' sub-tab columns sit at the same place (section 5.4), so a shared tab-column parent probably stacks them. The rebuild's hit area is the drawn rectangle; every GOG shot is consistent with it, and OQ-714's overlap with grid column 0 is gone because the tabs end at x 803.
 - **How to resolve:** read class `0xb0d`'s layout and hit-test slots (the parent passed at `0x1002bba3`, `[ecx]+0x7c`), or a GOG capture of a press at (805, 330).
+
+## OQ-764: The exact road reshaper `AnnoWelt 0x1007cc40` (BUILDINGS-REF-2, 2026-11-19; OPEN)
+- **Question:** When is a one-neighbour tile an end piece (2508/2528) and when does it stay a straight piece (the corpus has both), which neighbour rewrites does the reshaper emit, and what do its mode byte and flag `0x10` do?
+- **What we know:** `docs/BUILDINGSOBJECTS.md` part B 10.1 items 7-8: the structure is read (four neighbours by `0x1007e8b0`, classification `0x1007ef60`, output `0x1007ece0`); the id/rotation table is derived from 42,000 shipped tiles (P), 90-100 % per id.
+- **How to resolve:** Decode `0x1007cc40`, `0x1007e8b0`, `0x1007ece0`, `0x1007ef60`, `0x1007f960`, `0x10080610`, `0x1008bae0` (packet RE-ROADS-2, 3 h) or emulate the function on the corpus.
+
+## OQ-765: Is a reshaped slope-class road piece refused on water at commit? (BUILDINGS-REF-2; OPEN)
+- **Question:** The corner, T, cross and end pieces are class `0x1186` and need `rec[8] >= 32`, so they cannot stand on water while the flat straight piece can. Does the kind-9 apply re-check the reshaped records, and what does the ghost show?
+- **What we know:** Part B 10.1 items 6-7: the per-tile cursor check has no terrain test; the dry reshaper call only computes the record list.
+- **How to resolve:** Read the kind-9 apply in `0x100589a0` and the ghost write with flag `0x80000000`, or one Wine capture of a road dragged into the sea with a turn in it.
+
+## OQ-766: Bridges: the 20-tile scan and which cursor places them (BUILDINGS-REF-2; OPEN)
+- **Question:** Which cursor places 2516, 2517, 2536 and 2537 (the menu arms only the grand bridge 2518), and what does the scan of up to 20 tiles in `0x1007d917`-`0x1007dc52` do?
+- **What we know:** Part B 10.1 item 7: bridge ids get their own pass in the reshaper; the road cursor checks 2518/2519 as 2500.
+- **How to resolve:** Read the bridge pass and the view cell callback (OQ-729).
+
+## OQ-767: Who darkens the map outside the range in road mode? (BUILDINGS-REF-2; OPEN)
+- **Question:** HE darkens everything outside the Kontor/market range while a road is armed (`ui_10` 10:48-11:13). Which layer does it, and does GOG do the same?
+- **What we know:** No instruction in `tCursorAnlageStrasse` input `0x1004b290` or draw `0x1004b7f0` does it (part B 10.1).
+- **How to resolve:** Search the chunk draw for an owner-mask test keyed on the armed cursor, or compare a GOG capture with a road armed.
+
+## OQ-768: Does a demolished footprint get anything back? (BUILDINGS-REF-2; OPEN)
+- **Question:** The clear arm of `0x10082c30` leaves bare ground; the replacement arm (high nibble of the `island +0x18` grid) is unread. Could it restore a tree or ground?
+- **What we know:** Part B 10.2 and part D 3.1 (R8): HE shows trees reappearing only outside the footprint after placing, nothing about demolish.
+- **How to resolve:** Read `0x100835f1`-`0x10083807` and the writer of the `+0x18` grid (road-placement U-R5, OQ-201), or watch demolish in HE.
+
+## OQ-769: The Kontor's footprint against its sprite in the owner's session (BUILDINGS-REF-2; OPEN)
+- **Question:** Which 16 tiles does the placed Kontor occupy, relative to its drawn sprite, in the session where the sheep farm was refused beside it?
+- **What we know:** Part B 10.2: all refusals reproduced in a fresh session are building footprints; frame 4:52 shows the refused rectangle inside the Kontor's 4x4 footprint (L).
+- **How to resolve:** Dump the city's building footprints from the owner's command log, or add the occupied-footprint outline (UI-GHOST-2).
+
+## OQ-770: Where is the yellow highlight of a selected building drawn? (BUILDINGS-REF-2; OPEN)
+- **Question:** HE draws a selected building in yellow with its panel (`ui_10` 7:14). Which code draws it in GOG, and what is its exact look (colour, width, footprint or sprite outline)?
+- **What we know:** Part B 10.3: the unit rubber band is yellow `0xffff00` (`0x1004f430`); `tCursorInfo`'s draw `0x10050190` draws order markers only.
+- **How to resolve:** Follow the tile-object selection's hand-off `0x10077730` and the selection kind 4 in the view/scene, or zoom the HE frames.
+
+## OQ-771: The pick masks of the Info cursor (BUILDINGS-REF-2; OPEN)
+- **Question:** What do the masks `0x4000` (move) and `0xc0000` (click) of `AnnoFrame 0x10050030` select, and what does the pick return for a click over a building versus the ground under it?
+- **What we know:** Part B 10.3 item 2: hit classes by the top nibble (`0x1004f7e0`).
+- **How to resolve:** Read the view's pick slots `+0x90`/`+0x94`.
+
+## OQ-772: Tile-object selection: kind 5 and the panel hand-off (BUILDINGS-REF-2; OPEN)
+- **Question:** What does selecting several tile objects (kind 5, `AnnoWelt` vtable `0x100c20f4`) do, how does `0x10077730` open the panel, and what does the unit pick `0x10050b90` do for ships?
+- **What we know:** Part B 10.3 items 3-4: kinds 2, 3, 4, 5 and the validity rule (PRODTYPE group at most `0xa0`).
+- **How to resolve:** Read `0x10019c20`, `0x10077730` and `0x10050b90`.

@@ -16778,3 +16778,63 @@ locks the cell, never switches the category. Compare with HE `ui_9` 2:25-2:30.
   (`r2_place_pioneer_house` shows public selected).
 
 READY FOR REVIEW.
+
+## BUILDINGS-REF-2: roads, over-building, selection (research, docs only) — 2026-11-19 — READY FOR REVIEW
+
+Branch `task/BUILDINGS-REF-2`, base candidate `95897a55`. Docs only: `docs/BUILDINGSOBJECTS.md` part B section 10
+(10.1 roads, 10.2 what may be built over, 10.3 selection and highlight, 10.4 questions), the gap table (rows 16-20),
+OQ-764..772 in `docs/open-questions.md`. No code, no build, no `game/` change; the existing `anno1503.exe` was run in
+short headless scripted sessions (CPU renderer, `tools/test/viewer_wiring.py`; scripts and logs in `cache/bref2/`,
+git-ignored). Evidence contract: static disassembly (D), parsed files and the 50-scenario corpus (P), scripted rebuild
+sessions (S), owner's HE frames (H, pixels only); no original executed, no executed test suite (NOT_RUN: none claimed).
+
+**Findings in short.**
+- **A, roads.** L drag (long axis first, y first on ties), at most 40 tiles, every tile in own territory (owner != 15), one
+  city, no dirt over cobblestone, re-laying a road of the same family is free, per-tile random variant byte, commit kind 9
+  of the valid prefix, no radius outline, yellow empty rectangle on refusal, stays armed. The flat straight piece has no
+  terrain test, so roads can stand on territory sea tiles (HE agrees); corner/T/cross/end pieces are slope-class and
+  need level >= 32. The reshaper `0x1007cc40` picks them; its id/rotation table is derived from 42,000 shipped tiles.
+  **The rebuild's sim already places land roads (`Applied`, 5 gold per tile) but the picture draws no runtime tile object
+  (`NoVisualChange`), which is why the owner could not place roads.** The drag is also a straight line, with no ghost.
+- **B, over-building.** Trees, fields, dry crops and stones (flag bit `0x20`) may be built over by everything; rocks,
+  cliffs, rivers, buildings and roads may not (as the sim does). The placement removes the footprint's objects; demolish
+  leaves bare ground. In HE the ghost hides the trees under the footprint. `Occupied` in the sim is always a building
+  footprint: on island 1 every window is forest, and in a fresh session all four refused tiles are `Applied`; the next
+  click overlapping the first farm is `Occupied`. In the owner's frames the refused tiles lie in the Kontor's 4x4
+  footprint (invisible beyond its sprite) or on a drawn farm.
+- **C, selection.** Nothing armed: `tCursorInfo`; a click on a building selects it (tile-object selection, kind 4/5); only
+  PRODTYPE <= 192 (production to market stalls) is selectable; roads, fields, trees are not; market/Kontor opens the
+  warehouse, a gate toggles; with a building armed a click places. Types 104/708 are crop objects refused at arm time
+  (`not in the tool's cycle list`). The rebuild selects only with the tool off and nothing armed, with a title text and
+  no yellow outline.
+
+**Decisions and reasoning.**
+1. The shape table is reported as P (data) with its caveat, not as D: `0x1007cc40` (about 3,000 instructions) was read only
+   for structure in the time given; wrong claims about the autotiler would mislead ROADS-2.
+2. The owner's four "refused" tiles are not claimed to be reproduced: they are `Applied` in a fresh session. The cause is
+   stated as building footprints (D + S) and located by two frames (H, L), because the owner's session state is not saved.
+3. `DevInput::line` (straight line) and the missing picture object are listed as separate gaps (G1 vs G2/G3): fixing the
+   path without drawing would still look like "cannot place".
+4. The selection rule rests on the kind-4 validity function `0x10019740`; the GOG highlight draw was not found and is OQ-770
+   rather than guessed. HE pixels fix the look until then.
+5. No code was changed: the owner asked for research and a plan; every claim carries its tag.
+
+**Implementation plan (sim vs UI, sizes).**
+| Packet | Part | Size | Depends on |
+|---|---|---|---|
+| ROADS-0 PICTURE-OBJECTS-1: tile-object deltas into the picture, road draw, trees removed under a footprint | app + render | 4-5 h | - |
+| ROADS-1 SIM-ROADS-1: L path, per-tile check, no downgrade, same-family free, prefix commit | sim | 4 h | - |
+| ROADS-2 SIM-ROADSHAPE-1: reshaper from the table (+ RE-ROADS-2, 3 h, for the residual) | sim | 4-6 h | ROADS-1 |
+| ROADS-3 UI-ROADS-1: press-hold L drag, ghost path, blinking tail, yellow rectangle, stay armed | app | 3-4 h | ROADS-0, 1 |
+| ROADS-4 UI-RANGE-1: darken outside the range in road and building mode | app | 2 h | - |
+| UI-GHOST-2: ghost hides objects under the footprint, yellow refusal rectangle, occupied-footprint outline | app | 2-3 h | ROADS-0 |
+| UI-SELECT-1: yellow footprint outline of the selected building (HE pixels); UI-SELECT-2: market click opens warehouse | app | 3 h + 2 h | - |
+| ROADS-5: bridges 2518/2536, ramps, the 20-tile scan | sim + app | 5 h, later | OQ-766 |
+Suggested order for the owner's next test: ROADS-0, ROADS-1, ROADS-3 (a road he can see, drag and afford), then UI-GHOST-2.
+
+**What I could not settle.**
+- The reshaper's exact algorithm and the commit-time check of reshaped pieces on water (OQ-764, OQ-765).
+- Who darkens the map outside the range (OQ-767); where GOG draws the selected-building highlight (OQ-770).
+- The exact blocking tiles in the owner's session (OQ-769; needs his command log or a footprint outline).
+- Whether demolish restores anything (OQ-768, the unread replacement arm).
+- Not run: any original or HE; the executed evidence is the rebuild's own scripted sessions and static reads.

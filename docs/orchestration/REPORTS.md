@@ -18055,3 +18055,32 @@ Decisions and reasoning:
 - Reuse reviewed source bindings/FP history and run only the two new public reference checks.
 QUESTIONs: no guessed rule. Orchestrator disposition needed for conditional adapter versus Windows observation first.
 STOP for independent contract review; no production implementation started.
+
+### WILDLIFE-ORDINARY-GEOMETRY-1 — focused P2 correction — READY FOR CONTRACT REVIEW
+
+Tested `9eab0e52acdd57a9e40ea19e48f8402c0c8d5184`, tree `34204133caf43e38d2e28a1fa2c1c9074992a901`; subsequent delta report/evidence only.
+Review found ignored callback PC/RC and omitted left-height spill survived original 25 vectors.
+Re-derived all three separating cases before execution; derivations in read/evidence and cache fix1.
+Appended 4 height vectors: RC up versus existing nearest, PC24 versus PC53, required left spill.
+Expected words 0x3f000001/0x3f000000 and 0x3f7fffff versus omitted 0x3f800000 proved by midpoint gaps.
+All original 25 expectations preserved; now 29 vectors (14 position/4 table/11 height).
+Height-local ignore-RC/ignore-PC/omit-spill mutants each pass original25, then fail exactly one
+corrected numeric Y assertion (rows25/26/28); all other controls execute/pass. Contract now 14 checks.
+Only the two canonical checks rerun, `cache/wildlife-ordinary-geometry-1-fix1/reference-gate.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+Log SHA256 `634ba91b4a90a340e48c74920fbe8d0c08c1912c01ce76bcc2db862d3048ea6d`; six corrected inputs frozen/verified, prior33 receipts intact.
+Fix closeout 23 artifacts SHA256 `ca1bbd3c568f3fa60ad7c302d6bfa5b9322790e1f44fe24e9f7bdc2fc3412ff4`; reference algorithm unchanged.
+NOT_RUN remains original/HE/x87/Windows, production implementation, C++/sanitizer/full/heavy/pins.
+Decisions and reasoning:
+- Qualify table and callback contexts independently; explicit parameters require distinguishing callback examples.
+- Preserve first receipts and append hand vectors; challenge the actual height-local operations, not generic output shape.
+QUESTIONs/next boundary unchanged: conditional adapter versus runtime observation first. STOP for orchestrator review.
+Primary review P3 docs corrected: left-height FSTP address 0x100b5649, following FADD 0x100b5646.
+Stored-edge comparison claim now names query-edge admission; prior extended orientation comparison is
+invariant only for the admitted interior unit-cell profile. No broader helper claim or repeated gate.

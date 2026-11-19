@@ -80,7 +80,7 @@ through Q; named S stores round to binary32, and operands already stored stay st
 | span | d=S(Cz-Az); unused middle delta S(Bz-Az)=0; e=S(Cz-Bz) |
 | intersections | t=S(qz-Az); L=S(((Cx-Ax)*t)/d+Ax); u=S(qz-Bz); R=S(((Cx-Bx)*u)/e+Bx) |
 | admission | L<=R here; accept L<=qx<=R, including equality; otherwise return false |
-| left height | v=S(((Cy-Ay)*t)/d+Ay), at 0x100b5646 |
+| left height | v=S(((Cy-Ay)*t)/d+Ay), at 0x100b5649 (preceding FADD at 0x100b5646) |
 | right height | w=((Cy-By)*u)/e+By, retained x87 |
 | final height | if L==R use w; else S(((w-v)*(qx-L))/(R-L)+v), at 0x100b5687 |
 
@@ -93,8 +93,10 @@ through Q; named S stores round to binary32, and operands already stored stay st
 | left height | v=((Cy-By)*t)/e+By, retained |
 | final height | S(((w-v)*(qx-L))/(R-L)+v), at 0x100b54e2 |
 
-D: comparisons use the stored edge words; do not choose a triangle solely from
-exact fractions before those stores. Equality goes to first triangle if it succeeds.
+D: query-edge admission comparisons use the stored edge words. The earlier
+orientation comparison retains an extended edge; its orientation is invariant for
+the admitted interior unit-cell profile. Do not choose a triangle solely from
+exact fractions before the edge stores. Equality goes to first triangle if it succeeds.
 The formulas above cover ordinary interior offsets, not arbitrary degenerate
 triangles or nonfinite inputs. No branch-boundary tolerance is introduced.
 

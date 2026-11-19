@@ -52,7 +52,9 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife load-thread numerics [WILDLIFE-RASTER-FP-1](tasks/wildlife-raster-fp-1.md) | ACCEPTED research/capture card; Windows observation pending | `aec8bcc8fc1a35230dffba91c8e8b34c35f31bf3`; production base `889143ba` | [44464134541](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44464134541), all 12 jobs successful | [Review and Windows intake](reviews/2026-11-19-wildlife-raster-fp-1-review.md) |
 | Wildlife ground preparation [WILDLIFE-PREPROCESS-CONTRACT-1](tasks/wildlife-preprocess-contract-1.md) | ACCEPTED bounded preprocessing contract | `54798a4b5f5bc8a2c65874ea375441b7cca9e21f`; production base `889143ba` | [44467047682](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44467047682), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-preprocess-contract-1-review.md) |
 | Wildlife numerical preparation [WILDLIFE-GROUND-PREPARE-1](tasks/wildlife-ground-prepare-1.md) | ACCEPTED; isolated UNWIRED numerical leaf | `5bdfd92ac01a70656a718cea4f7c7405445b41d5`; tested `92c17db` | [44469519552](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44469519552), all 12 jobs successful | [Review](reviews/2026-11-19-wildlife-ground-prepare-1-review.md) |
-| Wildlife growth source [WILDLIFE-GROWTH-LOAD-1](tasks/wildlife-growth-load-1.md) | CHANGES REQUESTED; [focused reference correction](tasks/wildlife-growth-load-1-fix.md) released | `e89409e17b6173c442fddfa959f70de781689678`; tested `0dc52331` | [44475449514](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44475449514), in progress; cannot waive reference discrepancy | [Review](reviews/2026-11-19-wildlife-growth-load-1-review.md) |
+| Wildlife growth source [WILDLIFE-GROWTH-LOAD-1](tasks/wildlife-growth-load-1.md) | LOCAL REVIEW APPROVED; P2 closed, hosted acceptance open | `fe4355fd719fad0ecafbe9322788f4b7d885a7af`; tested `464e4935` | [44478146499](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44478146499) pending; old 44475449514 ASan test step failed, cause unresolved | [Focused review](reviews/2026-11-19-wildlife-growth-load-1-review.md) |
+| Wildlife climate kernel [WILDLIFE-KERNEL-LOAD-1](tasks/wildlife-kernel-load-1.md) | RELEASED; independent unwired source binding | Locally reviewed base `fe4355fd`; pending CI explicitly retained | New task CI at handover | Direct reportback to Mac orchestrator |
+| Windows dual-edition navigation [WIN-NAV-EDITIONS-1](tasks/windows-nav-editions-1.md) | Owner-requested HANDOFF READY; Windows intake pending | Accepted diagnosis `74d50bfe`, production base `889143ba` | GOG and HE verification requested; no repair released | Owner forwards to Windows orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -72,11 +74,12 @@ with explicit test rules only. Any new policy question stops the dependent step 
 Deleting or rewriting the old public MAC-HEAVY-1 branch is also an owner decision; this dispatch does neither.
 
 Navigation arithmetic: independent NAV-INPUTS review confirms premature wrapping
-and capping in production coarse obstacle heights. The owner is asked to approve
-a faithful correction with coordinated semantic compatibility handling. Saved
-NavMotion/replay can be affected even without a layout change. No identity is
-allocated and no production repair is released pending that decision; the
-secondary-raster contract proceeds independently.
+and capping against the inspected GOG producer. The owner now requests Windows
+verification against BOTH GOG and History Edition before deciding the correction.
+[Detailed Windows handoff](tasks/windows-nav-editions-1.md) records that scope.
+This reply is not repair or identity authorization. Saved NavMotion/replay may
+be affected even without a layout change. No identity is allocated and no
+production repair is released; the Mac source-binding work proceeds independently.
 
 ## Dispatch history (pending CI statements below are historical)
 
@@ -1027,3 +1030,22 @@ reuse unaffected evidence explicitly. No production, generic-parser, identity
 or original-data change. The next kernel-binding packet is prepared and scope-
 reviewed, but NOT RELEASED until this correction passes independent re-review.
 Executor reports directly here; main and earlier evidence remain untouched.
+
+
+## Latest release — kernel source binding; Windows edition comparison requested
+
+GROWTH-LOAD correction fe4355fd passed independent focused re-review; P2 is closed.
+Exact-head CI remains pending and old e89409e1 has an unresolved hosted ASan test
+failure. Root verified all correction receipts. Acceptance is NOT claimed.
+KERNEL-LOAD is released on that locally reviewed base for the bounded original
+PE kernel reader and authored numerical connection, without World/state changes.
+Executor ordinary-pushes its task branch and reports directly here for review;
+no repeated full campaign or unrelated CI repair is requested.
+
+The owner answered the navigation decision by asking for GOG AND HE verification.
+WIN-NAV-EDITIONS-1 is a detailed forwardable Windows handoff with separate edition
+inventories, original-instruction checks, exact arithmetic controls, bounded
+runtime/data work, compatibility assessment and independent review. It stops
+before a repair or identity change. Windows chat intake is pending; this Mac
+publication does not assign other Windows work or claim a message was delivered.
+Main, shared TASKS/STATUS and original files remain untouched.

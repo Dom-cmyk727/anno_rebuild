@@ -58,3 +58,31 @@ No module execution, public original coefficient tables, scene/city/fill/World
 integration or identity change. Owner navigation decision and Windows raster
 capture remain separate. Executor reports the correction directly here; main
 and all previous evidence remain untouched.
+
+
+## Focused correction approved; hosted acceptance remains open
+
+Independent evidence reviewer `/root/review_town_ci_close` APPROVED the correction
+at `fe4355fd719fad0ecafbe9322788f4b7d885a7af`, tested source
+`464e49350a8a6208469d34bd03630c515e7e5335`, with no remaining local findings.
+P2 is closed. Legal discarded tails remain discarded; all overflow positions
+refuse. The exact old reference fails the new intended control after legal cases.
+The 39 CLI controls and 13 authored maps agree. Focused Debug and ASan/UBSan each
+pass 3 main cases plus one required contract, no failures/empty/skips/sanitizers.
+Production is unchanged; prior unaffected evidence reuse is justified. Reviewer
+independently confirmed the original 16,384-byte lookup remains identical.
+Root verified all 62 manifest hashes and 27 published receipt rows; no gate repeated.
+
+[Corrected-head CI 44478146499](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44478146499)
+is still pending at this publication. Jobs receipt SHA-256:
+`2c6281c62196d213d9dd82d8e5e5eed82c7fecbe3ed84e167d00e5aad8ad1be0`.
+The earlier e89409e1 run 44475449514 has a FAILED Linux Clang ASan **test** step,
+job 135394843716; build passed. Public annotations contain selected log excerpts
+but do not identify the actual failing test/cause. That failure remains unresolved,
+not waived as infrastructure or attributed to the corrected Python predicate.
+The prior successful local sanitizer result is not a substitute for hosted CI.
+
+This is LOCAL REVIEW APPROVED, not ACCEPTED. Root permits independent stacked
+continuation to [WILDLIFE-KERNEL-LOAD-1](../tasks/wildlife-kernel-load-1.md) on
+fe4355fd while hosted CI/old failure triage remain separate. No production
+navigation correction, version allocation or live wildlife wiring is released.

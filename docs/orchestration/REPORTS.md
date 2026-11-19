@@ -16976,3 +16976,14 @@ READY FOR REVIEW.
   `ctest` and WSL compiles had ended (checked before each one).
 
 READY FOR REVIEW.
+
+### UI-HARVEST-ICON-1 addendum: merge of origin/main (a6468efd, CI pinned to ubuntu-24.04), 2026-11-19
+
+- One clean merge commit `cb0bc47f` on `01f970c1`: no conflicts, no rebase, no code change.
+- Build: msvc Release clean (`cache/gates/build-N-01.log`).
+- Short gate (`cache/gates/ui-harvest-icon-1-N-01.log`): the status_icons cases plus seven required tests,
+  each executed once: `viewer_wiring_status_icon_forester`, `live_screen_matches_oracle`,
+  `ui_dynamic_draw_check`, `info_panel_gog_compare`, `selected_house_pixel_check`,
+  `ui_panels_match_gog`, `ui_mock_matches_oracle`. Selected 8, executed 8, failed 0, empty 0,
+  skipped 0, sanitizer lines 0. **PASS.**
+- The WSL warnings check was not rerun: the merge brought no C++ change to this branch's files.

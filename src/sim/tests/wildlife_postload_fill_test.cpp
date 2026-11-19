@@ -16,6 +16,7 @@
 #include <anno/formats/sha256.hpp>
 #include <anno/sim/hash.hpp>
 #include <anno/sim_load/original_registry.hpp>
+#include <anno/sim_load/wildlife_first_call.hpp>
 #include <anno/sim_load/wildlife_postload_fill.hpp>
 #include <anno/test/game_dir.hpp>
 
@@ -556,7 +557,7 @@ TEST_CASE("wildlife fill: completed zero ground and short HEAD retain proved def
     CHECK(filled.value().island.resource.tiles.walk_code(0) == 4);
 }
 
-TEST_CASE("wildlife fill: original Tutorial first-call leaf under supplied prefix inputs") {
+TEST_CASE("wildlife first call: original Tutorial full fields under supplied prefix inputs") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         std::cout << "SKIPPED: ANNO1503_GAME_DIR not set (original game files unavailable)\n";
@@ -700,8 +701,27 @@ TEST_CASE("wildlife fill: original Tutorial first-call leaf under supplied prefi
     CHECK(result.value().island.terrain->digest == before.terrain->digest);
     CHECK(result.value().island.spawns.size() == 156);
     CHECK(prefix.consumed == 4745);
-    std::cout << "LEAF_ONLY fish=" << fish << " grass=" << grass
+    const auto composed = load::prepare_wildlife_first_call(scene, {0, 11}, anlagen.value().entries,
+                                                            game, *registry.types, supplied, draws);
+    REQUIRE_MESSAGE(composed, (composed ? "" : composed.error().reason));
+    CHECK(composed.value().source_sha256 == fmt::sha256_hex(scene));
+    CHECK(composed.value().ordinal == 0);
+    CHECK(composed.value().supplied.sampled_stamps == supplied.sampled_stamps);
+    CHECK(composed.value().supplied.mode_provenance == supplied.mode_provenance);
+    CHECK(composed.value().fill.fish == 8486);
+    CHECK(composed.value().fill.grass == 1559);
+    CHECK(composed.value().fill.prefix_consumed == 4745);
+    CHECK(composed.value().fill.consumed == 0);
+    auto composed_tiles = composed.value().fill.island.resource.tiles;
+    for (std::uint64_t i = 0; i < composed_tiles.tile_count(); ++i)
+        CHECK(read(composed_tiles, i) == expected[i]);
+    for (std::uint64_t k = 0; k < composed_tiles.chunk_count(); ++k)
+        CHECK(composed_tiles.chunk_digest(k) == expected_digest(expected, composed_tiles, k));
+    CHECK(composed_tiles.cache_consistent());
+    equal(composed.value().fill.island, result.value().island);
+    CHECK(std::all_of(draws.begin(), draws.end(), [](auto v) { return v == 7; }));
+    std::cout << "FIRST_CALL fish=" << fish << " grass=" << grass
               << " unchanged=" << out.tile_count() - fish - grass
               << " prefix_consumed=4745 new_draws=0 "
-              << "postload_order=NOT_RUN original_runtime=NOT_RUN\n";
+              << "scope=source_prefix_first_fill_only original_runtime=NOT_RUN\n";
 }

@@ -42,3 +42,34 @@ immutable Terrain. Modern transactional refusal is an explicit adaptation.
 At contract checkpoint all new C++ tests/mutations/gates are NOT_RUN. Reuse existing
 leaf/reference proof; manual equality to the same composed calls is insufficient.
 No identity/default/tag/state/pin change, absent-ground preparation or runtime caller.
+
+## Implemented boundary and cheap controls
+
+`WildlifeFirstCallSelection` carries ordinal/expected slot. Errors carry
+`WildlifeFirstCallStage` (Source, Prefix, FillValidation, FillApply), reason and
+only an optional existing diagnostic prefix. `WildlifeFirstCallResult` owns the
+existing fill result, exact source SHA, ordinal and copied/moved supplied context.
+No successful result exposes a caller-supplied prefix as provenance.
+
+The authored fixture's fresh TileLayer starts with walk code 2 (existing reset
+contract); fish and neutral cells preserve it. Grass uses independently authored
+HEAD code 3. Initial expectations incorrectly wrote code 0 in four cells; the
+first failed run and per-channel diagnostic are preserved. Corrected expectations
+trace to reset initialization, not to a changed fill rule. Resource variant 4
+retains high nibble 0x40, hence effective cell 2 ground 0x46 after raw 6.
+
+Cheap checks: 3 cases /117230 assertions pass, including the genuine Tutorial
+with action-map SHA a66cff880b8ca148261ba7b61a9e288d9f4a4a90717546014386c4c2f0971487.
+All 16384 output cells match independent expected fields and chunk digests;
+8486 fish, 1559 grass, 6339 unchanged; prefix supplied draws 4745, fill draws 0.
+Actual private implementation variants bypassing fill, accepting absent ground
+and skipping alignment each fail intended assertions after a legal executable
+control. Canonical source/binary remain unchanged. These direct controls do not
+replace the canonical Debug/ASan gates recorded in the final evidence.
+
+Source/registry/scene buffers are borrowed only during the synchronous call;
+returned tiles and immutable Terrain survive caller-owner destruction. Existing
+validator/prefix implementations remain unchanged. Unknown local headers retain
+their diagnostic draw position but cannot publish first-call success. No external
+RNG cursor exists. Multiple islands, unaligned factory input, missing/unsupported
+ground, reused worlds and later callbacks remain explicitly outside scope.

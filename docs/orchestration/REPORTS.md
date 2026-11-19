@@ -17863,3 +17863,64 @@ Decisions and reasoning:
 - Consume final prepared resource tiles and own facts once; keep cave counts unresolved instead of inventing geometry.
 - Use independent field/cell oracle and causal counterexamples, without World/state/default/identity/PRNG changes.
 QUESTIONs: none in this bounded seam. STOP pending orchestrator review; no live gameplay continuation started.
+
+## WILDLIFE-HABITAT-LOAD-1 — 2026-11-19 — READY FOR REVIEW
+
+Branch `task/WILDLIFE-HABITAT-LOAD-1`, locally reviewed base `454bc2ea96e58481d3b3b48875ef04a5f64ee449`, hosted separate.
+Dispatch `4a56865e` H0–H5 read, no main/board merge/rebase. No predecessor failure reclassified.
+Tested source `5244e570b76eecb0ecf10943bcb7dc578f074bb6`, tree `a5e84058ebfb9e5172fa2459124730e73f0b21a7`.
+Publication docs only; [contract](../sim/wildlife-habitat-load.md), [raw evidence/hashes](evidence/wildlife-habitat-load-1.md).
+H0: actual habitat `Welt 0x10093030–0x10093472`, zero skips before lookup, growing substitutes once, double scores twice.
+Property 7: island table `0x100cac2c` +0xc4→`0x10087c30`, first jump `0x10087c98`→`0x10087c4c`, byte +0xc0.
+INFO writes SAME byte at `0x100897ee` (this saved ESI at `0x1008914c`); not an assumed climate label.
+Score inclusive >=1 for property 5, >=4 otherwise (`0x1009344c–0x1009346b`), no habitat draws.
+H1: `bind_wildlife_habitat_chunk` verifies exact scene/selected geometry/leading INFO/prepared property.
+Final resource plane, whole actual words/one checked growing successor; 100 owned cells, 64 decisions/outcomes.
+Collect actual/successor dependencies then bind source types once; registry only discovers, source cross-check validates.
+Source zero skipped even if type 0 defined; missing/ambiguous/overflow refuses, no unavailable-as-false.
+H2: full interior 8 x 8 plus one halo only; checked origin/stride/all 8 offsets, border refused without invented emptiness.
+H3: explicit source admission before effects; may refuse before occupied retention, not claimed original predicate timing.
+`prepare_wildlife_habitat_maintenance` delegates to unchanged maintenance, explicit records/time/allocation/tokens/draws.
+H4: final 3 synthetic cases/1286 assertions; each growing neighbour, centre, zero, double, thresholds/property/source mismatch.
+Complete array/collision/recycle literal final token order [20,10,30,90], consumed 2/suffix 999; partial keeps old time 12.
+Ownership/repeat/immutability/halo decoys checked. Six actual production mutants reject intended assertions, no mock proof.
+Only overflow test strengthened after causal epoch; unchanged production, test-only strict rerun, snapshot preserved.
+Original Tutorial chunk (10,2), property 2, all 100 raw-source fields/64 outcomes match independent Python oracle.
+2 true positions 39/47; sample 47 only; authored empty records/token 5000/time/draws insert at 47, consumed 1/suffix 999.
+Real region has no growing/double; authored companions cover them, no original content changed. Original case 16481 assertions.
+H5 Debug `cache/wildlife-habitat-load-1/debug.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=17 executed=17 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+ASan/UBSan `cache/wildlife-habitat-load-1/asan.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=17 executed=17 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+19 unique/profile = 4 habitat + 7 chunk + 4 final + 1 materializer actual-only + 1 all-family + 2 leaf controls.
+2 original cases separately required; game directory/3 oracle paths set, jobs 1/threads 2/timeout 180/admission on.
+First gates pass; no refusal/timeout/rerun/skip/empty/incomplete/sanitizer diagnostic. No whole-matrix campaign.
+Apple Clang 21/GCC 15.3 O3/Werror 2 TUs pass; final test TU rechecked, shadow negative rejects; format/lint/diff/links pass.
+0 compiler warnings; inherited duplicate-library linker warning disclosed. Actual Debug/ASan binaries retained.
+1025 frozen identities verified; 292 fixtures unchanged; prior final128/close50/materialize114/chunk110 artifacts intact.
+Closeout 113 artifacts SHA256 `3a297bc17a0554e6cd0e0fe9766fe75e682978aaa654ee3fa816244236ab7277`.
+Publication exact-head CI read after own-branch push; orchestrator owns independent review and hosted closeout.
+NOT_RUN: native border/allocation/manager/context, whole sweep/total draws, geometry/cave provider/creation/first action,
+original/HE runtime, Windows/WSL, LeakSanitizer, broad/full/heavy/opening/pins. No state/default/identity/PRNG/nav/FP change.
+Decisions and reasoning:
+- Prove property getter to INFO source and pair exact scene; accept no free numeric climate claim.
+- Keep actual/resolved words distinct; habitat-only substitution cannot alter materialization or source tiles.
+- Admit interior halo separately from original retention; unavailable metadata refuses instead of invented false.
+- Reuse unchanged habitat/maintenance/type binders; compose explicit local context, no live-fauna claim.
+QUESTIONs: none within this bounded profile. STOP pending orchestrator review; no gameplay continuation started.

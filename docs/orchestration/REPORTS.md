@@ -17609,3 +17609,23 @@ Decisions and reasoning:
 - Preserve original retained-default WARE path only where fresh construction proves zero; unsafe/ambiguous input refuses.
 - Keep selection/accounting separate from creation and reuse unchanged selectors, references and prior unaffected evidence.
 QUESTIONs: none for this bounded profile. STOP pending orchestrator final source/evidence review.
+
+## WILDLIFE-CHUNK-PLAN-1 — 2026-11-19 — C0 QUESTION checkpoint
+
+Released branch `task/WILDLIFE-CHUNK-PLAN-1` from `f5f1c9fa`, dispatch `9b4d6c27`.
+Preimplementation [contract and complete literal fixture](../sim/wildlife-chunk-plan.md).
+Primary read through `AnnoWelt 0x10093761` confirms dword count/signed deficit,
+head recycling/prepend, category0 collision regardless of occupancy, goods/position
+writes before lookup, timestamp only on successful insertion, unknown fresh fields.
+QUESTION: C4 requests chunk-level OQ-572 candidate exhaustion. With consistent
+habitat and complete category0 lookup, every collision is retained/counted and
+positive deficit<=available noncollisions. The requested exhaustion is unreachable
+under this supported profile; no inconsistent facts or desired-count override proposed.
+Recommendation: retain defensive typed noncommittable guard, reuse existing lower-level
+replenish exhaustion proof, and explicitly qualify chunk-level reachability. Orchestrator
+clarification pending; independent ordered-list/field/API work may continue.
+Decisions and reasoning:
+- Keep original pre-collision goods/position writes in partial diagnostics; timestamp stays old.
+- Represent fresh uninitialized ID/high bit/byte11 as unknown, not a convenient zero.
+- Do not bend the input contract to manufacture an otherwise unreachable failure.
+NOT_RUN: new C++, causal and canonical gates at this preimplementation checkpoint.

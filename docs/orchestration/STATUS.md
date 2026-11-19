@@ -170,6 +170,20 @@ says who is doing what, where the work is, and what it waits on.
   order?", the owner answered "Yes". They run in the UI lane, then UI-RANGE-1. Also, asked "Delete the public
   task branch with the data table after landing, and recreate it clean?", the owner answered "Yes, clean it
   up": `task/BUILDINGS-REF-1` is recreated as one clean commit.
+- **WIN-NAV-EDITIONS-1 taken in** 2026-11-19 (owner: "independently verify the coarse navigation height
+  discrepancy against BOTH the original GOG and History Edition game files and executable code"). The
+  packet is `docs/orchestration/tasks/windows-nav-editions-1.md` at `orch/mac-lane` `56ff354a` (Mac
+  orchestrator's handoff from WILDLIFE-NAV-INPUTS-1 `74d50bfe`, production base `889143ba`).
+  - N0-N4 run in the HE/GOG research session (`task/WIN-NAV-EDITIONS-1` from main `b5c0ada2`); N5's
+    independent read-only review is the orchestrator's.
+  - Research only: no routing repair, no compatibility identity, no save/replay rebaseline, no choice
+    between edition behaviours; those stay with the owner.
+  - Intake only: the Mac lane's accepted packets are **not** accepted or landed by this entry.
+- **The Mac's GATE-RUN on candidate 10 `95897a55` FAILED** (Mac review
+  `reviews/2026-11-17-gate-ui-info-2d-buildcat-review.md` on `orch/mac-lane`): 2,805 executed, 2 failed,
+  `viewer_wiring_ui_magnifier_range` and `_stepped` ("no frame was drawn within 30000 ms" on Metal); and 10
+  new skips, 8 of them named-adapter GPU cases (RTX/Radeon) that the stale "two expected gpu skips" rule
+  did not list. Candidates 6-10 stay unlanded until both are resolved.
 - **HALT until 2026-11-18** (owner, 2026-11-17 evening: "i want you to finish what you are currently doing as
   well as the oither two executors and halt all work until tomorrow. only the mac executor and orchestrator
   will keep working through the night"). Where everything stands:

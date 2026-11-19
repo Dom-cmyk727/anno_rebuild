@@ -16227,3 +16227,72 @@ visibility/diplomacy, post-island/global callbacks, later wildlife, derived cons
 Hosted CI pending at publication; direct review handoff proceeds per packet.
 QUESTIONs: none for this finite header. No new defaults/state/tags/registry identity.
 Status: READY FOR REVIEW; source-to-publication changes report/evidence only.
+
+
+## 2026-11-19 — WILDLIFE-KONTORID-1 — READY FOR REVIEW
+
+Source `c199cf1f382fb40012ea4c660b763d51530f56f4`, tree `b6a3ad124a415301f1c5cb3c9ab65a087fe10e8e`; base `8d97b695`, dispatch `c55b8841`.
+[Contract](../sim/wildlife-kontorid.md); [frozen evidence / hashes](evidence/wildlife-kontorid-1.md).
+Independent orchestrator review pending. Full publication head/tree/CI in direct handoff.
+K1: AnnoWelt 0x10089bb1–0x10089c09 replaces island word +0xc6, returns immediately.
+Payload scratch 1 at 0x10089bd5; count pointer is separate. No increment/draw/callback.
+Saver 0x1008a6aa–0x1008a6e3 writes 2 bytes; reset 0x1008c7fd / ctor 0x1008cbe9 set 1.
+Loaded zero is accepted here; normal-loader zero refusal/default and market KONTID untouched.
+DISCOVER P3 corrected: 0x1008999b clears payload scratch, not count; frozen receipts preserved.
+K2: owned optional widened counter + per-header completion/source; no new persistent state.
+K3: direct 344/344; bytes 2,129 -> 33026, maximum 65535; absence/zero/replacement.
+Malformed lengths 0/1/3/4/8 preserve prior 33026 and name exact boundary; KONTID stays unsupported.
+Private actual-TU union mutant applied once: legal 67/67, wrong 66 pass/1 intended failure.
+Canonical source untouched and rebuilt. Inputs destroyed, surrounding effects/draws retained.
+Raw parse + original Debug once: KONTORID 54 length 2/value 1/draws 0; stop PROD2 55.
+55 complete headers, 56 evidence rows; HIRSCH 71 unreached, 0 spawns, cursor 4589 unchanged.
+Prior 4760 accepts/16 epilogues/fertility 8160, BERGWERK 9/20, OCCUR 1/1/Q512000/R1/masks17,
+ANBAU 135 bytes/13 tokens/mask65535, DISCOVER low0/upper0 remain asserted.
+K4 raw gate lines (three required contracts each executed separately, not double-counted):
+
+`cache/wildlife-kontorid-1/debug-final.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=20 executed=20 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+
+`cache/wildlife-kontorid-1/asan-final.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=20 executed=20 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+
+`cache/wildlife-kontorid-1/original-final.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+
+Debug 20+3=23, ASan 20+3=23, original 1; no failures/skips/empty/incomplete/sanitizer/refusal/timeout.
+Apple 21/GCC 15.3 strict Werror on 2 TUs; shadow control rejects; format/lint/links/diff pass.
+Inherited duplicate-library linker warning disclosed. All 276 fixture files byte-equal base; no full pins run.
+Host M5 Max/18 logical/48 GiB/macOS 27.0.1, 1.5 TiB free; jobs 1, admission enabled.
+Decisions and reasoning:
+- Distinguish initialization, observed absence and explicit zero; widen encoded u16 without capacity policy.
+- Preserve raw replacement, never counter allocation/OR; reject malformed framing defensively.
+- Reuse unchanged algorithms/long campaigns; stop at PROD2, preserving derived-cache rebuild obligations.
+- Preserve original tested receipts while correcting P3 prose only, no citation-only gate repeat.
+NOT_RUN: full suite/pins.py, Windows/WSL/original runtime/HE, World/native/founding/market allocation,
+post-island/global callbacks, UI/visibility, derived consumers and later wildlife.
+QUESTIONs: none in this finite arm. Publication CI pending; no state/tag/default/registry changes.
+Status: READY FOR REVIEW; final commit adds report/evidence only; no main/board merge or other-lane edits.

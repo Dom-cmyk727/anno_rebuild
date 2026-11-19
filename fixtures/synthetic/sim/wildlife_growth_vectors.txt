@@ -1,0 +1,26 @@
+# Id1 base64, column stride8,row stride1: rows1,2/3,4 =>64:1,72:2,65:3,73:4; all other bytes zero.
+growth basic source=growth/basic.dat => bytes=64:1,72:2,65:3,73:4 ids=1 sections=1 short=0 bridge=0 climate=0
+# New Id retains NONZERO staging20,30. Missing comma stops after1, ignores9,8.
+growth comma_stop source=growth/comma_stop.dat => bytes=64:10,72:20,80:30,128:1,136:20,144:30 ids=2 sections=1 short=1 bridge=0 climate=0
+# A short row without a tail also retains NONZERO staging20,30.
+growth short source=growth/short.dat => bytes=64:10,72:20,80:30,128:1,136:20,144:30 ids=2 sections=1 short=1 bridge=0 climate=0
+# New WACHSTUM clears stage, not existing lookup: Id2 second column zero.
+growth section_reset source=growth/section_reset.dat => bytes=64:7,72:9,128:1 ids=2 sections=2 short=1 bridge=0 climate=0
+# Later complete Id1 overwrites index64 from7 to9.
+growth duplicate source=growth/duplicate.dat => bytes=64:9 ids=2 sections=1 short=0 bridge=0 climate=0
+# Id257 low byte1 aliases Id1; later value9 wins.
+growth id_alias source=growth/id_alias.dat => bytes=64:9 ids=2 sections=1 short=0 bridge=0 climate=0
+# Id-1 low byte255 ->base16320; low bytes of-1,+258 are255,2.
+growth signed source=growth/signed.dat => bytes=16320:255,16328:2 ids=1 sections=1 short=0 bridge=0 climate=0
+# INT_MIN low byte0, INT_MAX low byte255, full signed range validated.
+growth signed_limits source=growth/signed_limits.dat => bytes=72:255 ids=1 sections=1 short=0 bridge=0 climate=0
+# Column8 wraps to column0: last value9 replaces1.
+growth column_wrap source=growth/column_wrap.dat => bytes=64:9,72:2,80:3,88:4,96:5,104:6,112:7,120:8 ids=1 sections=1 short=0 bridge=0 climate=0
+# 256 staging cells fit; short row writes first1 then final packed aliases overwrite it with0.
+growth capacity source=growth/capacity.dat => bytes=- ids=1 sections=1 short=1 bridge=0 climate=0
+# No Size means6x6: every cell in six rows is1; only36 packed indices change.
+growth default source=growth/default.dat => bytes=64:1,72:1,80:1,88:1,96:1,104:1,65:1,73:1,81:1,89:1,97:1,105:1,66:1,74:1,82:1,90:1,98:1,106:1,67:1,75:1,83:1,91:1,99:1,107:1,68:1,76:1,84:1,92:1,100:1,108:1,69:1,77:1,85:1,93:1,101:1,109:1 ids=1 sections=1 short=0 bridge=0 climate=0
+# Bridge and Klima count but cannot replace primary Proz byte7.
+growth sidecars source=growth/sidecars.dat => bytes=64:7 ids=1 sections=1 short=0 bridge=1 climate=1
+# Tabs, spaces before colon, semicolon and CRLF keep byte20 at index192.
+growth comments source=growth/comments.dat => bytes=192:20 ids=1 sections=1 short=0 bridge=0 climate=0

@@ -1,0 +1,6 @@
+; authored comment
+[WACHSTUM]
+	Size : 1, 1 ; dimensions
+Id: +3
+Proz: +20 ; trailing comment
+[END]

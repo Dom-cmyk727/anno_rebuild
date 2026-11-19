@@ -52,3 +52,27 @@ The proposed next implementation is a pure UNWIRED graphics finalizer, preservin
 original fill→navigation/raster→cleanup publication order. No World/native/tag/
 default change, navigation repair or global-cursor assumption is authorized by
 this research result. Release follows focused correction approval.
+
+
+## Focused correction review — 2026-11-19
+
+**LOCAL REVIEW APPROVED at corrected head `1628ba18a5b6eefb55684afc3091ba3be9fa10c8`,
+tree `7681810bbf7c5d549583c65baeb68ae1a7430940`. Both P2 findings closed.**
+Exact correction [CI44447642251](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44447642251)
+remains in progress; the original-head run is not substituted for it.
+
+Both original reviewers independently approved the focused docs delta. V12 is
+sanity-only and explicitly equivalent under clamping; V12a/b require an already
+admitted low-level representation and are not fabricated raw Terrain inputs.
+Literal raster mask→round→OR and V13 are correct, with upstream domain still U.
+V9 requires both sum-mask and final-clamp audit plus exact extrema bytes. All15
+vector rows/13families remain NOT_EXECUTED; no new dynamic proof is claimed.
+Root verified8 correction receipts (including the historical contract via git),
+unchanged original evidence and docs-only diff. No test campaign repeated.
+
+[WILDLIFE-GFX-FINALIZE-1](../tasks/wildlife-gfx-finalize-1.md) is independently
+scope-reviewed and RELEASED from corrected1628ba18. Implement only the pure owned
+third-call leaf and its independent reference/causal/digest checks. Do not wire it
+before fill/navigation or change World/native/default/identity. The catalogue,
+navigation discrepancy and raster inputs/consumers remain explicit follow-ups.
+Executor reports directly for review and next release; main untouched.

@@ -43,7 +43,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife KONTORID header [WILDLIFE-KONTORID-1](tasks/wildlife-kontorid-1.md) | ACCEPTED; bounded counter import | `eaa61980162b1552eb7acee1553ce11fb7a8869c`; source `c199cf1f` | [44439685272](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44439685272), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-kontorid-1-review.md) |
 | Wildlife PROD2 boundary [WILDLIFE-PROD2-1](tasks/wildlife-prod2-1.md) | ACCEPTED; bounded empty-block path | `d7a21ac4a41975e5dd3a2afba8af84a430ed4e17`; source `8d65f385` | [44441246351](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44441246351), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-prod2-1-review.md) |
 | Wildlife EVENTINSEL boundary [WILDLIFE-EVENTINSEL-1](tasks/wildlife-eventinsel-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `218b838eb543782c60629f51288005fdd699c492`; source `c6c106a4` | [44443163952](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44443163952), in progress | [Review](reviews/2026-11-19-wildlife-eventinsel-1-review.md) |
-| Wildlife post-island contract [WILDLIFE-POSTLOAD-1](tasks/wildlife-postload-1.md) | CHANGES REQUIRED; two focused documentation corrections | `e05d9504f2907de1f6b8f2b4d52197f8767f35d4`; research source `09614995` | [44446560786](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44446560786), in progress | [Review](reviews/2026-11-19-wildlife-postload-1-review.md) |
+| Wildlife post-island contract [WILDLIFE-POSTLOAD-1](tasks/wildlife-postload-1.md) | LOCAL REVIEW APPROVED after two docs corrections; CI pending | `1628ba18a5b6eefb55684afc3091ba3be9fa10c8`; research source `09614995` | [44447642251](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44447642251), in progress | [Focused review](reviews/2026-11-19-wildlife-postload-1-review.md) |
+| Wildlife graphics leaf [WILDLIFE-GFX-FINALIZE-1](tasks/wildlife-gfx-finalize-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed corrected base `1628ba18` | Not started; isolated UNWIRED implementation | Frozen reportback directly to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -797,3 +798,19 @@ DISCOVER8d97b695/CI44438472504, KONTORIDeaa61980/CI44439685272 and
 PROD2d7a21ac4/CI44441246351 now have all12 jobs successful at their independently
 reviewed exact heads and are ACCEPTED within their bounded scopes. Terminal
 receipts are appended to their reviews. Main untouched.
+
+## Latest dispatch — POSTLOAD corrections approved; graphics leaf released
+
+Corrected POSTLOAD1628ba18 is independently locally APPROVED by both reviewers.
+The raster arithmetic and nondiscriminating padding-test claims are corrected;
+8 new receipts verified and original evidence preserved. All15 vector rows remain
+NOT_EXECUTED. No engine changes, compatibility disposition or repeated campaign.
+Exact CI44447642251 and EVENTINSEL CI remain pending at this check.
+
+[WILDLIFE-GFX-FINALIZE-1](tasks/wildlife-gfx-finalize-1.md) is RELEASED after
+independent scope review. Implement the complete third-call leaf as a pure owned,
+UNWIRED graphics transformation with independent vectors/reference, digest and
+causal checks. Preserve fill→navigation/raster→cleanup publication order. No
+navigation repair, World/native/tag/default or other-lane changes. Executor
+ordinary-pushes its task branch and reports directly here for review/next release.
+Main untouched.

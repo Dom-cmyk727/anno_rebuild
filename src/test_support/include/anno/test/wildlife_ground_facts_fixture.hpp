@@ -47,6 +47,8 @@ inline formats::ByteBuffer catalogue() {
         append(entry, chunk("PRODTYPE", name));
         append(entries, chunk("ENTRY", entry));
     }
-    return chunk("ANNO", chunk("ANLAGEN", entries));
+    auto body = chunk("COLORS", {});
+    append(body, chunk("ANLAGEN", entries));
+    return chunk("ANNO", body);
 }
 } // namespace anno::test::ground_facts_fixture

@@ -509,7 +509,12 @@ pass labels are unchanged here; geometric witnesses remain tool-only until then.
    group order) and whether tCursorInfo is the active cursor in play. Settle: breakpoints AnnoFrame `0x1004feb0` (raw pick
    vec3 at `[esp+0xc]`), `0x100502b0`, `0x10059d60`, and AnnoWelt `0x10040b00` (SetOrder, log ship ids for the group
    order); right-click water at four sub-tile offsets.
-2. x87 precision control at runtime: no `_controlfp`/`fldcw` setup located in the exe/DLL init. Settle: `fnstcw` at a
+2. x87 precision control at runtime: no `_controlfp`/`fldcw` setup located in the exe/DLL init.
+   Dated narrowing (2026-11-19): Welt CRT startup hook 0x100b5f30 ->0x100b6e12
+   sets precision 53 through 0x100ba3f5/0x100ba3c0 before its initializer array.
+   Rounding bits and later runtime control changes remain outside that proof;
+   [secondary-raster §1](../sim/wildlife-secondary-raster.md) gives the exact
+   chain. CAP-2 is narrowed, not closed. Settle: `fnstcw` at a
    breakpoint on `0x100428d0` (`0x027f` = 53 bit, `0x037f` = 64 bit, `0x007f` = 24 bit).
 3. The object-top contribution to block extrema and to tile type 9; the setter of state bits `0x2000`/`0x4000`. Settle: break at
    `0x100aae00` during a scenario start and a savegame load (expect one call per island and none from Reset) and dump

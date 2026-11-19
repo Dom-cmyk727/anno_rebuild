@@ -180,7 +180,12 @@ is skipped at a3ed7–a3edc for the actual flags 2; return a40be–a40c5.
 World +0x5c is `0x1009db00–0x1009db68`: resolve island and call island +0x98.
 Concrete +0x98 is `0x10084c20–0x10084c51`, loading the vertex byte's runtime
 float lookup at 0x100e2d90. The producer/profile of that initialized table and
-all consumers of raster +0x14/generation +0xc are NOT closed. No renderer-only
+all consumers of raster +0x14/generation +0xc were NOT closed by that read.
+**RASTER-CONTRACT update, 2026-11-19:** the [secondary-raster contract](wildlife-secondary-raster.md)
+now resolves the startup table producer, flags-2 sample/store/normalization,
+allocation/generation and actual first Frame minimap readers. The active runtime
+FP condition (CAP-2), wider indirect consumer coverage and complete shared-owner
+composition remain qualified; no integer implementation or cache exemption follows. No renderer-only
 or safe-omission claim follows. Keep/rebuild a proven equivalent before any such
 consumer or refuse publication. The coarse route index has known consumers in
 CoastIndex/route_plan; the extra raster is not that index.

@@ -16762,3 +16762,64 @@ Decisions and reasoning:
 
 NOT_RUN: CTest/dev/ASan/full pins/warnings, original/HE execution/emulation, Windows/WSL, shipped overflow census, full World/replay/performance/raster/wiring.
 Independent review: pending Orchestrator II Mac; no reviewer subagents. Stop at the bounded contract/reproduction and compatibility question.
+
+## 2026-11-19 — WILDLIFE-RASTER-CONTRACT-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-RASTER-CONTRACT-1`, exact base `74d50bfeedf1a48ab7e140cc66e36859e0d0a9c3`.
+- Base tree `61e891b24e6b12a276a7b93050888b430167579b`; production remains FILL `889143ba`.
+- Exact dispatch `4b000254`, NAV review/mac-lane/common rules read; no board/main merge or rebase.
+- [Contract](../sim/wildlife-secondary-raster.md) has addressed prior expectations; [receipts](evidence/wildlife-raster-contract-1.md) retain module/source/command/results.
+- R1 D: Welt 0x1007c760–0x1007c780 fills 384 f32 entries by retained accumulation of f32 .04; vertex byte uses 0..255.
+- Welt 0x10084c20–0x10084c51 reads the corner; world 0x1009db00–0x1009db68 resolves island or sea zero.
+- CRT 0x100b6b78/0x100b6a9f/0x100b921a/0x100b931e reaches thunk 0x1007c750 from startup slot 0x100d0d64 before world creation.
+- Hook 0x100dd490 ->0x100b5f30 ->0x100b6e12 sets PC53; mapping 0x100ba502–0x100ba516 proved.
+- CAP-2 narrowed, not closed: active rounding/precision at raster 0x100a3cce and later runtime changes remain qualified.
+- Full table code/HIGHLOW scans: 38 indexed/absolute memory references, one resolved writer; arbitrary aliases not disproved.
+- R2 D: table 0x100ccd40 exposes dimensions/plane/update/generation/destructor; standard 256-square allocation at 0x100aaa53–0x100aaa8f.
+- Init 0x100a40d0–0x100a412b fills 0x90 and generation 0; dimensions are parameters, no engine cap inferred.
+- Flags 2 bucket ends use trunc((end + trunc(scale) - 1)/scale); no generic ceil/rectangle clip invented.
+- Sampling 0x100a3dad–0x100a3e4c spans 2 × 2 buckets, clips upper sample ends, Y outer/X inner, f32 store per addition.
+- Normalize at 0x100a3e56–0x100a3e6e by nominal 4*sx*sy and f32 .04, not actual border count.
+- Merge 0x100a3e7d–0x100a3e90 wraps converted byte, rounds, ORs; no final nibble mask, bit 4 may be set.
+- Modeled world 800 bucket (6,6): 49 height-255 samples ->319 ->byte 63 ->rounded 4; cannot universally bound conversion to 255.
+- Aligned empty still increments at 0x100a3ece; unaligned empty may write a bucket. Flags 1 separately writes/increments at 0x100a40bb.
+- Flags 3/0xff execute 2 THEN 1, generation +2, later owner write may overwrite carry; u32 wrap explicit.
+- R3 D: Frame 0x10002920 borrows plane/generation minus one, immediate paint via 0x100028e0/0x10031000.
+- Frame 0x100030f0 compares generation before draw; full byte indexes palette, not just low nibble.
+- Load return precedes SetWorld/attach at 0x100291af–0x100291db; first reader needs no gameplay tick; keep/rebind allocation.
+- Carry-only pixels can both be transparent; retained owner bit can affect a later shaded update.
+- +0xbc search: Welt 86/Frame 16/Game 2/Scene 6/View 23/Display 0; only resolved receiver chains called raster edges.
+- CompLogic/computed aliases/generic serialization not exhaustive; no renderer-only, omission, CoastIndex or save exemption claim.
+
+```text
+# cache/wildlife-raster-contract-1/model-control.log — exit 0
+MODEL executed=31 failed=0 profile=precision53_nearest_f32stores original_execution=NOT_RUN
+# model-wrong-nibble.log — exit 1, actual wrong branch outputs
+MODEL executed=31 failed=4 profile=precision53_nearest_f32stores original_execution=NOT_RUN
+# model-wrong-empty.log — exit 1
+MODEL executed=31 failed=1 profile=precision53_nearest_f32stores original_execution=NOT_RUN
+# float-run.log — exit 0, private independent C++ float-store transcription
+FLOAT_MODEL executed=6 failed=0 original_execution=NOT_RUN
+```
+
+- Private conditional counts, not CTest acceptance: 31 =10 merges +12 sample/merge +3 rectangle +5 flags +1 wrap.
+- Wrong mask catches two raw and two legal-modeled sample carries; ordinary controls pass. Wrong empty increment catches one row.
+- Six independent sample/count rows include one/full 100, 248/255, border and 319; original code NOT_EXECUTED.
+- Static shade-100 typo corrected 7 ->6 before comparison; exploratory address/module misses preserved/excluded from primary proof.
+- cache/wildlife-raster-contract-1/docs-check.log: DOC_CHECK files_or_sections=5 links=7 hashes=72 missing=0 status=PASS
+- git diff --check and unchanged-source/fixture scope audit pass; no suite/pins.py execution claimed.
+- Proposed isolated owned plane/generation helper requires validated FP/sample profile; broader flags-1/reader composition remains explicit.
+- QUESTION: bounded Windows control-word/table observation at 0x100a3cce/startup or static caller closure before general integer port; no arithmetic policy chosen.
+- NAV owner identity decision remains pending; no route/state/tag/default/registry/native/World change.
+- Critical path: FP closure ->isolated raster ->coordinated NAV repair ->ordered postload composition ->later live fauna/hunter proof.
+- Exact head/tree/CI supplied directly after ordinary task push; terminal CI receipts separately, pending never counted green.
+
+Decisions and reasoning:
+- Prove the producer and first observer, not an inferred harmless picture cache.
+- Preserve float stores/order/nominal denominator; model one named profile instead of inventing an integer mean.
+- Separate bucket bounds, clipped samples and two empty-rectangle cases; keep generation semantics.
+- Challenge masking using prior legal even colour; fresh 0x90 alone hides the defect.
+- Preserve FP/indirect-reader gaps before World publication or compatibility changes.
+
+NOT_RUN: original/HE/pictures, CTest/dev/ASan/full pins/warnings, broad census, runtime FP capture, general integer equivalence, full save/reader closure, World/live implementation.
+Independent review pending Orchestrator II Mac; no reviewer agents. Stop at research/implementation prerequisites.

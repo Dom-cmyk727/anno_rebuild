@@ -65,3 +65,13 @@ At `74d50bfeedf1a48ab7e140cc66e36859e0d0a9c3`, both independent reviewers
 verified the P3 correction: the empty log is preserved and no retained initial
 failure text is claimed. No historical failure was recreated. The FILL code
 and successful gates are unchanged. Exact FILL CI remains in progress.
+
+## Terminal CI and acceptance
+
+FILL `889143ba1485a2fed72c03bd648c9c39878c4f06` is now **ACCEPTED** within
+its isolated, unwired first-call scope. CI 44456284511 has all 12 jobs successful
+at that exact head, including all five C++ jobs and the aggregate gate. The
+reviewed evidence correction is recorded above. Hosted jobs receipt SHA-256:
+`17deff4673df05991653b1c172909e0629fc3bd664fc0d86ea83db729a263437`.
+No local gate was repeated. Landing remains with the Windows orchestrator; no
+full initialization, live wildlife or global random-cursor claim follows.

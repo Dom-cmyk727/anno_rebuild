@@ -103,3 +103,11 @@ Quoting: printable ASCII except `"` and `\` as is, every other byte `\xHH`. Exit
 - Unit tests: `crates/formats/src/text.rs` (line round trip including LF and missing final terminator, keyed kinds, fields, records, `ints`, exact decimals, `Texte.dat` sections, `id:text`).
 - Corpus tests: `crates/formats/tests/text_corpus.rs` (`keyed_corpus`, `texte_corpus`, `records_corpus`): byte-identical line round trip of all 11 files, the counts above, both anomalies, `[ANLAGEN]` ids against `Anlagen.dat`, the record layouts and their cross-checks against `Felder.tex`.
 - Reference tool output: `anno_dump_matches_text_py_corpus`, `anno_dump_matches_text_py_synthetic`.
+
+### Bounded growth runtime reader (2026-11-19)
+
+The separate [growth source loader](../sim/wildlife-growth-load.md) follows the
+addressed original comma-stopping numeric list and retained staging profile.
+It returns the primary lookup only, with explicit unsupported-domain refusals.
+The generic `ints` diagnostic here still accepts comma OR whitespace and still
+reports six values on the known line; no unrelated text semantics were changed.

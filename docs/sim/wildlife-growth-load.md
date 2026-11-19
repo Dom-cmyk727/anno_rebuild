@@ -86,3 +86,50 @@ duplicate/packed-alias overwrite have separate hand-derived cases.
 
 No original tables, bytes or listings in git. No city proof, FRUCHTBAR capability,
 fill composition, state/Rules/default/registry change or live wildlife claim.
+
+## Implemented unit and proof boundary
+
+`load_wildlife_growth(formats::Bytes)` in the focused sim_load header/source
+returns an owned GrowthLookup: primary values, signed Id/dimension/source-line
+record diagnostics, short-row diagnostics, sidecar counts and source SHA256.
+The hash identifies source bytes; it is not a city, scene or completed-loader seal.
+The generic text library is reused for lines/key classification, never its ints.
+
+Thirteen authored complete-map cases precede C++ at `076170fa`; the public
+contract runs 32 CLI controls, including preserving existing output on parse
+failure and refusing source/output path aliasing. C++ compares every byte of each
+zero-initialized expected map plus sparse hand values. Four direct cases pass
+1,206 assertions with the real files and independent private byte oracle.
+
+Five actual wrong-production-TU variants fail intended full-map assertions:
+whitespace continuation 1; clearing staging per Id 2; zero-filling short rows 2;
+wrong packing 7; clamping instead of low-byte storage 1. Legal private control
+passes all 972 assertions; all 13 rows reach successful parsing. Canonical
+source and binary are unchanged by those private probes. Echo-only agreement
+is separately rejected by the reference contract's changed expected byte.
+
+The one real-file case targets unchanged GOG growth source SHA256
+`0b8c4416dd43fb76ea2dca6e82bfd822b0b861f15440e83479a8aa56b8d92e24`;
+complete lookup SHA256 `760314eb744a0f64eff6bd827be8876153f7cf69e39739e6d4ef8f53642608a7`
+was independently computed before C++. With ANNO_WILDLIFE_GROWTH_ORACLE pointing
+to the private reference output, it also compares all 16,384 bytes directly.
+Without that optional artifact it reports this additional comparison unavailable
+and checks the known full-map SHA; no hidden new prerequisite for ordinary runs.
+No game directory means an explicit required-asset skip.
+
+Reproduce the private artifact before the asset gate:
+
+```sh
+python3 -I tools/wildlife_growth_ref.py --source "$ANNO1503_GAME_DIR/Data/Wachstum.dat" \
+  --write-lookup cache/wildlife-growth-load-1/original-reference.private
+```
+
+The asset gate supplies the absolute artifact path through the oracle environment
+variable. This is a one-file proof, not another edition or full data-file grammar
+claim. The original file itself is never changed.
+
+Authored-only leaf composition uses Id 1 / rotation 3 and p 20 -> b 2 -> low 2.
+Real-source composition uses Id 11 / rotation 3, p 100 -> b 10 -> low 10, with
+AUTHOR-DEFINED object-null fact, 1×1 geometry, centre-only kernel and old ground.
+It proves one source input reaches numerical computation, not an original island,
+climate kernel, city, FRUCHTBAR branch or postload/fill sequence.

@@ -1,0 +1,24 @@
+# V10: all samples 0; exact high byte 0x20 clears the WHOLE word including 0xab.
+gfx zero w=1 h=1 height=0 gfx=8363 => gfx=0 cleared=1
+# V12: height 1 is positive, not a 16/32 threshold; 1x1 border samples are zero.
+gfx one w=1 h=1 height=1 gfx=8363 => gfx=8363 cleared=0
+# V10: high bytes 0x60 and 0x21 fail equality, although bit 0x2000 is set.
+gfx high_bytes w=3 h=1 height=0,0,0 gfx=24577,8449,8447 => gfx=24577,8449,0 cleared=1
+# V10: low byte 0 still qualifies; no low-byte-only clear.
+gfx zero_low_byte w=1 h=1 height=0 gfx=8192 => gfx=0 cleared=1
+# V11: tile (1,1) sees vertex (3,3), offset (+2,+2), outside its quad.
+gfx plus_two w=4 h=4 height=0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1 gfx=4096,4096,4096,4096,4096,8363,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096 => gfx=4096,4096,4096,4096,4096,8363,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096 cleared=0
+# V11: tile (1,1) sees vertex (0,0), offset (-1,-1); asymmetric west/north reach.
+gfx minus_one w=4 h=4 height=7,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 gfx=4096,4096,4096,4096,4096,8363,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096 => gfx=4096,4096,4096,4096,4096,8363,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096 cleared=0
+# V11: tile (0,0) window ends x=2; positive x=3 is outside, so clear.
+gfx outside_east w=5 h=4 height=0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 gfx=8363,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096 => gfx=0,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096 cleared=1
+# V11: tile (0,0) window ends y=2; positive y=3 is outside, so clear.
+gfx outside_south w=5 h=4 height=0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0 gfx=8363,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096 => gfx=0,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096 cleared=1
+# V11: stride 5: tile (2,0) includes (4,0); tile (0,1) ends x=2, so only latter clears.
+gfx nonsquare w=5 h=2 height=0,0,0,0,1,0,0,0,0,0 gfx=4096,4096,8363,4096,4096,8397,4096,4096,4096,4096 => gfx=4096,4096,8363,4096,4096,0,4096,4096,4096,4096 cleared=1
+# V12: every 2x3 tile window includes (0,2); zero logical east/south borders do not erase it.
+gfx tall_border w=2 h=3 height=0,0,0,0,255,0 gfx=8363,8363,8363,8363,8363,8363 => gfx=8363,8363,8363,8363,8363,8363 cleared=0
+# V11: tile (3,3) starts at (2,2), so distant (0,0) cannot preserve it.
+gfx distant_northwest w=4 h=4 height=255,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 gfx=4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,8363 => gfx=4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,0 cleared=1
+# V10: full island scan clears both qualifying words and retains nonqualifying ones.
+gfx whole_scan w=4 h=1 height=0,0,0,0 gfx=8363,4097,8397,24577 => gfx=0,4097,0,24577 cleared=2

@@ -314,3 +314,30 @@ measurement, complete transitive draw total, original/HE execution or late-game
 performance claim. Sparse read edges and conditional closure above are deliberate
 scope boundaries. Logs/listings/raw inputs stay private with hash receipts in
 this packet's handoff evidence.
+
+
+## 9. Isolated graphics finalizer — WILDLIFE-GFX-FINALIZE-1
+
+G1 acceptance before C++: the exact predicate/window is §5 (D: AnnoWelt
+0x10085290–0x100853a9, freshly re-read). The supported input is an island's
+validated raw Terrain, positive tile width/height, HEIGHT and GFXID of exactly
+W*H elements, fertility absent or W*H, and matching digest. Geometry is inherited
+from TileLayer; multiplication is widened before lengths/indexing. VertexGrid
+supplies the existing forced-zero W/H border; outside is zero. No low-level
+arbitrary-corner/padded-grid interface is introduced. Conditional V12a/b remain
+NOT_EXPRESSIBLE at this interface, not executed controls. Zero padding versus
+nearest-edge clamping remains observationally equivalent for the max predicate.
+
+The [12 authored vectors](../../fixtures/synthetic/sim/wildlife_postload_vectors.txt)
+were hand-derived before C++, using §5 and V10–V12; the
+[reference](../../tools/wildlife_postload_ref.py) never reads expected outputs as
+computed answers. This is an isolated leaf, not ordered postload execution.
+
+| Requirement | Distinguishing authored expectation | Proof planned / disposition |
+|---|---|---|
+| Exact high byte/full-word clear | 0x20ab->0, 0x6001/0x2101 retained, 0x2000->0 | reference then C++, actual-code bit-test mutant |
+| 4x4 with unsigned-positive test | target (1,1), sample (3,3)=1 preserves; sample (0,0)=7 preserves | reference then C++, actual-code truncated-quad mutant |
+| No wider neighbourhood or transposed stride | x+3/y+3 do not preserve; 5x2 asymmetric plane has only one clear | reference then C++ full-plane comparison |
+| Owned immutable channels and digest | nonzero height/fertility survive; changed/no-change, source destruction, idempotence | C++ direct ownership tests |
+| Refusal before writes | absent, malformed column/digest, empty geometry | C++ negative controls, original source unchanged |
+| Unwired and original ordering preserved | production caller search excludes prepare/load/World | static caller search; no integration claim |

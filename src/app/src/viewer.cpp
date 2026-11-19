@@ -4411,7 +4411,8 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
                 blend_preview(*gen, *p, group_, time_ms(), view, buffer_.data());
                 // UI-PRODBAR-1: the fertility indicator (blend_fertility_frame, figure 1557) goes
                 // here once a FertilityTileSource exists; until then the named placeholder
-                // `fertility-indicator-needs-sim` (OQ-715, the `tool.fertility` fact) draws nothing.
+                // `fertility-indicator-needs-sim` (OQ-715, the `tool.fertility` fact) draws
+                // nothing.
             }
         }
         // UI-GHOST-1: the outline over the world, under the chrome drawn next.

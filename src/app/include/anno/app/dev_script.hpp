@@ -74,9 +74,9 @@
 //                         there without a button; hover-sea X Y moves it over the sea surface of
 //                         tile (X, Y) without a button (UI-STATUS-1 B)
 //   hover_px X Y          the pointer moves to drawable pixel (X, Y) without a button (UI-STATUS-1
-//                         B: onto chrome, where the status bar keeps the last map tile)
+//                         B: onto chrome, where the status bar keeps the last map tile and
+//                         the placement ghost hides, UI-GHOST-1)
 //   lpan DX DY            a left-button drag by (DX, DY) window points from the window centre
-//   hover_px X Y          the pointer moves to drawable pixel (X, Y) with no button (UI-GHOST-1)
 //   ldown_px X Y          a left press at drawable pixel (X, Y) with no release (a release lost
 //                         outside the window); ldrag_px X0 Y0 X1 Y1: press at (X0, Y0), move to
 //                         (X1, Y1) with the button held, release there (UI-WINDOW-1 fix round R1)

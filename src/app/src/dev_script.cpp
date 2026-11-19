@@ -617,15 +617,6 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                     SDL_BUTTON_LMASK);
             }
             push_button(act.events, *b, SDL_BUTTON_LEFT, false);
-        } else if (s.verb == "hover_px") {
-            // UI-GHOST-1: the pointer moved to a raw drawable pixel with no button (the panel's
-            // chrome hides the placement ghost; click_px's coordinate space).
-            const auto x = arg(0), y = arg(1);
-            if (!x || !y) {
-                fail(s, "not a pixel position");
-                break;
-            }
-            push_motion(act.events, {static_cast<float>(*x), static_cast<float>(*y)}, 0);
         } else if (s.verb == "click_px") {
             // UI.2 C4: a raw drawable-pixel click (construction_handle's own coordinate space,
             // data/ui/'s 1024 x 768 reference), not a world tile - `click`'s window_point
@@ -641,7 +632,8 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             push_button(act.events, at, SDL_BUTTON_LEFT, false);
         } else if (s.verb == "hover_px") {
             // UI-STATUS-1 B: the pointer moves to a raw drawable pixel with no button (over chrome,
-            // the status bar keeps the last map tile, OQ-700).
+            // the status bar keeps the last map tile, OQ-700; UI-GHOST-1: the placement ghost
+            // hides there).
             const auto x = arg(0), y = arg(1);
             if (!x || !y) {
                 fail(s, "not a pixel position");

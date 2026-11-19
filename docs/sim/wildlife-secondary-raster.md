@@ -78,6 +78,14 @@ claiming a generally exact integer implementation. The helper selecting truncati
 for integer conversion restores the prior control word; it does not settle the
 earlier floating arithmetic. This packet chooses no replacement arithmetic policy.
 
+**FP follow-up, 2026-11-19:** the [two-checkpoint audit](../re/wildlife-raster-fp.md)
+now separates table initialization from first-load callback precision/rounding.
+Four independent sensitivity pairs change results, and one pair of distinct
+profiles cancels to the same output. Full original CW/thread closure remains U;
+the [bounded Windows card](../testing/wildlife-raster-fp-capture.md) records both
+contexts without mutating the FPU. The earlier 31 modeled checks remain valid
+under their named profile, not promoted to original-runtime evidence.
+
 ## 2. Flags-2 update, rectangle and generation
 
 D: concrete table 0x100ccd40 has slots +0/+4 returning raster dimensions

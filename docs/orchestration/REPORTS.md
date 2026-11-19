@@ -16823,3 +16823,63 @@ Decisions and reasoning:
 
 NOT_RUN: original/HE/pictures, CTest/dev/ASan/full pins/warnings, broad census, runtime FP capture, general integer equivalence, full save/reader closure, World/live implementation.
 Independent review pending Orchestrator II Mac; no reviewer agents. Stop at research/implementation prerequisites.
+
+## 2026-11-19 — WILDLIFE-RASTER-FP-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-RASTER-FP-1`, exact base `8217e1879aead7fa3b451c155b060f0a05405874`.
+- Base tree `df33087d82cdd7b6685e0240b17abdb8b5d62fa8`; production still FILL `889143ba`; no board/main merge/rebase.
+- Read dispatch `8504116a`, raster review, ledger and common policies; previous refs/evidence preserved.
+- [Research](../re/wildlife-raster-fp.md) contains acceptance/edge tables; [capture card](../testing/wildlife-raster-fp-capture.md); [receipts](evidence/wildlife-raster-fp-1.md).
+- F1 verdict A: PC53 at CRT masked reset proved; full CW/RC at actual table initialization not closed/observed.
+- Verdict B: full CW/thread at first postload callback unknown; no assumption that A and B match.
+- Loader ->Welt 0x100b6b78/0x100b6a9f ->CRT 0x100b921a/0x100b931e ->thunk 0x1007c750/table 0x1007c760.
+- Reset 0x100b6e12 and control87 0x100ba3c0 change requested PC bits persistently, not rounding bits or every exception mask.
+- Earlier initializer/external history is not a complete CW restoration proof; exact missing observations named, no arbitrary policy choice.
+- Frame start reference 0x100879c4 ->0x1002a190 ->0x1002a3f8 ->0x10029100 is locally synchronous, actual entering thread U.
+- Frame 0x10077a56/IAT 0x1008604c imports CreateAnnoSceneInstance; Scene 0x1000b080/IAT 0x10031000 imports CreateAnnoWeltInstance.
+- Static import chain proves resolved module edges, not same initializer/load thread or full CW preservation.
+- Actual Frame worker creation at 0x10019350 uses entry 0x10019230; no claim that worker loads the scenario.
+- Standard world table 0x100ccdd8 resolves +0x1d0 to 0x100aba70, flags-2 call return 0x100aba99; arithmetic entry 0x100a3cce.
+- Width/height 0x100a3910/0x100a3920 and sample 0x1009db00/island 0x10084c20 have no CW writes on the addressed normal paths.
+- F2: full executable-section inventory of Welt/Frame/Game/View/Display/Scene finds 11/11/11/11/11/3 fldcw sites, 58 total.
+- No other searched finit/fninit/frstor/fxrstor/xrstor/ldmxcsr resolved; inventory is not a claim that all sites execute or restore on load.
+- Scene reset 0x1002851a ->controlfp 0x1002d8d8 ->control87 0x1002d8a3 is the same masked persistent precision shape.
+- Normal conversions save/RC-truncate/restore: Welt 0x100b5fa6/0x100b5fac; Scene 0x10027aa6/0x10027aac; Frame 0x10077dbe/0x10077dc4.
+- One normal return follows restore in each read; status flags/trapping exits are distinct, no all-exit/process-history claim.
+- PC mask 0x0300, RC mask 0x0c00 and exception masks 0x003f kept separate; startup fnclex is status clearing, not nearest selection.
+- F3 prior controls reproduced first; new hand expectations precede independent T/C precision/rounding model.
+
+```text
+# cache/wildlife-raster-fp-1/prior-control.log — exit 0, unchanged reference
+MODEL executed=31 failed=0 profile=precision53_nearest_f32stores original_execution=NOT_RUN
+# sensitivity-first.log — exit 0
+FP_MODEL executed=19 failed=0 independent_profiles=1 original_execution=NOT_RUN
+```
+
+- 19 =6 prior sample controls +9 profile rows +4 table-bit checks; extra unasserted modes do not inflate counts.
+- T24/nearest versus T53/nearest, fixed C53/nearest: full height 6 converts 5/6; table bits 0x3e75c28e/0x3e75c28f.
+- T53/down versus nearest, fixed C53/nearest: full 248 converts 247/248; table bits 0x411eb851/0x411eb852, round 15/16.
+- C24/nearest versus C53/nearest, fixed T53/nearest: full height 5 converts 5/4.
+- C53/down versus nearest, same fixed table and ordered 255,255,255,227: raw 247/248, merged 0x8f/0x90.
+- T53/down plus C24/up cancels to raw 248 despite different table bits; output alone cannot identify two profiles.
+- Four precision/rounding axes vary separately; retained accumulator/f32 stores/.04 bits/order/nominal denominator/byte mask preserved.
+- These are source-derived models, not original observations or proof that the game reaches every tested profile.
+- F4 card selects fresh normal Tutorial/01Discover01 with exact GOG DLL hashes, relocated RVA stops, target x86 context read only.
+- A at Welt +0x7c760/+0x7c780; B at +0xa3cc0/+0xa3cce selected by flags 2 and return +0xaba99; normal exit +0xa40be.
+- Separate thread/full CW/status/table bits 5/6/248; first natural bucket/output/generation corroboration, no injected fnstcw/controlfp or register edits.
+- No Windows dispatch made; card goes only to orchestrator. This is the valid bounded stopping result, no indefinite static search.
+- Proposed next independent task: c2-zero preprocessing 0x10084370–0x10084818 and gate 0x100a1810; not started or released here.
+- cache/wildlife-raster-fp-1/docs-check.log: DOC_CHECK files_or_sections=5 links=13 hashes=31 missing=0 status=PASS
+- Relative links resolve; four official external pages read. Diff/scope audit passes; no CTest/build/sanitizer or fabricated gate counts.
+- No src/tools/fixtures/CMake/CI/state/tag/default/registry/native/World/routing changes, 0 pins/recordings moved.
+- Exact pushed head/tree/CI in direct handoff before terminal CI; pending not accepted, terminal receipts separately.
+
+Decisions and reasoning:
+- Keep the two numeric checkpoints independent; a local precision reset proves neither nearest rounding nor later thread history.
+- Stop at concrete external/entry conditions and provide a non-mutating observation instead of guessing or auditing arbitrary history.
+- Use raw quotients AND table bits/merged output; precision effects and cancellation can otherwise be hidden.
+- Preserve previous proofs and normal restore semantics without claiming every status/trap path is unchanged.
+- Advance only a proposed independent prerequisite while capture/owner routing decisions are coordinated.
+
+NOT_RUN: original GOG/HE/Windows/Wine/emulation, actual CW/thread capture, CTest/dev/ASan/full pins/warnings, general FP/reader/save closure, World/live implementation.
+Independent review pending Orchestrator II Mac; no reviewer subagents. QUESTION: coordinate the bounded Windows capture before selecting an integer profile.

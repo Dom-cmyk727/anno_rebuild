@@ -16370,3 +16370,78 @@ NOT_RUN: full suite/pins.py, Windows/WSL/original runtime/HE, World/native/state
 post-island/global callbacks, nonempty PROD2/city factory/production, UI, living wildlife and cache consumers.
 QUESTIONs: none for finite empty path. CI pending at publication; no main/board merge or other-lane edits.
 Status: READY FOR REVIEW; final commit is report/evidence only.
+
+
+## 2026-11-19 — WILDLIFE-EVENTINSEL-1 — READY FOR REVIEW
+
+Source `c6c106a42d1b126ad33b87d5b035571abbe5cc27`, tree `d9b718591b57bde079f3a1e928f3ec7896dfdc40`; base `d7a21ac4`, dispatch `a13fcb25`.
+[Contract](../sim/wildlife-eventinsel.md); [evidence / acceptance / hashes](evidence/wildlife-eventinsel-1.md).
+Independent review pending; full publication head/tree/CI in direct handoff.
+E1: arm 0x10089751 delegates island +0x30/container +8 at 0x10089776.
+Island +0x1b4 -> factory 0x1008bff0, ctor 0x10079ad0 installs table 0x100c9b68.
+Reader +8 = 0x10079460; zero branch 0x100794ba -> 0x100797f6, full return 0x1007980d.
+Recognized empty clears reported count only; no container reset/write/callback/draw/body read.
+Outer shared result check 0x100896bd–e9 returns success/count 0; nonmatching seek is distinct.
+E2: owned enum EmptyPreserved/completion only, no new event/runtime/World/native state.
+E3: initial compile failed on test diagnostic macro; parenthesized ternary fixed it.
+Stale-binary exploratory filter selected 0 cases: invalid/empty, NOT counted as a pass; logs retained.
+Confirmed rebuild then 3 cases / 316 assertions; absent/empty/duplicates/ownership and all prior state.
+Water-only rig remains mask 0. Nonempty/raw/nested payloads demand exact boundary; outer truncation refuses.
+Actual private guard removal: legal 43/43; wrong 42 pass/1 precise boundary failure; canonical rebuilt.
+Same original Debug once: one island / 73 headers, final empty EVENTINSEL 72 completes locally.
+All prior 156 owned HIRSCH records/links and 4745 draws (=4589 resource +156 load) retained.
+Prior 4760 accepts/16 epilogues/fertility8160/BERGWERK9+20/OCCURQ512000R1masks17 retained.
+Local records complete, boundary absent; STOP before post-island 0x100a2fc8/fd7/fdf, not World success.
+E4 exact gate lines (four separately executed required contracts, not counted twice):
+
+`cache/wildlife-eventinsel-1/debug-final.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=25 executed=25 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+
+`cache/wildlife-eventinsel-1/asan-final.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=25 executed=25 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+
+`cache/wildlife-eventinsel-1/original-final.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+
+Final Debug 25+4=29, ASan 25+4=29, original 1; failed/empty/skipped/incomplete/sanitizer all 0.
+No memory refusal/timeout. Initial exploratory empty result remains invalid, not a final-gate pass.
+Apple 21/GCC 15.3 O3 strict Werror on 2 TUs; shadow rejects; format/lint/links/diff pass.
+Inherited duplicate-library linker warning disclosed; 276 fixtures byte-equal base, not full pins.py.
+M5 Max/18 logical/48 GiB/macOS 27.0.1, 1.5 TiB free, jobs 1/admission on; other jobs/awake untouched.
+Decisions and reasoning:
+- Resolve concrete reader; preserve recognized empty state rather than declaring generic no-op/skip.
+- Typed completion distinguishes absence and unsupported; stop nonempty before unimplemented effects.
+- Report local-record end explicitly, retaining loaded records versus live figures/global cursor distinction.
+- Preserve first-attempt failure/empty history and reuse unchanged long campaigns/cache obligations.
+NOT_RUN: full suite/pins.py, Windows/WSL/original runtime/HE, global/init/callbacks, World/native/state,
+nonempty event runtime, UI/visibility, derived-cache consumers and living wildlife creation/tick/removal.
+QUESTIONs: none for finite empty branch. CI pending; no main/board merge, new tags/defaults or other-lane edits.
+Status: READY FOR REVIEW; publication adds report/evidence only.

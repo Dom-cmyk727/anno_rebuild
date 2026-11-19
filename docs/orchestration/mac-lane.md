@@ -56,7 +56,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife climate kernel [WILDLIFE-KERNEL-LOAD-1](tasks/wildlife-kernel-load-1.md) | ACCEPTED; UNWIRED owned reader | `c9259c1612863def493dcb47f455a018b8e110c0`; tested `fb6c7f52` | [44483388631](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44483388631), all 12 successful | [Review](reviews/2026-11-19-wildlife-kernel-load-1-review.md) |
 | Candidate 10 display [MAC-GPU-WINDOW-1](tasks/mac-gpu-window-1.md) | CLOSED, diagnostic approved; candidate remains FAIL | Unchanged `95897a55bc939a185766b7207e69d098997cdb1d` | 4/4 post-script failures; 7287 successful acquire/present returns; original no-frame cause unresolved | [Review / Windows handoff](reviews/2026-11-19-mac-gpu-window-1-review.md) |
 | Wildlife object facts [WILDLIFE-GROUND-FACTS-1](tasks/wildlife-ground-facts-1.md) | LOCAL REVIEW APPROVED; CI pending | `4054d93aa42f777c49c9c4dd035bd3cdce23f64b`; tested `f443ed12` | [44490451270](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44490451270), pending | [Review](reviews/2026-11-19-wildlife-ground-facts-1-review.md) |
-| Wildlife source provenance [WILDLIFE-PREP-PROVENANCE-1](tasks/wildlife-prep-provenance-1.md) | RELEASED; INFO/fresh-city preparation contract | Locally reviewed `4054d93a` | Read-only original evidence and bounded probes; no engine wiring | Direct reportback to Mac orchestrator |
+| Wildlife source provenance [WILDLIFE-PREP-PROVENANCE-1](tasks/wildlife-prep-provenance-1.md) | LOCAL REVIEW APPROVED partial contract; P3 closed, CI pending | `0a30d44a6214b2c3e1d6859fb5a65b7c1c3b4719`; engine `4054d93a` | [44494353183](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44494353183), pending | [Review](reviews/2026-11-19-wildlife-prep-provenance-1-review.md) |
+| Wildlife first-call composition [WILDLIFE-FIRST-CALL-1](tasks/wildlife-first-call-1.md) | RELEASED; owned source-to-fill, completed ground only | Corrected locally reviewed base `0a30d44a` | Focused gates and CI at handover | Direct reportback to Mac orchestrator |
 | Windows dual-edition navigation [WIN-NAV-EDITIONS-1](tasks/windows-nav-editions-1.md) | Owner-requested HANDOFF READY; Windows intake pending | Accepted diagnosis `74d50bfe`, production base `889143ba` | GOG and HE verification requested; no repair released | Owner forwards to Windows orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
@@ -1112,3 +1113,22 @@ then specify the next owned composition boundary. No fabricated FRUCHTBAR or
 city-absence certificate. Windows UI and navigation/FP work remain separate.
 Executor ordinary-pushes its task branch and reports directly here for review and
 next release. Main and other lanes remain untouched.
+
+
+## Latest release — completed-ground first call
+
+PREP-PROVENANCE corrected0a30d44a is locally independently approved. Actual
+instructions establish geometry adjustment and completed-FRUCHTBAR skipping of
+all preparation/city prewalk. Root verified59 manifest and83 published receipts;
+24-file sample and12 arithmetic probes remain bounded. P3 retention wording is
+corrected: preserved first-selection script/empty stdout are not a retained runtime
+diagnostic. No rerun or invented evidence. Exact-head CI remains pending, as does
+GROUND-FACTS CI; neither is silently accepted by this continuation.
+
+FIRST-CALL-1 is RELEASED: internally source-build one supported fresh-island
+prefix, validate full aligned geometry/genuine completed fertility and compose the
+existing owned fill operations. Reuse exact retained Tutorial inputs and add
+independent authored field-level/refusal/ownership controls. No absent-data prep,
+World, navigation, secondary raster or graphics wiring. Unresolved city eligibility
+belongs to the absent-data path and does not block this selected completed path.
+Executor ordinary-pushes its task branch and reports directly here. Main untouched.

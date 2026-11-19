@@ -36,7 +36,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife rock [WILDLIFE-ROCK-1](tasks/wildlife-rock-1.md) | LOCAL REVIEW APPROVED after FIX-1; exact-head CI pending | `6c6554a23a7e637f2c88fb360cf050aff643c613`; source `26899502` | [44422288006](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44422288006), in progress | [Review](reviews/2026-11-19-wildlife-rock-1-review.md) |
 | Wildlife rock correction [WILDLIFE-ROCK-FIX-1](tasks/wildlife-rock-fix-1.md) | LOCAL REVIEW APPROVED; P2 closed, prose-only | `6c6554a2` | Frozen-source gates reused; exact CI pending | [Focused review](reviews/2026-11-19-wildlife-rock-1-review.md) |
 | Wildlife fertility header [WILDLIFE-FERTILITY-1](tasks/wildlife-fertility-1.md) | LOCAL REVIEW APPROVED; publication cleanup verified, CI pending | `81026d1b451955d9167649cb3b8b2e3f5648d120`; source `12586595` | [44425779949](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44425779949), in progress at handoff | [Review](reviews/2026-11-19-wildlife-fertility-1-review.md) |
-| Wildlife BERGWERK2 [WILDLIFE-BERGWERK-1](tasks/wildlife-bergwerk-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `81026d1b` | Not started | Frozen reportback directly to Mac orchestrator |
+| Wildlife BERGWERK2 [WILDLIFE-BERGWERK-1](tasks/wildlife-bergwerk-1.md) | LOCAL REVIEW APPROVED; exact-head CI pending | `03fff3c6ffc2e3c0bbd52f5e8f24c0fc083afb94`; source `7e4ac88f` | [44428107745](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44428107745), in progress | [Review](reviews/2026-11-19-wildlife-bergwerk-1-review.md) |
+| Wildlife occurrences [WILDLIFE-OCCUR-1](tasks/wildlife-occur-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `03fff3c6` | Not started | Frozen reportback directly to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -649,3 +650,21 @@ from this transient header. Continue once to the next unsupported boundary.
 No raw-stash/no-op surrogate, identity/default change or extra header expansion.
 Executor ordinary-pushes its branch and reports directly here for independent
 review and next release. Main/other lanes remain untouched.
+
+
+## Latest dispatch — BERGWERK2 reviewed; OCCUR released
+
+BERGWERK03fff3c6/source7e4ac88f is independently locally APPROVED, no blocking
+findings. Primary instructions and raw9entries/20nodes/8chunks verified; tests
+pin wrapped coordinates, signed chunk division, duplicates and prepend links.
+42 hashes and276 unchanged fixtures checked. Debug8+3required, ASan8+3required
+and original1 pass. No corrections or gate repeat needed. CI44428107745 remains
+pending; corrected FERTILITY/ROCK exact-head CI also remains nonterminal.
+
+[WILDLIFE-OCCUR-1](tasks/wildlife-occur-1.md) is RELEASED after independent dispatch
+review. Establish the actual reached occurrence reader/factory/attach/load/callback
+chain using prior ore research; preserve distinction from BERGWERK lists and later
+scene assignment. Implement only the proved transient slice and stop at unsupported
+classes/effects or next header. No whole factory, World/native/tag/default changes.
+Executor ordinary-pushes its task branch and reports frozen results directly here
+for independent review and next release. Main/other lanes untouched.

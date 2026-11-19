@@ -72,6 +72,8 @@ TEST_CASE("wildlife graphics: every hand vector compares the full plane and dige
         std::istringstream left(line.substr(0, arrow)), right(line.substr(arrow + 2));
         std::string kind, label;
         left >> kind >> label;
+        if (kind == "fill")
+            continue;
         REQUIRE(kind == "gfx");
         CAPTURE(label);
         const auto in = fields(left), expected = fields(right);

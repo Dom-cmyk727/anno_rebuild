@@ -16077,3 +16077,65 @@ Decisions and reasoning:
 
 NOT_RUN: original/HE runtime, Windows/WSL game-file runs, full suites/pins/warnings, LSan, allocator failures, other classes/goods 0x84, World/cache/Scene/mining/fauna/global initialization.
 QUESTIONs: none blocking bounded review. Next finite task: reached ANBAU header 52 and its actual state/callback contract; no other-lane crop/fertility policy implied.
+
+## 2026-11-19 — WILDLIFE-ANBAU-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-ANBAU-1` from OCCUR `5bcd50c5`; exact dispatch `44fb2bfd29e3d7382f0b7cf8e251b8f7a7a1ec2f` read without merge.
+- Frozen tested source `d645071aaea3f2d9901295fcafcc807cd3a4ee37`, tree `b04956baefbe34740fd193830568e0996ce80c97`.
+- Publication adds report/evidence only; full head/tree/exact CI accompany direct handoff. No main/board merge/rebase, other-lane changes or original data in git.
+- [Prewritten contract](../sim/wildlife-anbau.md); [frozen evidence](evidence/wildlife-anbau-1.md) includes acceptance, primary spans, causal proof and SHA256 receipts.
+- D: actual ANBAU arm AnnoWelt `0x10089871–0x10089974`; initializes island dword +0xac to 0 when climate +0xc0 is 0, otherwise 0xf009.
+- INFO `0x100897a6–0x100897ed` supplies byte +0xc0 from payload byte 0; empty ANBAU still writes seed and returns without a name lookup.
+- Raw payload is consecutive NUL strings, not tagged records/grid: loop `0x100898d2–0x1008995f` applies at most 13 strings; later bytes ignored.
+- Empty/unknown tokens count; byte-exact case-sensitive first match against Game +0x48(kind 0x20, indices 56–68), OR 1 << (index − 56).
+- D: Game `0x1000346b–0x100034ad` -> `0x10013be0`; pointer table `0x100251f8`, null fallback `0x100261e8` at `0x10013cde–0x10013ce7`.
+- New bounded name reader reuses checked PE view/identity, owns runtime image strings/fallback; no copied original-name list or mod-registry substitution.
+- Name window/13-token rule are addressed original decoder semantics, not an engine crop/population capacity; typed state uses vectors/u32 bitmap.
+- Later ANBAU resets, never unions the previous header; absent mask remains unknown/absent rather than guessing constructor state.
+- Optional per-header seed/mask/ignored tail, owned token bytes/matched goods/source and final bitmap distinguish completion/zero/error.
+- No tile/resource/occurrence/raw-fertility/effective-variation write, callback or world draw in the finite arm/read/name-lookup/return chain.
+- No consumer crop/production/dry-field policy inferred from name or bitmap; World/normal loader/defaults/registry/native/tags/state identity untouched.
+- Authored AX/BY/CZ from PE slots 56/57/68 select bits 0/1/12; duplicate PE names select first, Latin-1/UTF-8/lowercase differ, null fallback/empty name checked.
+- Header 0x1001 then BY -> 2, final empty -> 0; present-zero versus absent, climates 0/1/2, owned strings and processed-field byte round-trip checked.
+- Thirteenth token applies, fourteenth known token/unterminated tail ignored; processed unterminated tokens and unsafe image pointer/string/table/identity refuse diagnostically.
+- Empty path succeeds with no name table; nonempty path validates complete bounded metadata before effect, explicitly defensive rather than original unsafe I/O emulation.
+- Surrounding resource/BERGWERK/ore/fertility/HIRSCH preserve masks/Q/digests/views/draw chronology; no whole-map copies per token.
+- Actual adapter-TU wrong union: legal 70 assertions; exactly 1 intended reset failure (4099 versus 2), 69 controls pass; canonical source/binary unchanged/rebuilt.
+- Initial compile shadow-name Werror retained/corrected before freeze; seed-only metadata dependency refined with a direct 180-assertion control; no canonical gate failure.
+- Same original header 52: 135 bytes/13 tokens, all match goods 56–68, seed 61449 -> mask 65535, ignored 0, draws 0; independent PE/raw parse agrees.
+- Prior 4,760 terrain accepts/0 refusals, 4,589 resource draws, 84 stones/63 cliffs/24 rocks, 16 terrain epilogues and fertility completion unchanged.
+- BERGWERK 9 entries/20 kind-1 nodes, ore/kind-6 node 1/Q 512000/R 1, all 20 masks 17 retained; 53 headers complete, spawns 0/total cursor 4,589.
+- Diagnostic boundary before DISCOVER header 53/record 0/island 0/slot 11; HIRSCH 71 unreached; no global initialization/cursor claim.
+
+```text
+# cache/wildlife-anbau-1/debug-final.log (main)
+COUNTS: selected=16 executed=16 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-anbau-1/asan-final.log (main)
+COUNTS: selected=16 executed=16 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# Three separately required controls per profile; all six receipts reproduced in evidence
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+# cache/wildlife-anbau-1/original-final.log
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+- Totals Debug 19 / ASan 19 executed passes including required controls, plus original Debug 1; failed/empty/skipped/incomplete/sanitizer 0.
+- Required: bitmap-reset causal case, ANBAU framing/PE public contract, existing prefix prerequisite contract; no double counting/refusal/timeout/full-gate repeat.
+- Three affected TUs strict O3/Werror Apple Clang 21/GCC 15.3 pass; GCC shadow control rejected; format 23.1.3/lint/diff/links pass.
+- Compiler warnings 0; inherited duplicate-library Apple linker warning disclosed; targeted checks are not the full warning sweep.
+- All 276 fixtures/pins/recordings unchanged; existing resource-table method/PE view/framing/selector/metadata/HHbb/HIRSCH/resource-mode/long evidence reused with reasons.
+- Existing omitted derived caches/future rebuild obligation unchanged; observed ANBAU bitmap effect actually represented, no raw-stash/no-op completion.
+- Host Apple M5 Max / 18 logical / 48 GiB / macOS 27.0.1, jobs 1/threads 2, normal admission; awake assertion/coordinator/main/other lanes preserved.
+- Exact-head CI read after ordinary push and sent directly; pending is never green and does not delay frozen handoff.
+
+Decisions and reasoning:
+- Trace actual seed/string/window/return semantics, including empty path, before implementing; do not invent crop-placement policy.
+- Read names from the supplied checked image, preserve first-match bytes and the original bounded decoder rule without installation tables.
+- Own the scalar/token chronology, preserve prior terrain/ore state and distinguish absent/zero/defensive refusal; no new persistent contract.
+- Prove reset against wrong union, run focused gates once and stop before DISCOVER; other-lane farming work stays untouched.
+
+NOT_RUN: original/HE runtime, Windows/WSL game-file runs, full suites/pins/warnings, LSan, allocator failures, World/cache/native integration, farming policy/post-island/fauna/UI.
+QUESTIONs: none blocking bounded review. Next finite task: reached DISCOVER header 53 and actual loaded scalar/callback contract before another continuation.

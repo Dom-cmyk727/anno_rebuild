@@ -306,7 +306,7 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
             const auto& header = raw.records[setup_end];
             const auto name = header.name();
             prepared.headers.push_back(
-                {source(setup_end), std::string(name), 0, {}, {}, {}, {}, {}, {}, {}});
+                {source(setup_end), std::string(name), 0, {}, {}, {}, {}, {}, {}, {}, {}});
             if (name == "INFO") {
                 if (header.payload.size() != 12) {
                     setup_error = PrefixBoundary{source(setup_end), "INFO", "strict INFO length"};
@@ -387,7 +387,7 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
             const auto& header = raw.records[h];
             const auto name = header.name();
             prepared.headers.push_back(
-                {source(h), std::string(name), 0, {}, {}, {}, {}, {}, {}, {}});
+                {source(h), std::string(name), 0, {}, {}, {}, {}, {}, {}, {}, {}});
             if (name == "GELAENDE") {
                 const auto block = formats::insel::Block::parse(header.payload);
                 if (!block || block.value().data.size() % 6 != 0) {
@@ -429,6 +429,24 @@ prepare_wildlife_prefix(formats::Bytes scene, std::span<const formats::figuren::
                     return PrefixFailure{out.boundary->reason, std::move(out)};
                 }
                 prepared.headers.back().water_mask_updates = closed.value();
+            } else if (name == "PROD2") {
+                // AnnoWelt 0x100895d9 -> 0x10089d6c, no GELAENDE epilogue.
+                // Contract: wildlife-prod2.md; nonempty tile placement stays unsupported.
+                const auto block = formats::insel::Block::parse(header.payload);
+                if (!block) {
+                    stop({source(h), "PROD2", block.error()});
+                    return PrefixFailure{out.boundary->reason, std::move(out)};
+                }
+                const auto& b = block.value();
+                if (!b.data.empty()) {
+                    stop({source(h), "PROD2",
+                          b.data.size() >= formats::insel::kItemLen
+                              ? "unsupported nonempty PROD2 item"
+                              : "partial PROD2 item tail cannot preserve stream framing"});
+                    return PrefixFailure{out.boundary->reason, std::move(out)};
+                }
+                prepared.headers.back().prod2_empty =
+                    PrefixProd2EmptyBlock{b.x, b.y, b.width, b.height};
             } else if (name == "KONTORID") {
                 // AnnoWelt 0x10089bee/0x10089bf4; contract: wildlife-kontorid.md.
                 // Raw transfer accepts zero; normal-loader counter policy is separate.

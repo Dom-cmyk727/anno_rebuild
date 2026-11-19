@@ -35,7 +35,8 @@ evidence cleanup, prioritize TOWN-START-1 and the listed wildlife critical path.
 | Wildlife cliff [WILDLIFE-CLIFF-1](tasks/wildlife-cliff-1.md) | ACCEPTED bounded projection; Windows landing pending | `11bc3be60acc71a4c9fbf03dff077e908b4c8204`; source `eb3ea560` | [44417567937](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44417567937), all12 jobs successful | [Review](reviews/2026-11-19-wildlife-cliff-1-review.md) |
 | Wildlife rock [WILDLIFE-ROCK-1](tasks/wildlife-rock-1.md) | LOCAL REVIEW APPROVED after FIX-1; exact-head CI pending | `6c6554a23a7e637f2c88fb360cf050aff643c613`; source `26899502` | [44422288006](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44422288006), in progress | [Review](reviews/2026-11-19-wildlife-rock-1-review.md) |
 | Wildlife rock correction [WILDLIFE-ROCK-FIX-1](tasks/wildlife-rock-fix-1.md) | LOCAL REVIEW APPROVED; P2 closed, prose-only | `6c6554a2` | Frozen-source gates reused; exact CI pending | [Focused review](reviews/2026-11-19-wildlife-rock-1-review.md) |
-| Wildlife fertility header [WILDLIFE-FERTILITY-1](tasks/wildlife-fertility-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `6c6554a2` | Not started | Frozen reportback directly to Mac orchestrator |
+| Wildlife fertility header [WILDLIFE-FERTILITY-1](tasks/wildlife-fertility-1.md) | LOCAL REVIEW APPROVED; publication cleanup verified, CI pending | `81026d1b451955d9167649cb3b8b2e3f5648d120`; source `12586595` | [44425779949](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44425779949), in progress at handoff | [Review](reviews/2026-11-19-wildlife-fertility-1-review.md) |
+| Wildlife BERGWERK2 [WILDLIFE-BERGWERK-1](tasks/wildlife-bergwerk-1.md) | RELEASED to EXECUTOR II MAC | Locally reviewed base `81026d1b` | Not started | Frozen reportback directly to Mac orchestrator |
 | Parallel [TOWN-CI-CLOSE-1](tasks/town-ci-close-1.md) | ACCEPTED; isolated repair, main untouched | `9edb151c414246d306194a703db71475affbdad4`; tree `6dd647aac8dbe9e1335acd0659daa9c287ee99c1` | [44266114323](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44266114323), all 12 jobs pass | [Final repair review](reviews/2026-11-18-town-ci-close-1-review.md) |
 
 ## Review and reporting contract
@@ -629,3 +630,22 @@ unsupported boundary. Explicitly check empty-tile-fill1a0, immutable terrain/vie
 lifetimes and duplicate source order. It does not overlap FERTILITY-1 crop/UI policy.
 No World/native/tag/default changes. Executor ordinary-pushes its task branch and
 reports frozen results directly here; no owner relay or self-approval. Main untouched.
+
+
+## Latest dispatch — FERTILITY reviewed; BERGWERK2 released
+
+FERTILITY81026d1b/source12586595 is independently locally APPROVED. Actual original
+nibble merge, source order, finite callbacks and owned terrain lifetime verified;
+37 hashes and276 unchanged fixtures checked. Debug8+3required, ASan8+3required,
+and original1 pass. One public host path was corrected in a single prose line;
+no runtime change, test repeat or extra substantive review. Exact-head CI44425779949
+remains pending. Header49 is complete; next unsupported header50 BERGWERK2 is
+before effects. No spawns/full-world/global-cursor claim.
+
+[WILDLIFE-BERGWERK-1](tasks/wildlife-bergwerk-1.md) is RELEASED after independent
+dispatch review on corrected81026d1b. Establish that container's actual handler,
+typed values/order and direct effects; distinguish OCCUR ore objects and mining
+from this transient header. Continue once to the next unsupported boundary.
+No raw-stash/no-op surrogate, identity/default change or extra header expansion.
+Executor ordinary-pushes its branch and reports directly here for independent
+review and next release. Main/other lanes remain untouched.

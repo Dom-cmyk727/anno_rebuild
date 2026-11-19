@@ -16445,3 +16445,52 @@ NOT_RUN: full suite/pins.py, Windows/WSL/original runtime/HE, global/init/callba
 nonempty event runtime, UI/visibility, derived-cache consumers and living wildlife creation/tick/removal.
 QUESTIONs: none for finite empty branch. CI pending; no main/board merge, new tags/defaults or other-lane edits.
 Status: READY FOR REVIEW; publication adds report/evidence only.
+
+
+## 2026-11-19 — WILDLIFE-POSTLOAD-1 — READY FOR REVIEW
+
+Research source `09614995c9e9b9c7f187e271b9ea6b3ebaf985bc`, tree `5f5dc9fb00adf4b23977be966e0bbef291075825`.
+Base `218b838e`, dispatch `8279965d`; no main/board merge or other-lane edits.
+[Contract/three-call ledger](../sim/wildlife-postload.md); [evidence/hashes](evidence/wildlife-postload-1.md).
+Independent review pending; full publication head/tree/CI in direct handoff.
+Q1: caller a2fc8 WORLD+1d4 ->a1810, a2fd7 WORLD+1d0 ->aba70, a2fdf ISLAND direct85290.
+Same stack half-open rectangle, no result checks; actual caller return a2ff0 verified.
+Fresh Scene kind1 installs derived world ccdd8; base+1d0 is a stub, not equivalent.
+First wrapper condition c2==0 ->84370–84818 preprocessing, then ALWAYS928a0–92b32 fill.
+Tutorial FRUCHTBAR 49 / 16384 bytes establishes c2=1: preprocessing skipped, not based on byte values.
+Fill includes grass at mean >=32 / fertility nibble >5, fish below 16; existing fisher helper is fish-only.
+No c2-zero metadata/kernel default invented. Standard named getters draw-free; actual catalogue binding U.
+Second wrapper calls coarse builder aae00–ab9ed AND +bc/+120 raster+c(flags2,rect), a3cc0–a40c5.
+Exact chunk bounds and raster low-nibble/generation writes cannot be waived as merely derived.
+Third85290–853a9 leaf scans whole GFXID: high byte 0x20, 4x4 legal vertices all 0 -> whole word 0.
+Q2: OQ-202 narrowed: island+1c <-world+18/+110 <-Init third input at9d848 <-Scene+154/2fc6.
+Catalogue identity/type-array population and raster numeric-table/consumer edges remain unread.
+Static V9: original chunk bound adds before halving; route_world.cpp wraps sum first.
+Interior vertices 18 / base 250 / descriptor 0.8f -> 20: original max 270 / half 135 mixed, engine half 9 all-water.
+NOT_EXECUTED static counterexample, not observed corpus failure; no repair/compatibility choice made.
+Twelve hand-derived vectors cover flags, thresholds, field widths, border/window and cache ordering.
+All twelve NOT_EXECUTED; no new helper/registration or echo oracle added for unresolved composition.
+Q3: next bounded units: unwired graphics leaf, catalogue input contract, first-call transient fill.
+Exact files/legal-negative controls/stops in contract. Third unit stops before unresolved navigation.
+Full ordered composition and owned World/save/replay/lifecycle remain unreleased, Windows owns tags.
+Q4: docs/link/diff checks plus ownership audit only; source/tools/CMake/fixtures/native unchanged.
+No test COUNTS/VERDICT lines: no suite selected by this docs-only packet; NOT_RUN, not empty PASS.
+Log: `cache/wildlife-postload-1/docs-check-final.log`; SHA-256 listed in frozen evidence.
+```text
+DOC_CHECK files=4 links=11 hand_vectors=12 missing=0 status=PASS
+EXECUTION: C++ suites NOT_RUN; hand vectors NOT_EXECUTED; no reference helper added
+```
+All 276 tracked fixtures byte-equal base; no pin/golden/default/registry/state/PRNG changes.
+Frozen c6c106a4 local proof reused (Debug 29 / ASan 29 / original 1), never rerun or counted as new tests.
+One raw context inspection: 1 island / 73 headers, FRUCHTBAR 49, rect [24,24,152,152); no callback execution.
+4745 supplied draws remains PRE-callback evidence; no unchanged postload/global total claimed.
+Decisions and reasoning:
+- Resolve receivers and original byte predicates before writing an execution model.
+- Preserve local/post-island/global/World boundaries and original source-order effects.
+- Do not infer full fill, cache safety or catalogue identity from existing subset helpers.
+- Preserve static mismatch and missing reads explicitly; no code fix or invented owner question.
+- Prefer the proved leaf as next implementation unit; retain unexecuted vectors honestly.
+NOT_RUN: new C++/reference gates, hand vectors, original postload/runtime/HE, global initialization,
+full draw closure, World/native/lifecycle, postload corpus/performance or default changes.
+QUESTIONs: none new; unresolved static edges are research dependencies. Exact-head CI pending.
+Status: READY FOR REVIEW, bounded research rather than postload-complete claim; final commit docs only.

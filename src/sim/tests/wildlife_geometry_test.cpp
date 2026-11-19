@@ -141,6 +141,18 @@ TEST_CASE(
     CHECK(t24.value().table()[6] == 0x3e75c28e);
     CHECK(t53.value().table()[6] == 0x3e75c28f);
     CHECK(t53.value().table()[48] == 0x3ff5c28f);
+    // Reviewed retained table: 248*c=166429979/2^24; binary32 grid step is16 numerator units.
+    // Nearest/up choose166429984, down/toward-zero choose166429968 (not callback RC).
+    for (const auto precision : {53U, 64U}) {
+        for (const auto mode : {Round::Nearest, Round::Up, Round::Down, Round::TowardZero}) {
+            const auto context = load::prepare_wildlife_numeric_context(
+                {Profile{precision, mode}, nearest, "independent table rounding hand proof"});
+            REQUIRE(context);
+            CHECK(context.value().table()[248] ==
+                  (mode == Round::Nearest || mode == Round::Up ? 0x411eb852U : 0x411eb851U));
+        }
+    }
+
     const auto owned = [&] {
         std::string label = "owned numeric context";
         return load::prepare_wildlife_numeric_context({nearest, nearest, label});

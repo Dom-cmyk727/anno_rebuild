@@ -17473,3 +17473,71 @@ Decisions and reasoning:
 
 NOT_RUN: original/HE runtime, live manager/allocator/cave provider/upstream FP, animals/tick/movement/hunting/death, World/registration/spatial/save/Rules/tag/state/PRNG/navigation/raster/graphics, Windows/WSL/full/heavy/opening/pins/full warnings, LeakSanitizer. No public Python CLI added.
 QUESTIONs: none blocking this isolated handoff; persistent integration and allocator/FP providers still need separately released coordination. READY FOR REVIEW, not self-approved or exact-head accepted.
+
+
+## WILDLIFE-RELEASE-EFFECTS-1 — 2026-11-19 — READY FOR REVIEW
+
+Branch `task/WILDLIFE-RELEASE-EFFECTS-1`, base `25bab774208c9e610b43447e247d99cc1aba0195`.
+Dispatch `979aac55818502741b110673ef4bbe3e4e378eb9`; no main/board merge.
+Tested source `33fe219cae79bdde3cf309a71a8385aa01f5159e`, tree `e146caae2787840c5557435f932f5b25652df591`.
+Publication adds report/evidence only; orchestrator independent review remains pending.
+[Contract/acceptance](../sim/wildlife-release-effects.md); [frozen evidence](evidence/wildlife-release-effects-1.md).
+
+R0/R1: New +0x110 `AnnoWelt 0x10052b40–0x10052c01`, island +0x148
+`0x1008bc80–0x1008bde5`, category lookup `0x1007c630`, manager removal `0x100974b0`.
+Query 12 concrete handler `0x100525a2`, numeric mask **2** at `0x1008bd21`;
+configuration **4** skips optional manager follower calls. New follower loop mask 1
+also skips with empty head. Current 0 skips `0x100330b0`; motion count 0 skips
+`0x10030030`'s manager storage callback; null route skips destructor. No live cleanup assumed pure.
+Home is zero-extended u16 via `0x10052b00`; origin words, signed difference /8,
+absolute home %8, category bit 0 then first category-0 packed-coordinate match.
+`0x1008bdd9` clears only 0x40, no saved-ID check; detach at `0x10052bf8` prevents repeat release.
+
+R2: pure owned `project_wildlife_end(descriptor, state, island_snapshot, operation)`.
+Reuses creation fields; supports kinds 49/51 and explicit empty cleanup/configuration 4.
+Sparse ordered chunks/records model lookup facts, never execute native spatial lists.
+Returned attachment/reset/spawn changes preserve all unrelated fields/records.
+Missing record gives no write; unsupported followers/motion/jobs/configuration refuse.
+DirectRemovalContrast preserves occupied spawn, without implementing deletion/free.
+No World, registry, saved state, tag, default, identity, navigation, FP or PRNG changes.
+
+R3: four new literal cases / 80 assertions, first authored run passed.
+Create ->authored moved current ->end releases home only; 0xc3 ->0x83 retains id/time/goods.
+Mismatching ID still releases; wrong category/missing/clear/duplicate matches discriminate lookup.
+Home 8/origin 9 distinguishes signed truncation and absolute remainder; widened home kept separate.
+End/repeat with replacement stays occupied; old attached state still releases without an ID guard.
+Owned result survives input destruction; immutable inputs, repeated deterministic result.
+Actual production mutants: current lookup, extra clears, saved-ID guard, repeat release;
+all four fail intended assertions after legal 4-case / 80-assertion control. Replacements proved applied.
+
+R4: `cache/wildlife-release-effects-1/debug.log` (required case, then main selection):
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=13 executed=13 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+`cache/wildlife-release-effects-1/asan.log` (same frozen source/selection):
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=13 executed=13 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+14 unique cases/profile: 4 new + 6 creation + 2 prefix + 2 leaf controls. No refusals/timeouts/reruns.
+Required original case checks 29 descriptor rows, not release/runtime corpus behavior.
+Apple Clang 21/GCC 15.3 strict affected TUs pass; GCC shadow negative rejects;
+clang-format 23.1.3/lint_sim/diff check pass. 0 compiler warnings; inherited duplicate-library linker warning retained.
+Both actual binaries retained; 1015 frozen entries verified; prior 209-entry manifest intact; 293 fixtures byte-identical.
+83-entry closeout manifest SHA256 `0c9dc8947fbba8bd215f1af30dc675d0c99ee4692810c36f057e79a56c6e3b8a`.
+Hosted CI: exact publication run read after ordinary push; orchestrator owns terminal closeout.
+NOT_RUN: original/HE runtime, live lifecycle/nonempty cleanup, Windows/WSL local,
+LeakSanitizer, broad/full/heavy/pins; OQ-578/579/584 remain open beyond selected closure.
+Decisions and reasoning:
+- Owned snapshots expose exact lookup order without pretending to run native pointer callbacks.
+- Keep original no-ID-guard behavior; a safer generational policy requires an owner decision.
+- Empty profile refuses unsupported state; separate direct-delete contrast avoids invented lifecycle guarantees.
+- Reuse unchanged format/prefix evidence and run only directly reached focused regressions.
+QUESTIONs: none for this isolated boundary. Stop pending orchestrator source/evidence review.

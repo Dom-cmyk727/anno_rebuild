@@ -17349,3 +17349,63 @@ Decisions and reasoning:
 
 NOT_RUN: original/HE execution, missing-ground prep/city prewalk, multiple-island/reused-world ordering, World/native/scheduler, navigation/secondary raster/graphics finalizer, Windows/WSL/full/heavy/long/pins/full warnings, LeakSanitizer. No full initialization/hunting/whole-world PRNG parity claim.
 QUESTIONs: none blocking bounded handoff; later callbacks and absent producer remain separate contracts. READY FOR REVIEW, not self-approved or exact-head accepted.
+
+## 2026-11-19 — WILDLIFE-CREATE-CLOSURE-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-CREATE-CLOSURE-1`, exact base `7d2df0fc5c94786372960000b1c7fe8d3a28dee2`.
+- Exact dispatch `2c41b46d1baf50ec8c4fb93c4ff0699938fb29ef`; no main/board merge or rebase.
+- [Contract, delta and addressed field/draw/failure ledger](../sim/wildlife-create.md); [evidence and private receipt hashes](evidence/wildlife-create-closure-1.md).
+- C0 reused wildlife §§1–7/corrections, hunter, current 74-vector decision boundary, load/prefix/first-call and catalogue-source contracts.
+- Historical 1b cache not available here; no fabricated retained old listing claim. New reads bounded to selected actual creation callbacks.
+- C1 definitions +0x6c ->Game `0x100037f0` returns figure pointer array G+0x4098; same concrete catalogue source chain reused.
+- Figure ENTRY creation `0x10002231–0x10002265` ->factory Game `0x10006400` ->`0x10011dd0`, final table `0x10021e8c`.
+- Actual kind/class/HP/id leaves Game `0x1000fad0`/`0x10010a40`/`0x1000fce0`/`0x10010a50`; no slot-number identity assumption across modules.
+- Kind 49/51 selects Welt `0x1009a4a1` ->New `0x10052c10`; kind 50 selects another class, explicitly excluded.
+- Manager original table `0x100ccd74` installed `0x100aa9da`, constructor `0x10098c80`, init `0x10097150`, published world+0x114.
+- Free-ID helpers `0x10099130`/`0x10099290` and growth `0x10099020`/`0x10099870` read; scan/growth receiver is M+4.
+- Fresh cursor -1/empty row permits first figure id 0; reserved-bit retry and allocation growth are not a new engine id/content cap.
+- Spatial cell constructor `0x10099400` ->`0x10099850` ->`0x10097060` installs table `0x100cb09c` at C+8.
+- `0x1009749a` uses C+8 +0x0c ->`0x10096f40` list append; relocation callback +0x10 ->`0x10096fb0` repairs links.
+- C2 ordered effects: constructor quantity +0x200, then type/world attach, registry/id/time/position/spatial, helper home/goods/island, sweep success stores.
+- Type attach `0x10052a30` replaces HP, adds 0x600 for ids 128/129/529/1206 ->0x800, not capacity or a species roster cap.
+- Cargo F+0x6c +0x0c ->`0x1002ff50` adds quantity; helper slot 0 ->`0x1002ff40` writes goods 0x45, distinct from descriptor yield goods.
+- Original id and three time words narrow to u16; new engine id namespace/persistence remains a later decision.
+- Figure +0x50 `0x100348b0` copies supplied binary32 words twice; no new fixed-point/FP policy or movement is implemented.
+- Helper property 0x2f `0x10052abc` saves home/current tile; cave initial entrance position remains copied while home uses target tile.
+- Cave without entrance still OQ-574; upstream fractional/entrance producers and cross-host x87 projection remain unproved.
+- After return, type +0x48(0x20) ->Game `0x10011cc0` ->`0x10010ba8` is pure unsigned goods read, output unused by sweep.
+- Sweep `0x1009384f–0x10093871` saves id, low8(sweep/1000+60), occupied bit 0x40, descriptor goods; null skips all success stores.
+- Loader /500 is separate from sweep /1000; original spawn chronology/chunk order reused, no global scheduling claim.
+- Selected normal successful game callback closure adds 0 world draws; ordinary helper already consumed position/species 2, cave species 1.
+- Type-animation +0x64 and first action NOT reached through `0x10093875`; requested 27/current 0 remains a deferred action boundary.
+- Failed factory may follow id scan/storage growth; no original rollback claim. Attachment callback returns are not checked by manager.
+- Exact failure gap: allocator retry `0x100b72de` ->`0x100bafb4` ->arbitrary handler `[0x100e3cc4]` called at `0x100bafc1`; runtime registration/value U.
+- Normal unhooked successful allocation profile excludes that handler; failure-path draws are U, never silently zero.
+- P bounded original Figuren parse: 368 entries, 29 kind 49/0 kind 51; three selected special ids. Raw records and names/table stay private.
+- BEWOHNTYPE source read Game `0x1000ff6d–0x10010016`; present LOGIC HP store `0x10010387`; missing/default distinction retained.
+- Current restricted modern bewohntype mapping does not decode these animal names; normalized 0 is not original kind proof.
+- C3 hand table precedes private checker; 11 rows cover eight successful/null effects and three explicit refused profiles.
+- `checker-legal.log`: `PRIVATE_MODEL selected=11 executed=11 failed=0 original_runtime=NOT_RUN unresolved_callee_execution=NOT_RUN`.
+- `controls.log`: `PRIVATE_CONTROLS legal=1 passed=1 wrong_models=6 rejected=6 wrong_expectations=1 rejected=1 empty=1 rejected=1 original_runtime=NOT_RUN`.
+- Source replacements applied and logged; constructor/capacity, type addition, goods, cave home, null occupancy and early-action mutants fail intended rows.
+- Wrong expected row and zero rows exit 1; modeled outcomes are not static callee proof or original executed observations.
+- Initial rows supplied inconsistent ordinary home 10/20 for x=1.25/z=3.75; initial inputs/model-success log preserved, not primary evidence.
+- Corrected ordinary home 1/3 and valid id 65535; cave home 5/6 discriminates entrance projection. Resolved conversions remain explicit inputs.
+- C4 next proposal: owned validated kind/id/HP/yield facts + supplied id/time/position/home/prior spawn; isolated defined creation-effect result, UNWIRED.
+- Source binder must preserve BEWOHNTYPE/LOGIC/WARE presence/profile; no uninitialized original bytes invented or modern registry zero trusted.
+- Persistent manager/World/spatial/save/global PRNG and failure policy need separate Windows/orchestrator coordination; no numeric tag reserved.
+- OQ-578 dated narrowing added only for selected normal-success profile; Old/predator/later animation/search/storage/death stay OPEN.
+- Original hashes/primary address methods/private reads published; no listings/original bytes/data in git; no original file modified.
+- Frozen 109-entry manifest SHA `7274a96936148d7070ee1f9919568bcbbf8b321c18c957f5d9bb2c31b0d5c548`.
+- 998 prior source/fixture/binary hashes verified; current Debug/ASan first-call binaries retained unchanged; all 292 synthetic files unchanged.
+- No src/tools/CMake/fixtures/state/default/identity/pin/UI/coordinator/awake changes. Docs/private probes require no repeated C++ campaign.
+- Link/diff/path checks at publication; ordinary task push/direct exact CI handoff follows. Hosted terminal closeout remains orchestrator-owned.
+
+Decisions and reasoning:
+- Resolve receivers from actual construction and this adjustment, not route labels or equal virtual offsets.
+- Separate finite successful creation from allocator retry and later action execution; a direct no-draw body is not arbitrary callback purity.
+- Treat position/projection and manager outcomes as supplied facts in the private model, never proof of unexecuted external callees.
+- Keep useful isolated next-code scope independent of Windows navigation/state decisions; reserve no semantic identity or tag.
+
+NOT_RUN: original/HE/Ghidra runtime, cross-host FP/cave entrance producer, live allocator/handler, complete animal tick/routes/hunting/death, World/native/persistence, navigation/raster/graphics, Windows/WSL/full/heavy/C++/pins/warnings gates.
+QUESTIONs: no owner policy question required for bounded research. Exact runtime allocator-handler edge remains U for failure closure; future persistent integration needs a separately released contract. Independent review pending.

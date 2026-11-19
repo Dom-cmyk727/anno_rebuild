@@ -57,6 +57,7 @@ def contract(ref, vectors, root):
         path.write_bytes(data)
         output.write_bytes(b'unchanged')
         run(['--source', path, '--write-lookup', output], code, text)
+        assert path.read_bytes() == data, 'source modified'
         if code:
             assert output.read_bytes() == b'unchanged', 'partial output published'
         else:
@@ -65,6 +66,13 @@ def contract(ref, vectors, root):
             assert output.read_bytes() == expected
 
     source('source_legal', src, 0, '"records": 1')
+    for name, tail in [('tail_max', b'2147483647'), ('tail_min', b'-2147483648'),
+                       ('tail_multi_legal', b'1,-2147483648,2147483647')]:
+        source(name, src.replace(b'Proz: 20', b'Proz: 20 '+tail), 0, '"records": 1')
+    for name, tail in [('tail_over', b'2147483648'), ('tail_under', b'-2147483649'),
+                       ('tail_later_over', b'1,2147483648'),
+                       ('tail_later_under', b'1,-2147483649')]:
+        source(name, src.replace(b'Proz: 20', b'Proz: 20 '+tail), 2, 'out of range')
     edits = [
         ('zero', b'Size: 1,1', b'Size: 0,1', 'staging domain'),
         ('large', b'Size: 1,1', b'Size: 257,1', 'staging domain'),

@@ -42,6 +42,7 @@ def numbers(text, stop=False):
             continue
         if not stop or not TAIL.fullmatch(text[pos:]):
             raise ValueError('unsupported numeric tail')
+        numbers(text[pos:])  # Validate every ignored token's int32 bounds; discard the values.
         # The original ignores the remainder, not another whitespace list value.
         return out, True
 

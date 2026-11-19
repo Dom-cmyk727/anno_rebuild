@@ -164,6 +164,26 @@ TEST_CASE("wildlife growth: checked refusal changes one precondition") {
     CHECK_FALSE(load::load_wildlife_growth({}));
 }
 
+TEST_CASE("wildlife growth: discarded tails obey int32 bounds") {
+    const auto control = load::load_wildlife_growth(bytes(legal));
+    REQUIRE(control);
+    std::vector<std::uint8_t> expected(16384, 0);
+    expected[64] = 20;
+    CHECK(control.value().values == expected);
+    for (const auto* tail : {"2147483647", "-2147483648", "1,-2147483648,2147483647"}) {
+        auto text = legal;
+        text.replace(text.find("Proz: 20"), 8, std::string("Proz: 20 ") + tail);
+        const auto source = bytes(text), before = source;
+        const auto result = load::load_wildlife_growth(source);
+        INFO(tail);
+        REQUIRE(result);
+        CHECK(result.value().values == expected); // Legal tails validated, never appended.
+        CHECK(source == before);
+    }
+    for (const auto* tail : {"2147483648", "-2147483649", "1,2147483648", "1,-2147483649"})
+        refusal("Proz: 20", std::string("Proz: 20 ") + tail, "numeric tail");
+}
+
 TEST_CASE("wildlife growth: ownership CRLF diagnostics and generic parser remain independent") {
     const auto result = [] {
         auto source = bytes(legal);

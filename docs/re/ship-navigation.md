@@ -327,6 +327,18 @@ HEIGHT chunk copy (`0x10084870`, slot `+0xac` of island vtable `0x100ca19c`) wri
 `kBoundaryVertexHeight = 0` follow the same rule). Consequence (DERIVED): the tiles of the last column and row read zero
 vertices, which pulls their corner average down (more water at the island border).
 
+**Correction, 2026-11-19 (WILDLIFE-NAV-INPUTS-1):** the chunk extrema producer's
+object sum is `(ftol(HEAD[0x14] / f32(.04)) & 255) + item_base`, with the
+component masked BEFORE addition (AnnoWelt 0x100842ae–0x100842c1), then the full
+maximum halved/stored (0x1008431f–0x10084331). The sum-masked formula in §9.4's
+historical block-record sentence is superseded; the fine-tile BYTE-add rule at
+0x100904e7 remains correct. A legal authored import now executes the sum-270
+counterexample: original expected halves 9/135, current adapter 9/9; fixing only
+the sum mask still gives 9/127. Exact input profile, border bounds, failed
+investigation and compatibility question are in the
+[navigation-input contract](../sim/wildlife-navigation-inputs.md). No production
+repair or shipped-map failure is claimed by that bounded proof.
+
 ### 9.3 Coarse search
 Mask: bit `3*s + k` means water touching source edge `s` also touches target edge `t = (s + 3 - k) mod 4`; edges
 0 = E (x == 7), 1 = N (z == 0), 2 = W (x == 0), 3 = S (z == 7); a region touching one edge sets no bits. Nibble

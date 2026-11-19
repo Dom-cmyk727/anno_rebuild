@@ -16700,3 +16700,65 @@ Decisions and reasoning:
 NOT_RUN: original runtime/HE, c2-zero/nav/raster/V9/GFX composition/global/World/native/lifecycle,
 unrelated full/long/corpus/performance, full pins/warnings, Windows/WSL, LeakSanitizer.
 QUESTIONs: none blocking bounded review. Exact-head CI pending/read after push; independent review pending; STOP.
+
+## 2026-11-19 — WILDLIFE-NAV-INPUTS-1 — READY FOR REVIEW
+
+- Branch `task/WILDLIFE-NAV-INPUTS-1`, exact base/source `889143ba1485a2fed72c03bd648c9c39878c4f06`.
+- Base tree `37c1194ba88d3017893246e00d680d54427972c8`; publication changes documents only, frozen head/tree/CI in direct handoff.
+- Dispatch/review read at `09fc0c6a`; no board/main merge, rebase, production fix or pin move.
+- [Contract](../sim/wildlife-navigation-inputs.md) acceptance expectations preceded execution; [receipts](evidence/wildlife-nav-inputs-1.md) retain commands, raw outcomes and hashes.
+- First docs edit corrects FILL's empty controls-first.log claim: no retained stderr found, only historical note survives.
+- Empty log/hash and final gates preserved; no recreated failure or repeated FILL campaign.
+- FILL receipt audit: 51 published, 50 current unchanged; authorized postload document append's old blob verifies the remaining receipt.
+- D: Welt 0x10084150–0x10084360 clips update rect, rounds local starts to 8, scans full 9 × 9 vertices and 8 × 8 anchors.
+- D: min 255/max 0; record byte 3 bit 0x80 gates the object arm, not object class flags.
+- D: Game slot +0x58 at tables 0x1002185c/0x10021a88 ->0x10007d50 reads descriptor +8, HEAD[0x14] copied at 0x10009372–0x10009384.
+- D: Welt 0x100842a3 division by f32(.04), 0x100b5f90 truncation helper, 0x100842b6 masks component BEFORE integer addition.
+- D: 0x1008431f–0x10084331 halves max 0..510 to byte 0..255: no sum wrap, no final saturation.
+- Fine-tile BYTE addition at 0x100904e7 stays correct and unchanged.
+- D: coarse 0x100ab0b8–0x100ab0e7 doubles halves; shore 0x100ab94b–0x100ab966 strictly straddles 32.
+- Island-local/full aligned border behavior is proved; arbitrary nonaligned/partial-island equivalence is not inferred from cache allocation.
+- C: authored HEAD entries parse through TypeRegistry::build, real import accepts six records; actual writer supplies anchor/base, draws 0.
+- No manually injected decisive tile, item_base override, invalid metadata or setup refusal masquerades as the mismatch.
+- Previous V9 base 250 on flat 18 remains unproved; legal mode-2 companion uses base 16 + component 254 = 270.
+- Hand expected 9/135/mixed/shore; canonical 9/9/water/no-shore. Exact bytes distinguish the separate clamp.
+- Boundary sums 255/256/270/510 and component 256 are included; low control and seven ordinary/far-corner controls agree.
+- Fresh canonical TU compiled privately; dependency archives/source/binaries frozen by SHA; production source never edited.
+
+```text
+# cache/wildlife-nav-inputs-1/canonical-run.log — child exit 1, FAILED INVESTIGATION
+INVESTIGATION executed=13 mismatches=3 setup_refused=0
+# sum_only-run.log — child exit 1; class can agree while bytes fail
+INVESTIGATION executed=13 mismatches=3 setup_refused=0
+# corrected-run.log — child exit 0, private candidate only
+INVESTIGATION executed=13 mismatches=0 setup_refused=0
+# no_component_mask-run.log — child exit 1, required-mask negative control
+INVESTIGATION executed=13 mismatches=1 setup_refused=0
+# geometry.log — child exit 0
+GEOMETRY executed=4 failed=0
+```
+
+- All rows executed; no memory refusal/timeout. Direct probe outputs are not CTest COUNTS/VERDICT or production acceptance.
+- Geometry: interior 9/9, final zero-border 0/9; unaligned origin/width refuse a range and preserve tile fallback.
+- Original full-function/control reads retained privately; one misaligned exploratory start explicitly excluded as NOT-EVIDENCE.
+- No public tool/test added; no CTest/dev/ASan campaign required for docs-only N4.
+- cache/wildlife-nav-inputs-1/docs-check.log: DOC_CHECK files_or_sections=6 links=9 hashes=47 missing=0 status=PASS
+- git diff --check passes; scope audit: production/tools/fixtures/CMake/CI unchanged versus exact base.
+- RouteCache is derived, but ShipMover plans through CoastIndex; changed masks and shore costs can change saved NavMotion and replay outcomes.
+- No immediate draw added; changed trajectories can still change later timing/draws. No corpus-wide divergence or preservation claim.
+- Owners of HEIGHT, profile, final filled tiles must outlive the source/index; rebuild exact extrema before coarse reads, invalidate on owner replacement.
+- First fill and GFX unchanged/unwired; world +0x120 raster and its numerical consumers remain separate unresolved prerequisites.
+- Repair proposal names route_world.cpp/.hpp and route_world_test.cpp, preserves fine arithmetic and uses independent byte/control expectations.
+- QUESTION: coordinate faithful default semantic identity (recommended; header is a candidate Rules boundary) versus optional gated correction or transient-only deferral.
+- No section/global version or tag allocated; identity/oracle/pin follow-up must be authorized with Windows coordination before a runtime repair.
+- Hosted CI read after ordinary task push; submit frozen package before terminal CI as packet requires, terminal receipt separately.
+
+Decisions and reasoning:
+- Prove a legal imported anchor and parsed descriptor before treating a numerical discrepancy as a bug.
+- Narrow V9's reachability claim and retain sum 270 through a legal companion rather than forcing base 250.
+- Assert exact halves and classifications: the final clamp remains wrong even after the class becomes mixed.
+- Keep the original failed investigation, private causal variants and successful controls distinct; no false green gate.
+- Preserve previous proofs and behavior; isolate a compatibility decision before any production route change.
+
+NOT_RUN: CTest/dev/ASan/full pins/warnings, original/HE execution/emulation, Windows/WSL, shipped overflow census, full World/replay/performance/raster/wiring.
+Independent review: pending Orchestrator II Mac; no reviewer subagents. Stop at the bounded contract/reproduction and compatibility question.

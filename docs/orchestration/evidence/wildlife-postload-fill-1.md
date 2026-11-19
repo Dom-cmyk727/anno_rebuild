@@ -16,9 +16,13 @@ suffix are inputs/expected outputs. Python computes decisions from inputs only.
 31 vectors agree; 42 CLI controls execute child statuses including wrong output
 exit 1, zero/missing/malformed exit 2, completion/ground/profile/geometry errors.
 First control edit matched HEIGHT twice (input and expected output), refused to
-mutate, and failed the contract. controls-first.log retains it; the corrected
-replacement anchors only the input and all 42 controls pass. No reference
-algorithm change was needed to fix that control.
+mutate, and failed the contract. Correction (2026-11-19, NAV-INPUTS intake):
+controls-first.log is empty, with the unchanged SHA-256 e3b0c442… listed below;
+it does not retain that failure text. No retained stderr/console receipt was
+found in this task's logs; only the historical note survives. The empty file
+and final successful evidence are preserved; the failure was not recreated.
+The corrected replacement anchors only the input and all 42 controls pass.
+No reference algorithm change was needed to fix that control.
 
 Raw aux abcdefaa splits into retained aux aa0000aa, code ef, mask 1cd. Grass mean32
 with code2 yields retained aux aa000020/code2/mask0 (raw aa000220); fish mean15

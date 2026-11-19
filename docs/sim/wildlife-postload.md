@@ -154,6 +154,17 @@ released by this research correction.
 No source fix, compatibility choice, shipped-map failure or executed reproduction
 is claimed in this packet.
 
+**NAV-INPUTS update, 2026-11-19:** the later bounded
+[navigation-input investigation](wildlife-navigation-inputs.md) rechecks the
+producer and executes a legal companion to V9 with the same sum 270. Parsed
+metadata and real import on flat 18 yield base 16 and component 254, rather
+than assuming V9's base 250 is obtainable from that fresh terrain. Canonical
+halves are 9/9 versus original 9/135; a private sum-mask-only change gives
+9/127, and the two-operation correction agrees. V9's literal setup remains a
+static/unproved reachability claim; its legal companion is an executed FAILED
+INVESTIGATION. This supersedes only the reproduction status above, not the
+unwired composition boundary or the separate raster dependency below.
+
 D: flags-2 raster branch a3cc3–a3ed1 obtains world width/height, maps the rectangle
 to its raster buckets, sums world +0x5c height samples, normalizes/truncates and
 updates object byte plane +0x14. **Corrected from original instructions,

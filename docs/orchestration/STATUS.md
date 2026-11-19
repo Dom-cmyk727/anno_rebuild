@@ -170,6 +170,15 @@ says who is doing what, where the work is, and what it waits on.
   order?", the owner answered "Yes". They run in the UI lane, then UI-RANGE-1. Also, asked "Delete the public
   task branch with the data table after landing, and recreate it clean?", the owner answered "Yes, clean it
   up": `task/BUILDINGS-REF-1` is recreated as one clean commit.
+- **The owner's test ui_10 (2026-11-19, combined build `612f0940`)**: the Kontor placement, range, rotation and
+  ghost work. Findings: the UI lane's ui_10 report (kept outside the repo with the video). Dispatched:
+  - **WATER-SUBMERGED-1** (Windows executor; owner: "find the root cause and fix it"): with enhanced water,
+    the pier poles stand above the sea because the per-pixel submerged pass runs for Original only
+    (`gpu.cpp` around 3718, `gpu.wgsl` `sea_submerged_fs`); the per-column `object_in_water` misses thin poles.
+  - **UI-CATNAV-1** (UI lane, a bug fix): a category tab returns to the grid while a building is armed.
+  - **BUILDINGS-REF-2** (UI lane, research): road placement, building over trees and objects, the
+    `Occupied` refusals, selection; then a sim/UI plan. OQ-764..772 reserved for it; the next free number
+    is 773.
 - **CI pinned to ubuntu-24.04, LANDED on main `a6468efd`** 2026-11-19 (owner: "Yes, land it"). GitHub's
   `ubuntu-latest` became Ubuntu 26.04 / GCC 15.2 that morning, and every branch's Linux `-Werror` build failed
   (`<ciso646>` under Clang with libstdc++ 15; a GCC 15 null-dereference in `freight_state.hpp`; run

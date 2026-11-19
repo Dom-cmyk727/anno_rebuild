@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Public CLI contract for the isolated graphics leaf; authored synthetic data only."""
 import argparse
+from collections import Counter
 from pathlib import Path
 import subprocess
 import sys
@@ -27,8 +28,9 @@ def contract(ref, vectors, root):
             rows.append(line)
         if line.strip():
             previous = line.strip()
-    if len(rows) < 12:
-        raise AssertionError('fewer than 12 hand vectors')
+    counts = Counter(row.split()[0] for row in rows)
+    if set(counts) != {'gfx', 'fill'} or counts['gfx'] < 12 or counts['fill'] < 19:
+        raise AssertionError('need 12 graphics and 19 fill hand vectors')
     require(ref, vectors, 0, f'{len(rows)} vectors, 0 disagreements')
     checks = 1
     good = 'gfx control w=1 h=1 height=0 gfx=8363 => gfx=0 cleared=1\n'
@@ -72,6 +74,35 @@ def contract(ref, vectors, root):
     path.write_bytes(b'\xff')
     require(ref, path, 2, 'decode')
     checks += 1
+    valid_fill = next(row for row in rows if row.startswith('fill fish15 ')) + '\n'
+    case('fill_legal', valid_fill, 0, '1 vectors, 0 disagreements')
+
+    def alter(name, old, new, code, diagnostic):
+        if old == new or valid_fill.count(old) != 1:
+            raise AssertionError(f'{name}: replacement must match exactly once')
+        changed = valid_fill.replace(old, new)
+        if changed == valid_fill:
+            raise AssertionError('replacement not applied')
+        case(name, changed, code, diagnostic)
+
+    alter('fill_wrong_count', 'fish=1 grass=0', 'fish=0 grass=0', 1, 'fish: expected 0, got 1')
+    alter('fill_wrong_cell', '=> cells=11,', '=> cells=12,', 1, 'cells: expected')
+    alter('fill_wrong_draw_count', 'consumed=0', 'consumed=1', 1, 'consumed: expected 1, got 0')
+    alter('fill_incomplete', 'complete=1', 'complete=0', 2, 'completed local headers')
+    alter('fill_absent_ground', 'ground_done=1', 'ground_done=0', 2, 'precomputed ground')
+    alter('fill_ground_mismatch', 'raw=253,0,0,0 cells=', 'raw=252,0,0,0 cells=', 2, 'low nibble mismatch')
+    alter('fill_short_height', 'rect=10,20,1,1 height=15,15,15,15 gfx=', 'rect=10,20,1,1 height=15 gfx=', 2, 'plane length')
+    alter('fill_bad_grass', 'grass=2,41,2,3', 'grass=2,40,2,3', 2, 'unsupported mean profile')
+    alter('fill_bad_fish', 'fish=11,41,2,3', 'fish=11,40,2,3', 2, 'unsupported mean profile')
+    alter('fill_same_roles', 'fish=11,41,2,3', 'fish=2,41,2,3', 2, 'distinct')
+    alter('fill_zero_role', 'grass=2,41,2,3', 'grass=0,41,2,3', 2, 'zero role id')
+    alter('fill_bad_origin', 'origin=10,20', 'origin=10', 2, 'origin/rectangle shape')
+    alter('fill_bad_rect', 'rect=10,20,1,1', 'rect=10,20,1', 2, 'origin/rectangle shape')
+    alter('fill_negative_width', 'rect=10,20,1,1', 'rect=10,20,-1,1', 2, 'unsigned decimal')
+    alter('fill_wide_origin', 'origin=10,20', 'origin=2147483648,20', 2, 'signed integer out of range')
+    alter('fill_bad_cell', 'cells=0,127,7,', 'cells=0,256,7,', 2, 'integer out of range')
+    alter('fill_missing_key', 'complete=1 ', '', 2, 'missing keys')
+    alter('fill_unknown_output', 'consumed=0', 'other=0', 2, 'missing keys')
     print(f'{checks} CLI controls passed; {len(rows)} vectors executed')
 
 

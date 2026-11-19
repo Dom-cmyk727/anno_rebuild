@@ -450,3 +450,26 @@ admits only the branch with proved precomputed ground. Stop before the separate
 navigation/raster callback and whole-island graphics cleanup. c2-zero preprocessing,
 V9 sum/clamp, raster consumers, broader catalogue mutation/reuse, global draw
 initialization and eventual World/native publication are NOT newly closed.
+
+## 11. Isolated first-call apply — WILDLIFE-POSTLOAD-FILL-1
+
+F1 acceptance before implementation, 2026-11-19. D: rechecked Welt
+0x100928a0–0x10092b32/V1–V5 and the bound profile in §10. Extend the existing
+reference with 19 HAND-DERIVED full-field fill rows, retaining all 12 GFX rows.
+Each cell is object, phase, owner, retained aux, walk code/mask, dx/dy, rotation,
+anchor. The engine splits original word bits 8..24 into code/mask columns;
+original abcdefaa projects to aux aa0000aa, code ef, mask 1cd. Grass at mean 32
+and code 2 yields raw aa000220, or split aux aa000020/code 2/mask 0. Fish mean
+15 yields raw abcdef0f, or split aux aa00000f with code/mask unchanged. No raw
+walk-code bits are duplicated into the modern aux column.
+
+| Requirement / primary | Positive and nearest wrong interpretation | Planned proof / review disposition |
+|---|---|---|
+| Presence/provenance, a1815/89565 | Complete zero-valued FRUCHTBAR accepted; absent/incomplete/mismatched scene, header, Terrain or ground refused before writes | Private immutable capability validates against original scene and typed prefix; pending |
+| Bound roles/getters, Game 21a88 | Raw HEAD/id/flags agree with registry, mean profile; alternate role 9001 with HEAD code 3 and zero-pair constructor code 4 | Data-defined same seam, not walk_class or constant 2; pending |
+| Whole-word occupancy, 92976 | object 0x4000 and existing roles preserve every field | Full-field vectors and actual-code occupancy mutant; pending |
+| Means/unsigned ground, 929d9–929f6 | 15/16/31/32, asymmetric 81, low nibble 5/6/13, differing high nibbles | Full-field vectors and actual-code signed-fertility mutant; pending |
+| Distinct writes, 92a25–92add | Fish preserves nonzero code/mask; grass clears mask and uses code 3; phase/offset clear, anchor retained | Full-field vectors and wrong fish-writer mutant; pending |
+| Owned result/digests | Input success/refusal unchanged, output survives source destruction, repeat/idempotence, independently hashed expected chunk bytes | One owned tile copy after validation; pending |
+| Geometry/order | Half-open clipping, empty rectangle/intersection, 1x1 zero border; raw Terrain/ground/spawns/draw cursor retained | Vectors and direct ownership tests; pending |
+| Isolation | No production caller and no navigation/raster/GFX call | Static caller search; pending |

@@ -16938,3 +16938,41 @@ The window already maps bit 3 to figure 1571 (stage B), so no UI change follows.
 whose market is cut off. Does the road icon appear in each case?
 
 READY FOR REVIEW.
+
+### UI-HARVEST-ICON-1 addendum: integration merge with candidate ui-info-2d-buildcat (95897a55), 2026-11-19
+
+- **The merge:** commit `3f7dad6c`, one clean merge commit with the conflict resolutions inside it,
+  on `c8da3ff2`. The candidate holds UI-STATUS-1, MINIMAP-2, INFO-2b/2d, BUILDCAT-1, PRODBAR-1 B,
+  ISLAND-CROPS-1, FERTILITY-1a and BUILDINGS-REF-1 on main. No rebase. No follow-up fix commit was
+  needed.
+- **Conflicts and their resolutions** (both sides kept):
+  - `src/app/CMakeLists.txt`: the app test list now has the candidate's `status_bar`,
+    `balance_rows`, `atlas_pages_lan5`, `info_preview` and `fertility_indicator` tests, plus
+    `status_icons_test`. Every test is registered, and `viewer_wiring_status_icon_forester` stays.
+  - `play.hpp`: `PlaySnapshot` has `status_icons` and the candidate's `accounts_live` and
+    `stat_shown_*`.
+  - `play.cpp`: the publish refreshes the status icons first, then fills the candidate's per-tile
+    status bar cities (`local_player`, the cities that know the local player).
+  - `REPORTS.md`: union, the candidate's entries first, then this packet's B and C entries.
+  - `open-questions.md`: union. OQ-720 keeps this branch's narrowed heading. OQ-727 is moved
+    between 726 and 728, so OQ-690 to OQ-759 are in numeric order. (The older OQ-689 → 641
+    inversion was already in the candidate and is untouched.)
+  - `viewer.cpp`, `frame_projection.hpp` and `docs/re/ui.md` merged without conflicts. The viewer
+    keeps the status icons, the per-tile status bar, the category tabs and the preview arrows.
+- **Build:** msvc Release, full build clean (`cache/gates/build-M-01.log`).
+- **clang-format 23.1.3** `--dry-run --Werror` on every C++ file that differs from the candidate:
+  clean.
+- **Gate** (`cache/gates/ui-harvest-icon-1-M-01.log`, head `3f7dad6c`, clean tree, `--jobs 8`; select
+  `status icons|^viewer_wiring_ui_|^anno_app_tests\.(hud|ui|UI|construction)`):
+  - seven required tests, each executed once, each PASS: `viewer_wiring_status_icon_forester`,
+    `live_screen_matches_oracle`, `ui_dynamic_draw_check`, `info_panel_gog_compare`,
+    `selected_house_pixel_check`, `ui_panels_match_gog`, `ui_mock_matches_oracle`;
+  - main selection: selected 59, executed passes 59, failed 0, empty 0, skipped 0, incomplete 0,
+    sanitizer lines 0. **VERDICT: PASS.**
+- **WSL `check_unix_warnings.sh`** (`cache/gates/ui-harvest-icon-1-M-wsl.log`): GCC 13 and Clang 18,
+  viewer and GPU on (437 files) and without GPU (94 files), all clean. Both negative controls failed
+  as expected.
+- **Taking turns:** each heavy job started only after the other executor's `cl.exe`, `link.exe`,
+  `ctest` and WSL compiles had ended (checked before each one).
+
+READY FOR REVIEW.

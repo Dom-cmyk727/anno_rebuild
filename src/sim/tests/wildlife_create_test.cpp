@@ -12,6 +12,7 @@
 #include <anno/formats/annogame.hpp>
 #include <anno/formats/sha256.hpp>
 #include <anno/sim_load/wildlife_create.hpp>
+#include <anno/sim_load/wildlife_release.hpp>
 #include <anno/test/game_dir.hpp>
 
 namespace fmt = anno::formats;
@@ -507,4 +508,199 @@ TEST_CASE("wildlife create: original descriptor projections agree with independe
         MESSAGE("private full-row oracle not supplied; independent digest comparison only");
     std::cout << "REAL_DESCRIPTOR_PROJECTION entries=368 selected=29 kind49=29 kind51=0 zero_hp=4 "
                  "helper_input_draws=2 new_draws=0 original_runtime=NOT_RUN\n";
+}
+
+namespace {
+load::WildlifeCreationInputs end_creation_inputs() {
+    auto in = inputs();
+    in.position_words = {0x40400000, 0, 0}; // Authored x = 3, z = 0.
+    in.geometry.home_x = 3;
+    in.geometry.home_z = 0;
+    return in;
+}
+load::WildlifeReleaseIsland release_island(const load::WildlifeSpawnProjection& home) {
+    return {0, 0, 2, 2, {{0, 0, 1, {{0, home}}}, {1, 1, 1, {{0, {77, 13, 0xc0, 138}}}}}};
+}
+} // namespace
+TEST_CASE("wildlife end: composed creation moves current position but releases original home") {
+    Source source;
+    source.add(90001, "HIRSCH", hp(12), "MEAT");
+    auto facts = source.bind({sim::TypeId{90001}});
+    REQUIRE(facts);
+    auto created = load::project_wildlife_creation(facts.value()[0], end_creation_inputs());
+    REQUIRE(created);
+    REQUIRE(created.value().animal);
+    CHECK(created.value().spawn.packed == 0xc3);
+    load::WildlifeEndState in{*created.value().animal};
+    // Authored movement only; no motion simulation. Widened home is deliberately
+    // distinct too: the original query reads its saved low-word projection.
+    in.animal.position_words = {0x41000000, 0, 0x41000000}; // 8,0,8
+    in.animal.original_current_tile = {8, 8};
+    in.animal.home = {65539, 65536};
+    in.animal.flags = 0x8808;
+    const auto before = in;
+    const auto island = release_island(created.value().spawn);
+    const auto saved = island;
+    auto result = load::project_wildlife_end(facts.value()[0], in, island);
+    REQUIRE(result);
+    auto expected = island;
+    expected.chunks[0].records[0].spawn.packed = 0x83;
+    CHECK(result.value().island == expected);
+    CHECK(result.value().island.chunks[1] == island.chunks[1]);
+    CHECK(result.value().island.chunks[0].records[0].spawn.id == 9);
+    CHECK(result.value().island.chunks[0].records[0].spawn.timestamp == 54);
+    CHECK(result.value().island.chunks[0].records[0].spawn.goods == 137);
+    CHECK(result.value().state.animal.flags == 0x8008);
+    auto expected_state = in;
+    expected_state.animal.flags = 0x8008;
+    expected_state.animal.requested = 0;
+    expected_state.animal.second_position_words = in.animal.position_words;
+    expected_state.attached = false;
+    expected_state.ended = true;
+    CHECK(result.value().state == expected_state);
+    using S = load::WildlifeEndStage;
+    CHECK(result.value().stages == std::vector<S>{S::EmptyFollowers, S::ResetAction, S::EmptyMotion,
+                                                  S::EmptyRoute, S::IslandRelease, S::HomeLookup,
+                                                  S::ClearOccupancy, S::DetachIsland});
+    CHECK(in == before);
+    CHECK(island == saved);
+    CHECK(load::project_wildlife_end(facts.value()[0], in, island).value() == result.value());
+}
+TEST_CASE("wildlife end: ordered category lookup clears only occupancy without saved ID guard") {
+    Source source;
+    source.add(90002, "HASE");
+    auto facts = source.bind({sim::TypeId{90002}});
+    REQUIRE(facts);
+    const auto created = load::project_wildlife_creation(facts.value()[0], end_creation_inputs());
+    REQUIRE(created);
+    load::WildlifeEndState in{*created.value().animal};
+    auto island = release_island({65535, 255, 0xc3, 65535}); // Not this animal's ID.
+    // Wrong category first, wrong local position second, two matches after them.
+    island.chunks[0].records = {{1, {1, 1, 0xc3, 1}},
+                                {0, {2, 2, 0xc2, 2}},
+                                {0, {65535, 255, 0xc3, 65535}},
+                                {0, {4, 4, 0xc3, 4}}};
+    auto expected = island;
+    expected.chunks[0].records[2].spawn.packed = 0x83;
+    auto ended = load::project_wildlife_end(facts.value()[0], in, island);
+    REQUIRE(ended);
+    CHECK(ended.value().island == expected);
+    for (unsigned sibling = 0; sibling < 4; ++sibling) {
+        auto other = island;
+        if (sibling == 0)
+            other.chunks[0].categories = 0; // Physical record exists, category gate absent.
+        if (sibling == 1)
+            other.chunks[0].records.clear();
+        if (sibling == 2)
+            for (auto& r : other.chunks[0].records)
+                r.category = 1;
+        if (sibling == 3) {
+            other.chunks[0].records.resize(1);
+            other.chunks[0].records[0] = {0, {65535, 255, 0x83, 65535}}; // Already clear.
+        }
+        const auto result = load::project_wildlife_end(facts.value()[0], in, other);
+        REQUIRE(result);
+        CHECK(result.value().island == other);
+        CHECK_FALSE(result.value().state.attached);
+    }
+    // Unaligned origin: signed difference truncates toward zero; local remainder
+    // uses absolute home (8 % 8), not relative home ((8 - 9) % 8).
+    in.animal.original_home = {8, 8};
+    auto unaligned = release_island({5, 7, 0xc0, 9});
+    unaligned.origin_x = 9;
+    unaligned.origin_z = 9;
+    const auto result = load::project_wildlife_end(facts.value()[0], in, unaligned);
+    REQUIRE(result);
+    CHECK(result.value().island.chunks[0].records[0].spawn ==
+          load::WildlifeSpawnProjection{5, 7, 0x80, 9});
+}
+TEST_CASE("wildlife end: repeat detached end and direct removal contrast do not release again") {
+    Source source;
+    source.add(128, "HIRSCH");
+    auto facts = source.bind({sim::TypeId{128}});
+    REQUIRE(facts);
+    const auto created = load::project_wildlife_creation(facts.value()[0], end_creation_inputs());
+    REQUIRE(created);
+    const load::WildlifeEndState in{*created.value().animal};
+    auto island = release_island(created.value().spawn);
+    auto direct = load::project_wildlife_end(facts.value()[0], in, island,
+                                             load::WildlifeEndOperation::DirectRemovalContrast);
+    REQUIRE(direct);
+    CHECK(direct.value().island == island);
+    CHECK(direct.value().state == in); // Contrast does not actually destroy/detach.
+    CHECK(direct.value().stages == std::vector{load::WildlifeEndStage::DirectRemovalNoRelease});
+    auto first = load::project_wildlife_end(facts.value()[0], in, island);
+    REQUIRE(first);
+    island.chunks[0].records[0].spawn = {444, 88, 0xc3, 138}; // Replacement at same home.
+    auto second = load::project_wildlife_end(facts.value()[0], first.value().state, island);
+    REQUIRE(second);
+    CHECK(second.value().island == island);
+    CHECK(second.value().state == first.value().state);
+    CHECK(second.value().stages.size() == 4); // Only empty local cleanup.
+    auto stale = load::project_wildlife_end(facts.value()[0], in, island);
+    REQUIRE(stale);
+    CHECK(stale.value().island.chunks[0].records[0].spawn.packed == 0x83);
+    auto after =
+        load::project_wildlife_end(facts.value()[0], first.value().state, first.value().island,
+                                   load::WildlifeEndOperation::DirectRemovalContrast);
+    REQUIRE(after);
+    CHECK(after.value().island == first.value().island);
+}
+TEST_CASE("wildlife end: unsupported live profiles refuse and returned effects own their inputs") {
+    std::optional<load::WildlifeEndEffects> owned;
+    {
+        Source source;
+        source.add(90001, "HIRSCH");
+        auto facts = source.bind({sim::TypeId{90001}});
+        REQUIRE(facts);
+        const auto created =
+            load::project_wildlife_creation(facts.value()[0], end_creation_inputs());
+        REQUIRE(created);
+        const load::WildlifeEndState legal{*created.value().animal};
+        const auto island = release_island({19, 7, 0xc3, 138});
+        auto good = load::project_wildlife_end(facts.value()[0], legal, island);
+        REQUIRE(good);
+        owned = good.value();
+        for (unsigned variant = 0; variant < 10; ++variant) {
+            auto bad = legal;
+            if (variant == 0)
+                bad.animal.configuration = 2;
+            if (variant == 1)
+                bad.followers = 1;
+            if (variant == 2)
+                bad.motion_entries = 1;
+            if (variant == 3)
+                bad.motion_cursor = true;
+            if (variant == 4)
+                bad.route = true;
+            if (variant == 5)
+                bad.animal.current = 25;
+            if (variant == 6)
+                bad.animal.current = 26;
+            if (variant == 7)
+                bad.animal.first_action_started = true;
+            if (variant == 8)
+                bad.animal.type = sim::TypeId{2};
+            if (variant == 9)
+                bad.ended = true;
+            const auto copy = bad;
+            REQUIRE_FALSE(load::project_wildlife_end(facts.value()[0], bad, island));
+            CHECK(bad == copy);
+        }
+        auto duplicate = island;
+        duplicate.chunks.push_back(duplicate.chunks[0]);
+        REQUIRE_FALSE(load::project_wildlife_end(facts.value()[0], legal, duplicate));
+        auto outside = legal;
+        outside.animal.original_home = {65535, 65535};
+        REQUIRE_FALSE(load::project_wildlife_end(facts.value()[0], outside, island));
+        REQUIRE_FALSE(load::project_wildlife_end(facts.value()[0], legal, island,
+                                                 static_cast<load::WildlifeEndOperation>(99)));
+    }
+    REQUIRE(owned);
+    CHECK(owned->state.animal.type.v == 90001);
+    CHECK(owned->state.animal.descriptor_source_sha256.size() == 64);
+    CHECK(owned->island.chunks[0].records[0].spawn ==
+          load::WildlifeSpawnProjection{19, 7, 0x83, 138});
+    CHECK(owned->island.chunks[1].records[0].spawn ==
+          load::WildlifeSpawnProjection{77, 13, 0xc0, 138});
 }

@@ -21,4 +21,11 @@ struct AnbauNames {
 // GOG ANBAU's addressed name window, including the getter's null-pointer fallback.
 // Layout/rule bounds are not an engine crop/population capacity (wildlife-anbau.md).
 Result<AnbauNames, std::string> read_anbau_names(Bytes dll);
+struct WildlifeNames {
+    std::vector<std::string> kinds, goods;
+    std::string source_sha256;
+};
+// GOG kind/segmented goods-name getters, Game 0x10013a20/0x10013be0.
+// Owns file-backed names; layout/profile validation is not asset authenticity.
+Result<WildlifeNames, std::string> read_wildlife_names(Bytes dll);
 } // namespace anno::formats::annogame

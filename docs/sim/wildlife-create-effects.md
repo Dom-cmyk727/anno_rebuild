@@ -15,8 +15,8 @@ Inputs: explicit Gog descriptor profile, requested widened type ids, parsed
 FigurenHeader entries and AnnoGame image. Return sorted owned selected New facts
 (id/kind/HP/yield and source hashes). No registry digest or production type repair.
 
-Read name mappings with existing checked PE helpers and uniquely backed read-only
-windows, not a new PE parser. Require the addressed GOG PE identity/layout and
+Read name mappings with existing checked PE helpers and uniquely backed readable initialized
+windows (the actual mappings are in writable .data, not read-only .rdata), not a new PE parser. Require the addressed GOG PE identity/layout and
 semantic class labels at 49/50/51; this is a behavior-profile check, not a species
 roster. Do not compile the decoded mapping tables. Names remain file-backed data.
 Match whole first-NUL names, original first matching ordinal. Required needed
@@ -79,3 +79,47 @@ No RNG input/generator, pointer image, uninitialized padding or mutable global.
 
 All new C++/causal/gate checks NOT_RUN at this contract checkpoint. Existing
 74-vector pure decisions stay unchanged; no full/heavy/pins campaign is needed.
+
+## Implemented profile and verification boundary
+
+`read_wildlife_names` reuses the checked PE view with a new initialized/readable
+file-window query. The old readonly query retains identical checks; actual GOG
+name tables live in writable .data, so copied-file reading must admit it.
+The initial real-file mapping check exposed the erroneous readonly assumption;
+that failed result is retained. There is no live writable mapping or weakened
+kernel contract. Backing/overlap/raw-vs-virtual checks remain shared and strict.
+
+`bind_wildlife_creation_descriptors` constructs sealed `WildlifeCreationDescriptor`
+values. Only needed entry ids are indexed; requests sorted/distinct, unknown/missing
+ids refuse. Original observed entry flag 0 is this bounded profile; other flags
+refuse conservatively. Nonrelevant records/entries do not define a roster. Duplicate
+needed fields refuse even if identical. `source_sha256` identifies id/flag followed
+by needed record name/length/payload envelopes in source order, not authenticity
+or the complete original file. Image hash identifies the supplied mapping bytes.
+No unused modern registry field or digest becomes proof.
+
+`project_wildlife_creation` consumes no draws and returns defined typed projections
+only: widened type/id/full time/home and distinct original id/time/home words,
+HP/quantity/carried goods/yield, flags/action/request/current/behavior/configuration,
+retained position words and explicit projection stages. Null has one ManagerNull
+stage, no animal and unchanged original spawn fields. No actual registration,
+spatial links, callbacks or rollback occurs. Geometry admission precedes projection;
+ordinary inconsistent home refuses, cave target is independently supplied and bounded.
+Negative/nonfinite/out-of-int32 x/z refuse; subnormal/signed-zero truncation is checked
+by integer arithmetic. Finite height is retained without arithmetic. HP 0 does not
+close the later zero-HP prey/combat question.
+
+Synthetic kind 51/new type 90001 are legal without production edits. Tests retain
+caller owners only through binding, then inspect facts/effects after destruction.
+Independent original-file oracle (written before the C++ real-data comparator)
+finds 29 kind49/0kind51 among 368, four zero-HP and yields 0/137/138; all numeric
+facts compared against raw-source rows in focused gates. No raw strings are used
+as yield identities. This is real-descriptor projection under authored supplied
+manager/time/position inputs, not original runtime creation or a World canary.
+
+Actual private TU mutations challenge initial amount, type adjustment, cargo,
+null occupancy, trusting home and flat goods mapping after a legal executable.
+Canonical source and binary are preserved. Focused Debug/ASan receipts and final
+review disposition are in the [evidence](../orchestration/evidence/wildlife-create-effects-1.md).
+Original/HE runtime, upstream cross-host FP/cave provider, allocator handler,
+persistent World/manager/save/tag/PRNG/default integration remain outside scope.

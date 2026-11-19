@@ -1,4 +1,7 @@
+#include <map>
+
 #include <anno/formats/annogame.hpp>
+#include <anno/formats/sha256.hpp>
 
 #include "pe_table_view.hpp"
 namespace anno::formats::annogame {
@@ -79,6 +82,80 @@ Result<AnbauNames, std::string> read_anbau_names(Bytes dll) {
             return std::string("anbau names: unterminated string");
         out.names.push_back(std::move(name));
     }
+    return out;
+}
+Result<WildlifeNames, std::string> read_wildlife_names(Bytes dll) {
+    const auto parsed = pe_tables_detail::read(dll, 0x44c0c30f, 0x2e000);
+    if (!parsed)
+        return std::string("wildlife names: ") + annowelt::error_message(parsed.error());
+    const auto& image = parsed.value();
+    if (image.machine != 0x14c || image.base != 0x10000000)
+        return std::string("wildlife names: unsupported image identity");
+    std::map<std::uint32_t, std::string> cached;
+    struct Name {
+        std::string text;
+    };
+    const auto name = [&](std::uint32_t rva) -> Result<Name, std::string> {
+        std::uint32_t pointer = 0x100261e8; // Getter's null/out-of-range fallback.
+        if (rva != 0) {
+            const auto at = image.initialized_offset(rva, 4);
+            if (!at)
+                return std::string("wildlife names: ") + at.error();
+            const auto value = u32_le(dll, at.value());
+            if (value != 0)
+                pointer = value;
+        }
+        if (const auto found = cached.find(pointer); found != cached.end())
+            return Name{found->second};
+        if (pointer < image.base || pointer - image.base >= image.size)
+            return std::string("wildlife names: invalid string pointer");
+        std::string out;
+        for (auto cursor = pointer - image.base; cursor < image.size; ++cursor) {
+            const auto at = image.initialized_offset(cursor, 1);
+            if (!at)
+                return std::string("wildlife names: ") + at.error();
+            const auto byte = dll[at.value()];
+            if (byte == 0) {
+                cached.emplace(pointer, out);
+                return Name{out};
+            }
+            out.push_back(static_cast<char>(byte));
+        }
+        return std::string("wildlife names: unterminated string");
+    };
+    WildlifeNames out;
+    // Getter loop domains, not engine content limits. Game 0x1000fff3/0x1001042e.
+    for (std::uint32_t i = 0; i < 193; ++i) {
+        const auto value = name(i == 0 ? 0 : 0x24cb8 + i * 4);
+        if (!value)
+            return value.error();
+        out.kinds.push_back(value.value().text);
+    }
+    for (std::uint32_t i = 0; i < 143; ++i) {
+        std::uint32_t base = 0;
+        if ((i >= 1 && i <= 8) || (i >= 56 && i <= 90) || (i >= 132 && i <= 136))
+            base = 0x251f8;
+        else if (i >= 9 && i <= 40)
+            base = 0x25234;
+        else if (i >= 41 && i <= 55)
+            base = 0x25178;
+        else if ((i >= 96 && i <= 131) || i == 142)
+            base = 0x251e4;
+        else if (i >= 137 && i <= 141)
+            base = 0x251d0;
+        const auto value = name(base == 0 ? 0 : base + i * 4);
+        if (!value)
+            return value.error();
+        out.goods.push_back(value.value().text);
+    }
+    // Canonical class vocabulary verifies this behavior profile, never a species roster.
+    if (out.kinds[49] != "HIRSCH" || out.kinds[50] != "RAUBTIER" || out.kinds[51] != "HASE")
+        return std::string("wildlife names: unsupported class mapping");
+    for (const auto i : {49U, 50U, 51U})
+        for (std::uint32_t j = 0; j < i; ++j)
+            if (out.kinds[j] == out.kinds[i])
+                return std::string("wildlife names: ambiguous class mapping");
+    out.source_sha256 = sha256_hex(dll);
     return out;
 }
 } // namespace anno::formats::annogame

@@ -55,7 +55,8 @@ struct Image {
     }
     // Additive strict selected-data query. Legacy offset()/error ordering above
     // deliberately stay unchanged for existing AnnoWelt/AnnoGame consumers.
-    Result<std::size_t, std::string> readonly_offset(std::uint32_t rva, std::size_t n) const {
+    Result<std::size_t, std::string> data_offset(std::uint32_t rva, std::size_t n,
+                                                 bool readonly) const {
         if (n == 0 || rva > size || n > std::uint64_t{size} - rva)
             return std::string("window outside image");
         const auto end = std::uint64_t{rva} + n;
@@ -81,9 +82,19 @@ struct Image {
             return std::string("window not fully initialized and file-backed");
         if (std::uint64_t{s.raw_ptr} + s.raw_size > bytes.size())
             return std::string("truncated backing section");
-        if ((s.characteristics & 0x40000000U) == 0 || (s.characteristics & 0x80000000U) != 0)
-            return std::string("section must be readable and non-writable");
+        if ((s.characteristics & 0x40000000U) == 0 ||
+            (readonly && (s.characteristics & 0x80000000U) != 0))
+            return std::string(readonly ? "section must be readable and non-writable"
+                                        : "section must be readable");
         return static_cast<std::size_t>(std::uint64_t{s.raw_ptr} + rel);
+    }
+    Result<std::size_t, std::string> readonly_offset(std::uint32_t rva, std::size_t n) const {
+        return data_offset(rva, n, true);
+    }
+    // Additive copied-file query: AnnoGame names live in readable writable .data.
+    // This never maps/exposes live executable memory or relaxes readonly_offset.
+    Result<std::size_t, std::string> initialized_offset(std::uint32_t rva, std::size_t n) const {
+        return data_offset(rva, n, false);
     }
 };
 inline Result<Image, WalkTablesError> read(Bytes dll, std::uint32_t expected_stamp,

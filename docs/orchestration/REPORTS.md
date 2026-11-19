@@ -17610,22 +17610,66 @@ Decisions and reasoning:
 - Keep selection/accounting separate from creation and reuse unchanged selectors, references and prior unaffected evidence.
 QUESTIONs: none for this bounded profile. STOP pending orchestrator final source/evidence review.
 
-## WILDLIFE-CHUNK-PLAN-1 — 2026-11-19 — C0 QUESTION checkpoint
+## WILDLIFE-CHUNK-PLAN-1 — 2026-11-19 — READY FOR REVIEW
 
-Released branch `task/WILDLIFE-CHUNK-PLAN-1` from `f5f1c9fa`, dispatch `9b4d6c27`.
-Preimplementation [contract and complete literal fixture](../sim/wildlife-chunk-plan.md).
-Primary read through `AnnoWelt 0x10093761` confirms dword count/signed deficit,
-head recycling/prepend, category0 collision regardless of occupancy, goods/position
-writes before lookup, timestamp only on successful insertion, unknown fresh fields.
-QUESTION: C4 requests chunk-level OQ-572 candidate exhaustion. With consistent
-habitat and complete category0 lookup, every collision is retained/counted and
-positive deficit<=available noncollisions. The requested exhaustion is unreachable
-under this supported profile; no inconsistent facts or desired-count override proposed.
-Recommendation: retain defensive typed noncommittable guard, reuse existing lower-level
-replenish exhaustion proof, and explicitly qualify chunk-level reachability. Orchestrator
-clarification pending; independent ordered-list/field/API work may continue.
+Branch `task/WILDLIFE-CHUNK-PLAN-1`, base `f5f1c9fa7f0eca4d6263147797022ff1c5e6d771`.
+Dispatch `9b4d6c27`; amended C0 disposition `077b2cf4` read, not merged; no rebase/main merge.
+C0 question checkpoint `4253dfbc` and its CI `44517180198` preserved; scope question resolved by focused review.
+Tested source `ef8fcb48349bf2bc8fe6521a23957e481cf129ec`, tree `70e106988054ae54ab99e5c763aabb7da04ec0bc`.
+Publication adds docs only; implementation/evidence independent review pending orchestrator.
+[Contract/full literal lists](../sim/wildlife-chunk-plan.md); [frozen receipts](evidence/wildlife-chunk-plan-1.md).
+C0: consistent habitat/complete records imply C<=R, D(N)<=N, hence positive D-R<=N-C.
+Keep defensive noncommittable OQ-572 guard; lower-level exhaustion proof is NOT full-adapter branch coverage.
+All 17 density values and minimal N 4/R 1 legal collision tested; whole-game OQ-572 stays open.
+
+C1: owned `prepare_wildlife_chunk(input, draws)`, no World/native schema or actual terrain query.
+Category-0 dword count/signed deficit verified (`AnnoWelt 0x10093515–0x10093618`); widened safe-profile boundary.
+Occupied retains without habitat; rejected records reverse into head reuse; non-category survivors keep order.
+Explicit optional saved ID/high bit/time/goods/byte 11; fresh untouched fields unknown, never invented zero.
+C2: fixed original row-major 16 samples, unchanged density, reserve before draw, modulo/swap-pop then lookup.
+First category-0-position record collides regardless of occupancy; category flag respected; same reservation retries.
+`0x10093684`/`0x100936b2` write goods/position BEFORE collision; `0x1009370b` timestamp only after insertion.
+Prepend, flag 0 set, occupancy cleared, reused ID/high bit/other fields retained; leftover discard only on success.
+Count 0 clears only flag 0; excess retained never trims. STOP before `0x10093767` materialization.
+C3: typed Result failures carry precise noncommittable diagnostics, consumed counts and reservation/list state.
+Supplied habitat/normal-success abstract allocation facts explicit; no native failure policy or fake rollback.
+C4: seven authored cases /268 assertions; complete lists/fields/attempt traces, not only counts.
+Main final local-token order [50,10,30,90,20,40], consumed 4, unused 999, retained/desired 5; unknown fresh ID preserved.
+Draw prefixes 0..3 expose exact partial list/reuse/reserved/candidates; old timestamp survives collision.
+Covers occupied false/missing habitat, unoccupied collision, zero candidates/all rejected/discard, excess,
+wrong category/first duplicate/category flag, wrap, missing facts, known token/ID 0, owners/repeat/immutability.
+Eight actual production mutants fail intended assertions after legal 7/268; source replacements proved applied.
+First causal script stopped on unmatched multiline pattern BEFORE mutation; first script/log/control retained.
+Corrected harness is separate; no canonical or production-code failure hidden. First builds/authored cases passed.
+
+C5 Debug `cache/wildlife-chunk-plan-1/debug.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=15 executed=15 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+ASan/UBSan `cache/wildlife-chunk-plan-1/asan.log`:
+```text
+COUNTS: selected=1 executed=1 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=15 executed=15 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+GATE_END {"status": 0, "ctest_rc": 0}
+```
+16 unique/profile: 7 chunk + 4 release + 2 prefix + 1 all-family 74 vectors + 2 leaf controls; required scope case once separately.
+Synthetic-only, game directory unset; no corpus claim. No memory refusal/timeout/gate rerun; admission enabled.
+Apple Clang 21/GCC 15.3 O3/Werror affected TUs pass, shadow negative rejects; format 23.1.3/lint/diff pass.
+0 compiler warnings; inherited duplicate-library linker warning disclosed. Actual Debug/ASan binaries retained.
+1019 frozen entries verified, prior 178/83/209 artifact manifests intact; 292 tracked fixtures unchanged.
+110-entry manifest SHA256 `b57d0cde2c68a4a8c2744677225777a2ed93c3887a57985ac5b1a9430dec36e9`.
+Hosted exact publication CI read after ordinary push; orchestrator owns terminal closeout.
+NOT_RUN: native terrain/allocator/destructor/World, materialization/species/positions/manager/first action,
+original/HE runtime, full-adapter OQ-572 guard branch (unreachable here), LeakSanitizer/local Windows/WSL/broad/full/heavy/pins.
 Decisions and reasoning:
-- Keep original pre-collision goods/position writes in partial diagnostics; timestamp stays old.
-- Represent fresh uninitialized ID/high bit/byte11 as unknown, not a convenient zero.
-- Do not bend the input contract to manufacture an otherwise unreachable failure.
-NOT_RUN: new C++, causal and canonical gates at this preimplementation checkpoint.
+- Preserve unknown fresh fields and pre-collision writes; use complete literal state instead of count-only comparisons.
+- Keep one consistent habitat/list profile and approved exhaustion proof; no contradictory facts or density override.
+- Existing replenish helper lacks partial record effects; small composer preserves it unchanged, collecting recycle order linearly.
+- Reuse untouched species/source evidence; no adjacent source-bound rerun. No state/default/tag/identity/PRNG/nav/raster changes.
+QUESTIONs: C0 resolved as documented; none at the isolated stopping boundary. STOP pending orchestrator review.

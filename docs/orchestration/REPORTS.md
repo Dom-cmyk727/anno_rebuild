@@ -16984,3 +16984,44 @@ diamond. With `ANNO_DEV_GOODS_TONS=3` the ghost blinks after one house. Other is
 there is refused (OutOfIsland).
 
 READY FOR REVIEW.
+
+## UI-GHOST-1 addendum — merge of the landing candidate `ui-info-2d-buildcat` (95897a55) — READY FOR REVIEW
+
+The candidate (UI-STATUS-1, MINIMAP-2, INFO-2b, INFO-2d, BUILDCAT-1, PRODBAR-1 B, ISLAND-CROPS-1, FERTILITY-1a and
+BUILDINGS-REF-1 on main) merged into `task/UI-GHOST-1` as one merge commit `4a93bac6` (parents `cff27308` and
+`95897a55`; never rebased), the conflict resolutions inside it. Two small follow-up commits after it, so the merge can
+be repeated against a new candidate: `a03131cb` (below). Head `a03131cb`.
+
+**Conflicts and resolutions (inside `4a93bac6`):**
+
+| File | Conflict | Resolution |
+|---|---|---|
+| `frame_projection.hpp` | UI-STATUS-1 and UI-GHOST-1 both split `pick_point` out of `FrameProjection::pick`, same signature and body; the doc comments differed | one declaration, the doc comment names the status bar's cursor tile and the ghost's whole-map hover. `frame_projection.cpp` merged by itself to the one shared `pick_point` |
+| `viewer.cpp`, facts | the ghost's `tool.ghost*` facts against PRODBAR's `tool.fertility` block | both kept, in that order |
+| `viewer.cpp`, CPU draw | the ghost's shown-building gate and outline against PRODBAR's fertility placeholder comment | the ghost's gate and outline, the placeholder comment inside the building branch |
+| `src/app/CMakeLists.txt` | the `anno_app_tests` source list | every test file of both sides: `status_bar`, `balance_rows`, `atlas_pages_lan5`, `info_preview`, `fertility_indicator` and `placement_ghost`; the new wiring cases registered by the auto-merge (`ui_status_island`, `ui_buildcat`, `ui_ghost*`, `ui_start_view`) |
+| `docs/open-questions.md` | both sides appended OQ sections | the union, in numeric order: 727, 750-754, 756-758, 759, 760 |
+| `docs/orchestration/REPORTS.md` | both sides appended entries | the union: the candidate's entries first, then UI-GHOST-1's |
+
+**`a03131cb` (after the merge):** UI-STATUS-1 and UI-GHOST-1 had both added the dev-script verb `hover_px` with the same
+behaviour; Git kept both branches (the second unreachable). One branch stays, its comment and the header line name both
+users. The fertility comment that the resolution indented is rewrapped by clang-format 23.1.3.
+
+**Gate** (MSVC Release, the usual env; each heavy job after checking that no other cl, link or WSL compile ran):
+- Build `anno1503 anno_app_tests anno_app_input_tests anno_ui_mock anno_sim_tests sim_replay` after configure: no warnings
+  (the one-verb cleanup rebuilt `anno1503 anno_app_input_tests`: no warnings). clang-format 23.1.3 `--dry-run --Werror`
+  on every `.cpp`/`.hpp` that differs from the candidate: clean.
+- `run_selected.py --jobs 8`: the six oracle tests, `^viewer_wiring_`, the ghost, dev-tool, status bar, hud, ui,
+  construction, selection, info preview, buildcat and fertility `anno_app_tests` cases, the `check_build_record` and
+  Build sim cases, and the determinism, replay and save lane (the replay CLI cases included), with twelve required
+  tests (the six oracles, `viewer_wiring_ui_ghost`, `_ghost_world`, `_ghost_pixel_check`, `_start_view`,
+  `_status_island`, `_buildcat`): `selected=448 executed=445 failed=0 empty=0 skipped=3 (opt-in=3) incomplete=0
+  sanitizer_lines=0`, PASS (`cache/gates/gate-merge.log`). The three skips are opt-in cases (the SCRIPT2 canary worker
+  and the two `probe:` bursts).
+- **No pin or golden moved by this branch**: `git diff 95897a55..HEAD -- fixtures` is empty.
+- WSL `check_unix_warnings.sh`, one run: GCC 13 and Clang 18, with and without GPU (437 / 94 files), clean, both
+  negative controls caught (`cache/gates/unix-warnings-merge.log`).
+
+**NOT_RUN:** the GPU path in a real window (the owner's test), macOS, the full suite.
+
+READY FOR REVIEW.

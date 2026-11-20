@@ -99,6 +99,9 @@ struct RoadRulesExtension {
         if (payload.drag_cap == 0) {
             return "drag_cap must be positive";
         }
+        if (payload.enabled == 0 && payload != default_value()) {
+            return "disabled road_rules must equal default_value()";
+        }
         return {};
     }
 };

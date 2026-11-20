@@ -357,3 +357,78 @@ TEST_CASE("fisher extension: default bytes and header-only flag roundtrip") {
     CHECK_FALSE(sim::World::create(spec, sim::TypeRegistry::empty(), {}, {}, {},
                                    sim::serial_executor(), rules));
 }
+
+TEST_CASE("road_rules extension: default bytes, header-only roundtrip, tag 1+2 coexist, refusals") {
+    const auto spec = sim::synthetic::empty_scenario();
+    auto off = sim::World::create(spec, sim::TypeRegistry::empty());
+    REQUIRE_MESSAGE(off, off.error());
+
+    sim::ExtensionContext road_only;
+    road_only.road_rules.enabled = 1;
+    auto on = sim::World::create(spec, sim::TypeRegistry::empty(), {}, {}, {},
+                                 sim::serial_executor(), road_only);
+    REQUIRE_MESSAGE(on, on.error());
+    CHECK_FALSE(off.value().road_drag_enabled());
+    CHECK(on.value().road_drag_enabled());
+    CHECK(off.value().rules().digest() == on.value().rules().digest());
+
+    // Header tag 2 writes 2B tag + 4B length + 10B payload (u8 + u32 + 5 * u8) = 16 bytes.
+    const auto a = off.value().save(), b = on.value().save();
+    CHECK(b.size() == a.size() + 16);
+    const auto ar = ranges(a), br = ranges(b);
+    for (std::size_t i = 1; i < ar.size(); ++i) {
+        CHECK(std::vector<std::uint8_t>(a.begin() + static_cast<std::ptrdiff_t>(ar[i].begin),
+                                        a.begin() + static_cast<std::ptrdiff_t>(ar[i].end)) ==
+              std::vector<std::uint8_t>(b.begin() + static_cast<std::ptrdiff_t>(br[i].begin),
+                                        b.begin() + static_cast<std::ptrdiff_t>(br[i].end)));
+    }
+
+    sim::HashTree ah, bh;
+    static_cast<void>(off.value().state_hash(ah, 1));
+    static_cast<void>(on.value().state_hash(bh, 1));
+    REQUIRE(ah.root.children.size() == bh.root.children.size());
+    CHECK(ah.root.children[0].hash != bh.root.children[0].hash);
+    for (std::size_t i = 1; i < ah.root.children.size(); ++i) {
+        CHECK(ah.root.children[i].hash == bh.root.children[i].hash);
+    }
+
+    auto loaded = sim::World::load(b, sim::TypeRegistry::empty());
+    REQUIRE_MESSAGE(loaded, loaded.error());
+    CHECK(loaded.value().road_drag_enabled());
+    CHECK(loaded.value().road_rules() == road_only.road_rules);
+    CHECK(loaded.value().save() == b);
+    CHECK(loaded.value().state_hash() == on.value().state_hash());
+
+    // Tag 1 (fisher_rules) + Tag 2 (road_rules) coexisting in ascending order.
+    sim::ExtensionContext both;
+    both.fisher_rules.enabled = 1;
+    both.road_rules.enabled = 1;
+    both.road_rules.drag_cap = 25;
+    auto w_both = sim::World::create(spec, sim::TypeRegistry::empty(), {}, {}, {},
+                                     sim::serial_executor(), both);
+    REQUIRE_MESSAGE(w_both, w_both.error());
+    const auto both_bytes = w_both.value().save();
+    auto loaded_both = sim::World::load(both_bytes, sim::TypeRegistry::empty());
+    REQUIRE_MESSAGE(loaded_both, loaded_both.error());
+    CHECK(loaded_both.value().fisher_enabled());
+    CHECK(loaded_both.value().road_drag_enabled());
+    CHECK(loaded_both.value().road_rules().drag_cap == 25);
+    CHECK(loaded_both.value().save() == both_bytes);
+
+    // Corrupt tag-2 native bytes (invalid boolean at last byte of header) refused by World::load.
+    auto bad = b;
+    bad[br[0].end - 1] = 2;
+    island_test::reseal(bad);
+    const auto refused_load = sim::World::load(bad, sim::TypeRegistry::empty());
+    REQUIRE_FALSE(refused_load);
+    CHECK(refused_load.error().find("road_rules") != std::string::npos);
+
+    // Invalid disabled-with-nondefault payload refused by World::create.
+    sim::ExtensionContext non_canonical;
+    non_canonical.road_rules.enabled = 0;
+    non_canonical.road_rules.drag_cap = 10;
+    const auto refused_create = sim::World::create(spec, sim::TypeRegistry::empty(), {}, {}, {},
+                                                   sim::serial_executor(), non_canonical);
+    REQUIRE_FALSE(refused_create);
+    CHECK(refused_create.error().find("disabled road_rules") != std::string::npos);
+}

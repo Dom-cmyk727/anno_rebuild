@@ -1839,7 +1839,9 @@ enum class Reject : std::uint16_t {
     NoBuildingAtTile, LineNotFound, BadIndex,
     BadValue,         // a numeric field outside what its state allows (a trade-list index that names no entry, a given payload that does not fit)
     ListFull,         // the building list cannot grow (a list of 0xFFFFFFFF elements; S6, own design)
-    Unencodable       // S9: the command has no wire form (encode_record refuses it); Recorder::submit answers it without logging or applying
+    Unencodable,      // S9: the command has no wire form (encode_record refuses it); Recorder::submit answers it without logging or applying
+    // ... MAP-2..MAP-EXTRACT-1 enumerators ...
+    PrefixStopped     // ROADS-1: trailing road placement not attempted after an earlier refusal or drag_cap cutoff
 };
 struct RecordResult { Reject status = Reject::None; BuildingId building; };
 struct ApplyResult { Reject status = Reject::None; std::vector<RecordResult> records; bool ok() const { return status == Reject::None; } };

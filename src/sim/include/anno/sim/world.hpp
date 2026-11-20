@@ -293,6 +293,8 @@ class World {
     /// Optional feature rules are authoritative in their header extensions, not Rules' base list.
     [[nodiscard]] const ExtensionContext& extension_rules() const { return extensions_; }
     [[nodiscard]] bool fisher_enabled() const { return extensions_.fisher_rules.enabled == 1; }
+    [[nodiscard]] const RoadRules& road_rules() const { return extensions_.road_rules; }
+    [[nodiscard]] bool road_drag_enabled() const { return extensions_.road_rules.enabled == 1; }
     [[nodiscard]] const Seams& seams() const { return seams_; }
     [[nodiscard]] const TypeRegistry& types() const { return *types_; }
     [[nodiscard]] BuildEligibility construction_eligibility(PlayerId, TypeId) const;

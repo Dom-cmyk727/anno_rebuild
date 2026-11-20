@@ -41,6 +41,12 @@ namespace anno::sim {
                                           const BuildingType& type, const PlacementRecord& rec,
                                           CityNo city);
 
+/// Per-tile territory rule for road drags (AnnoFrame 0x1004af90): every tile of the
+/// footprint must lie on `island`, have owner != `cfg.neutral_owner`, and belong to `city`.
+[[nodiscard]] Reject footprint_all_owned_rule(const Island& island, const SimConfig& cfg,
+                                              const BuildingType& type, const PlacementRecord& rec,
+                                              CityNo city);
+
 /// The decision and the authoritative item height of one record (docs/sim/ship-placement.md
 /// section 3). Read-only, total, O(footprint + vertex window).
 struct PlacementResult {
@@ -119,6 +125,13 @@ struct PlacementParams {
 struct RoadParams {
     /// PRODTYPE of the land roads (STRASSE; types.cpp name table, Named{193}).
     std::uint32_t prodtype = 193;
+    /// PRODTYPE group of roads/ramps/piers (0xc1 = 193..224).
+    std::uint32_t road_group = 0xc1;
+    /// PRODTYPE of bridges (BRUECKE; types.cpp name table, Named{198}); bridges are in neither
+    /// surface family and always pay.
+    std::uint32_t bridge_prodtype = 198;
+    /// Flag word bit identifying road/ramp/bridge family pieces (0x100, AnnoFrame 0x1004b11b).
+    std::uint32_t road_family_flag = 0x100;
     /// The class bits (flag word & 0x7000) of a land road: the road class (accepted at once by the
     /// original) and the slope class (mx - lo > 0x10 refused; AnnoGame 0x10008f90).
     std::uint32_t road_class = 0x4000;
@@ -131,6 +144,21 @@ struct RoadParams {
 /// bits are the road or the slope class, no coverage bit 0x10, a mode other than the single-quad
 /// average (flag word & 3 != 1) and a non-empty footprint. Facts of the parsed type only.
 [[nodiscard]] bool is_land_road(const BuildingType& t, const RoadParams& params = {});
+
+/// Whether `t` belongs to a non-bridge road surface family (group `params.road_group`, not
+/// `params.bridge_prodtype`, and `params.road_family_flag` set).
+[[nodiscard]] bool is_road_family(const BuildingType& t, const RoadParams& params = {});
+
+/// Whether `a` and `b` are in the same non-bridge road surface family (free re-lay, AnnoFrame
+/// 0x1004b1ac-0x1004b278). Bridges are in neither family and always return false.
+[[nodiscard]] bool same_road_family(const BuildingType& a, const BuildingType& b,
+                                    const RoadParams& params = {});
+
+/// Whether placing `placed` over `existing` is a downgrade (e.g. dirt over cobblestone, AnnoFrame
+/// 0x1004b11b-0x1004b141): both are non-bridge road-family types and `placed` has strictly lower
+/// gold cost than `existing`.
+[[nodiscard]] bool is_road_downgrade(const BuildingType& existing, const BuildingType& placed,
+                                     const RoadParams& params = {});
 
 /// The placement rule of a normal Build record for the EFFECTIVE type (after any upgrade
 /// rewrite), docs/sim/ship-placement.md section 2 (R1-R6); oracle tools/placement_ref.py

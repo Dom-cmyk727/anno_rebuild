@@ -2060,6 +2060,7 @@ production world with optional features off still writes exactly 1a's bytes: eac
 | Tag | Section | Name | Owner packet | Status | Payload fields |
 |---|---|---|---|---|---|
 | 1 | header | fisher_rules | FISHER-1b | Implemented | u8 enabled: 0 off (default), 1 on; other values refused |
+| 2 | header | road_rules | ROADS-1 | Implemented | u8 enabled (0 off default), u32 drag_cap (40), u8 every_tile_territory (1), u8 no_downgrade (1), u8 free_same_family (1), u8 stop_at_first_refusal (1), u8 figure_veto (1) |
 | 0xF000–0xFFFF | Test contexts only | Reserved test range | SAVE-SECTIONS-1b | Reserved | See synthetic proof below |
 
 Tag 0 is never assigned. Tag 1 is the first production entry (reserved on the board 2026-11-14). A feature reserves its tag on the board

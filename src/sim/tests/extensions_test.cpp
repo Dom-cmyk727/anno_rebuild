@@ -38,6 +38,7 @@ struct SyntheticExtension {
 struct TestContext {
     SyntheticState synthetic;
     sim::FisherRules fisher_rules{};
+    sim::RoadRules road_rules{};
     template <sim::StateSection Section>
     using List = std::conditional_t<Section == sim::StateSection::Figures,
                                     sim::TestExtensionList<SyntheticExtension>,
@@ -289,18 +290,23 @@ TEST_CASE("extensions schema: production lists are sorted unique and exclude the
     static_assert(!sim::valid_extension_list<false, TagOnly<2>, TagOnly<1>>());
     static_assert(!sim::valid_extension_list<false, TagOnly<0>>());
     static_assert(!sim::valid_extension_list<false, TagOnly<0xf000>>());
-    static_assert(sim::kKnownExtensions.size() == 1);
+    static_assert(sim::kKnownExtensions.size() == 2);
+    static_assert(sim::kKnownExtensions[1].tag == 2);
+    static_assert(sim::kKnownExtensions[1].name == "road_rules");
     static_assert(sim::valid_extension_list<true, SyntheticExtension>());
     static_assert(!sim::valid_extension_list<false, SyntheticExtension>());
     static_assert(!sim::valid_extension_list<true, SyntheticExtension, SyntheticExtension>());
     constexpr auto schema = sim::extension_schema<TestContext>();
-    static_assert(schema.size() == 2);
+    static_assert(schema.size() == 3);
     static_assert(schema[0].section == sim::StateSection::Header);
     static_assert(schema[0].tag == 1);
     static_assert(schema[0].name == "fisher_rules");
-    static_assert(schema[1].section == sim::StateSection::Figures);
-    static_assert(schema[1].tag == 0xf001);
-    static_assert(schema[1].name == "synthetic_extension");
+    static_assert(schema[1].section == sim::StateSection::Header);
+    static_assert(schema[1].tag == 2);
+    static_assert(schema[1].name == "road_rules");
+    static_assert(schema[2].section == sim::StateSection::Figures);
+    static_assert(schema[2].tag == 0xf001);
+    static_assert(schema[2].name == "synthetic_extension");
     CHECK(sim::kStateHashVersion == 139);
     // Header and islands are base 2 since ISLAND-CROPS-1 1b (world_state_test lists all ten).
     for (const auto& section : sim::kSectionVersions)

@@ -16778,3 +16778,26 @@ locks the cell, never switches the category. Compare with HE `ui_9` 2:25-2:30.
   (`r2_place_pioneer_house` shows public selected).
 
 READY FOR REVIEW.
+
+### UI-MAGNIFIER-MAC-1 — HiDPI dev-script coordinates & visibility diagnostics (2026-11-20)
+
+- **Branch / Code Head / Tree:** `task/UI-MAGNIFIER-MAC-1` · code `cbfa8b1a2d8d8da4b7914098c7cf2fafe77c5256` (tree `442178f1b74bbd207fc967973a7ef3cd983d0f99`), base Candidate 10 `95897a55` + `origin/main` `a6468efd`.
+- **Root cause:** (1) `DevScript::step` (`src/app/src/dev_script.cpp`) emitted raw drawable-pixel coordinates for `click_px`, `hover_px`, `ldown_px`, `ldrag_px`, `rclick_px`, `rdrag_px`, and `wheel N X Y` without dividing by `st.density`, while `viewer.cpp` multiplies SDL mouse/wheel coords by `density` (at `density = 2.0`, `click_px 835 163` became `(1670, 326)`). (2) `act.resize` (`viewer.cpp`) passed raw `(w, h)` to `SDL_SetWindowSize` instead of dividing by `density` like `ANNO_VIEW_SIZE` and `resize_at_`, producing a `2048x1536` drawable for `resize 1024 768`. Both now share `drawable_to_window_point` / `window_points_for_drawable`. (3) Added `hidden_` transition logging/tracing (`Viewer::handle`), `retry_backoff` trace note (`back_off`), and `format_no_frame_diagnostic` on 30 s no-frame aborts. `src/sim`, `src/formats`, `fixtures/synthetic/sim/` untouched (state 139, 0 pin moves).
+
+| Requirement | Positive proof | Negative control | Evidence | Disposition |
+|---|---|---|---|---|
+| 1. `*_px` & `wheel N X Y` scale by `1/density` | `1.0F`, `1.5F`, `2.0F` round-trip `* density` to exact px; hits `lupe_minus`/`lupe_plus` | `density <= 0` fails step; unscaled mutant misses at `1.5F` | `dev_script_test.cpp` (`anno_app_input_tests`) | pending |
+| 2. `resize W H` targets drawable px | `window_points_for_drawable(1024,768,2.0F)=={512,384}`, `1.5F=={683,512}` | Unscaled `{1024,768}` yields `2048x1536` at `2.0F` | `dev_script_test.cpp`, `viewer.cpp` | pending |
+| 3. `hidden_` & `retry_at_` diagnostics | `format_no_frame_diagnostic` covers `hidden=0/1`, `retry_backoff=0/1`, `drawn=N` | Distinct strings for `hidden=1` vs `retry_backoff=1` | `dev_script_test.cpp`, `viewer.cpp` | pending |
+| 4. Windows PC UI/magnifier/oracle green | All 8 required + UI/minimap/dev_script suites pass | Unchanged `src/sim`, `src/formats`, pins | `cache/gates/ui-magnifier-mac-1-02.log` | pending |
+
+- **Deliberate failure proof:** Temporarily returning unscaled `(x, y)` in `drawable_to_window_point` caused `anno_app_input_tests --test-case="*display density*"` to pass at `1.0F` and fail at `1.5F`: `CHECK(1252.5 == Approx(835))`, `CHECK(244.5 == Approx(163))`, `REQUIRE(u.has_value())` `false` (off `1024x768` UI layer); restored and re-verified green.
+- **Gates (MSVC Release, RTX 4090, `ANNO1503_GAME_DIR` + oracle/HE/rotation env, `ANNO_DEV_GOODS_TONS` unset):**
+  - `python -I tools/test/run_selected.py --build-dir build/msvc --config Release --jobs 8 --require-test viewer_wiring_ui_magnifier_range --require-test viewer_wiring_ui_magnifier_range_stepped --require-test live_screen_matches_oracle --require-test ui_dynamic_draw_check --require-test info_panel_gog_compare --require-test info_panel_rotation_gog_compare --require-test selected_house_pixel_check --require-test ui_panels_match_gog --select "dev_script|minimap|magnifier|hud|ui |ui_|construction|selection|^viewer_wiring_ui_" --log cache/gates/ui-magnifier-mac-1-02.log`
+  - `COUNTS: selected=111 executed=111 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0` · `VERDICT: PASS`
+  - `clang-format` 23.1.3 `--dry-run --Werror`: clean on all 4 touched C++ files.
+  - `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`: clean (GCC 13.3.0 & Clang 18.1.3, 435 files w/ GPU, 92 w/o GPU; negative controls caught).
+- **Decisions & reasoning:** Divide `*_px`/`wheel N X Y` in `DevScript` rather than bypassing `* density` in `viewer.cpp` so real SDL user input and `window_point`/`sail`/`ship_point` share one uniform SDL-window-points contract; log `hidden_` only on state change so normal `EXPOSED` events do not spam stderr/trace.
+- **NOT_RUN:** Live macOS/Metal execution (Windows PC host; Mac re-tests updated candidate), full `main` MSVC/WSL suite (orchestrator at landing), hosted CI (checked after push).
+
+READY FOR REVIEW.

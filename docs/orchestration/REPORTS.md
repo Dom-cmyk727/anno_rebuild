@@ -16862,3 +16862,41 @@ Suggested order for the owner's next test: ROADS-0, ROADS-1, ROADS-3 (a road he 
   3. *`world_state_test.cpp` unknown tag 2 -> 3*: tag 2 is now registered (`road_rules`).
   4. *`road_drag_test.cpp` `s.players.resize(2)`*: avoids GCC 13 `-O3 -Werror=null-dereference` on copying `PlayerSpec` with empty vector.
 - **NOT_RUN:** The 3 heavy corpus tests refused for `low-memory stop`; full WSL ASan/UBSan gate (`wsl_gate.sh`); `anno_render_gpu_tests`/`anno_app_tests` (not touched); hosted CI (pending push).
+
+## ROADS-1 (SIM-ROADS-1) — Fix Round 1 READY FOR REVIEW (2026-11-20)
+- **Final code head:** `ed040a55` (branch `task/ROADS-1`, merged `origin/main` `a6468efd` with `--no-ff`).
+- **Fixes (F1-F8):**
+  - **F1:** Added `road_rules` header tag `2` to `tools/lint_sim_allow.txt`; `python -I tools/lint_sim.py --root .` exits 0 (`lint_sim: ok`).
+  - **F2:** Removed duplicate `check_road_figure_veto` before `construction_eligibility` in `apply.cpp`; added test proving `ConstructionDenied` precedes `FigureInTheWay`.
+  - **F3:** Appended `Reject::PrefixStopped` (`reject.hpp`, `reject_name()`, `docs/sim/state.md` §8.3); kind-9 prefix stop marks all trailing non-skip placements `Reject::PrefixStopped` and is scoped to road records (`chk.is_road || road_count > 0`); added tests for `PrefixStopped`, non-road multi-building continuation, and `Rules::build_atomic`.
+  - **F4:** Enforced `RoadRules::drag_cap` in `apply.cpp::build()` (excess road records get `Reject::PrefixStopped`); `RoadRulesExtension::validate()` rejects `enabled == 0 && payload != default_value()`.
+  - **F5:** Gated road drag rules on `out.tile_object && out.is_road`, guarded empty footprints in `same_family_free`, tested rotated 2x1 figure veto, all 5 fallback toggles (`enabled = 1`), and full ADR 0006 tag-2 persistence in `extensions_test.cpp` (16-byte header-only delta, `HashTree` section 0 only, tag 1+2 coexist, corrupt/invalid refusals).
+  - **F6:** Merged `origin/main` (`a6468efd`, `ubuntu-24.04` CI pin) with `--no-ff`.
+- **Oracle & pin impact:** `tools/placement_ref.py`: `0 changes`; `kStateHashVersion`: `139`; `0 pins moved; 0 fixture byte changes`.
+- **Gates (post-edit, `ANNO1503_GAME_DIR=E:\anno1503\game\app`):**
+  - `python -I tools/pins.py check --build-dir build/msvc --config Release --jobs 8 --log cache/gates/pins-roads1-r2.log`: `selected=1732 executed=1711 failed=0 empty=0 skipped=21 (required-asset=0 platform=0 opt-in=18 gpu=0 other=3) incomplete=0 sanitizer_lines=0`; `0 pins moved; 0 fixture byte changes` (exit 1 solely from 3 pre-existing `ship start:` `other` skips on Windows).
+  - `tools/test/run_selected.py ... --log cache/gates/roads1-r2-contracts.log`: `selected=1 executed=1 failed=0` (+4 required contracts `anno_sim_tests_lint_sim_passes`, `anno_sim_tests_lint_sim_self_test`, `placement_reference_agrees`, `placement_tile_corpus_reference_agrees` PASS), `VERDICT: PASS`.
+  - `anno_app_tests` (`cache/gates/roads1-r2-app.log`): `selected=369 executed=366 failed=0 empty=0 skipped=3 (opt-in=3)`, `VERDICT: PASS`.
+  - `anno_render_gpu_tests` (`ANNO_GPU_ADAPTER=4090`, `cache/gates/roads1-r2-gpu.log`): `selected=135 executed=134 failed=0 empty=0 skipped=1 (opt-in=1)`, `VERDICT: PASS`.
+  - `clang-format.exe` 23.1.3 `--dry-run --Werror`: clean (rc=0); `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`: GCC 13.3 + Clang 18.1.3 `-O3 -Werror` (437 + 92 files): clean (rc=0).
+- **Mutation controls (mutated -> named test failed -> restored & rebuilt):**
+  1. `road_drag.cpp` `adx >= ady`: `road_path: L shape...` failed (lines 153-155).
+  2. `road_drag.cpp` `check_road_figure_veto` -> `Reject::None`: `figure veto stops prefix and rotated footprint` failed (lines 282-296).
+  3. `placement.cpp` `is_road_downgrade` -> `false`: `no downgrade refuses dirt over cobblestone` failed (lines 334-340).
+  4. `placement.cpp` `same_road_family` -> `false`: `same-family re-lay free...` failed (lines 377-379).
+  5. `placement.cpp` `footprint_all_owned_rule` -> `footprint_owner_rule`: `every tile must be owned` failed (line 222).
+  6. `apply.cpp` `drag_cap = 1000000U` & `stop_on_refusal = false`: `drag_cap enforced in BuildCmd` (lines 422-439) & `City::Build refusal stops prefix` (lines 252-258) failed.
+- **Acceptance Table:**
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Reviewer disposition |
+|---|---|---|---|---|
+| `road_path(start, end, cap=40)` (`AnnoFrame 0x1004b392`-`0x1004b51f`) | L-path, longer axis first, y first on tie, truncated at `cap=40` | Tie does NOT go x-first; `(0,0)->(50,0)` does NOT reach `(50,0)` | `road_drag_test.cpp`: `road_path: L shape...` | pending |
+| Same island as start (`AnnoFrame 0x1004af90`) | Drag within island 0 succeeds | Drag off-island stops at `OutOfIsland`, tail `PrefixStopped` | `road_drag_test.cpp`: `stops at first off-island tile` | pending |
+| Every tile owned by single city (`0x1004af90`) | All owned tiles pass | Neutral or rival tile stops with `TileNotOwned`, tail `PrefixStopped` | `road_drag_test.cpp`: `every tile must be owned by single city` | pending |
+| `City::Build` & eligibility precedence (`0x1004af90`) | Valid road accepted; non-road multi-building continues | Building obstacle -> `Occupied`; `ConstructionDenied` precedes `FigureInTheWay` | `road_drag_test.cpp`: `City::Build refusal`, `ConstructionDenied precedes...`, `non-road multi-building` | pending |
+| Figure veto (`0x1004af90` -> `0x10045080`) | Clear tile accepted | Blocking figure (incl. rotated 2x1) -> `FigureInTheWay`, tail `PrefixStopped` | `road_drag_test.cpp`: `figure veto stops prefix and rotated footprint` | pending |
+| No downgrade (`0x1004b11b`-`0x1004b141`) | Cobblestone over dirt accepted | Dirt over cobblestone -> `Occupied`, tail `PrefixStopped` | `road_drag_test.cpp`: `no downgrade refuses dirt over cobblestone` | pending |
+| Cost & same-family free (`0x1004b1ac`-`0x1004b278`) | Same-family re-lay 0 gold; upgrade pays; bridges always pay | Insufficient gold stops at `CannotAfford`, tail `PrefixStopped` | `road_drag_test.cpp`: `same-family re-lay free...`, `Anlagen.dat road corpus` | pending |
+| Kind-9 prefix, `drag_cap`, ADR 0006 tag 2 (`0x1004b5c7`, `state.md` §9.8) | 40-tile cap & custom cap; 0B default; tag 1+2 round-trip | Excess/trailing -> `PrefixStopped`; invalid `RoadRules` refused | `road_drag_test.cpp`: `drag_cap enforced...`; `extensions_test.cpp`: `road_rules extension...` | pending |
+
+- **NOT_RUN:** UI pixel-oracle tests (`src/app` and `src/render` untouched, N/A); full WSL ASan/UBSan gate (`wsl_gate.sh`, orchestrator); hosted CI (in progress on push).

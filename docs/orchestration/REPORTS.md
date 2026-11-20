@@ -16838,3 +16838,27 @@ Suggested order for the owner's next test: ROADS-0, ROADS-1, ROADS-3 (a road he 
 - The exact blocking tiles in the owner's session (OQ-769; needs his command log or a footprint outline).
 - Whether demolish restores anything (OQ-768, the unread replacement arm).
 - Not run: any original or HE; the executed evidence is the rebuild's own scripted sessions and static reads.
+
+## ROADS-1 (SIM-ROADS-1) — READY FOR REVIEW (2026-11-20)
+- **Code head:** `bb3dcaf6` (branch `task/ROADS-1`, base `df15310b`).
+- **What changed:**
+  - `src/sim/include/anno/sim/road_drag.hpp`, `src/sim/src/road_drag.cpp`: `road_path(start, end, cap=40)` (`AnnoFrame 0x1004b392`-`0x1004b51f`, L-path, longer axis first, y first on tie, cut at `cap`), `check_road_figure_veto` (`0x1004af90` -> `0x10045080`), `make_road_drag_cmd`.
+  - `src/sim/include/anno/sim/placement.hpp`, `src/sim/src/placement.cpp`: `footprint_all_owned_rule` (`0x1004af90`), `is_road_family`, `same_road_family`, `is_road_downgrade` (`0x1004b11b`-`0x1004b141`, data-driven via `RoadParams` `road_group=0xc1`, `bridge_prodtype=198`, `road_family_flag=0x100`, `cost_gold`).
+  - `src/sim/include/anno/sim/extension_context.hpp`, `world.hpp`, `src/sim/src/apply.cpp`: ADR 0006 header extension tag 2 `road_rules` (`enabled=0` default, `drag_cap=40`, `every_tile_territory=1`, `no_downgrade=1`, `free_same_family=1`, `stop_at_first_refusal=1`, `figure_veto=1`); `BuildCmd` applies per-tile territory, no downgrade, figure veto, same-family free re-lay (bridges always pay), and kind-9 prefix commit (`0x1004b5c7`, OQ-043) when `road_drag_enabled()`.
+  - `src/sim/tests/road_drag_test.cpp`, `extensions_test.cpp`, `world_state_test.cpp` (unknown tag 2->3): 9 new test cases including `Anlagen.dat` 2500-2537 corpus classification; `docs/sim/state.md` §9.8 & `docs/BUILDINGSOBJECTS.md` §10.1 updated.
+- **Pin diff:** `kStateHashVersion` unchanged (139); `0 pins moved; 0 fixture byte changes`.
+- **Gates & classified counts:**
+  - `python -I tools/pins.py check --build-dir build/msvc --config Release --jobs 8 --log cache/gates/pins-roads1.log` (`ANNO1503_GAME_DIR=E:\anno1503\game\app`): `selected=1727 executed=1702 failed=4 empty=0 skipped=21 (opt-in=18 other=3) incomplete=0 sanitizer_lines=0` (`0 pins moved`). Of the 4 failures: `section extensions` was fixed (tag 2->3) and passed on rerun; the other 3 (`population A`, `scenario corpus`, `scenario corpus: every island gets its crop list`) were `[anno-test memory] refused ... reason=low-memory stop` (free < 2048 MiB).
+  - Rerun alone (`--jobs 1`, `cache/gates/sim-refused-rerun.log`): `selected=4 executed=1 failed=3` (`section extensions` PASS; same 3 heavy tests refused by `anno_budget_coord` `low-memory stop`).
+  - Post-edit final MSVC Release (`cache/gates/roads1-final.log`): `^anno_sim_tests\.(road_path:|road drag:|anno_sim_tests_lint)` -> `selected=9 executed=9 failed=0 empty=0 skipped=0 VERDICT: PASS`.
+  - `clang-format.exe` 23.1.3 `--dry-run --Werror` on all 10 touched C++ files: clean (rc=0).
+  - `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`: GCC 13.3 `-O3 -Werror` (437 + 92 files) and Clang 18.1.3 `-O3 -Werror` (437 + 92 files): clean (rc=0).
+- **Failure proofs (mutated then restored):**
+  1. `road_drag.cpp`: changed `adx > ady` to `adx >= ady` -> `road_path: L shape, longer axis first, y first on tie, cap 40` failed at lines 149-151 (`tie[1..3]`).
+  2. `placement.cpp`: forced `is_road_downgrade` to `false` -> `road drag: no downgrade refuses dirt over cobblestone` failed at lines 294, 297, 298.
+- **Decisions & reasoning:**
+  1. *ADR 0006 tag 2 `road_rules` (`enabled=0` default)* instead of changing `BuildCmd` default or `fields(Rules)`: preserves `kStateHashVersion=139`, emits 0 extension bytes by default, keeps existing `build_terrain_test.cpp` legacy `BuildCmd` contracts & all pins untouched.
+  2. *Data-driven family/cost classification* (`road_group=0xc1`, `bridge_prodtype=198`, `flags_word & 0x100`, `cost_gold` comparison) instead of hardcoded IDs `2500..2537` or gold `5`/`10`: verified on `Anlagen.dat` 2500-2537 (all cobblestone=10, dirt=5, `BRUECKE`=198 excluded).
+  3. *`world_state_test.cpp` unknown tag 2 -> 3*: tag 2 is now registered (`road_rules`).
+  4. *`road_drag_test.cpp` `s.players.resize(2)`*: avoids GCC 13 `-O3 -Werror=null-dereference` on copying `PlayerSpec` with empty vector.
+- **NOT_RUN:** The 3 heavy corpus tests refused for `low-memory stop`; full WSL ASan/UBSan gate (`wsl_gate.sh`); `anno_render_gpu_tests`/`anno_app_tests` (not touched); hosted CI (pending push).

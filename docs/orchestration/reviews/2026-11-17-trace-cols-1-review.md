@@ -1,0 +1,59 @@
+# TRACE-COLS-1: the orchestrator's review (2026-11-17)
+
+`task/ZOOM-BOUNCE-1` `bf5cc055` (code `f82bf42d`), Windows executor. Files: `tools/bench/window_table.py`,
+`tools/bench/window_table_test.sh`, `tools/test/window_trace_columns_test.py` (new), `CMakeLists.txt`,
+`docs/app/window-trace.md`. No C++ source touched.
+
+## What was checked
+
+- **One order.** The writer's order is kept (`resample_*` right after `scale`), as the packet preferred, because
+  traces in that order already exist. `window_table.py` reads every row by name (`dict(zip(COLUMNS, f))`), so
+  reordering `COLUMNS` changes nothing else in the reader. `WHEEL_COLUMNS` is new; `wheel.tsv` had no list on the
+  reader's side.
+- **The contract test, run by the orchestrator** on copies of the two sources: with the branch's
+  `window_trace.cpp` and `window_table.py` it passes, 3 of 3; with `fc1fbff7`'s it fails (frames: order;
+  wheel: no `WHEEL_COLUMNS`), sim passes, as the report says. It reads the header literals out of the C++
+  source, not a third copy. It is registered as `window_trace_columns_contract`, label `workflow`.
+- **`window_table_test.sh`** had the old order in its synthetic rows and in two `sed` patterns; both fixed. That
+  test does not run on Windows (a known limit). It is CTest `window_table_contract` in the Linux and macOS jobs
+  of CI, which therefore decide it.
+- **A real trace** from the branch's binary (1,820 frames, 46 turns, the wheel header) reads without an error.
+  It covers groups 2 to 4 only, so the switch between groups 1 and 2 is documented from the source (`kTile`,
+  `ZoomLevels::with_derived`), not seen in a trace. That is enough for this packet.
+- **`docs/app/window-trace.md`:** the columns in the writer's order, `wheel.tsv`'s eight columns with their
+  meaning, and the tile widths per group (84, 42, 20, 10, 5 px; 42 to 20 is the one factor of 2.1).
+
+## Note, no change needed
+
+- The contract test finds a header by the text after `<<` up to the next `;`. A header split across two
+  statements would be read in part and fail loudly, not pass wrongly, which is the right way round.
+
+## Verdict
+
+**ACCEPTED once CI is green on `bf5cc055`** (running at review time; its Linux and macOS jobs run
+`window_table_contract`). Then the bounce branch (ZOOM-BOUNCE-1 to 3 and TRACE-COLS-1) is ready for a landing
+candidate on the owner's OK. The assignment lands it before the UI lane binds keys in `viewer.cpp`.
+
+## CI result (added 2026-11-17)
+
+**CI is red on `bf5cc055`** (run 43983612968): `window_table_contract` fails on linux-gcc, linux-clang-asan,
+linux-gcc-release and macos-clang; windows-msvc passed. The case `junk_present` exits 0 instead of 1. With
+`outcome` now the last column, its `sed` pattern needs a tab after `presented` that is no longer there, so the
+corruption is never applied and the file stays valid. The `count` case has the same blind spot in one of its two
+substitutions (`acquire_skipped\t`); it still fails as expected only because its other edits apply.
+**Not accepted yet.** Asked of the executor, same branch: anchor both patterns to the line end; add a guard so
+every file a case edits must differ from its `.orig`, or the case fails; check the other patterns that end in a
+tab; run the script in WSL, once with the old `junk_present` pattern, which must fail on the guard, and once
+fixed, which must pass.
+
+## The fix (added 2026-11-17)
+
+`ba32d939`, `tools/bench/window_table_test.sh` only. `junk_present` and `count` are anchored to the line end
+(`presented$`, `acquire_skipped$`). After each case's edits a guard compares every `.orig` under the case's
+folder with the file it was made from and fails the case if they are equal, so a pattern that matches nothing can
+no longer pass for the wrong reason. The guard works per file: a `sed` with two substitutions of which only one
+applies still changes the file and is not caught. That limit is accepted; both substitutions of `count` now
+apply. **CI green on `ba32d939`** (run 43989860151).
+
+**Verdict: ACCEPTED.** The bounce branch (ZOOM-BOUNCE-1 to 3 and TRACE-COLS-1, head `ba32d939`) is ready for a
+landing candidate on the owner's OK.

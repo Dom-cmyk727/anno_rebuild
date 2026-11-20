@@ -16838,3 +16838,54 @@ Suggested order for the owner's next test: ROADS-0, ROADS-1, ROADS-3 (a road he 
 - The exact blocking tiles in the owner's session (OQ-769; needs his command log or a footprint outline).
 - Whether demolish restores anything (OQ-768, the unread replacement arm).
 - Not run: any original or HE; the executed evidence is the rebuild's own scripted sessions and static reads.
+
+## ROADS-0 / PICTURE-OBJECTS-1: runtime tile objects & cleared scenery in picture — 2026-11-20 — READY FOR REVIEW
+
+Branch `task/ROADS-0`, base `60a26f0d` / packet `c3489403`, code SHA `b0b022c6` (`b0b022c691712a9898d0aa1956027eca193bdf8d`),
+followed by this report commit. Zero changes in `src/sim/` (state stays 139) or `src/render/` (`gpu.wgsl`/`gpu.cpp` sea passes
+untouched). Touched: `src/app/` (`loader`, `building_delta`, `play`, `scene_picture`, `main`, `viewer`, tests),
+`tools/test/viewer_wiring/{roads_picture_objects,boundary_view}.script`, and `docs/BUILDINGSOBJECTS.md` (gap row 16, §10.1-10.2).
+Settled OQ-775..779 for runtime road drawing and cleared scenery suppression under placed/demolished footprints.
+
+**Deliverables & acceptance proof (code + tests, after final C++ edit unless noted).**
+- `building_delta_test` + `building_mailbox_test`: `TileObjectDelta` diff (add/remove/rot/height/cleared/wide id 100000), 50-turn quiet
+  `02Trade01` (`batches.empty()`), `BuildingMailbox` resync collapse & incremental apply parity (`anno_app_tests`, PASS).
+- `tile_object_picture_test` (2 cases, 88 assertions, `ANNO_DUMP_ROADS_PNG` inspected): placed land road `2520` reaches `Visible` (never
+  `NoVisualChange`), rotates (rot 0 vs rot 1), matches fresh `load_placed_scene` reference, demolishes to bare ground; trees under
+  placed pioneer house, road, and direct tree demolish vanish (`>= 1` cleared tile) and stay bare on demolish + collapsed resync.
+- `viewer_wiring_roads_picture_objects` (`tools/test/viewer_wiring/roads_picture_objects.script`): `2520` rot 0/1 -> `Applied` +
+  `Visible`, `picture.tile_objects == 1 -> 2 -> 1`, empty redemolish -> `NoVisualChange`, forest demolish `1188 516` -> `Visible`
+  (`picture.cleared_tiles == 2`), redemolish `1188 516` -> `NoVisualChange` (PASS).
+- Deliberate failure proof: inserted `tile_deltas.clear();` in `PlayRunner::building_batch` -> `anno_app_tests -ts=tile_object_picture`
+  failed 2/2 (21 assertions: `v0 == Visible` got `NoVisualChange`, `live_tile_object_count() == 0`, `0 px` diff, trees remained) and
+  `viewer_wiring_roads_picture_objects` failed line 17 (`NoVisualChange`); restored cleanly -> both PASS.
+
+**Gates & checks (`ANNO_DEV_GOODS_TONS` unset; `ANNO1503_GAME_DIR=E:\anno1503\game\app`).**
+- Initial MSVC `--jobs 8` + `ANNO_TEST_THREADS=16` (`cache/roads-0/gate-msvc.log`, `sha256[:12]=2656bac4822a`): `selected=673`,
+  `executed=665`, `failed=5`, `skipped=3` (opt-in) — only the 5 parallel `(game files)` `anno_render_tests` corpus cases hit
+  `reason=low-memory stop` (Host free RAM 8.24 GiB < headroom + 16*8 threads). Kept separate per `docs/testing/README.md`.
+- Corrected non-heavy `anno_render_tests` (`cache/roads-0/gate-msvc-render.log`, `sha256[:12]=b59555532c01`, `--jobs 2`,
+  `ANNO_TEST_THREADS=2`, untouched `src/render/`): `selected=211 executed=211 failed=0 skipped=0 incomplete=0 sanitizer=0` (**PASS**).
+- Post-final-edit app + wiring + 6 UI oracles (`cache/roads-0/gate-msvc-app-2.log`, `sha256[:12]=9e082e129e3e`, `--jobs 8`,
+  `--exclude-label "^(heavy|gpu)$"`): `selected=462 executed=459 failed=0 skipped=3` (`opt-in=3`), `incomplete=0 sanitizer=0` (**PASS**;
+  all 6 required UI oracles + `viewer_wiring_roads_picture_objects` + all `anno_app*` & non-GPU `viewer_wiring_*`).
+- Post-final-edit RTX 4090 GPU lane (`cache/roads-0/gate-msvc-gpu-2.log`, `sha256[:12]=32602a475633`, `--jobs 1`, `ANNO_REQUIRE_GPU=1`):
+  `selected=15 executed=15 failed=0 skipped=0 incomplete=0 sanitizer=0` (**PASS**; `viewer_wiring_ui_magnifier_range*` + `picture GPU`).
+- Post-final-edit `viewer_wiring.py ... boundary_view --gpu` (RTX 4090): **PASS** (`window exit 0`, 11.7 s).
+- `clang-format` 23.1.3 `--dry-run --Werror` on all 13 modified/added C++ files: **PASS** (exit 0).
+- WSL `tools/check_unix_warnings.sh` (`JOBS=8`): first pass caught 4 `-Wsign-conversion` (`loader.cpp:401`,
+  `tile_object_picture_test.cpp:161,247,248`); fixed, formatted, re-verified -> GCC 13 & Clang 18 (GPU on 436 files, no-GPU 93 files) **clean**.
+
+**Decisions and reasoning.**
+1. Read existing const `TileLayer` getters (`object`, `foot_dx`, `foot_dy`, `foot_rotation`, `item_height`, `phase`) in `src/app/` rather
+   than adding a delta view to `src/sim/`, keeping sim state and files completely unchanged (`b0b022c6` `git diff src/sim/` empty).
+2. Chose generic `SceneTileObject` (`uint32_t type`, `rotation`, `height`, `phase`, unbounded id; `type == 0` cleared-tile marker) so
+   future `ROADS-1..5` and crops/trees reuse the delta and `PROD2` emitter without hardcoded id limits.
+3. Recorded tick-0 `initial_scenery_` anchors and emitted `{0}` suppression or `kRoadFlag` objects, avoiding spurious batches from
+   passive `ROHSTWACHS` regrowth on quiet turns (`02Trade01`, `opening_sail`) while preserving flag-`0x10` rocks under mines/buildings.
+4. Updated `tools/test/viewer_wiring/boundary_view.script`: tile `(1188, 516)` on `lan5` sits in forest (`N_256x256_0002_2B.scp` local
+   `(140, 76)`); pre-ROADS-0 demolish appeared `NoVisualChange` only via G1. First demolish clears the tree (`Visible`); second is
+   the empty-tile demolish (`Applied (NoBuildingAtTile)` -> `NoVisualChange`).
+
+**NOT_RUN:** `-L heavy` corpus tests; non-picture and Radeon-iGPU `anno_render_gpu_tests` (no `src/render/` GPU edits); native
+Linux/macOS test runs (WSL compiled all C++ sources with `-Werror` only); `game/` and `E:\anno1503` untouched.

@@ -14,9 +14,22 @@ says who is doing what, where the work is, and what it waits on.
       `1/density`, matching `window_point`, `ANNO_VIEW_SIZE`, and `resize_at_`, and adds `hidden_`/`retry_at_`
       transition/no-frame abort diagnostics; Windows PC MSVC Release + RTX 4090 gate (`111/111`, 8/8 required
       contracts including all 6 UI oracles), `anno_app_input_tests --test-suite=dev_script` (`13/13`, 439/439),
-      WSL GCC 13/Clang 18 warnings, `clang-format 23.1.3`, and CI `44713929677` (`12/12`) all pass. Ready to stack
-      onto Candidate 10 (`95897a55`) for the Windows PC candidate gate and Mac `GATE-RUN` on Metal (where live macOS
-      confirmation was `NOT_RUN`).
+      WSL GCC 13/Clang 18 warnings, `clang-format 23.1.3`, and CI `44713929677` (`12/12`) all pass.
+  - **Candidate 11 `refs/candidates/ui-magnifier-mac-1` = `e2e4b617`** (`e2e4b617f6a3e7e748984102ec591e007a096d7b`,
+    tree `e1297ea2b060da61c80e1648bf1afd0233522e19`): stacks `UI-MAGNIFIER-MAC-1` on Candidate 10 (`95897a55`, covering
+    Candidates 6–10) with `origin/main` (`a6468efd`) merged in; exact-head CI `44713929677` 12/12 green.
+    - **The Windows PC's part PASSED (2026-11-20):** MSVC Release, RTX 4090 + Radeon iGPU, game files + GOG/HE UI
+      oracle shots (`ANNO_DEV_GOODS_TONS` unset): all 12 required contracts (`viewer_wiring_ui_magnifier_range`,
+      `_stepped`, `viewer_wiring_ui_buildcat`, `ui_mock_matches_oracle`, `live_screen_matches_oracle`,
+      `ui_dynamic_draw_check`, `info_panel_gog_compare`, `info_panel_rotation_gog_compare`,
+      `selected_house_pixel_check`, `ui_panels_match_gog`, `layer_check_contract`, `layer_check_self_test`) PASS 1/1
+      each; main selection `COUNTS: selected=378 executed=377 failed=0 empty=0 skipped=1 (opt-in=1 gpu=0)` `VERDICT: PASS`
+      (log `cand11-win-pc-01.log` sha256 `41a27ae7...a22d74`); WSL `tools/check_unix_warnings.sh` (GCC 13.3.0 & Clang
+      18.1.3, 435 w/ GPU + 92 w/o GPU, both negative controls caught) clean (`cand11-unix-warnings.log` sha256
+      `25eab9de...91598c2`).
+    - **Waiting for the Mac's `GATE-RUN ui-magnifier-mac-1`** on `refs/candidates/ui-magnifier-mac-1` (`e2e4b617`,
+      tree `e1297ea2`): once green (with the reconciled 10 named-adapter RTX/Radeon GPU skips), lands on `main` via
+      `tools/orch/land.py` under the standing rule.
   - **`ROADS-1` (`SIM-ROADS-1`) reviewed (`task/ROADS-1`, code+docs `bb3dcaf6`, report `0db39280`) — CHANGES REQUESTED (Fix Round 1):**
     - Independent orchestrator review: [`reviews/2026-11-20-roads-1-review.md`](reviews/2026-11-20-roads-1-review.md).
     - **ADR 0006 header extension tag reservation:** **header tag 2 (`road_rules`) reserved for `ROADS-1`**

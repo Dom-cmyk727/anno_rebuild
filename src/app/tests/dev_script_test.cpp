@@ -3,11 +3,14 @@
 // mapping (dev_tool_step) onto the tile it names, the waits and their limit, and the replay's
 // comparison of hashes and outcomes on lan5 (game files) with a moved command and a changed
 // refusal as controls.
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -21,6 +24,8 @@
 #include <anno/app/dev_tool.hpp>
 #include <anno/app/play.hpp>
 #include <anno/app/sdl_input.hpp>
+#include <anno/app/ui_layout.hpp>
+#include <anno/app/ui_transform.hpp>
 #include <anno/assets/island.hpp>
 #include <anno/formats/anlagen.hpp>
 #include <anno/formats/insel.hpp>
@@ -703,4 +708,134 @@ TEST_CASE("dev session: a plain --play recording's invocation carries its rules 
     anno::sim::Rules living_no_booking = living;
     living_no_booking.city_booking = false;
     CHECK(living_no_booking.digest() != living_digest);
+}
+
+TEST_CASE("dev script: density scaling for px, wheel, resize" * doctest::test_suite("dev_script")) {
+    CHECK(app::window_points_for_drawable(1024, 768, 1.0F) == std::pair{1024, 768});
+    CHECK(app::window_points_for_drawable(1024, 768, 2.0F) == std::pair{512, 384});
+    CHECK(app::window_points_for_drawable(1024, 768, 1.5F) == std::pair{683, 512});
+    CHECK(app::window_points_for_drawable(1024, 768, 0.0F) == std::pair{1024, 768});
+
+    const std::filesystem::path hud_path =
+        std::filesystem::path(ANNO_FIXTURES_DIR).parent_path().parent_path() / "data/ui/hud.txt";
+    std::ifstream hud_in(hud_path);
+    REQUIRE(hud_in.is_open());
+    std::ostringstream hud_buf;
+    hud_buf << hud_in.rdbuf();
+    const auto hud_res = app::parse_hud_layout(hud_buf.str());
+    REQUIRE(hud_res.ok());
+    const app::HudLayout& hud = hud_res.value();
+    const app::UiElement* minus_el = hud.element("lupe_minus");
+    const app::UiElement* plus_el = hud.element("lupe_plus");
+    REQUIRE(minus_el != nullptr);
+    REQUIRE(plus_el != nullptr);
+
+    const auto hits_el = [](const app::UiElement& el, double px, double py) {
+        return el.has_pos && el.has_size && px >= el.pos_x &&
+               px < el.pos_x + static_cast<double>(el.size_w) && py >= el.pos_y &&
+               py < el.pos_y + static_cast<double>(el.size_h);
+    };
+
+    for (const float density : {1.0F, 1.5F, 2.0F}) {
+        CAPTURE(density);
+        app::DevScriptState st;
+        st.density = density;
+
+        auto sc_res = app::DevScript::parse("click_px 835 163\n"
+                                            "click_px 805 145\n"
+                                            "hover_px 835 163\n"
+                                            "ldown_px 835 163\n"
+                                            "ldrag_px 800 140 810 150\n"
+                                            "rclick_px 835 163\n"
+                                            "rdrag_px 800 140 810 150\n"
+                                            "wheel 1 200 300\n"
+                                            "quit\n");
+        REQUIRE(sc_res.ok());
+        app::DevScript& sc = sc_res.value();
+
+        const auto [win_w, win_h] = app::window_points_for_drawable(1024, 768, density);
+        const int draw_w = static_cast<int>(std::lround(win_w * static_cast<double>(density)));
+        const int draw_h = static_cast<int>(std::lround(win_h * static_cast<double>(density)));
+        const app::UiTransform tr = app::ui_transform(draw_w, draw_h, 1.0F);
+        const app::UiPlacement placed = app::place_hud(hud, tr.ui_w, tr.ui_h);
+
+        // 1. click_px 835 163 -> viewer * density -> hits HUD_BTN_LUPE_MINUS
+        {
+            const app::DevScriptAction act = sc.step(st);
+            REQUIRE(act.events.size() == 3);
+            const double px = static_cast<double>(act.events[1].button.x) * density;
+            const double py = static_cast<double>(act.events[1].button.y) * density;
+            CHECK(px == doctest::Approx(835.0).epsilon(0.01));
+            CHECK(py == doctest::Approx(163.0).epsilon(0.01));
+            const auto u = tr.to_ui(px, py);
+            REQUIRE(u.has_value());
+            const app::UiHit hit =
+                app::ui_hit(hud, placed, u->first, u->second, false, {}, std::nullopt);
+            CHECK(hit.chrome);
+            REQUIRE(hit.ref.has_value());
+            CHECK(hits_el(*minus_el, hit.ref->first, hit.ref->second));
+        }
+
+        // 2. click_px 805 145 -> viewer * density -> hits HUD_BTN_LUPE_PLUS
+        {
+            const app::DevScriptAction act = sc.step(st);
+            REQUIRE(act.events.size() == 3);
+            const double px = static_cast<double>(act.events[1].button.x) * density;
+            const double py = static_cast<double>(act.events[1].button.y) * density;
+            CHECK(px == doctest::Approx(805.0).epsilon(0.01));
+            CHECK(py == doctest::Approx(145.0).epsilon(0.01));
+            const auto u = tr.to_ui(px, py);
+            REQUIRE(u.has_value());
+            const app::UiHit hit =
+                app::ui_hit(hud, placed, u->first, u->second, false, {}, std::nullopt);
+            CHECK(hit.chrome);
+            REQUIRE(hit.ref.has_value());
+            CHECK(hits_el(*plus_el, hit.ref->first, hit.ref->second));
+        }
+
+        // 3. hover_px, ldown_px, ldrag_px, rclick_px, rdrag_px, wheel N X Y
+        const app::DevScriptAction hover = sc.step(st);
+        REQUIRE(hover.events.size() == 1);
+        CHECK(hover.events[0].motion.x * density == doctest::Approx(835.0).epsilon(0.01));
+        CHECK(hover.events[0].motion.y * density == doctest::Approx(163.0).epsilon(0.01));
+
+        const app::DevScriptAction ldown = sc.step(st);
+        REQUIRE(ldown.events.size() == 2);
+        CHECK(ldown.events[1].button.x * density == doctest::Approx(835.0).epsilon(0.01));
+        CHECK(ldown.events[1].button.y * density == doctest::Approx(163.0).epsilon(0.01));
+
+        const app::DevScriptAction ldrag = sc.step(st);
+        REQUIRE(ldrag.events.size() == 4);
+        CHECK(ldrag.events[3].button.x * density == doctest::Approx(810.0).epsilon(0.01));
+        CHECK(ldrag.events[3].button.y * density == doctest::Approx(150.0).epsilon(0.01));
+
+        const app::DevScriptAction rclick = sc.step(st);
+        REQUIRE(rclick.events.size() == 3);
+        CHECK(rclick.events[1].button.x * density == doctest::Approx(835.0).epsilon(0.01));
+        CHECK(rclick.events[1].button.y * density == doctest::Approx(163.0).epsilon(0.01));
+
+        const app::DevScriptAction rdrag = sc.step(st);
+        REQUIRE(rdrag.events.size() == 4);
+        CHECK(rdrag.events[3].button.x * density == doctest::Approx(810.0).epsilon(0.01));
+        CHECK(rdrag.events[3].button.y * density == doctest::Approx(150.0).epsilon(0.01));
+
+        const app::DevScriptAction wheel = sc.step(st);
+        REQUIRE(wheel.events.size() == 1);
+        CHECK(wheel.events[0].wheel.mouse_x * density == doctest::Approx(200.0).epsilon(0.01));
+        CHECK(wheel.events[0].wheel.mouse_y * density == doctest::Approx(300.0).epsilon(0.01));
+    }
+
+    // Invalid density <= 0 must fail cleanly rather than dividing by zero.
+    app::DevScriptState bad_st;
+    bad_st.density = 0.0F;
+    auto bad_sc = app::DevScript::parse("click_px 835 163\n");
+    REQUIRE(bad_sc.ok());
+    CHECK(bad_sc.value().step(bad_st).events.empty());
+    CHECK(bad_sc.value().failed());
+}
+
+TEST_CASE("dev script: no-frame abort diagnostic" * doctest::test_suite("dev_script")) {
+    CHECK(app::format_no_frame_diagnostic(false, false, 0) == "hidden=0 retry_backoff=0 drawn=0");
+    CHECK(app::format_no_frame_diagnostic(true, false, 0) == "hidden=1 retry_backoff=0 drawn=0");
+    CHECK(app::format_no_frame_diagnostic(false, true, 17) == "hidden=0 retry_backoff=1 drawn=17");
 }

@@ -988,6 +988,9 @@ class Viewer {
     std::uint64_t windows_seen_ = 0, resamples_seen_ = 0;
 #endif
     void back_off() {
+        if (!retry_at_ && trace_ != nullptr) {
+            trace_->note("retry_backoff 100ms");
+        }
         retry_at_ = Clock::now() + std::chrono::milliseconds(100);
         dirty_ = true;
     }
@@ -1126,17 +1129,14 @@ std::string Viewer::run() {
     if (const char* sz = std::getenv("ANNO_VIEW_SIZE"); sz != nullptr && *sz != 0) {
         int want_w = 0, want_h = 0;
         if (std::sscanf(sz, "%dx%d", &want_w, &want_h) == 2 && want_w > 0 && want_h > 0) {
-            float density = SDL_GetWindowPixelDensity(window_);
-            if (!(density > 0.0F)) {
-                density = 1.0F;
-            }
-            SDL_SetWindowSize(window_,
-                              static_cast<int>(std::lround(want_w / static_cast<double>(density))),
-                              static_cast<int>(std::lround(want_h / static_cast<double>(density))));
+            const float density = SDL_GetWindowPixelDensity(window_);
+            const auto [win_w, win_h] = window_points_for_drawable(want_w, want_h, density);
+            SDL_SetWindowSize(window_, win_w, win_h);
             SDL_SyncWindow(window_);
             const auto [got_w, got_h] = view_size();
             std::fprintf(stderr, "window: drawable %dx%d px (asked for %dx%d, density %.2f)\n",
-                         got_w, got_h, want_w, want_h, static_cast<double>(density));
+                         got_w, got_h, want_w, want_h,
+                         static_cast<double>(density > 0.0F ? density : 1.0F));
             if (trace_ != nullptr) {
                 trace_->note("drawable_asked " + std::to_string(want_w) + "x" +
                              std::to_string(want_h));
@@ -1412,14 +1412,9 @@ std::string Viewer::run() {
         }
         if (resize_at_ && Clock::now() >= *resize_at_) {
             resize_at_.reset();
-            float density = SDL_GetWindowPixelDensity(window_);
-            if (!(density > 0.0F)) {
-                density = 1.0F;
-            }
-            SDL_SetWindowSize(
-                window_,
-                static_cast<int>(std::lround(resize_to_.first / static_cast<double>(density))),
-                static_cast<int>(std::lround(resize_to_.second / static_cast<double>(density))));
+            const auto [win_w, win_h] = window_points_for_drawable(
+                resize_to_.first, resize_to_.second, SDL_GetWindowPixelDensity(window_));
+            SDL_SetWindowSize(window_, win_w, win_h);
             dirty_ = true;
         }
         if (retry_at_ && Clock::now() >= *retry_at_) {
@@ -1577,7 +1572,8 @@ void Viewer::handle(const SDL_Event& e) {
         dirty_ = true;
         return;
     }
-    const float density = SDL_GetWindowPixelDensity(window_);
+    const float raw_density = SDL_GetWindowPixelDensity(window_);
+    const float density = raw_density > 0.0F ? raw_density : 1.0F;
     switch (e.type) {
     case SDL_EVENT_QUIT:
         running_ = false;
@@ -1588,15 +1584,35 @@ void Viewer::handle(const SDL_Event& e) {
     // No frames while nobody can see them (minimised or covered).
     case SDL_EVENT_WINDOW_MINIMIZED:
     case SDL_EVENT_WINDOW_OCCLUDED:
-    case SDL_EVENT_WINDOW_HIDDEN:
+    case SDL_EVENT_WINDOW_HIDDEN: {
+        const char* why = e.type == SDL_EVENT_WINDOW_MINIMIZED  ? "minimized"
+                          : e.type == SDL_EVENT_WINDOW_OCCLUDED ? "occluded"
+                                                                : "hidden";
+        if (!hidden_) {
+            std::fprintf(stderr, "window: hidden=1 (%s)\n", why);
+            if (trace_ != nullptr) {
+                trace_->note(std::string("hidden=1 ") + why);
+            }
+        }
         hidden_ = true;
         break;
+    }
     case SDL_EVENT_WINDOW_RESTORED:
     case SDL_EVENT_WINDOW_SHOWN:
-    case SDL_EVENT_WINDOW_EXPOSED:
+    case SDL_EVENT_WINDOW_EXPOSED: {
+        const char* why = e.type == SDL_EVENT_WINDOW_RESTORED ? "restored"
+                          : e.type == SDL_EVENT_WINDOW_SHOWN  ? "shown"
+                                                              : "exposed";
+        if (hidden_) {
+            std::fprintf(stderr, "window: hidden=0 (%s)\n", why);
+            if (trace_ != nullptr) {
+                trace_->note(std::string("hidden=0 ") + why);
+            }
+        }
         hidden_ = false;
         dirty_ = true;
         break;
+    }
     case SDL_EVENT_KEY_DOWN: {
         const auto [w, h] = view_size();
         const double dx = w / 4.0, dy = h / 4.0;
@@ -2990,8 +3006,10 @@ void Viewer::script_tick() {
         const double waited =
             std::chrono::duration<double, std::milli>(Clock::now() - started_).count();
         if (waited > DevScript::kWaitLimitMs) {
-            script_->abort("no frame was drawn within " +
-                           std::to_string(static_cast<int>(DevScript::kWaitLimitMs)) + " ms");
+            script_->abort(
+                "no frame was drawn within " +
+                std::to_string(static_cast<int>(DevScript::kWaitLimitMs)) + " ms (" +
+                format_no_frame_diagnostic(hidden_, retry_at_.has_value(), drawn_frames_) + ")");
             running_ = false;
         }
         return;
@@ -3340,7 +3358,9 @@ void Viewer::script_tick() {
         dirty_ = true;
     }
     if (act.resize) {
-        SDL_SetWindowSize(window_, act.resize->first, act.resize->second);
+        const auto [win_w, win_h] = window_points_for_drawable(
+            act.resize->first, act.resize->second, SDL_GetWindowPixelDensity(window_));
+        SDL_SetWindowSize(window_, win_w, win_h);
         dirty_ = true;
     }
     if (hold_ != nullptr && act.hold != DevScriptAction::Hold::None) {

@@ -1,4 +1,5 @@
 // A scripted developer-tool session in the live play window (see the header).
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -319,6 +320,15 @@ std::uint64_t fnv1a64(std::string_view bytes) {
     return h;
 }
 
+std::optional<std::pair<float, float>> drawable_to_window_point(std::int64_t x, std::int64_t y,
+                                                                float density) {
+    if (!(density > 0.0F)) {
+        return std::nullopt;
+    }
+    return std::pair{static_cast<float>(static_cast<double>(x) / static_cast<double>(density)),
+                     static_cast<float>(static_cast<double>(y) / static_cast<double>(density))};
+}
+
 } // namespace
 
 std::string DevScript::canonical_text(const std::vector<Step>& steps) {
@@ -356,6 +366,18 @@ bool foreign_input(const SDL_Event& e) {
     default:
         return false;
     }
+}
+
+std::pair<int, int> window_points_for_drawable(int drawable_w, int drawable_h, float density) {
+    const double d = density > 0.0F ? static_cast<double>(density) : 1.0;
+    return {std::max(1, static_cast<int>(std::lround(drawable_w / d))),
+            std::max(1, static_cast<int>(std::lround(drawable_h / d)))};
+}
+
+std::string format_no_frame_diagnostic(bool hidden, bool retry_active, std::uint64_t drawn_frames) {
+    return "hidden=" + std::string(hidden ? "1" : "0") +
+           " retry_backoff=" + std::string(retry_active ? "1" : "0") +
+           " drawn=" + std::to_string(drawn_frames);
 }
 
 formats::Result<DevScript, std::string> DevScript::parse(std::string_view text) {
@@ -620,16 +642,21 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
         } else if (s.verb == "click_px") {
             // UI.2 C4: a raw drawable-pixel click (construction_handle's own coordinate space,
             // data/ui/'s 1024 x 768 reference), not a world tile - `click`'s window_point
-            // projection does not apply here.
+            // projection does not apply here. SDL mouse events carry window points, so divide by
+            // display density before pushing (viewer multiplies back by density).
             const auto x = arg(0), y = arg(1);
             if (!x || !y) {
                 fail(s, "not a pixel position");
                 break;
             }
-            const std::pair<float, float> at{static_cast<float>(*x), static_cast<float>(*y)};
-            push_motion(act.events, at, 0);
-            push_button(act.events, at, SDL_BUTTON_LEFT, true);
-            push_button(act.events, at, SDL_BUTTON_LEFT, false);
+            const auto at = drawable_to_window_point(*x, *y, st.density);
+            if (!at) {
+                fail(s, "invalid window density");
+                break;
+            }
+            push_motion(act.events, *at, 0);
+            push_button(act.events, *at, SDL_BUTTON_LEFT, true);
+            push_button(act.events, *at, SDL_BUTTON_LEFT, false);
         } else if (s.verb == "hover_px") {
             // UI-STATUS-1 B: the pointer moves to a raw drawable pixel with no button (over chrome,
             // the status bar keeps the last map tile, OQ-700).
@@ -638,7 +665,12 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                 fail(s, "not a pixel position");
                 break;
             }
-            push_motion(act.events, {static_cast<float>(*x), static_cast<float>(*y)}, 0);
+            const auto at = drawable_to_window_point(*x, *y, st.density);
+            if (!at) {
+                fail(s, "invalid window density");
+                break;
+            }
+            push_motion(act.events, *at, 0);
         } else if (s.verb == "ldown_px" || s.verb == "ldrag_px") {
             // UI-WINDOW-1 fix round R1: a left press at a drawable pixel with no release
             // (`ldown_px`, a release lost outside the window), or a press, a motion with the button
@@ -648,18 +680,26 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                 fail(s, "not a pixel position");
                 break;
             }
-            const std::pair<float, float> at{static_cast<float>(*x), static_cast<float>(*y)};
-            push_motion(act.events, at, 0);
-            push_button(act.events, at, SDL_BUTTON_LEFT, true);
+            const auto at = drawable_to_window_point(*x, *y, st.density);
+            if (!at) {
+                fail(s, "invalid window density");
+                break;
+            }
+            push_motion(act.events, *at, 0);
+            push_button(act.events, *at, SDL_BUTTON_LEFT, true);
             if (s.verb == "ldrag_px") {
                 const auto x1 = arg(2), y1 = arg(3);
                 if (!x1 || !y1) {
                     fail(s, "not a pixel position");
                     break;
                 }
-                const std::pair<float, float> to{static_cast<float>(*x1), static_cast<float>(*y1)};
-                push_motion(act.events, to, SDL_BUTTON_LMASK);
-                push_button(act.events, to, SDL_BUTTON_LEFT, false);
+                const auto to = drawable_to_window_point(*x1, *y1, st.density);
+                if (!to) {
+                    fail(s, "invalid window density");
+                    break;
+                }
+                push_motion(act.events, *to, SDL_BUTTON_LMASK);
+                push_button(act.events, *to, SDL_BUTTON_LEFT, false);
             }
         } else if (s.verb == "rclick_px" || s.verb == "rdrag_px") {
             // UI-PLACE-2: the right button at a drawable pixel - a click (press and release in
@@ -670,20 +710,28 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                 fail(s, "not a pixel position");
                 break;
             }
-            const std::pair<float, float> at{static_cast<float>(*x), static_cast<float>(*y)};
-            push_motion(act.events, at, 0);
-            push_button(act.events, at, SDL_BUTTON_RIGHT, true);
+            const auto at = drawable_to_window_point(*x, *y, st.density);
+            if (!at) {
+                fail(s, "invalid window density");
+                break;
+            }
+            push_motion(act.events, *at, 0);
+            push_button(act.events, *at, SDL_BUTTON_RIGHT, true);
             if (s.verb == "rclick_px") {
-                push_button(act.events, at, SDL_BUTTON_RIGHT, false);
+                push_button(act.events, *at, SDL_BUTTON_RIGHT, false);
             } else {
                 const auto x1 = arg(2), y1 = arg(3);
                 if (!x1 || !y1) {
                     fail(s, "not a pixel position");
                     break;
                 }
-                const std::pair<float, float> to{static_cast<float>(*x1), static_cast<float>(*y1)};
-                push_motion(act.events, to, SDL_BUTTON_RMASK);
-                push_button(act.events, to, SDL_BUTTON_RIGHT, false);
+                const auto to = drawable_to_window_point(*x1, *y1, st.density);
+                if (!to) {
+                    fail(s, "invalid window density");
+                    break;
+                }
+                push_motion(act.events, *to, SDL_BUTTON_RMASK);
+                push_button(act.events, *to, SDL_BUTTON_RIGHT, false);
             }
         } else if (s.verb == "lookw") {
             const auto t = tile_arg(0);
@@ -782,12 +830,16 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                 fail(s, "wheel takes N or N X Y");
                 break;
             }
-            std::optional<std::int64_t> x, y;
+            std::optional<std::pair<float, float>> at;
             if (s.args.size() == 3) {
-                x = arg(1);
-                y = arg(2);
+                const auto x = arg(1), y = arg(2);
                 if (!x || !y) {
                     fail(s, "not a pixel position");
+                    break;
+                }
+                at = drawable_to_window_point(*x, *y, st.density);
+                if (!at) {
+                    fail(s, "invalid window density");
                     break;
                 }
             }
@@ -795,8 +847,8 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             e.type = SDL_EVENT_MOUSE_WHEEL;
             e.wheel.which = kScriptDevice;
             e.wheel.y = static_cast<float>(*n);
-            e.wheel.mouse_x = x ? static_cast<float>(*x) : static_cast<float>(st.window_w) / 2.0F;
-            e.wheel.mouse_y = y ? static_cast<float>(*y) : static_cast<float>(st.window_h) / 2.0F;
+            e.wheel.mouse_x = at ? at->first : static_cast<float>(st.window_w) / 2.0F;
+            e.wheel.mouse_y = at ? at->second : static_cast<float>(st.window_h) / 2.0F;
             act.events.push_back(e);
         } else if (s.verb == "fail" || s.verb == "pass") {
             const std::string& n = s.args[0];

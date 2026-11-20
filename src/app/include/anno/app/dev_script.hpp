@@ -148,6 +148,17 @@ inline constexpr std::uint32_t kScriptDevice = 0x7E5C1Du;
 /// Whether `e` is keyboard, mouse or wheel input that did not come from the script.
 [[nodiscard]] bool foreign_input(const SDL_Event& e);
 
+/// Converts a requested drawable pixel size (`drawable_w` x `drawable_h`) into SDL window
+/// points for `density` (clamped to >= 1 in each axis). Matches `ANNO_VIEW_SIZE` and
+/// `resize_at_`.
+[[nodiscard]] std::pair<int, int> window_points_for_drawable(int drawable_w, int drawable_h,
+                                                             float density);
+
+/// Formats the diagnostic suffix appended to a `no frame was drawn` script abort so a
+/// recurrence attributes `hidden_`, `retry_at_` backoff, and `drawn_frames_` directly.
+[[nodiscard]] std::string format_no_frame_diagnostic(bool hidden, bool retry_active,
+                                                     std::uint64_t drawn_frames);
+
 /// What the window shows at a loop iteration, for the script.
 struct DevScriptState {
     /// Frames drawn so far.

@@ -4,7 +4,22 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-17, by the Claude Code orchestrator:
+**Last updated:** 2026-11-20, by the Windows orchestrator:
+- **2026-11-20 (Windows orchestrator takeover; targeted unfreeze for Candidate 10):**
+  - **`UI-MAGNIFIER-MAC-1` RELEASED** to the **Windows PC UI executor** (`task/UI-MAGNIFIER-MAC-1`, head
+    `488584f9`, base Candidate 10 `95897a55` + `origin/main` `a6468efd` CI pin; worktree
+    `E:/anno1503-worktrees/anno1503-UI-MAGNIFIER-MAC-1`; packet `docs/orchestration/tasks/ui-magnifier-mac-1.md` on
+    that branch).
+  - **OQ reservations:** OQ-795..797 reserved for `UI-MAGNIFIER-MAC-1` (following ROADS-0..UI-GHOST-2's 775..794;
+    next free Windows/UI OQ is **798**).
+  - **Scope:** fix Candidate 10's HiDPI (`density != 1.0`) dev-script/resize/UI coordinate failure in
+    `viewer_wiring_ui_magnifier_range` / `_stepped` and add first-frame visibility/acquire-backoff diagnostics
+    (`hidden_`/`retry_at_`). Runs on this Windows PC (MSVC Release + RTX 4090 + WSL warnings); live macOS/Metal
+    verification stays `NOT_RUN` until candidate restack.
+  - Other Windows/UI approved packets (`ROADS-0`, `ROADS-1`, `ROADS-3`, `UI-GHOST-2`) remain paused pending
+    explicit owner OK.
+
+Earlier updates (2026-11-17 to 2026-11-19, by the Claude Code orchestrator):
 - **`main` is `4dfdd9b7`** (2026-11-17, 09:40): RENDER-DIRECT-1a and LAYER-CHECK-1 landed through `land.py`
   (`land/atlas-layers`, gate run 44038235036, green) under the owner's standing rule. Verified as
   `origin/main`; `refs/candidates/atlas-layers` is deleted; GitLab and the share are mirrored. Next in line:

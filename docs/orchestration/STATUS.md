@@ -6,16 +6,17 @@ says who is doing what, where the work is, and what it waits on.
 
 **Last updated:** 2026-11-20, by the Windows orchestrator:
 - **2026-11-20 (Windows orchestrator takeover; targeted unfreeze for Candidate 10):**
-  - **`UI-MAGNIFIER-MAC-1` RELEASED** to the **Windows PC UI executor** (`task/UI-MAGNIFIER-MAC-1`, head
-    `488584f9`, base Candidate 10 `95897a55` + `origin/main` `a6468efd` CI pin; worktree
-    `E:/anno1503-worktrees/anno1503-UI-MAGNIFIER-MAC-1`; packet `docs/orchestration/tasks/ui-magnifier-mac-1.md` on
-    that branch).
-  - **OQ reservations:** OQ-795..797 reserved for `UI-MAGNIFIER-MAC-1` (following ROADS-0..UI-GHOST-2's 775..794;
-    next free Windows/UI OQ is **798**).
-  - **Scope:** fix Candidate 10's HiDPI (`density != 1.0`) dev-script/resize/UI coordinate failure in
-    `viewer_wiring_ui_magnifier_range` / `_stepped` and add first-frame visibility/acquire-backoff diagnostics
-    (`hidden_`/`retry_at_`). Runs on this Windows PC (MSVC Release + RTX 4090 + WSL warnings); live macOS/Metal
-    verification stays `NOT_RUN` until candidate restack.
+  - **`UI-MAGNIFIER-MAC-1` ACCEPTED WITH NOTES** (`task/UI-MAGNIFIER-MAC-1`, code `cbfa8b1a`, report `e2e4b617`,
+    exact-head CI `44713929677` 12/12 green, base Candidate 10 `95897a55` + `origin/main` `a6468efd` CI pin;
+    independent orchestrator review: [`reviews/2026-11-20-ui-magnifier-mac-1-review.md`](reviews/2026-11-20-ui-magnifier-mac-1-review.md)).
+    - **OQ reservations:** OQ-795..797 reserved for `UI-MAGNIFIER-MAC-1` (unused; next free Windows/UI OQ is **798**).
+    - **Fix & evidence:** scales all 7 raw-pixel dev-script verbs (`*_px`, `wheel N X Y`) and `act.resize` by
+      `1/density`, matching `window_point`, `ANNO_VIEW_SIZE`, and `resize_at_`, and adds `hidden_`/`retry_at_`
+      transition/no-frame abort diagnostics; Windows PC MSVC Release + RTX 4090 gate (`111/111`, 8/8 required
+      contracts including all 6 UI oracles), `anno_app_input_tests --test-suite=dev_script` (`13/13`, 439/439),
+      WSL GCC 13/Clang 18 warnings, `clang-format 23.1.3`, and CI `44713929677` (`12/12`) all pass. Ready to stack
+      onto Candidate 10 (`95897a55`) for the Windows PC candidate gate and Mac `GATE-RUN` on Metal (where live macOS
+      confirmation was `NOT_RUN`).
   - **`ROADS-1` (`SIM-ROADS-1`) reviewed (`task/ROADS-1`, code+docs `bb3dcaf6`, report `0db39280`) — CHANGES REQUESTED (Fix Round 1):**
     - Independent orchestrator review: [`reviews/2026-11-20-roads-1-review.md`](reviews/2026-11-20-roads-1-review.md).
     - **ADR 0006 header extension tag reservation:** **header tag 2 (`road_rules`) reserved for `ROADS-1`**

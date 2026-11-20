@@ -16,8 +16,23 @@ says who is doing what, where the work is, and what it waits on.
     `viewer_wiring_ui_magnifier_range` / `_stepped` and add first-frame visibility/acquire-backoff diagnostics
     (`hidden_`/`retry_at_`). Runs on this Windows PC (MSVC Release + RTX 4090 + WSL warnings); live macOS/Metal
     verification stays `NOT_RUN` until candidate restack.
-  - Other Windows/UI approved packets (`ROADS-0`, `ROADS-1`, `ROADS-3`, `UI-GHOST-2`) remain paused pending
-    explicit owner OK.
+  - **`ROADS-1` (`SIM-ROADS-1`) reviewed (`task/ROADS-1`, code+docs `bb3dcaf6`, report `0db39280`) — CHANGES REQUESTED (Fix Round 1):**
+    - Independent orchestrator review: [`reviews/2026-11-20-roads-1-review.md`](reviews/2026-11-20-roads-1-review.md).
+    - **ADR 0006 header extension tag reservation:** **header tag 2 (`road_rules`) reserved for `ROADS-1`**
+      (verified free across `origin/main` `a6468efd`, `origin/orch/board-next` `8fc3e47a`, and `origin/orch/mac-lane`
+      `c8c6d773`; next free header extension tag is **3**), authorizing the `tools/lint_sim_allow.txt` entry for
+      `extension_context.hpp` `tag = 2`.
+    - **Blocking findings (F1–F8):** F1 `lint_sim.py` fails on `tag = 2` (`anno_sim_tests_lint_sim_passes` failed in
+      CI run `44716252854` `cpp (macos-clang)`); F2 duplicate `check_road_figure_veto` call in `apply.cpp`;
+      F3 `stop_at_first_refusal` leaves tail records `Reject::None` (add `Reject::PrefixStopped`) and stops
+      non-road multi-building `BuildCmd`s; F4 `RoadRules::drag_cap` unenforced in `apply.cpp` and `enabled == 0`
+      non-default payloads allowed; F5 road-only guard (`is_land_road(*type)`), empty-footprint guard, toggle
+      tests, and tag-2 HashTree/load-refusal coverage; F6 merge `origin/main` (`a6468efd` CI pin, fixing
+      `cpp (linux-gcc-release)` GCC 15.2 failure) + exact-head green CI; F7 `pins.py check` to 0 failed /
+      0 refused (`low-memory stop` tests must pass standalone `--jobs 1`) + `lint_sim` + `placement_ref` +
+      affected `anno_app_tests` & `anno_render_gpu_tests`; F8 mandatory acceptance table, `placement_ref.py`
+      statement, and mutation controls in `REPORTS.md`.
+  - Other Windows/UI approved packets (`ROADS-0`, `ROADS-3`, `UI-GHOST-2`) remain paused pending explicit owner OK.
 
 Earlier updates (2026-11-17 to 2026-11-19, by the Claude Code orchestrator):
 - **`main` is `4dfdd9b7`** (2026-11-17, 09:40): RENDER-DIRECT-1a and LAYER-CHECK-1 landed through `land.py`

@@ -22,7 +22,10 @@ jobs:
   # aimed at another branch can hide code. main is named by its full ref, which a
   # tag called "origin/main" cannot shadow.
   changes:
-    runs-on: ubuntu-latest
+    # Linux runners are pinned to ubuntu-24.04 (GCC 13.3, Clang 18), the toolchain CLAUDE.md documents:
+    # ubuntu-latest moved to ubuntu-26.04 (GCC 15.2) on 2026-11-19 and broke the -Werror build
+    # (CI run 44493276095). Moving to a newer image is its own change.
+    runs-on: ubuntu-24.04
     outputs:
       code: ${{ steps.classify.outputs.code }}
     steps:
@@ -65,7 +68,7 @@ jobs:
   lint:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -82,7 +85,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-24.04, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -112,19 +115,19 @@ jobs:
       matrix:
         include:
           - name: linux-gcc
-            os: ubuntu-latest
+            os: ubuntu-24.04
             preset: dev
             cc: gcc
             cxx: g++
           # Optimised GCC: some warnings (-Wstringop-overflow) appear only
           # at -O2/-O3, which the dev preset does not use.
           - name: linux-gcc-release
-            os: ubuntu-latest
+            os: ubuntu-24.04
             preset: release
             cc: gcc
             cxx: g++
           - name: linux-clang-asan
-            os: ubuntu-latest
+            os: ubuntu-24.04
             preset: asan
             cc: clang
             cxx: clang++
@@ -262,7 +265,7 @@ jobs:
   cpp-format:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       # Pinned to the version used locally (formatting differs between versions).
@@ -278,7 +281,7 @@ jobs:
     name: gate
     if: always()
     needs: [changes, lint, test, build-macos, cpp, cpp-format]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - shell: bash
         env:

@@ -1,0 +1,211 @@
+# SCRIPT-OBJECTS-1 and the road to the S01_02_01 fisher canary, in small reviewed steps
+
+**Status:**
+- **Written** 2026-11-15 by the Claude Code orchestrator for **the Mac executor**.
+- **The owner's decision** (2026-11-15, OQ-625 option 1a): "Option 1a, divide this into smaller substeps, that he
+  reports back to you. You review them for correctness and whether they fulfill the projects guidelines."
+- **Each step is released on its own** when the owner pastes its prompt. The orchestrator writes each prompt after
+  reviewing the step before.
+
+## Why
+
+FISHER-1d ported the runtime fish fill, but the real-map canary on `S01_02_01` still cannot run. `World::create`
+refuses the map's script, which needs three things the compiler lacks ([`fisher.md` §8](../../re/fisher.md)):
+- two `OBJECT_STADT` definitions and their `KILLED` queries;
+- five PLAYER queries;
+- eleven action names.
+
+The owner chose to do this properly, so the real-map proof is honest, in small steps that each come back for review.
+
+## The steps
+
+Each step is about 1–2 hours, one concern, one branch, one REPORTS entry ending in READY FOR REVIEW. **After each step,
+stop.** The next step starts only when the orchestrator has accepted it and the owner pastes the next prompt.
+
+| Step | Kind | What | Done when |
+|---|---|---|---|
+| **SO-1a** | read | How the original binds `OBJECT_STADT "NAME" n` and evaluates `OBJECT "NAME" KILLED`: what `n` names, when the binding happens, an absent or destroyed city, any mutable binding state | `docs/re/script-objects.md` with addresses; reference vectors in a Python oracle; or a QUESTION naming what cannot be proved |
+| **SO-1b** | code | The compiler and runtime accept `OBJECT_STADT` and the `KILLED` query, exactly as SO-1a proved them; every other unsupported query or action still refuses | Synthetic bind / kill / absent / bad-id / save-reload tests that fail on `main`; `S01_02_01` now refuses at its *next* unsupported name (`QUESTLOG_SHOW`, payload offset 1339), not at the objects |
+| **SL-0** | read + plan | The other 16 names `S01_02_01` uses (5 PLAYER queries, 11 actions): for each, the original handler's address, what state it reads and writes, and its class (see below) | `docs/re/script-language-plan.md`: one row per name, and an ordered list of follow-up steps of about 2 h each. **The owner reviews this plan** before any of it is built |
+| **FISHER-RE-3** | read | 1d's F1: how the original fisher's walk home ends when every entrance of its hut is on land (mean ≥ 32) | An addressed note in `fisher.md` and a reference vector; or a QUESTION |
+| **SL-1 … SL-n** | code | The steps SL-0 proposes, one at a time, as the owner approves them | Each its own reviewed step |
+| **FISHER-1e** | canary | `S01_02_01`, loaded normally with its script, with the fisher flag on: the fishers launch, catch, return, and the farms make food; flag off, today's pins | The canary passes with nothing suppressed |
+
+**SL-0's classes:**
+- **sim:** it changes or reads game state, so it must be faithful in `src/sim`.
+- **presentation:** it only shows something (quest log, text, video, screen change). The sim records it as an event for
+  the UI and changes no state; the UI shows it later.
+- **needs a subsystem:** it depends on something the rebuild does not have yet (for example military for
+  `ATTACK_AREA`). SL-0 names the subsystem and asks a QUESTION; it does not stub it.
+
+## Rules for every step
+
+- **Base:** `origin/main` at the time of release (`b9b8df23` or later). New branch per step, named
+  `task/<STEP>`. Never rebase, force-push or push `main`.
+- **Owner rules** ([`TASKS.md`](../TASKS.md), 2026-11-12): one concern; no reviewer subagents; one REPORTS entry of
+  about 60 lines; if a step passes its time, stop at the end of the current item, commit what passes, report what is
+  left.
+- **`CLAUDE.md` and [`evidence-contract.md`](../../testing/evidence-contract.md)**, which the orchestrator's review
+  checks one by one:
+  - every rule traces to an address (module + address), a parsed file or a cited source; guesses go to
+    `docs/open-questions.md`;
+  - the spec or oracle comes first (`docs/`, a Python reference); the code is never the only place a rule is written;
+  - determinism: integer state only, ordered containers, no wall clock, no global mutable state;
+  - no hardcoded limits: counts and ids are data, never fixed arrays or narrow ids in `sim`;
+  - faithful core: original rules in `sim`; anything else behind a `rules` flag;
+  - a new test must fail on the base and pass on the branch, and say so in the report;
+  - the pins gate shows 0 pins moved unless the step says why one moves;
+  - no original script text, bytes or listings in git; names, offsets and counts only.
+- **The report says:** what was proved, at which addresses; what was not; NOT_RUN items; the exact gate lines;
+  "Decisions and reasoning"; QUESTIONs.
+
+## FISHER-1e in detail (released 2026-11-15)
+
+**FISHER-MAP-1 was ACCEPTED** ([review](../reviews/2026-11-15-fisher-map-1-review.md)). **The maps:**
+`0010SingleEndlos/01_1024_easy_256.sze` first, `Tutorial/02Trade01.sze` second.
+
+**Branch:** `task/FISHER-1e` from the newest `origin/main`, which must contain SO-1b (check that `d19c446a` is an
+ancestor; if not, stop and report). Merge `task/FISHER-MAP-1` `21e373e7` for its note. About 3 hours. Tests and
+their evidence; engine code only if the canary finds a bug, and then stop first (item 6).
+
+1. **The canary on `01_1024_easy_256`:** load it with the normal loader, `World::create`, the original INIT, and the
+   fisher flag on. Nothing else is changed: no projection, no deleted actor, no injected stock, no command. Advance
+   until each of the three type-3978 huts has finished at least one whole trip, and assert each stage from sim
+   state, per hut:
+   - the worker (figure 142) leaves through the open entrance;
+   - it reaches a fish tile and takes the catch;
+   - it returns and the hut's raw stock rises;
+   - the hut's output (food) rises.
+   Also assert: no world fault, and a bounded tick count with the measured trip time reported.
+2. **The same on `02Trade01`:** one Build command (player 2, the city on island 3, type 810 at 243, 216,
+   rotation 0), then the same four stages for that hut.
+3. **The flag off:** on both maps the fishers do nothing, and today's digests and pins are unchanged.
+4. **Determinism:** two runs give the same per-turn hashes; a save and reload in the middle of a trip gives the
+   same hashes as the uninterrupted run.
+5. **Honest scope in the test names and the report:** Venice's type 3978 and its rates on the first map; one human
+   hut on the second; a hut with every entrance closed is not covered (FISHER-RE-3).
+6. **If a stage does not happen** (a worker stuck, no catch, no output): stop, report the map, hut, tick and stage
+   with the state that shows it, and ask a QUESTION. Do not tune a constant or bend a criterion to make it pass.
+7. **Fix FISHER-MAP-1's F1:** `03T_Combat_01` has an empty kernel (13 empty, not 12).
+
+The tests need the original files and skip with a message without `ANNO1503_GAME_DIR`. Put them in the `heavy`
+suite if they are slow. 0 pins moved.
+
+**Done:** the canary passing on both maps with nothing suppressed, the flag-off and determinism checks, the REPORTS
+entry with exact gate lines. Then stop.
+
+## FISHER-MAP-1 in detail (released 2026-11-15, ACCEPTED the same day)
+
+**SL-0 was ACCEPTED as a read** ([review](../reviews/2026-11-15-sl-0-review.md)). It shows that `S01_02_01`'s
+unchanged script needs the computer players' trade, diplomacy and military (PLAN M5). **The owner's decision**
+(2026-11-15): "Find another map". The SL code steps and the BEAMDOWN rule are not decided yet; do not start them.
+
+**Branch:** `task/FISHER-MAP-1` from `origin/task/SO-1b` `d19c446a` (accepted, not landed yet; it has the newest
+compiler). About 1.5 hours. Read only: no engine code, no pins.
+
+**The goal:** find the shipped scenario on which the fisher canary can run honestly, loaded normally, with nothing
+suppressed.
+
+1. **Every shipped scenario** (the `.sze` corpus, 50 maps): for each one,
+   - whether it has a script, and its compile result on this branch: compiles, or the first refusal with its name
+     and offset;
+   - the full set of unsupported names, with SL-0's ladder method on private copies that are neither run nor
+     committed;
+   - whether it would compile once SL-1 and SL-2's five names exist (QUESTLOG_SHOW, GOTO_SCREEN, SHOWTEXT,
+     INHABITANTCOUNT, DEAD), and no other name is missing.
+2. **`World::create`'s result** for each map that compiles today or has no script: created, or its first refusal
+   text. A script is not the only thing that can refuse a map.
+3. **The fisher facts** for each map that passes 1 and 2:
+   - how many fisher huts it has, and whose;
+   - for each hut, whether at least one entrance is open to water as [`fisher.md`](../../re/fisher.md) defines it,
+     so the canary does not depend on FISHER-RE-3;
+   - whether fish resource tiles lie in reach after the runtime fill (FISHER-1d).
+   Class the maps: **A** a hut already stands with an open entrance; **B** no hut, but a player's coast where one
+   command could build one; **C** neither.
+4. **The note:** `docs/re/fisher-canary-maps.md`: one row per map, then a ranked short list with the reason for
+   each rank. Names, offsets and counts only; no script text.
+5. **If** no map is class A or B, say so plainly and list what each nearest map lacks. Do not bend a criterion.
+
+**Done:** the note and the REPORTS entry, READY FOR REVIEW. Then stop. FISHER-1e's map is chosen in review.
+
+## SL-0 in detail (released 2026-11-15, ACCEPTED as a read the same day)
+
+**SO-1b was ACCEPTED** ([review](../reviews/2026-11-15-so-1b-review.md)). **Branch:** `task/SL-0` from the newest
+`origin/main`. About 2 hours. Read and plan only: no engine code.
+
+1. **The inventory:** every query and action name `S01_02_01`'s script still needs, from its compile refusals in
+   order (the first is `QUESTLOG_SHOW` at payload offset 1339). SO-1a counted 3 distinct PLAYER query names in 5
+   uses and 11 action names; confirm or correct both counts. Names, offsets and counts only, no script text.
+2. **Per name:** the `AnnoScene.dll` string address, the handler's address, what game state it reads and writes,
+   any RNG draw, anything it saves, and its class:
+   - **sim:** it reads or changes game state, so it must be faithful in `src/sim`;
+   - **presentation:** it only shows something (quest log, text, video, screen change); the sim records an event
+     for the UI and changes no state;
+   - **needs a subsystem:** it depends on something the rebuild lacks (for example military); name the subsystem and
+     ask a QUESTION, never a stub.
+3. **The plan:** `docs/re/script-language-plan.md`, one row per name with its addresses and class, then an ordered
+   list of follow-up steps of about 2 h each (SL-1, SL-2, …). Group names that share a handler or state. For each
+   step, say what fails before and passes after, and where `S01_02_01` refuses next.
+4. **SO-1b review F1:** one addressed line in `script-objects.md` showing where the island's `+0x98` number is set
+   from the scenario's island record, so the engine's `IslandSpec::slot` is proved to be the same number. If it
+   can't be found in the time, say so in the note as U.
+5. **If** a name's handler cannot be found or classed in the time, list it as U with what was tried. Do not guess.
+
+**Done:** the plan, the F1 line, the REPORTS entry. **The owner reviews this plan** before any SL step is released.
+
+## SO-1b in detail (released 2026-11-15, ACCEPTED the same day)
+
+**SO-1a was ACCEPTED** ([review](../reviews/2026-11-15-so-1a-review.md)). **Branch:** `task/SO-1b` from `origin/main`
+(the newest at release). About 2 hours. Engine code, built from `script-objects.md` and `tools/script_objects_ref.py`.
+
+1. **The compiler** accepts `OBJECT_STADT "NAME" n`:
+   - it keeps the parsed value's low 16 bits;
+   - names match whole and case-folded over ASCII, and the first declaration wins;
+   - nothing is looked up in the world at parse time.
+2. **The query** `OBJECT "NAME" KILLED`:
+   - an unknown name refuses at compile time, as today;
+   - each evaluation reads island = low byte, city slot = high byte, live;
+   - true when that slot is empty, false when filled; no latch, no stored result, no RNG draw.
+3. **The invalid domain** (the review's decision): a missing island or a slot outside the island's city ring refuses
+   at evaluation time through the existing `ScriptFault` and rollback path. It is never a guessed Boolean. Document
+   it in `script-objects.md` as a difference from the original, with `AnnoScene 0x100118b8` and
+   `AnnoWelt 0x100863e0`.
+4. **No hardcoded limits:** the ring size comes from the engine's island data, and its source is named (review F2).
+   Island and slot are widened from the file bytes into the engine's own id types.
+5. **Save and reload:** the definition is program text. No new state, no new save section, no state-version bump.
+   If one seems needed, stop and ask a QUESTION.
+6. **Tests** that fail on `main` and pass on the branch:
+   - every SO-1a vector, driven through the C++ runtime;
+   - an alive city, a destroyed one, absent then founded, a bad name, a missing island, an out-of-range slot;
+   - a save and reload between two evaluations giving the same answers.
+7. **The canary check:** `S01_02_01` now refuses at its *next* unsupported name (`QUESTLOG_SHOW`, payload offset
+   1339), not at the objects. Report the exact refusal line.
+8. **Fix F1** (add evidence letter P to the legend).
+
+**Done:** the code, the tests, the note updated, 0 pins moved, the REPORTS entry. Every other unsupported query and
+action still refuses.
+
+## SO-1a in detail (released 2026-11-15, ACCEPTED the same day)
+
+**Branch:** `task/SO-1a` from `origin/main`. About 1.5 hours. Read only: no engine code.
+
+1. **Start** from the name catalogue in [`bigbrother.md` §6](../../formats/bigbrother.md): the `AnnoScene.dll`
+   strings `OBJECT_STADT` (`0x10040244`) and `KILLED` (`0x10040114`). Find the code that reads each.
+2. **The definition `OBJECT_STADT "NAME" n`:**
+   - what `n` is: a city number within an island, a global city index, a player, or something else;
+   - when the binding happens: at load, at INIT, or at each evaluation;
+   - what happens if no city with that `n` exists when it binds.
+   Do not assume that 4 and 18 are island slots.
+3. **The query `OBJECT "NAME" KILLED`:**
+   - what makes it true: the city is gone, it changed owner, its last building was removed, or something else;
+   - whether the result is read live each time or latched;
+   - any state it keeps, and whether a save holds that state.
+4. **The oracle:** add the rule to a Python reference (a new `tools/script_objects_ref.py`, or a section of an
+   existing one) with hand-derived vectors: bound and alive, bound and destroyed, absent at bind, and a bad name.
+5. **The note:** `docs/re/script-objects.md`, with an address for each claim, its evidence letters as in `fisher.md`,
+   and what stays unproved.
+6. **If** the namespace or the lifetime of `n` cannot be proved from the code within the time, stop and ask a QUESTION
+   naming the exact gap. Do not guess.
+
+**Done:** the note, the oracle and its vectors, the oracle's contract test passing, and the REPORTS entry. No sim
+code, no pins moved.

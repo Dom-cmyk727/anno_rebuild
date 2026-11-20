@@ -110,7 +110,7 @@ original text in git). This file keeps the method, the field meanings, findings 
 | 13 | Ctrl auto-align missing | B, C | UI (OQ-735) |
 | 14 | Well hooks on place/remove; church/university/library hooks; run planner for watchtowers and gates; fire/plague stop and stall detach on remove | D | sim |
 | 15 | The figure veto (`0x10045080`) runs only at founding, not in Build | B | sim |
-| 16 | **Runtime tile objects (roads, later fields and trees) never reach the picture**: a placed road is `Applied` but `NoVisualChange`; the trees under a new building stay drawn | B (10.1, 10.2) | ROADS-0 PICTURE-OBJECTS-1 (app + render) |
+| 16 | **Runtime tile objects (roads, later fields and trees) never reach the picture**: a placed road is `Applied` but `NoVisualChange`; the trees under a new building stay drawn | B (10.1, 10.2) | **Settled for runtime roads & cleared scenery (S + code, ROADS-0):** `PlayRunner` diffs tracked tile objects (`kRoadFlag`) and cleared tick-0 scenery alongside `BuildingDelta`; `ScenePicture` -> `apply_island_buildings` emits `PROD2` sprites (`id, rotation, height, phase`), placed roads reach `Visible`, cleared trees disappear and stay bare on demolish. Planting crops/trees remains gap 4 |
 | 17 | Road drag: L path with y first on ties, 40 tiles, every tile territory, no downgrade, same-family free, kind-9 prefix commit; hold-and-follow ghost | B (10.1) | ROADS-1, ROADS-3 |
 | 18 | Road autotiling table (corner/T/cross/end, dirt = cobblestone + 20) | B (10.1 item 8) | ROADS-2 |
 | 19 | The ghost hides no trees; no yellow rectangle on refusal; occupied footprints invisible | B (10.2) | UI-GHOST-2 |
@@ -474,7 +474,7 @@ instruction in `tCursorAnlageStrasse` (input `0x1004b290`, draw `0x1004b7f0`) do
 
 | Item | Original | Rebuild | Gap |
 |---|---|---|---|
-| A road is placed | click/drag, tile object, charge | sim: `BuildCmd` of a land road is `Applied`, 5 gold per tile (S: a single click, a 7-tile straight drag and a 5+2 tile L-drag are all `Applied`, `7 of 7 records`). **The picture shows nothing**: `visibility NoVisualChange` for all three (S). The picture's delta carries **buildings only** (`BuildingDelta`); a tile object (road, later field or tree) never reaches it | **G1: runtime tile objects are not drawn.** This is what the owner saw as "cannot place roads" |
+| A road is placed | click/drag, tile object, charge | sim: `BuildCmd` of a land road is `Applied`, 5 gold per tile (S). **Settled by `ROADS-0` (S + code):** `PlayRunner::collect_tile_objects` diffs `kRoadFlag` tile objects (`type, rotation, height, phase`) alongside `BuildingDelta` through `BuildingMailbox` -> `ScenePicture` -> `apply_island_buildings` -> `PROD2` sprite path; a placed road renders (rot 0/1) and reaches `Visibility::Visible` (`picture.tile_objects`), while redemolishing an empty tile stays `NoVisualChange` (`tile_object_picture_test`, `viewer_wiring_roads_picture_objects`) | **G1 settled by ROADS-0** (previously `NoVisualChange`; G2-G8 remain) |
 | Drag path | L, long axis first, y first on ties, 40 tiles | `DevInput::line`: a straight line along the longer axis only (the other axis is dropped); cap = wire limit 8,190 tiles | G2 |
 | Hold-and-follow preview | ghost path while held | no ghost: the one-tile footprint of the hover; a drag shows nothing until release | G3 |
 | Territory per tile | every tile owner != 15, one city, own player | `footprint_owner_rule`: one city and **at least one** owned tile, per record (the building rule) | G4: a road may start in the neutral sea beyond the range |
@@ -490,7 +490,7 @@ instruction in `tCursorAnlageStrasse` (input `0x1004b290`, draw `0x1004b7f0`) do
 
 | Packet | Part | Size | Content |
 |---|---|---|---|
-| ROADS-0 PICTURE-OBJECTS-1 | app + render | 4-5 h | The picture takes **tile-object deltas** (road ids with rotation; later crops and trees): the sim thread diffs the island's tile objects next to the building list, the picture draws a road tile from `(id, rotation)` with the existing sprite path (shipped maps already draw loader roads) and removes a tree under a new footprint. Test: a placed road reaches `Visible`, not `NoVisualChange` |
+| ROADS-0 PICTURE-OBJECTS-1 | app | **Settled (S + code)** | The picture takes **tile-object deltas** (`SceneTileObject` with `phase` and no hardcoded type limit; `type == 0` cleared-tile markers): `PlayRunner` diffs tracked `kRoadFlag` objects and cleared tick-0 scenery alongside `BuildingDelta`, `ScenePicture` -> `apply_island_buildings` draws roads from `(id, rotation, height, phase)` with the existing `PROD2` sprite path and suppresses cleared trees under placed/demolished footprints while preserving flag-`0x10` rocks. Verified (`tile_object_picture_test`, `viewer_wiring_roads_picture_objects`): placed roads reach `Visible`, not `NoVisualChange` |
 | ROADS-1 SIM-ROADS-1 | sim | 4 h | Pure helpers: `road_path(start, end, cap = 40)` (L, y first on ties), the per-tile cursor check (own territory per tile, one city, same island, no downgrade), cost with same-family free; a run command whose apply stops at the first refusal (kind 9, OQ-043). The 40 cap and the no-downgrade rule are original defaults in the config |
 | ROADS-2 SIM-ROADSHAPE-1 | sim | 4-6 h | The reshaper from the item 8 table: neighbour mask to `(id, rotation)`, neighbour rewrites, dirt = cobblestone + 20, shape pieces in the slope class; checked against the 42,000-tile corpus (agreement of at least 97 %). RE-ROADS-2 (3 h) decodes `0x1007cc40` for the residual cases (OQ-764) |
 | ROADS-3 UI-ROADS-1 | app | 3-4 h | Press-hold-drag with the L path in the **menu-armed** tool (the owner's route: the menu arms 2520 through `DevTool::arm`), the live ghost of the whole path, the unaffordable tail blinking, the yellow empty rectangle on refusal, no radius outline, stay armed, the 40-tile cut. Right click disarms |
@@ -524,10 +524,11 @@ is exactly: the preview hides, the placement removes the footprint's trees, the 
 
 **The rebuild (S + code).** The sim agrees with the original: `placement_rule` accepts flag-`0x20` objects
 (`site::overlap_with_existing`), `create_building` writes `object := type id` on the footprint (stand-in, O-5), so the
-trees under a placed building are removed in the sim and are not restored at demolish. In the **window**, three
-things differ: (1) the picture diffs buildings only, so the **trees under a new building stay drawn** (G1 again);
-(2) the ghost does not hide the trees under its footprint; (3) a demolished footprint shows no bare ground. Fix:
-`PICTURE-OBJECTS-1` (objects follow the sim's tile layer) plus the ghost hiding the objects under its footprint (UI-GHOST-2).
+trees under a placed building are removed in the sim and are not restored at demolish. In the **window** (`ROADS-0`
+settled items 1 and 3, S + code): (1) and (3) `PlayRunner` tracks cleared tick-0 scenery anchors (`type = 0` suppression
+markers, preserving flag-`0x10` rocks) into `ScenePicture` -> `apply_island_buildings`, so trees under newly placed
+buildings/roads and direct tree demolishes disappear and demolished footprints show bare ground (`tile_object_picture_test`,
+`viewer_wiring_roads_picture_objects`); (2) the hover ghost still does not hide the trees under its footprint (`UI-GHOST-2`).
 
 **Which tiles blocked the sheep farm (S, P, H).**
 

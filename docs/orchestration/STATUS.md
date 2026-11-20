@@ -30,22 +30,19 @@ says who is doing what, where the work is, and what it waits on.
     - **Waiting for the Mac's `GATE-RUN ui-magnifier-mac-1`** on `refs/candidates/ui-magnifier-mac-1` (`e2e4b617`,
       tree `e1297ea2`): once green (with the reconciled 10 named-adapter RTX/Radeon GPU skips), lands on `main` via
       `tools/orch/land.py` under the standing rule.
-  - **`ROADS-1` (`SIM-ROADS-1`) reviewed (`task/ROADS-1`, code+docs `bb3dcaf6`, report `0db39280`) — CHANGES REQUESTED (Fix Round 1):**
-    - Independent orchestrator review: [`reviews/2026-11-20-roads-1-review.md`](reviews/2026-11-20-roads-1-review.md).
-    - **ADR 0006 header extension tag reservation:** **header tag 2 (`road_rules`) reserved for `ROADS-1`**
-      (verified free across `origin/main` `a6468efd`, `origin/orch/board-next` `8fc3e47a`, and `origin/orch/mac-lane`
-      `c8c6d773`; next free header extension tag is **3**), authorizing the `tools/lint_sim_allow.txt` entry for
-      `extension_context.hpp` `tag = 2`.
-    - **Blocking findings (F1–F8):** F1 `lint_sim.py` fails on `tag = 2` (`anno_sim_tests_lint_sim_passes` failed in
-      CI run `44716252854` `cpp (macos-clang)`); F2 duplicate `check_road_figure_veto` call in `apply.cpp`;
-      F3 `stop_at_first_refusal` leaves tail records `Reject::None` (add `Reject::PrefixStopped`) and stops
-      non-road multi-building `BuildCmd`s; F4 `RoadRules::drag_cap` unenforced in `apply.cpp` and `enabled == 0`
-      non-default payloads allowed; F5 road-only guard (`is_land_road(*type)`), empty-footprint guard, toggle
-      tests, and tag-2 HashTree/load-refusal coverage; F6 merge `origin/main` (`a6468efd` CI pin, fixing
-      `cpp (linux-gcc-release)` GCC 15.2 failure) + exact-head green CI; F7 `pins.py check` to 0 failed /
-      0 refused (`low-memory stop` tests must pass standalone `--jobs 1`) + `lint_sim` + `placement_ref` +
-      affected `anno_app_tests` & `anno_render_gpu_tests`; F8 mandatory acceptance table, `placement_ref.py`
-      statement, and mutation controls in `REPORTS.md`.
+  - **`ROADS-1` (`SIM-ROADS-1`) ACCEPTED WITH NOTES** (`task/ROADS-1`, merge `82111b9e` with `origin/main` `a6468efd`,
+    code+docs `ed040a55`, report `45dc2c3e`, exact-head CI `44730763633` 12/12 green; independent orchestrator review
+    & Fix Round 1 re-review: [`reviews/2026-11-20-roads-1-review.md`](reviews/2026-11-20-roads-1-review.md)):
+    - **ADR 0006 header extension tag 2 (`road_rules`):** reserved & implemented (`kStateHashVersion = 139`, `0` pins
+      moved, `0` fixture changes, `tools/lint_sim_allow.txt` entry authorized; next free header extension tag is **3**).
+    - **Closure & evidence:** F1–F8 all closed (`lint_sim: ok`, `clang-format 23.1.3` clean, `Reject::PrefixStopped`,
+      road-scoped `stop_at_first_refusal` & `drag_cap`, `out.is_road` guards, all 5 fallback toggles, tag-2 `HashTree`
+      & corrupt-load refusal tests, 7 mutation controls, 8-row Acceptance Table); local Release gates 0 failed / 0
+      refused (`pins-roads1-r2.log` 1,711/1,711 executed, 3 pre-existing Windows symlink `ship start:` skips passing on
+      Linux CI; `roads1-r2-contracts.log` 4/4 + 1/1; `roads1-r2-app.log` 366/366; `roads1-r2-gpu.log` 134/134; WSL
+      GCC 13.3 / Clang 18.1.3 clean). 3 minor non-blocking notes recorded in the review.
+    - **Stacking:** descends from `BUILDINGS-REF-2` (`60a26f0d`) / Candidate 10 (`95897a55`) + `origin/main` (`a6468efd`);
+      queued for the next candidate wave **after** Candidate 11 (`refs/candidates/ui-magnifier-mac-1`, `e2e4b617`) lands.
   - Other Windows/UI approved packets (`ROADS-0`, `ROADS-3`, `UI-GHOST-2`) remain paused pending explicit owner OK.
 
 Earlier updates (2026-11-17 to 2026-11-19, by the Claude Code orchestrator):

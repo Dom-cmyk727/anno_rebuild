@@ -50,3 +50,24 @@ Standing reference: `docs/BUILDINGSOBJECTS.md` part B §10.1–10.2.
 
 1. `src/app/src/scene_picture.cpp:410` uses the literal `0x4000U` rather than `sim::kRoadFlag` (`types.hpp:264`, same value `0x4000`). Fine as-is to avoid unnecessary C++ rebuilds in Fix Round 1 (if you do touch any C++ file, re-run the affected MSVC Release gate, `clang-format 23.1.3`, and `tools/check_unix_warnings.sh`).
 2. `PlayRunner::collect_tile_objects()` performs a linear scan over island tiles per turn; `-L heavy` (`play: the building diff on the heavy endless scenario`) stays recorded in `NOT_RUN` (monitor if large-map turn timing increases in later perf passes).
+
+---
+
+## Fix Round 1 Re-Review (2026-11-21)
+
+Reviewer: Windows orchestrator, 2026-11-21.
+Branch: `task/ROADS-0`, merge `5bd871ff` (`origin/main` `a6468efd` `--no-ff`), code+docs `b0b022c6` (unchanged), report commit `944d317f88eb1c37101dc2d20a8b54025aac1b86` (synced identically on `origin`, `gitlab`, and `share`).
+Exact-head GitHub Actions CI: run `44843845461` (`https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/44843845461`) on `944d317f88eb1c37101dc2d20a8b54025aac1b86` — **12/12 GREEN** (`changes`, `cpp-format`, `build-macos`, `lint`, `test (ubuntu-24.04)`, `cpp (windows-msvc)`, `cpp (macos-clang)`, `test (windows-latest)`, `cpp (linux-gcc)`, `cpp (linux-clang-asan)`, `cpp (linux-gcc-release)`, `gate`).
+
+**Verdict: ACCEPTED WITH NOTES.**
+
+### Verification of Blocking Findings F1–F2 (all closed)
+
+- **F1 (`origin/main` CI pin & green CI):** Closed. `git merge-base --is-ancestor a6468efd HEAD` exits `0` (`5bd871ff`); `git diff --stat 17d8d85e..HEAD -- src/ tools/ fixtures/ docs/BUILDINGSOBJECTS.md docs/open-questions.md` is empty (`0` code/fixture changes); `git diff --stat c3489403..HEAD -- src/sim/ src/render/ fixtures/` is empty (`kStateHashVersion = 139`); `clang-format 23.1.3 --dry-run --Werror` exits `0` on all 13 modified/added C++ files; exact-head GitHub Actions CI `44843845461` is **12/12 GREEN** (including `cpp (linux-clang-asan)` and `gate`).
+- **F2 (`REPORTS.md` accuracy & Acceptance Table):** Closed. Line 16848 corrected to `"Reserved OQ range 775-779 was unused; no new OQs were opened in docs/open-questions.md."`, and a concise Fix Round 1 Addendum with the 4-row Acceptance Table (`Requirement | Positive proof | Counterexample / negative control | Evidence | Reviewer disposition`) was appended cleanly.
+
+### Non-Blocking Notes (carried forward)
+
+1. `src/app/src/scene_picture.cpp:410` uses literal `0x4000U` rather than `sim::kRoadFlag` (same value `0x4000`).
+2. `PlayRunner::collect_tile_objects()` performs a linear scan over island tiles per turn; `-L heavy` (`play: the building diff on the heavy endless scenario`) stays `NOT_RUN` (watch turn timing on large maps in later perf passes).
+3. **Stacking & unblocked work:** `task/ROADS-0` (`944d317f`) descends from `BUILDINGS-REF-2` (`60a26f0d`) / Candidate 10 (`95897a55`) + `origin/main` (`a6468efd`), so it queues for the post-Candidate-11 candidate wave. Accepting `ROADS-0` immediately unblocks **`ROADS-3`** (with accepted `ROADS-1` `45dc2c3e` and `UI-GHOST-1` `7a51050d`) and **`UI-GHOST-2`** (with accepted `UI-GHOST-1` `7a51050d`).

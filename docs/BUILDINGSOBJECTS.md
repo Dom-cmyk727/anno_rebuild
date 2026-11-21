@@ -116,7 +116,7 @@ original text in git). This file keeps the method, the field meanings, findings 
 | 16 | **Runtime tile objects (roads, later fields and trees) never reach the picture**: a placed road is `Applied` but `NoVisualChange`; the trees under a new building stay drawn | B (10.1, 10.2) | **Settled for runtime roads & cleared scenery (S + code, ROADS-0):** `PlayRunner` diffs tracked tile objects (`kRoadFlag`) and cleared tick-0 scenery alongside `BuildingDelta`; `ScenePicture` -> `apply_island_buildings` emits `PROD2` sprites (`id, rotation, height, phase`), placed roads reach `Visible`, cleared trees disappear and stay bare on demolish. Planting crops/trees remains gap 4 |
 | 17 | Road drag: L path with y first on ties, 40 tiles, every tile territory, no downgrade, same-family free, kind-9 prefix commit; hold-and-follow ghost | B (10.1) | **Settled (S + code):** ROADS-1 (`sim::road_path`, `RoadRules`, `check_build_path`, kind-9 commit) + ROADS-3 (`plan_road_ghost`, `RoadVariantDeck`, `DevInput` L-drag, `--road-rules` default `on` in `--play`) |
 | 18 | Road autotiling table (corner/T/cross/end, dirt = cobblestone + 20) | B (10.1 item 8) | ROADS-2 |
-| 19 | The ghost hides no trees; no yellow rectangle on refusal; occupied footprints invisible | B (10.2) | UI-GHOST-2 |
+| 19 | The ghost hides no trees; no yellow rectangle on refusal; occupied footprints invisible | B (10.2) | **Settled (D + H + S + code, `UI-GHOST-2`):** render-layer `ObjectsPatch` suppresses flag-`0x20` scenery under shown ghosts while respecting `overwrites()` (`0x10` rocks stay under `0x10` mines; moving away/cancelling restores immediately without mutating `Scene`); `AnnoFrame 0x10048450`/`0x1004b7f0` -> `0x10041050` draws only the yellow (`0xffff00`) empty rectangle on refusal without hiding trees (`0x10047848`); optional `--occupied-outline on\|off` **ADAPTATION (default `off`)** outlines blocking `Reject::Occupied` footprints (`kOccupiedOutlineRgb = 0xff4040`) |
 | 20 | Selected building has a title but no yellow highlight; market/Kontor click does not open the warehouse | B (10.3) | UI-SELECT-1/2 |
 
 **Consequence for open UI packets:** UI-INFO-2d item (a), "the map ghost's entrance arrows", is **dropped**.
@@ -613,7 +613,7 @@ trees under a placed building are removed in the sim and are not restored at dem
 settled items 1 and 3, S + code): (1) and (3) `PlayRunner` tracks cleared tick-0 scenery anchors (`type = 0` suppression
 markers, preserving flag-`0x10` rocks) into `ScenePicture` -> `apply_island_buildings`, so trees under newly placed
 buildings/roads and direct tree demolishes disappear and demolished footprints show bare ground (`tile_object_picture_test`,
-`viewer_wiring_roads_picture_objects`); (2) the hover ghost still does not hide the trees under its footprint (`UI-GHOST-2`).
+`viewer_wiring_roads_picture_objects`); (2) **`UI-GHOST-2` (D + H + S + code):** while a valid building ghost, phase-0 unaffordable ghost, or drawn road ghost sprite is shown (`AnnoWelt 0x1009e267`–`0x1009e306`), `FrameRenderer::set_objects_patch` (`ObjectsPatch`) hides underlying flag-`0x20` objects matching `overwrites()` (preserving flag-`0x10` rocks under flag-`0x10` mines) without mutating `Scene` or rebuilding chunks, and clearing/moving/cancelling or blinking to unaffordable phase 1 immediately restores them. Refused ghosts branch past chunk ghost writes (`AnnoFrame 0x10047848`) and keep trees visible (`viewer_wiring_ui_ghost2`, `viewer_wiring_ui_ghost2_pixel_check`).
 
 **Which tiles blocked the sheep farm (S, P, H).**
 
@@ -631,10 +631,7 @@ buildings/roads and direct tree demolishes disappear and demolished footprints s
   Kontor, inside its 4x4 footprint: the warehouse sprite is smaller than its footprint, so the tiles look free (L; the
   16 tiles were not measured). Frame 4:40 (command #19, `at 1180,646`): the pointer stands on a drawn farm, a true
   refusal. The owner had issued 27 commands by then, so several farms and foresters existed.
-- **Deviation from the original: none in the rule; the gap is feedback.** The window draws the ghost over any tile and
-  marks nothing as occupied; the original shows a **yellow empty rectangle** when the preview is refused (section 5).
-  **Required:** the ghost draws the refusal (yellow rectangle), and while the tool is armed the occupied footprints
-  can be outlined (UI-GHOST-2).
+- **Deviation from the original: none in the rule; refusal & occupied feedback (`D + H + code`, `UI-GHOST-1`/`UI-GHOST-2`).** On refusal, the original draws **only** the cursor's yellow (`0xffff00`) empty rectangle (`AnnoFrame.dll` `0x10048450` / `0x1004b7f0` -> `0x10041050` then `ret 8`) and draws no blocking-building outline. That cursor yellow rectangle matches the original (`UI-GHOST-1` + `UI-GHOST-2` verified on both building and road refusals, without hiding trees). To explain `Reject::Occupied` over visually free perimeter tiles (such as the 4x4 Kontor above), the rebuild provides `--occupied-outline on|off` (**ADAPTATION, DEFAULT OFF**), which outlines overlapping blocking footprints in `0xff4040` while keeping the cursor's yellow rectangle and chrome on top (`placement_ghost_test`, `viewer_wiring_ui_ghost2_occupied`, `viewer_wiring_ui_ghost2_pixel_check`).
 
 **Decision table for the rebuild.**
 

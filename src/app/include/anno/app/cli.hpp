@@ -191,6 +191,12 @@ struct Args {
     /// 40-tile cap, no-downgrade and kind-9 prefix rules while faithful World::create defaults stay
     /// off.
     std::optional<bool> road_rules;
+    /// --occupied-outline on|off (UI-GHOST-2): ADAPTATION (default off) -- --play developer
+    /// switch (not --ship-start). Outlines the blocking building/object footprint(s) alongside the
+    /// cursor's 0xffff00 refusal rectangle when a placement preview is refused with
+    /// Reject::Occupied. The original draws only the cursor's yellow rectangle (AnnoFrame
+    /// 0x10048450 -> 0x10041050).
+    bool occupied_outline = false;
     /// --player <n> (FISHER-VIEW-1): --play only - the player slot the developer tool builds for
     /// and the snapshot reports (default commands_file's developer_player(), slot 1). A shipped
     /// scenario seats its human elsewhere (Tutorial/02Trade01: player 2, its city on island 3).

@@ -260,37 +260,6 @@ std::optional<fs::path> find_ci(const fs::path& base, const std::string& rel) {
 
 namespace {
 
-/// A footprint in island tiles (half-open) and whether its type carries flag 0x10.
-struct Cover {
-    std::uint32_t x0 = 0, y0 = 0, x1 = 0, y1 = 0;
-    bool overlay = false;
-    [[nodiscard]] bool holds(std::uint32_t x, std::uint32_t y) const {
-        return x >= x0 && y >= y0 && x < x1 && y < y1;
-    }
-};
-
-/// The cover of a type at (`bx`, `by`, `rotation`): Anlagen HEAD bytes 0 and 1, swapped for an
-/// odd rotation (sim::footprint); nullopt for a type without a footprint or flag word.
-std::optional<Cover> cover_of(const formats::anlagen::AnlagenFile& anlagen, std::uint32_t type,
-                              std::uint16_t bx, std::uint16_t by, std::uint8_t rotation) {
-    const auto size = anlagen.footprint(type);
-    const auto flags = anlage_head_flags(anlagen, type);
-    if (!size || !flags) {
-        return std::nullopt;
-    }
-    const bool odd = (rotation & 1U) != 0;
-    const std::uint32_t w = odd ? size->second : size->first;
-    const std::uint32_t h = odd ? size->first : size->second;
-    return Cover{bx, by, std::uint32_t{bx} + w, std::uint32_t{by} + h, (*flags & 0x10U) != 0};
-}
-
-/// Whether a cover overwrites an object whose flag word is `existing`: a type with flag 0x10 is
-/// written over the tiles but keeps an anchored flag-0x10 object (AnnoWelt.dll 0x1008218f,
-/// place_object_record's overlay skip).
-bool overwrites(const Cover& c, std::uint16_t existing) {
-    return !c.overlay || (existing & 0x10U) == 0;
-}
-
 struct PendingProd2 {
     std::uint16_t type = 0;
     std::uint16_t x = 0, y = 0;
@@ -301,6 +270,23 @@ struct PendingProd2 {
 };
 
 } // namespace
+
+std::optional<Cover> cover_of(const formats::anlagen::AnlagenFile& anlagen, std::uint32_t type,
+                              std::int64_t bx, std::int64_t by, std::uint8_t rotation) {
+    const auto size = anlagen.footprint(type);
+    const auto flags = anlage_head_flags(anlagen, type);
+    if (!size || !flags) {
+        return std::nullopt;
+    }
+    const bool odd = (rotation & 1U) != 0;
+    const std::int64_t w = odd ? size->second : size->first;
+    const std::int64_t h = odd ? size->first : size->second;
+    return Cover{bx, by, bx + w, by + h, (*flags & 0x10U) != 0};
+}
+
+bool overwrites(const Cover& c, std::uint16_t existing) {
+    return !c.overlay || (existing & 0x10U) == 0;
+}
 
 std::optional<std::uint16_t> anlage_head_flags(const formats::anlagen::AnlagenFile& anlagen,
                                                std::uint32_t id) {
@@ -421,9 +407,11 @@ void apply_island_buildings(insel::Island& island, const std::vector<SceneBuildi
                 return;
             }
             const std::uint8_t bit = c->overlay ? 2U : 1U;
-            for (std::uint32_t py = c->y0; py < std::min(c->y1, ih); ++py) {
-                for (std::uint32_t px = c->x0; px < std::min(c->x1, iw); ++px) {
-                    under[std::size_t{py} * iw + px] |= bit;
+            const std::int64_t y_hi = std::min<std::int64_t>(c->y1, ih);
+            const std::int64_t x_hi = std::min<std::int64_t>(c->x1, iw);
+            for (std::int64_t py = std::max<std::int64_t>(c->y0, 0); py < y_hi; ++py) {
+                for (std::int64_t px = std::max<std::int64_t>(c->x0, 0); px < x_hi; ++px) {
+                    under[static_cast<std::size_t>(py) * iw + static_cast<std::size_t>(px)] |= bit;
                 }
             }
         };

@@ -6,6 +6,7 @@
 #include <tuple>
 
 #include <anno/app/placement_ghost.hpp>
+#include <anno/sim/building.hpp>
 
 namespace anno::app {
 
@@ -240,6 +241,142 @@ std::uint64_t draw_outline_rgba_under(std::span<const CornerEdge> edges, const O
              });
     }
     return written;
+}
+
+std::vector<std::size_t> collect_suppressed_object_indices(const render::Scene& scene,
+                                                           std::size_t island,
+                                                           std::span<const Cover> covers) {
+    std::vector<std::size_t> out;
+    if (island >= scene.islands.size() || covers.empty()) {
+        return out;
+    }
+    const auto& list = scene.island_lists(island).other;
+    if (list.empty()) {
+        return out;
+    }
+    // `other` is sorted by `(o.first.x + o.second.first + o.first.y + o.second.second, o.first.x)`.
+    // Bracket the isometric diagonal band covering all non-negative tile coordinates in `covers` so
+    // hover over large islands never scans the full object vector.
+    std::uint64_t min_diag = UINT64_MAX;
+    std::uint64_t max_diag = 0;
+    bool any_non_empty = false;
+    for (const Cover& c : covers) {
+        if (c.x1 <= c.x0 || c.y1 <= c.y0 || c.x1 <= 0 || c.y1 <= 0) {
+            continue;
+        }
+        any_non_empty = true;
+        const auto x0 = static_cast<std::uint64_t>(std::max<std::int64_t>(0, c.x0));
+        const auto y0 = static_cast<std::uint64_t>(std::max<std::int64_t>(0, c.y0));
+        const auto x1 = static_cast<std::uint64_t>(c.x1);
+        const auto y1 = static_cast<std::uint64_t>(c.y1);
+        min_diag = std::min(min_diag, x0 + y0);
+        max_diag = std::max(max_diag, x1 + y1 + std::uint64_t{512});
+    }
+    if (!any_non_empty) {
+        return out;
+    }
+    auto diag = [](const render::Prepared& p) -> std::uint64_t {
+        return std::uint64_t{p.first.x} + p.second.first + p.first.y + p.second.second;
+    };
+    const auto lo = std::partition_point(
+        list.begin(), list.end(), [&](const render::Prepared& p) { return diag(p) < min_diag; });
+    const auto hi = std::partition_point(
+        lo, list.end(), [&](const render::Prepared& p) { return diag(p) <= max_diag; });
+    const auto start = static_cast<std::size_t>(lo - list.begin());
+    const auto end = static_cast<std::size_t>(hi - list.begin());
+    for (std::size_t i = start; i < end; ++i) {
+        const auto& obj = list[i].first;
+        const auto flags = anlage_head_flags(scene.anlagen, obj.anlage);
+        if (!flags || (*flags & 0x20U) == 0) {
+            continue;
+        }
+        for (const Cover& c : covers) {
+            if (c.holds(obj.x, obj.y) && overwrites(c, *flags)) {
+                out.push_back(i);
+                break;
+            }
+        }
+    }
+    return out;
+}
+
+namespace {
+
+bool boxes_overlap(const GhostBox& a, const GhostBox& b) {
+    if (a.w == 0 || a.h == 0 || b.w == 0 || b.h == 0) {
+        return false;
+    }
+    return a.x0 < b.x0 + b.w && b.x0 < a.x0 + a.w && a.y0 < b.y0 + b.h && b.y0 < a.y0 + a.h;
+}
+
+std::pair<std::uint32_t, std::uint32_t> footprint_dims(const sim::TypeRegistry* registry,
+                                                       const formats::anlagen::AnlagenFile* anlagen,
+                                                       std::uint32_t type_id,
+                                                       std::uint8_t rotation) {
+    if (registry != nullptr) {
+        if (const sim::BuildingType* bt = registry->find(sim::TypeId{type_id}); bt != nullptr) {
+            return sim::footprint(*bt, rotation);
+        }
+    }
+    if (anlagen != nullptr) {
+        if (const auto fp = anlagen->footprint(type_id)) {
+            const bool odd = (rotation & 1U) != 0;
+            return {odd ? fp->second : fp->first, odd ? fp->first : fp->second};
+        }
+    }
+    return {1, 1};
+}
+
+} // namespace
+
+std::vector<GhostBox> occupied_blocking_boxes(const BlockingQuery& q) {
+    std::vector<GhostBox> out;
+    if (q.target.w == 0 || q.target.h == 0) {
+        return out;
+    }
+    std::set<std::tuple<std::int64_t, std::int64_t, std::uint32_t, std::uint32_t>> seen;
+    auto push = [&](const GhostBox& b) {
+        if (boxes_overlap(b, q.target) && seen.insert({b.x0, b.y0, b.w, b.h}).second) {
+            out.push_back(b);
+        }
+    };
+    for (const SceneBuilding& b : q.buildings) {
+        const auto [w, h] = footprint_dims(q.registry, q.anlagen, b.type, b.rotation);
+        push(GhostBox{std::int64_t{q.island_x0} + b.x, std::int64_t{q.island_y0} + b.y, w, h});
+    }
+    for (const SceneTileObject& t : q.tile_objects) {
+        if (t.type == 0) {
+            continue;
+        }
+        const auto [w, h] = footprint_dims(q.registry, q.anlagen, t.type, t.rotation);
+        push(GhostBox{std::int64_t{q.island_x0} + t.x, std::int64_t{q.island_y0} + t.y, w, h});
+    }
+    if (out.empty() && q.anlagen != nullptr && !q.static_objects.empty()) {
+        for (const render::Prepared& o : q.static_objects) {
+            const auto flags = anlage_head_flags(*q.anlagen, o.first.anlage);
+            if (!flags || (*flags & 0x20U) != 0) {
+                continue;
+            }
+            const std::uint32_t w = std::max<std::uint32_t>(1, o.second.first);
+            const std::uint32_t h = std::max<std::uint32_t>(1, o.second.second);
+            push(GhostBox{std::int64_t{q.island_x0} + o.first.x,
+                          std::int64_t{q.island_y0} + o.first.y, w, h});
+        }
+    }
+    return out;
+}
+
+std::vector<CornerEdge> blocking_footprint_outline(std::span<const GhostBox> boxes) {
+    std::set<std::tuple<std::int64_t, std::int64_t, std::int64_t, std::int64_t>> unique;
+    std::vector<CornerEdge> out;
+    for (const GhostBox& b : boxes) {
+        for (const CornerEdge& e : footprint_outline(b)) {
+            if (unique.insert({e.x0, e.y0, e.x1, e.y1}).second) {
+                out.push_back(e);
+            }
+        }
+    }
+    return out;
 }
 
 } // namespace anno::app

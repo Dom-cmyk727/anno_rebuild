@@ -133,6 +133,25 @@ void apply_island_buildings(formats::insel::Island& island,
 [[nodiscard]] std::optional<std::uint16_t>
 anlage_head_flags(const formats::anlagen::AnlagenFile& anlagen, std::uint32_t id);
 
+/// A footprint in island tiles (half-open) and whether its type carries flag 0x10.
+struct Cover {
+    std::int64_t x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    bool overlay = false;
+    [[nodiscard]] bool holds(std::int64_t x, std::int64_t y) const {
+        return x >= x0 && y >= y0 && x < x1 && y < y1;
+    }
+};
+
+/// The cover of a type at (`bx`, `by`, `rotation`) in island-local tiles: Anlagen HEAD bytes 0 and
+/// 1, swapped for an odd rotation (sim::footprint); nullopt without a footprint or flag word.
+[[nodiscard]] std::optional<Cover> cover_of(const formats::anlagen::AnlagenFile& anlagen,
+                                            std::uint32_t type, std::int64_t bx, std::int64_t by,
+                                            std::uint8_t rotation);
+
+/// Whether `c` overwrites an object whose flag word is `existing`: a type with flag 0x10 keeps an
+/// anchored flag-0x10 object (AnnoWelt.dll 0x1008218f).
+[[nodiscard]] bool overwrites(const Cover& c, std::uint16_t existing);
+
 /// Whether a scenery item of type `item` at island tile (`x`, `y`) (its anchor, the footprint's
 /// top-left tile) is overwritten by building `b`: the tile lies in b's footprint (Anlagen HEAD
 /// bytes 0 and 1, swapped for an odd rotation), unless both types carry flag 0x10, whose anchored

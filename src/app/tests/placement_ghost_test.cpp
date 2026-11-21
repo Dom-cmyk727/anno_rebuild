@@ -11,6 +11,10 @@
 #include <doctest/doctest.h>
 
 #include <anno/app/placement_ghost.hpp>
+#include <anno/formats/insel.hpp>
+#include <anno/render/scene.hpp>
+#include <anno/sim/building.hpp>
+#include <anno/sim/types.hpp>
 
 namespace app = anno::app;
 namespace sim = anno::sim;
@@ -211,4 +215,165 @@ TEST_CASE("outline pixels: exact colour, one pixel wide, under the chrome") {
     // Off the frame: clipped, nothing written, no fault.
     p.map.x0 = 1000.0;
     CHECK(app::draw_outline_xrgb(edge, p, frame.data(), 40, 30, app::kGhostOutlineRgb) == 0U);
+}
+
+namespace {
+
+anno::formats::chunk::Chunk make_head_chunk(std::uint8_t w, std::uint8_t h, std::uint16_t flags,
+                                            std::vector<std::uint8_t>& buf) {
+    buf.assign(0x1eU, 0);
+    buf[0] = w;
+    buf[1] = h;
+    buf[0x1c] = static_cast<std::uint8_t>(flags & 0xFFU);
+    buf[0x1d] = static_cast<std::uint8_t>(flags >> 8U);
+    anno::formats::chunk::Chunk c;
+    c.name_field = {'H', 'E', 'A', 'D', 0, 0, 0, 0, 0, 0, 0, 0};
+    c.payload = buf;
+    return c;
+}
+
+anno::formats::figuren::Entry make_anlagen_entry(std::uint32_t id, std::vector<std::uint8_t>& hbuf,
+                                                 std::uint8_t w, std::uint8_t h,
+                                                 std::uint16_t flags) {
+    anno::formats::figuren::Entry e;
+    e.id = id;
+    e.records.push_back(make_head_chunk(w, h, flags, hbuf));
+    return e;
+}
+
+std::vector<std::uint8_t> make_gelaende_payload(
+    std::uint16_t bx, std::uint16_t by, std::uint8_t bw, std::uint8_t bh,
+    std::initializer_list<std::tuple<std::uint16_t, std::uint8_t, std::uint8_t>> items) {
+    std::vector<std::uint8_t> out(6U + items.size() * 6U, 0);
+    out[0] = static_cast<std::uint8_t>(bx & 0xFFU);
+    out[1] = static_cast<std::uint8_t>(bx >> 8U);
+    out[2] = static_cast<std::uint8_t>(by & 0xFFU);
+    out[3] = static_cast<std::uint8_t>(by >> 8U);
+    out[4] = bw;
+    out[5] = bh;
+    std::size_t off = 6;
+    for (const auto& [id, x, y] : items) {
+        out[off] = static_cast<std::uint8_t>(id & 0xFFU);
+        out[off + 1] = static_cast<std::uint8_t>(id >> 8U);
+        out[off + 4] = static_cast<std::uint8_t>(x - bx);
+        out[off + 5] = static_cast<std::uint8_t>(y - by);
+        off += 6;
+    }
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("ghost suppression: hides flag-0x20 trees, preserves flag-0x10 rock under flag-0x10 "
+          "mine, and restores on cancel") {
+    constexpr std::uint16_t kTree = 70;
+    constexpr std::uint16_t kRock = 150;
+    constexpr std::uint16_t kHouse = 501;
+    constexpr std::uint16_t kMine = 601;
+
+    auto backing = std::make_shared<std::vector<std::vector<std::uint8_t>>>();
+    std::vector<std::uint8_t> h_tree, h_rock, h_house, h_mine;
+    anno::formats::anlagen::AnlagenFile anlagen;
+    anlagen.entries.push_back(make_anlagen_entry(kTree, h_tree, 1, 1, 0x0029));
+    anlagen.entries.push_back(make_anlagen_entry(kRock, h_rock, 1, 1, 0x8018));
+    anlagen.entries.push_back(make_anlagen_entry(kHouse, h_house, 2, 2, 0x0000));
+    anlagen.entries.push_back(make_anlagen_entry(kMine, h_mine, 2, 2, 0x0010));
+
+    backing->push_back(std::vector<std::uint8_t>(64, 0));
+    backing->push_back(
+        make_gelaende_payload(0, 0, 20, 20, {{kTree, 4, 4}, {kRock, 5, 4}, {kTree, 7, 7}}));
+    anno::formats::insel::Island island;
+    island.head = (*backing)[0];
+    island.number = 1;
+    island.x = 1000;
+    island.y = 400;
+    island.width = 20;
+    island.height = 20;
+    anno::formats::chunk::Chunk gel;
+    gel.name_field = {'G', 'E', 'L', 'A', 'E', 'N', 'D', 'E', 0, 0, 0, 0};
+    gel.payload = (*backing)[1];
+    island.records.push_back(gel);
+
+    auto scene = anno::render::Scene::create(
+        "ghost2-suppress", {island}, anno::assets::island::GroundTextures{}, std::move(anlagen),
+        anno::render::kHeightLift, backing);
+    REQUIRE(scene->island_lists(0).other.size() == 3);
+
+    // Non-0x10 house at (4, 4) hides the covered tree at (4, 4), leaves outside tree (7, 7), and
+    // leaves non-0x20 rock at (5, 4).
+    const auto house_cover = app::cover_of(scene->anlagen, kHouse, 4, 4, 0);
+    REQUIRE(house_cover);
+    const std::vector<app::Cover> house_covers{*house_cover};
+    const auto suppressed_house = app::collect_suppressed_object_indices(*scene, 0, house_covers);
+    REQUIRE(suppressed_house.size() == 1);
+    CHECK(scene->island_lists(0).other[suppressed_house[0]].first.anlage == kTree);
+    CHECK(scene->island_lists(0).other[suppressed_house[0]].first.x == 4);
+
+    // Flag-0x10 mine covering (4, 4)..(5, 5): tree at (4, 4) hides, flag-0x10 rock at (5, 4) stays!
+    const auto mine_cover = app::cover_of(scene->anlagen, kMine, 4, 4, 0);
+    REQUIRE(mine_cover);
+    CHECK(mine_cover->overlay);
+    const std::vector<app::Cover> mine_covers{*mine_cover};
+    const auto suppressed_mine = app::collect_suppressed_object_indices(*scene, 0, mine_covers);
+    REQUIRE(suppressed_mine.size() == 1);
+    CHECK(scene->island_lists(0).other[suppressed_mine[0]].first.anlage == kTree);
+
+    // Negative island-relative origin clips cleanly without uint16 underflow.
+    const auto edge_cover = app::cover_of(scene->anlagen, kHouse, -1, -1, 0);
+    REQUIRE(edge_cover);
+    CHECK(app::collect_suppressed_object_indices(*scene, 0,
+                                                 std::span<const app::Cover>(&*edge_cover, 1))
+              .empty());
+
+    // Cancel / empty covers: nothing suppressed (objects immediately restored).
+    CHECK(app::collect_suppressed_object_indices(*scene, 0, {}).empty());
+}
+
+TEST_CASE("occupied blocking outline (ADAPTATION): outlines blocking building footprint when "
+          "refused Occupied") {
+    sim::TypeRegistry::Builder b;
+    sim::BuildingType kontor;
+    kontor.id = sim::TypeId{1302};
+    kontor.width = 4;
+    kontor.height = 4;
+    b.add(kontor);
+    sim::BuildingType hall;
+    hall.id = sim::TypeId{777};
+    hall.width = 3;
+    hall.height = 2;
+    b.add(hall);
+    auto reg = b.build();
+    REQUIRE(reg.ok());
+
+    const std::vector<app::SceneBuilding> buildings{
+        {1, 1302, 10, 10, 0, 16}, // world (1010..1013, 410..413)
+        {1, 777, 30, 30, 1, 16},  // odd rotation -> 2x3 at world (1030..1031, 430..432)
+    };
+    // Target 3x3 at (1008..1010, 408..410) clips corner (1010, 410) of 4x4 Kontor.
+    app::BlockingQuery q;
+    q.target = {1008, 408, 3, 3};
+    q.island_x0 = 1000;
+    q.island_y0 = 400;
+    q.buildings = buildings;
+    q.registry = reg.value().get();
+
+    const auto boxes = app::occupied_blocking_boxes(q);
+    REQUIRE(boxes.size() == 1);
+    CHECK(boxes[0].x0 == 1010);
+    CHECK(boxes[0].y0 == 410);
+    CHECK(boxes[0].w == 4);
+    CHECK(boxes[0].h == 4);
+    const auto edges = app::blocking_footprint_outline(boxes);
+    CHECK(edges.size() == 16); // 4x4 perimeter
+
+    // Overlap with rotated non-square building swaps w and h (2 wide x 3 high).
+    q.target = {1031, 432, 1, 1};
+    const auto odd_boxes = app::occupied_blocking_boxes(q);
+    REQUIRE(odd_boxes.size() == 1);
+    CHECK(odd_boxes[0].w == 2);
+    CHECK(odd_boxes[0].h == 3);
+
+    // Clear target overlaps nothing.
+    q.target = {1020, 420, 2, 2};
+    CHECK(app::occupied_blocking_boxes(q).empty());
 }

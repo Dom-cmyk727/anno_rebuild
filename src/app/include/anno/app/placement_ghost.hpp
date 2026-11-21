@@ -23,9 +23,14 @@
 #include <utility>
 #include <vector>
 
+#include <anno/app/loader.hpp>
 #include <anno/assets/texture.hpp>
+#include <anno/formats/anlagen.hpp>
+#include <anno/render/iso.hpp>
 #include <anno/render/picking.hpp>
+#include <anno/render/scene.hpp>
 #include <anno/sim/reject.hpp>
+#include <anno/sim/types.hpp>
 
 namespace anno::app {
 
@@ -117,6 +122,36 @@ struct CornerEdge {
 /// The outline's colour (0x10048471, 0x100484f2: the same 0xffff00 for both outlines in GOG; the
 /// History Edition draws the radius green, the packet follows GOG).
 inline constexpr std::uint32_t kGhostOutlineRgb = 0xFFFF00;
+
+/// ADAPTATION (default off, --occupied-outline on|off): outline colour for blocking
+/// building/object footprint(s) when a placement preview is refused with Reject::Occupied.
+inline constexpr std::uint32_t kOccupiedOutlineRgb = 0xFF4040;
+
+/// Sorted indices into `scene.island_lists(island).other` whose flag-0x20 static objects lie under
+/// any shown ghost `Cover` in `covers` and satisfy `overwrites()` (so flag-0x10 rocks stay visible
+/// under flag-0x10 mines while flag-0x20 trees/crops/stones hide, docs/BUILDINGSOBJECTS.md §10.2).
+[[nodiscard]] std::vector<std::size_t>
+collect_suppressed_object_indices(const render::Scene& scene, std::size_t island,
+                                  std::span<const Cover> covers);
+
+/// Inputs for finding which existing footprint(s) block `target` (`Reject::Occupied`).
+struct BlockingQuery {
+    GhostBox target;
+    std::int32_t island_x0 = 0, island_y0 = 0;
+    std::span<const SceneBuilding> buildings;
+    const sim::TypeRegistry* registry = nullptr;
+    const formats::anlagen::AnlagenFile* anlagen = nullptr;
+    std::span<const SceneTileObject> tile_objects;
+    std::span<const render::Prepared> static_objects;
+};
+
+/// World-tile footprints overlapping `q.target` that explain `Reject::Occupied` (blocking placed
+/// buildings and live tile objects, falling back to non-overlappable static scenery).
+[[nodiscard]] std::vector<GhostBox> occupied_blocking_boxes(const BlockingQuery& q);
+
+/// Deduplicated perimeter edges of all boxes in `boxes`.
+[[nodiscard]] std::vector<CornerEdge> blocking_footprint_outline(std::span<const GhostBox> boxes);
+
 /// ADAPTATION (accepted by the orchestrator, 2026-11-17): the lift above the ground, 2 x 0.04
 /// (0x10087de8, 0x100880fc), applied in the rebuild's HEIGHT units. The original's height unit for
 /// this lift is not established; the difference is below a pixel either way.

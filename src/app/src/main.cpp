@@ -489,6 +489,7 @@ int run(const std::vector<std::string>& raw) {
     anno::app::ViewerHooks hooks;
     hooks.ui = args->ui;
     hooks.ui_scale = args->ui_scale;
+    hooks.occupied_outline = args->occupied_outline;
     const anno::app::ViewerHooks* hooks_ptr = nullptr;
     std::unique_ptr<anno::app::PlayFollower> follow;
     // The developer building tool (round ee; B in the window): its setup is read from the world

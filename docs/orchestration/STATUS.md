@@ -43,7 +43,18 @@ says who is doing what, where the work is, and what it waits on.
       GCC 13.3 / Clang 18.1.3 clean). 3 minor non-blocking notes recorded in the review.
     - **Stacking:** descends from `BUILDINGS-REF-2` (`60a26f0d`) / Candidate 10 (`95897a55`) + `origin/main` (`a6468efd`);
       queued for the next candidate wave **after** Candidate 11 (`refs/candidates/ui-magnifier-mac-1`, `e2e4b617`) lands.
-  - Other Windows/UI approved packets (`ROADS-0`, `ROADS-3`, `UI-GHOST-2`) remain paused pending explicit owner OK.
+  - **`ROADS-0` (`PICTURE-OBJECTS-1`) reviewed (`task/ROADS-0`, code `b0b022c6`, report `17d8d85e`) — CHANGES REQUESTED (Fix Round 1):**
+    - Independent orchestrator review: [`reviews/2026-11-21-roads-0-review.md`](reviews/2026-11-21-roads-0-review.md).
+    - Code & local MSVC Release gates look clean (`src/sim/` & `src/render/` untouched, `459/459` app + 6 UI oracles +
+      `viewer_wiring_roads_picture_objects`, `15/15` GPU, `211/211` render, `clang-format 23.1.3` exit 0, WSL clean).
+    - **Blocking findings (F1–F2):** F1 merge `origin/main` (`a6468efd` CI pin; CI `44730641751` failed only the 3
+      Ubuntu 26.04 Linux C++ jobs; `merge-tree` is conflict-free) and obtain exact-head 12/12 green CI; F2 correct
+      the inaccurate `"Settled OQ-775..779"` line in `REPORTS.md` (reserved range 775–779 unused) and add the
+      mandatory Acceptance Table (`evidence-contract.md`).
+    - **Unblocks:** accepting `ROADS-0` immediately unblocks both `ROADS-3` (with already-accepted `ROADS-1` `45dc2c3e`)
+      and `UI-GHOST-2` (both already owner-approved 2026-11-19).
+  - Remaining approved-but-unstarted packets: `ROADS-3` (`0e8a15c9`) and `UI-GHOST-2` (`5f4957f3`) wait on `ROADS-0`
+    acceptance; Windows render/gate lane (`RENDER-DIRECT-2`, `GATE-2a`) available independently of the Mac lane.
 
 Earlier updates (2026-11-17 to 2026-11-19, by the Claude Code orchestrator):
 - **`main` is `4dfdd9b7`** (2026-11-17, 09:40): RENDER-DIRECT-1a and LAYER-CHECK-1 landed through `land.py`

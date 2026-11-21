@@ -114,6 +114,14 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
             } else {
                 return std::nullopt;
             }
+        } else if (a == "--road-rules") {
+            if (v == "on") {
+                out.road_rules = true;
+            } else if (v == "off") {
+                out.road_rules = false;
+            } else {
+                return std::nullopt;
+            }
         } else if (a == "--player") {
             const auto player = number<std::uint32_t>(v);
             if (!player) {
@@ -338,9 +346,10 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
     if (out.rules_given && !out.play) {
         return std::nullopt; // no sim to apply it to (--view, or --png without --play)
     }
-    // FISHER-VIEW-1: --fisher-rules and --player are --play developer switches; the ship-start
-    // opening has its own seat and its own manifest rules.
-    if ((out.fisher_rules || out.play_player) && (!out.play || out.ship_start)) {
+    // FISHER-VIEW-1 & ROADS-3: --fisher-rules, --road-rules and --player are --play developer
+    // switches; the ship-start opening has its own seat and its own manifest rules.
+    if ((out.fisher_rules || out.road_rules.has_value() || out.play_player) &&
+        (!out.play || out.ship_start)) {
         return std::nullopt;
     }
     return out;

@@ -113,7 +113,10 @@ enum class Reject : std::uint16_t {
     /// placement, so such a mine is accepted, charged and created unbound. The value stays so the
     /// numbering of this append-only enum does not move; a host that wants the warning calls
     /// mine_site_deposit_in_reach (mine_facts.hpp) before it issues the command.
-    NoDepositInReach
+    NoDepositInReach,
+    /// ROADS-1: trailing placement in a kind-9 road drag not attempted after an earlier refusal or
+    /// drag_cap cutoff.
+    PrefixStopped
 };
 
 /// What one record of a command did (docs/sim/state.md §8.3): the status and, for
@@ -245,6 +248,8 @@ struct ApplyResult {
         return "HouseDomain";
     case Reject::NoDepositInReach: // reserved, never produced (policy B replaced)
         return "NoDepositInReach";
+    case Reject::PrefixStopped:
+        return "PrefixStopped";
     }
     return "?";
 }

@@ -125,17 +125,21 @@ std::size_t list_objects(const render::IslandLists& lists) {
 /// is taken from. The worker replaces the estimate with the measured size of its result
 /// (result_bytes); a result larger than its estimate is counted (Stats::estimate_shortfalls).
 std::size_t build_estimate(const formats::insel::Island& island, const render::IslandLists& lists,
-                           std::size_t desired) {
+                           std::size_t desired, std::size_t desired_tiles) {
+    const std::size_t added_items = desired + desired_tiles;
     const std::size_t old_payload = island_bytes(island);
     const std::size_t old_objects = list_objects(lists);
-    const std::size_t new_objects = old_objects + desired;
-    const std::size_t buildings = desired * sizeof(SceneBuilding);
+    const std::size_t new_objects = old_objects + added_items;
+    const std::size_t buildings =
+        desired * sizeof(SceneBuilding) + desired_tiles * sizeof(SceneTileObject);
     const std::size_t storage =
-        2 * old_payload + desired * (formats::insel::kItemLen + formats::insel::kBlockHeaderLen) +
-        (island.records.size() + desired + 1) * sizeof(render::Buffers::value_type);
-    const std::size_t meta = record_meta_bytes(island) + desired * sizeof(formats::chunk::Chunk);
+        2 * old_payload +
+        added_items * (formats::insel::kItemLen + formats::insel::kBlockHeaderLen) +
+        (island.records.size() + added_items + 1) * sizeof(render::Buffers::value_type);
+    const std::size_t meta =
+        record_meta_bytes(island) + added_items * sizeof(formats::chunk::Chunk);
     const std::size_t new_lists =
-        render::lists_bytes(lists) + 2 * desired * sizeof(render::Prepared);
+        render::lists_bytes(lists) + 2 * added_items * sizeof(render::Prepared);
     const std::size_t change =
         (old_objects + new_objects) *
         (sizeof(render::Prepared) + render::kGroups * sizeof(render::ChunkKey));
@@ -161,14 +165,14 @@ struct DestroyProbe {
 };
 
 /// One request for an island's rebuild: the version it is made for, the generation it is made from
-/// and the buildings it applies. Held as Accounted<JobPayload> (PictureJob): its credit outlives
-/// it.
+/// and the buildings/tile objects it applies. Held as Accounted<JobPayload> (PictureJob).
 struct JobPayload {
     std::shared_ptr<DestroyProbe> probe;
     std::size_t index = 0;
     std::uint64_t version = 0;
     std::shared_ptr<const render::Scene> base;
     std::vector<SceneBuilding> buildings;
+    std::vector<SceneTileObject> tile_objects;
     /// The estimate the build was admitted by (build_estimate).
     std::size_t bytes = 0;
     /// When the job was handed to the workers (its queue delay is the time to its start).
@@ -207,9 +211,10 @@ std::size_t result_bytes(const PictureResult& r) {
     return n;
 }
 
-/// A worker's build of one request: the island's records rewritten with the island's buildings, its
-/// object lists, and the change set against the lists the build started from. Throws on failure.
+/// A worker's build of one request: the island's records rewritten with the island's buildings and
+/// tile objects, its object lists, and the change set against the lists the build started from.
 PictureResult build_result(const PictureJob& job, const std::vector<bool>& is_building,
+                           const std::vector<bool>& is_tile_object,
                            const std::function<void(std::size_t)>& fault,
                            const std::function<void(const char*, std::size_t)>& destroy_hook) {
     if (fault) {
@@ -239,10 +244,13 @@ PictureResult build_result(const PictureJob& job, const std::vector<bool>& is_bu
     objects.is_building = [&is_building](std::uint16_t id) {
         return id < is_building.size() && is_building[id];
     };
+    objects.is_tile_object = [&is_tile_object](std::uint16_t id) {
+        return id < is_tile_object.size() && is_tile_object[id];
+    };
     std::vector<std::string> notes;
     std::vector<OmittedObject> omitted;
     apply_island_buildings(island, job.buildings, objects, storage, notes, omitted,
-                           &job.base->anlagen);
+                           &job.base->anlagen, job.tile_objects);
     auto lists = render::Scene::build_island_lists(island, job.base->anlagen,
                                                    render::PayloadKind::Incremental);
     result.base_lists = job.base->island_lists_handle(job.index);
@@ -252,6 +260,38 @@ PictureResult build_result(const PictureJob& job, const std::vector<bool>& is_bu
         render::accounted_buffers(std::move(storage), render::PayloadKind::Incremental);
     result.lists = std::move(lists);
     return result;
+}
+
+std::vector<SceneTileObject>
+initial_scene_tile_objects(const render::Scene& base,
+                           const std::function<bool(std::uint16_t)>& is_tile_object) {
+    std::vector<SceneTileObject> out;
+    if (!is_tile_object) {
+        return out;
+    }
+    for (const formats::insel::Island& island : base.islands) {
+        for (const formats::chunk::Chunk& rec : island.records) {
+            const std::string_view name = rec.name();
+            if (name != "GELAENDE" && name != "PROD2" && name != "FLUESSE") {
+                continue;
+            }
+            const auto parsed = formats::insel::Block::parse(rec.payload);
+            if (!parsed || parsed.value().data.size() % formats::insel::kItemLen != 0) {
+                continue;
+            }
+            const formats::insel::Block& block = parsed.value();
+            for (std::size_t o = 0; o < block.data.size(); o += formats::insel::kItemLen) {
+                const auto obj = formats::insel::PlacedObject::parse(
+                    block.data.subspan(o, formats::insel::kItemLen), block);
+                if (is_tile_object(obj.anlage)) {
+                    out.push_back(SceneTileObject{island.number, obj.anlage, obj.x, obj.y,
+                                                  obj.rotation, obj.height(), obj.phase()});
+                }
+            }
+        }
+    }
+    sort_tile_objects(out);
+    return out;
 }
 
 } // namespace
@@ -286,8 +326,9 @@ struct ScenePicture::State {
     /// island's edit or recovery does not erase another island's failure (round dx, DX3a).
     std::vector<std::string> failure;
     bool stop = false;
-    /// Anlagen ids below kPictureAnlageIds that are buildings (the loader's rule, asked once).
+    /// Anlagen ids below kPictureAnlageIds that are buildings / tracked tile objects.
     std::shared_ptr<const std::vector<bool>> is_building;
+    std::shared_ptr<const std::vector<bool>> is_tile_object;
     Stats stats;
     /// Per build: the milliseconds in the queue and in the build (bounded; see the worker).
     std::vector<double> queue_ms, build_ms;
@@ -360,6 +401,36 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
                            std::size_t threads, Limits limits)
     : current_(std::move(base)), picture_(std::move(buildings)), state_(std::make_shared<State>()),
       reaper_(std::make_shared<Reaper>()), limits_(std::move(limits)) {
+    std::vector<bool> road_table(kPictureAnlageIds, false);
+    for (std::size_t id = 0; id < road_table.size(); ++id) {
+        if (is_building && is_building(static_cast<std::uint16_t>(id))) {
+            continue;
+        }
+        const auto flags = anlage_head_flags(current_->anlagen, static_cast<std::uint32_t>(id));
+        road_table[id] = flags.has_value() && (*flags & 0x4000U) != 0;
+    }
+    const auto is_tile_object = [&road_table](std::uint16_t id) {
+        return id < road_table.size() && road_table[id];
+    };
+    tile_objects_ = initial_scene_tile_objects(*current_, is_tile_object);
+    init(is_building, is_tile_object, threads);
+}
+
+ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
+                           std::vector<SceneBuilding> buildings,
+                           std::vector<SceneTileObject> tile_objects,
+                           const std::function<bool(std::uint16_t)>& is_building,
+                           const std::function<bool(std::uint16_t)>& is_tile_object,
+                           std::size_t threads, Limits limits)
+    : current_(std::move(base)), picture_(std::move(buildings)),
+      tile_objects_(std::move(tile_objects)), state_(std::make_shared<State>()),
+      reaper_(std::make_shared<Reaper>()), limits_(std::move(limits)) {
+    init(is_building, is_tile_object, threads);
+}
+
+void ScenePicture::init(const std::function<bool(std::uint16_t)>& is_building,
+                        const std::function<bool(std::uint16_t)>& is_tile_object,
+                        std::size_t threads) {
     for (std::size_t i = 0; i < current_->islands.size(); ++i) {
         slots_.emplace_back(current_->islands[i].number, i);
     }
@@ -371,12 +442,23 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
         }
         reindex(islands);
     }
+    {
+        std::set<std::uint32_t> tile_islands;
+        for (const SceneTileObject& t : tile_objects_) {
+            tile_islands.insert(t.island);
+        }
+        reindex_tile_objects(tile_islands);
+    }
     auto table = std::make_shared<std::vector<bool>>(kPictureAnlageIds, false);
+    auto tile_table = std::make_shared<std::vector<bool>>(kPictureAnlageIds, false);
     for (std::size_t id = 0; id < table->size(); ++id) {
-        (*table)[id] = is_building(static_cast<std::uint16_t>(id));
+        const auto uid = static_cast<std::uint16_t>(id);
+        (*table)[id] = is_building ? is_building(uid) : false;
+        (*tile_table)[id] = is_tile_object ? is_tile_object(uid) : false;
     }
     const std::size_t n = current_->islands.size();
     state_->is_building = std::move(table);
+    state_->is_tile_object = std::move(tile_table);
     state_->desired.assign(n, 0);
     state_->committed.assign(n, 0);
     state_->inflight.assign(n, 0);
@@ -416,7 +498,8 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
                 // must leave the island dirty so that it is built again
                 // (ScenePicture::error()).
                 try {
-                    result = build_result(job, *st->is_building, fault, destroy_hook);
+                    result = build_result(job, *st->is_building, *st->is_tile_object, fault,
+                                          destroy_hook);
                     built = true;
                 } catch (const std::exception& e) {
                     message = e.what();
@@ -425,12 +508,12 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
                 }
                 const double ms = ms_since(start);
                 // The job's own payload is released here, on the worker, while the job still
-                // holds the credit: its copy of the buildings, and its generation (the
-                // reclaimer destroys that if this is the last reference). Only then does the
-                // credit move to the result, resized to what the result measures (round dy,
-                // A2). A failed build keeps the credit with its job until the job is gone.
+                // holds the credit: its copy of the buildings and tile objects, and its generation
+                // (the reclaimer destroys that if this is the last reference). Only then does the
+                // credit move to the result, resized to what the result measures (round dy, A2).
                 job.base.reset();
                 std::vector<SceneBuilding>().swap(job.buildings);
+                std::vector<SceneTileObject>().swap(job.tile_objects);
                 std::size_t measured = 0;
                 if (built) {
                     result.credit = std::move(job.credit);
@@ -636,12 +719,17 @@ std::size_t ScenePicture::dispatch(const std::vector<std::size_t>& wanted,
             if (state_->inflight[index] == state_->desired[index]) {
                 continue; // a build of the current version is already in flight or finished
             }
-            // The reservation covers the incoming build (the desired buildings and what they
-            // rewrite), not only the old records (build_estimate).
-            const auto mine = by_island_.find(current_->islands[index].number);
+            // The reservation covers the incoming build (the desired buildings/tile objects and
+            // what they rewrite), not only the old records (build_estimate).
+            const std::uint32_t island_number = current_->islands[index].number;
+            const auto mine = by_island_.find(island_number);
+            const auto mine_tiles = by_island_tiles_.find(island_number);
             const std::size_t desired_count = mine == by_island_.end() ? 0 : mine->second.size();
-            const std::size_t bytes = build_estimate(current_->islands[index],
-                                                     current_->island_lists(index), desired_count);
+            const std::size_t desired_tiles =
+                mine_tiles == by_island_tiles_.end() ? 0 : mine_tiles->second.size();
+            const std::size_t bytes =
+                build_estimate(current_->islands[index], current_->island_lists(index),
+                               desired_count, desired_tiles);
             const bool replaces = state_->inflight[index] != 0;
             if (replaces && overloaded) {
                 defer(index);
@@ -719,10 +807,13 @@ std::size_t ScenePicture::dispatch(const std::vector<std::size_t>& wanted,
             if (limits_.trace) {
                 limits_.trace(PictureEvent::Admitted, index, job.version);
             }
-            // The island's buildings are copied only now, for an admitted build (DX2e).
+            // The island's buildings and tile objects are copied only now, for an admitted build.
             if (mine != by_island_.end()) {
                 job.buildings = mine->second;
                 state_->stats.copied_buildings += job.buildings.size();
+            }
+            if (mine_tiles != by_island_tiles_.end()) {
+                job.tile_objects = mine_tiles->second;
             }
             job.bytes = bytes;
             job.submitted = Clock::now();
@@ -752,35 +843,64 @@ void ScenePicture::reindex(const std::set<std::uint32_t>& islands) {
     }
 }
 
+void ScenePicture::reindex_tile_objects(const std::set<std::uint32_t>& islands) {
+    if (islands.empty()) {
+        return;
+    }
+    for (const std::uint32_t island : islands) {
+        by_island_tiles_.erase(island);
+    }
+    for (const SceneTileObject& t : tile_objects_) {
+        if (islands.contains(t.island)) {
+            by_island_tiles_[t.island].push_back(t);
+        }
+    }
+}
+
 std::size_t ScenePicture::apply(const std::vector<std::shared_ptr<const BuildingBatch>>& batches) {
     const auto start = Clock::now();
-    std::set<std::uint32_t> touched;
+    std::set<std::uint32_t> touched_buildings;
+    std::set<std::uint32_t> touched_tiles;
     for (const auto& batch : batches) {
         if (!batch) {
             continue;
         }
         if (batch->resync) {
-            // Every island that had buildings, or has them now, may have changed.
+            // Every island that had buildings/tile objects, or has them now, may have changed.
             for (const SceneBuilding& b : picture_) {
-                touched.insert(b.island);
+                touched_buildings.insert(b.island);
             }
             for (const SceneBuilding& b : batch->full) {
-                touched.insert(b.island);
+                touched_buildings.insert(b.island);
             }
             picture_ = batch->full;
+            for (const SceneTileObject& t : tile_objects_) {
+                touched_tiles.insert(t.island);
+            }
+            for (const SceneTileObject& t : batch->full_tile_objects) {
+                touched_tiles.insert(t.island);
+            }
+            tile_objects_ = batch->full_tile_objects;
             continue;
         }
         std::vector<std::shared_ptr<const BuildingBatch>> one{batch};
         const ApplyResult applied = apply_batches(picture_, one);
         for (const BuildingDelta& d : applied.deltas) {
-            touched.insert(d.building.island);
+            touched_buildings.insert(d.building.island);
+        }
+        const TileObjectApplyResult applied_tiles = apply_tile_object_batches(tile_objects_, one);
+        for (const TileObjectDelta& d : applied_tiles.deltas) {
+            touched_tiles.insert(d.object.island);
         }
     }
     const auto listed = Clock::now();
-    if (!touched.empty()) {
+    if (!touched_buildings.empty()) {
         ++buildings_version_;
     }
-    reindex(touched);
+    reindex(touched_buildings);
+    reindex_tile_objects(touched_tiles);
+    std::set<std::uint32_t> touched = touched_buildings;
+    touched.insert(touched_tiles.begin(), touched_tiles.end());
     const auto indexed = Clock::now();
     std::vector<std::size_t> wanted;
     {
@@ -972,6 +1092,24 @@ const std::vector<SceneBuilding>& ScenePicture::island_buildings(std::uint32_t n
     static const std::vector<SceneBuilding> none;
     const auto it = by_island_.find(number);
     return it == by_island_.end() ? none : it->second;
+}
+
+const std::vector<SceneTileObject>& ScenePicture::island_tile_objects(std::uint32_t number) const {
+    static const std::vector<SceneTileObject> none;
+    const auto it = by_island_tiles_.find(number);
+    return it == by_island_tiles_.end() ? none : it->second;
+}
+
+std::size_t ScenePicture::live_tile_object_count() const {
+    return static_cast<std::size_t>(
+        std::count_if(tile_objects_.begin(), tile_objects_.end(),
+                      [](const SceneTileObject& t) { return t.type != 0; }));
+}
+
+std::size_t ScenePicture::cleared_tile_count() const {
+    return static_cast<std::size_t>(
+        std::count_if(tile_objects_.begin(), tile_objects_.end(),
+                      [](const SceneTileObject& t) { return t.type == 0; }));
 }
 
 std::vector<std::uint64_t> ScenePicture::desired_versions() const {

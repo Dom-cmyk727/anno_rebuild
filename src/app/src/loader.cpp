@@ -260,10 +260,50 @@ std::optional<fs::path> find_ci(const fs::path& base, const std::string& rel) {
 
 namespace {
 
-/// HEAD's flag word (bytes 0x1c-0x1d, as sim/types.cpp reads it), or nullopt without a HEAD of
-/// that length.
-std::optional<std::uint16_t> head_flags(const formats::anlagen::AnlagenFile& anlagen,
-                                        std::uint32_t id) {
+/// A footprint in island tiles (half-open) and whether its type carries flag 0x10.
+struct Cover {
+    std::uint32_t x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    bool overlay = false;
+    [[nodiscard]] bool holds(std::uint32_t x, std::uint32_t y) const {
+        return x >= x0 && y >= y0 && x < x1 && y < y1;
+    }
+};
+
+/// The cover of a type at (`bx`, `by`, `rotation`): Anlagen HEAD bytes 0 and 1, swapped for an
+/// odd rotation (sim::footprint); nullopt for a type without a footprint or flag word.
+std::optional<Cover> cover_of(const formats::anlagen::AnlagenFile& anlagen, std::uint32_t type,
+                              std::uint16_t bx, std::uint16_t by, std::uint8_t rotation) {
+    const auto size = anlagen.footprint(type);
+    const auto flags = anlage_head_flags(anlagen, type);
+    if (!size || !flags) {
+        return std::nullopt;
+    }
+    const bool odd = (rotation & 1U) != 0;
+    const std::uint32_t w = odd ? size->second : size->first;
+    const std::uint32_t h = odd ? size->first : size->second;
+    return Cover{bx, by, std::uint32_t{bx} + w, std::uint32_t{by} + h, (*flags & 0x10U) != 0};
+}
+
+/// Whether a cover overwrites an object whose flag word is `existing`: a type with flag 0x10 is
+/// written over the tiles but keeps an anchored flag-0x10 object (AnnoWelt.dll 0x1008218f,
+/// place_object_record's overlay skip).
+bool overwrites(const Cover& c, std::uint16_t existing) {
+    return !c.overlay || (existing & 0x10U) == 0;
+}
+
+struct PendingProd2 {
+    std::uint16_t type = 0;
+    std::uint16_t x = 0, y = 0;
+    std::uint8_t rotation = 0;
+    std::uint8_t height = 0;
+    std::uint8_t phase = 0;
+    bool is_tile = false;
+};
+
+} // namespace
+
+std::optional<std::uint16_t> anlage_head_flags(const formats::anlagen::AnlagenFile& anlagen,
+                                               std::uint32_t id) {
     const auto* e = anlagen.entry(id);
     if (e == nullptr) {
         return std::nullopt;
@@ -275,84 +315,26 @@ std::optional<std::uint16_t> head_flags(const formats::anlagen::AnlagenFile& anl
     return formats::u16_le(*head, 0x1c);
 }
 
-/// A building's footprint (island tiles, half-open) and whether its type carries flag 0x10.
-struct Cover {
-    std::uint32_t x0 = 0, y0 = 0, x1 = 0, y1 = 0;
-    bool overlay = false;
-    [[nodiscard]] bool holds(std::uint32_t x, std::uint32_t y) const {
-        return x >= x0 && y >= y0 && x < x1 && y < y1;
-    }
-};
-
-/// The cover of `b`: Anlagen HEAD bytes 0 and 1, swapped for an odd rotation (sim::footprint);
-/// nullopt for a type without a footprint or flag word.
-std::optional<Cover> cover_of(const formats::anlagen::AnlagenFile& anlagen,
-                              const SceneBuilding& b) {
-    const auto size = anlagen.footprint(b.type);
-    const auto flags = head_flags(anlagen, b.type);
-    if (!size || !flags) {
-        return std::nullopt;
-    }
-    const bool odd = (b.rotation & 1U) != 0;
-    const std::uint32_t w = odd ? size->second : size->first;
-    const std::uint32_t h = odd ? size->first : size->second;
-    return Cover{b.x, b.y, std::uint32_t{b.x} + w, std::uint32_t{b.y} + h, (*flags & 0x10U) != 0};
-}
-
-/// Whether a cover overwrites an object whose flag word is `existing`: a type with flag 0x10 is
-/// written over the tiles but keeps an anchored flag-0x10 object (AnnoWelt.dll 0x1008218f,
-/// place_object_record's overlay skip).
-bool overwrites(const Cover& c, std::uint16_t existing) {
-    return !c.overlay || (existing & 0x10U) == 0;
-}
-
-} // namespace
-
 bool scenery_under_building(const formats::anlagen::AnlagenFile& anlagen, const SceneBuilding& b,
                             std::uint16_t item, std::uint16_t x, std::uint16_t y) {
-    const auto c = cover_of(anlagen, b);
-    const auto existing = head_flags(anlagen, item);
+    const auto c = cover_of(anlagen, b.type, b.x, b.y, b.rotation);
+    const auto existing = anlage_head_flags(anlagen, item);
     return c && existing && c->holds(x, y) && overwrites(*c, *existing);
 }
 
-/// Building items become the sim's set. A file building the sim also placed
-/// keeps its bytes (phase and draw order). One the sim did not place is listed
-/// and dropped. One the sim placed that the file lacks is appended.
-/// One island's buildings rewritten into its records (play mode, round du: the per-island form of
-/// apply_world_buildings). `buildings` are the sim's buildings of this island; the payloads of
-/// the records it writes are stored in `owned_out` (each buffer keeps its address when moved,
-/// so the spans stay valid while the owner lives). Notes and omitted objects go to `notes` and
-/// `omitted`. The island's records must be the ones of the scene the buildings belong to;
-/// re-applying the same buildings to records already rewritten gives the same records. Scenery a
-/// building covered stays dropped when the building goes (the sim's tile layer keeps no object
-/// there either: clear_object_record), so applying to the file's records again can differ.
+/// Building and tracked tile-object items become the sim's sets. File buildings
+/// and tracked tile objects kept by the sim keep their bytes (phase and draw order);
+/// omitted ones are dropped; newly placed ones are appended in PROD2; cleared-tile
+/// markers (`type == 0`) suppress non-building, non-tracked file items under them.
 void apply_island_buildings(insel::Island& island, const std::vector<SceneBuilding>& buildings,
                             const SceneObjects& objects,
                             std::vector<std::vector<std::uint8_t>>& owned_out,
                             std::vector<std::string>& notes, std::vector<OmittedObject>& omitted,
-                            const formats::anlagen::AnlagenFile* anlagen) {
+                            const formats::anlagen::AnlagenFile* anlagen,
+                            std::span<const SceneTileObject> tile_objects) {
     using Key = std::tuple<std::uint32_t, std::uint32_t, std::uint16_t, std::uint16_t>;
-    std::set<Key> placed;
-    for (const SceneBuilding& b : buildings) {
-        placed.insert({b.island, b.type, b.x, b.y});
-    }
-    auto owned = [&](std::vector<std::uint8_t> payload) -> formats::Bytes {
-        owned_out.push_back(std::move(payload));
-        return formats::Bytes(owned_out.back().data(), owned_out.back().size());
-    };
-    auto append_item = [](std::vector<std::uint8_t>& items, std::uint16_t local_x,
-                          std::uint16_t local_y, const SceneBuilding& b) {
-        const std::uint32_t packed = b.type | ((static_cast<std::uint32_t>(b.rotation) & 3u) << 14);
-        const auto id = static_cast<std::uint16_t>(packed);
-        const std::uint16_t state =
-            static_cast<std::uint16_t>(static_cast<std::uint16_t>(b.height) << 8);
-        items.push_back(static_cast<std::uint8_t>(id & 0xFF));
-        items.push_back(static_cast<std::uint8_t>(id >> 8));
-        items.push_back(static_cast<std::uint8_t>(state & 0xFF));
-        items.push_back(static_cast<std::uint8_t>(state >> 8));
-        items.push_back(static_cast<std::uint8_t>(local_x));
-        items.push_back(static_cast<std::uint8_t>(local_y));
-    };
+    using TileKey = std::tuple<std::uint32_t, std::uint32_t, std::uint16_t, std::uint16_t,
+                               std::uint8_t, std::uint8_t, std::uint8_t>;
     // The island head keeps a u32. The PROD2 match uses that number as the
     // slot. The original table index is 16 bits (AnnoScene.dll 0x10008503);
     // a wider number is refused instead of being masked down to a slot.
@@ -362,26 +344,94 @@ void apply_island_buildings(insel::Island& island, const std::vector<SceneBuildi
         return;
     }
     const std::uint32_t slot = island.number;
-    // The island's tiles under a building, marked once: bit 0 under a type without flag 0x10,
-    // bit 1 under one with it; and each scenery type's flag word looked up once (review
-    // 2026-11-03: a test per item and building took 63 s on endless02.sze's island 1, 1,854
-    // buildings and 84,486 scenery items). Footprint tiles off the island are not marked: no item
-    // lies there.
     const std::uint32_t iw = island.width, ih = island.height;
+    std::set<Key> placed;
+    for (const SceneBuilding& b : buildings) {
+        placed.insert({b.island, b.type, b.x, b.y});
+    }
+    std::set<TileKey> placed_tiles;
+    std::vector<PendingProd2> pending;
+    pending.reserve(buildings.size() + tile_objects.size());
+    for (const SceneBuilding& b : buildings) {
+        pending.push_back(PendingProd2{static_cast<std::uint16_t>(b.type), b.x, b.y,
+                                       static_cast<std::uint8_t>(b.rotation & 3u), b.height, 0,
+                                       false});
+    }
+    std::vector<std::uint8_t> cleared;
+    std::vector<std::uint8_t> live_tile_covered;
+    std::vector<const SceneTileObject*> live_tiles;
+    for (const SceneTileObject& t : tile_objects) {
+        if (t.type == 0) {
+            if (t.x < iw && t.y < ih) {
+                if (cleared.empty()) {
+                    cleared.assign(std::size_t{iw} * ih, 0);
+                }
+                cleared[std::size_t{t.y} * iw + t.x] = 1;
+            }
+            continue;
+        }
+        if (t.type >= kPictureAnlageIds) {
+            notes.push_back("play: Anlagen id " + std::to_string(t.type) +
+                            " does not fit a PROD2 item");
+            continue;
+        }
+        const auto rot = static_cast<std::uint8_t>(t.rotation & 3u);
+        const auto phase = static_cast<std::uint8_t>(t.phase & 0x3Fu);
+        placed_tiles.insert({slot, t.type, t.x, t.y, rot, t.height, phase});
+        pending.push_back(
+            PendingProd2{static_cast<std::uint16_t>(t.type), t.x, t.y, rot, t.height, phase, true});
+        live_tiles.push_back(&t);
+        if (t.x < iw && t.y < ih) {
+            if (live_tile_covered.empty()) {
+                live_tile_covered.assign(std::size_t{iw} * ih, 0);
+            }
+            live_tile_covered[std::size_t{t.y} * iw + t.x] = 1;
+        }
+    }
+    auto owned = [&](std::vector<std::uint8_t> payload) -> formats::Bytes {
+        owned_out.push_back(std::move(payload));
+        return formats::Bytes(owned_out.back().data(), owned_out.back().size());
+    };
+    auto append_item = [](std::vector<std::uint8_t>& items, std::uint16_t local_x,
+                          std::uint16_t local_y, const PendingProd2& p) {
+        const std::uint32_t packed = static_cast<std::uint32_t>(p.type) |
+                                     ((static_cast<std::uint32_t>(p.rotation) & 3u) << 14);
+        const auto id = static_cast<std::uint16_t>(packed);
+        const std::uint16_t state =
+            static_cast<std::uint16_t>((static_cast<unsigned int>(p.height) << 8) |
+                                       (static_cast<unsigned int>(p.phase) & 0x3Fu));
+        items.push_back(static_cast<std::uint8_t>(id & 0xFF));
+        items.push_back(static_cast<std::uint8_t>(id >> 8));
+        items.push_back(static_cast<std::uint8_t>(state & 0xFF));
+        items.push_back(static_cast<std::uint8_t>(state >> 8));
+        items.push_back(static_cast<std::uint8_t>(local_x));
+        items.push_back(static_cast<std::uint8_t>(local_y));
+    };
+    // The island's tiles under a building or live tile object, marked once: bit 0 under a type
+    // without flag 0x10, bit 1 under one with it; and each scenery type's flag word looked up once
+    // (review 2026-11-03: a test per item and building took 63 s on endless02.sze's island 1,
+    // 1,854 buildings and 84,486 scenery items). Footprint tiles off the island are not marked.
     std::vector<std::uint8_t> under;
-    if (anlagen != nullptr && !buildings.empty()) {
+    if (anlagen != nullptr && (!buildings.empty() || !live_tiles.empty())) {
         under.assign(std::size_t{iw} * ih, 0);
-        for (const SceneBuilding& b : buildings) {
-            const auto c = cover_of(*anlagen, b);
+        const auto mark_cover = [&](std::uint32_t type, std::uint16_t x, std::uint16_t y,
+                                    std::uint8_t rotation) {
+            const auto c = cover_of(*anlagen, type, x, y, rotation);
             if (!c) {
-                continue;
+                return;
             }
             const std::uint8_t bit = c->overlay ? 2U : 1U;
-            for (std::uint32_t y = c->y0; y < std::min(c->y1, ih); ++y) {
-                for (std::uint32_t x = c->x0; x < std::min(c->x1, iw); ++x) {
-                    under[std::size_t{y} * iw + x] |= bit;
+            for (std::uint32_t py = c->y0; py < std::min(c->y1, ih); ++py) {
+                for (std::uint32_t px = c->x0; px < std::min(c->x1, iw); ++px) {
+                    under[std::size_t{py} * iw + px] |= bit;
                 }
             }
+        };
+        for (const SceneBuilding& b : buildings) {
+            mark_cover(b.type, b.x, b.y, b.rotation);
+        }
+        for (const SceneTileObject* t : live_tiles) {
+            mark_cover(t->type, t->x, t->y, t->rotation);
         }
     }
     std::map<std::uint16_t, std::optional<std::uint16_t>> scenery_flags;
@@ -395,7 +445,7 @@ void apply_island_buildings(insel::Island& island, const std::vector<SceneBuildi
         }
         auto it = scenery_flags.find(obj.anlage);
         if (it == scenery_flags.end()) {
-            it = scenery_flags.emplace(obj.anlage, head_flags(*anlagen, obj.anlage)).first;
+            it = scenery_flags.emplace(obj.anlage, anlage_head_flags(*anlagen, obj.anlage)).first;
         }
         if (!it->second) {
             return false;
@@ -404,7 +454,19 @@ void apply_island_buildings(insel::Island& island, const std::vector<SceneBuildi
         return (m & 1U) != 0 || ((m & 2U) != 0 && (*it->second & 0x10U) == 0);
     };
     std::set<Key> drawn;
-    std::vector<SceneBuilding> pending = buildings;
+    std::set<TileKey> drawn_tiles;
+    const auto already_drawn = [&](const PendingProd2& p) {
+        return p.is_tile
+                   ? drawn_tiles.count({slot, p.type, p.x, p.y, p.rotation, p.height, p.phase}) != 0
+                   : drawn.count({slot, p.type, p.x, p.y}) != 0;
+    };
+    const auto mark_drawn = [&](const PendingProd2& p) {
+        if (p.is_tile) {
+            drawn_tiles.insert({slot, p.type, p.x, p.y, p.rotation, p.height, p.phase});
+        } else {
+            drawn.insert({slot, p.type, p.x, p.y});
+        }
+    };
     for (formats::chunk::Chunk& rec : island.records) {
         const std::string_view name = rec.name();
         if (name != "GELAENDE" && name != "PROD2" && name != "FLUESSE") {
@@ -420,18 +482,10 @@ void apply_island_buildings(insel::Island& island, const std::vector<SceneBuildi
         for (std::size_t o = 0; o < block.data.size(); o += insel::kItemLen) {
             const insel::PlacedObject obj =
                 insel::PlacedObject::parse(block.data.subspan(o, insel::kItemLen), block);
-            // Scenery under a building is not drawn (owner playtest 2026-11-03, round 6: trees
-            // stood in a founded Kontor). The original writes the building over every footprint
-            // tile without testing what is there (AnnoWelt.dll 0x100823ed, docs/re/ship-founding.md
-            // §11.3; the sim's place_object_record): the item whose anchor it covers is neither
-            // stored nor drawn. An item anchored outside stays whole (the shipped scenarios keep
-            // such rocks beside Kontors; how the original draws its covered tiles is not traced).
-            if (!under.empty() && name == "GELAENDE" && !objects.is_building(obj.anlage) &&
-                covered(obj)) {
-                changed = true;
-                continue;
-            }
-            if (objects.is_building(obj.anlage)) {
+            const bool obj_is_building = objects.is_building && objects.is_building(obj.anlage);
+            const bool obj_is_tile =
+                !obj_is_building && objects.is_tile_object && objects.is_tile_object(obj.anlage);
+            if (obj_is_building) {
                 const Key key{slot, obj.anlage, obj.x, obj.y};
                 if (placed.count(key) == 0) {
                     changed = true;
@@ -444,27 +498,48 @@ void apply_island_buildings(insel::Island& island, const std::vector<SceneBuildi
                     continue;
                 }
                 drawn.insert(key);
+            } else if (obj_is_tile) {
+                const TileKey tkey{slot,
+                                   obj.anlage,
+                                   obj.x,
+                                   obj.y,
+                                   static_cast<std::uint8_t>(obj.rotation & 3u),
+                                   obj.height(),
+                                   obj.phase()};
+                if (placed_tiles.count(tkey) == 0) {
+                    changed = true;
+                    continue;
+                }
+                drawn_tiles.insert(tkey);
+            } else {
+                const bool is_cleared = !cleared.empty() && obj.x < iw && obj.y < ih &&
+                                        cleared[std::size_t{obj.y} * iw + obj.x] != 0;
+                if (is_cleared || (!under.empty() && name == "GELAENDE" && covered(obj)) ||
+                    (!live_tile_covered.empty() && name == "PROD2" && obj.x < iw && obj.y < ih &&
+                     live_tile_covered[std::size_t{obj.y} * iw + obj.x] != 0)) {
+                    changed = true;
+                    continue;
+                }
             }
             items.insert(items.end(), block.data.begin() + static_cast<std::ptrdiff_t>(o),
                          block.data.begin() + static_cast<std::ptrdiff_t>(o + insel::kItemLen));
         }
         if (name == "PROD2") {
-            std::vector<SceneBuilding> left;
-            for (const SceneBuilding& b : pending) {
-                const Key key{slot, b.type, b.x, b.y};
-                if (drawn.count(key) != 0) {
+            std::vector<PendingProd2> left;
+            for (const PendingProd2& p : pending) {
+                if (already_drawn(p)) {
                     continue;
                 }
-                const bool inside = b.x >= block.x && b.y >= block.y &&
-                                    b.x < static_cast<std::uint32_t>(block.x) + block.width &&
-                                    b.y < static_cast<std::uint32_t>(block.y) + block.height;
+                const bool inside = p.x >= block.x && p.y >= block.y &&
+                                    p.x < static_cast<std::uint32_t>(block.x) + block.width &&
+                                    p.y < static_cast<std::uint32_t>(block.y) + block.height;
                 if (!inside) {
-                    left.push_back(b);
+                    left.push_back(p);
                     continue;
                 }
-                append_item(items, static_cast<std::uint16_t>(b.x - block.x),
-                            static_cast<std::uint16_t>(b.y - block.y), b);
-                drawn.insert(key);
+                append_item(items, static_cast<std::uint16_t>(p.x - block.x),
+                            static_cast<std::uint16_t>(p.y - block.y), p);
+                mark_drawn(p);
                 changed = true;
             }
             pending = std::move(left);
@@ -477,15 +552,14 @@ void apply_island_buildings(insel::Island& island, const std::vector<SceneBuildi
         payload.insert(payload.end(), items.begin(), items.end());
         rec.payload = owned(std::move(payload));
     }
-    std::map<std::pair<std::uint16_t, std::uint16_t>, std::vector<SceneBuilding>> extra;
-    for (const SceneBuilding& b : pending) {
-        const Key key{slot, b.type, b.x, b.y};
-        if (drawn.count(key) != 0) {
+    std::map<std::pair<std::uint16_t, std::uint16_t>, std::vector<PendingProd2>> extra;
+    for (const PendingProd2& p : pending) {
+        if (already_drawn(p)) {
             continue;
         }
-        const auto bx = static_cast<std::uint16_t>((b.x / insel::kBlock) * insel::kBlock);
-        const auto by = static_cast<std::uint16_t>((b.y / insel::kBlock) * insel::kBlock);
-        extra[{bx, by}].push_back(b);
+        const auto bx = static_cast<std::uint16_t>((p.x / insel::kBlock) * insel::kBlock);
+        const auto by = static_cast<std::uint16_t>((p.y / insel::kBlock) * insel::kBlock);
+        extra[{bx, by}].push_back(p);
     }
     const auto name = formats::chunk::name_field("PROD2");
     if (!name) {
@@ -503,14 +577,14 @@ void apply_island_buildings(insel::Island& island, const std::vector<SceneBuildi
         block.height = static_cast<std::uint8_t>(
             std::min<std::uint32_t>(insel::kBlock, island.height - origin.second));
         std::vector<std::uint8_t> items;
-        for (const SceneBuilding& b : group) {
-            if (b.x < block.x || b.y < block.y ||
-                b.x >= static_cast<std::uint32_t>(block.x) + block.width ||
-                b.y >= static_cast<std::uint32_t>(block.y) + block.height) {
+        for (const PendingProd2& p : group) {
+            if (p.x < block.x || p.y < block.y ||
+                p.x >= static_cast<std::uint32_t>(block.x) + block.width ||
+                p.y >= static_cast<std::uint32_t>(block.y) + block.height) {
                 continue;
             }
-            append_item(items, static_cast<std::uint16_t>(b.x - block.x),
-                        static_cast<std::uint16_t>(b.y - block.y), b);
+            append_item(items, static_cast<std::uint16_t>(p.x - block.x),
+                        static_cast<std::uint16_t>(p.y - block.y), p);
         }
         if (items.empty()) {
             continue;
@@ -539,9 +613,18 @@ void apply_world_buildings(std::vector<insel::Island>& islands, LoadedScene& out
         }
         by_slot[b.island].push_back(b);
     }
+    std::map<std::uint32_t, std::vector<SceneTileObject>> tile_by_slot;
+    for (const SceneTileObject& t : objects.tile_objects) {
+        if (t.type != 0 && t.type >= kPictureAnlageIds) {
+            out.notes.push_back("play: Anlagen id " + std::to_string(t.type) +
+                                " does not fit a PROD2 item");
+            continue;
+        }
+        tile_by_slot[t.island].push_back(t);
+    }
     for (insel::Island& island : islands) {
         apply_island_buildings(island, by_slot[island.number], objects, out.buffers, out.notes,
-                               out.omitted, &anlagen);
+                               out.omitted, &anlagen, tile_by_slot[island.number]);
     }
 }
 

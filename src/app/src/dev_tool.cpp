@@ -51,7 +51,8 @@ PointerFrame pointer_frame(render::Rect view, const render::Resample* resample, 
 
 DevTool::DevTool(DevToolSetup setup)
     : setup_(std::move(setup)),
-      input_(setup_.registry, setup_.types, setup_.city.value_or(sim::CityRef{}), setup_.issuer) {}
+      input_(setup_.registry, setup_.types, setup_.city.value_or(sim::CityRef{}), setup_.issuer,
+             setup_.road_rules) {}
 
 std::optional<sim::TileXY> DevTool::pick(const PointerFrame& frame, double px, double py,
                                          std::string* why) const {
@@ -226,6 +227,7 @@ void DevTool::retarget(sim::CityRef city, TileRect island) {
         static_cast<void>(input_.handle(DevEvent{DevEvent::Kind::Rotate, {}}));
     }
     hover_.reset();
+    ghost_hover_.reset();
     press_.reset();
     settle_demolish_only(); // the new DevInput starts out of the demolish mode
 }
@@ -287,6 +289,7 @@ std::vector<sim::Command> DevTool::handle(const ToolInput& in, const PointerFram
         forward(DevEvent::Kind::Abort, {}, out);
         press_.reset();
         hover_.reset();
+        ghost_hover_.reset();
         break;
     case K::Press:
     case K::Move:
@@ -299,15 +302,26 @@ std::vector<sim::Command> DevTool::handle(const ToolInput& in, const PointerFram
             scene_ = frame->scene;
         }
         hover_ = tile;
+        // UI-GHOST-1 R1: off the city's island the pointer still names the map tile under it (any
+        // island's ground, else the sea-level tile): the ghost shows the sim's refusal there, and
+        // a click sends its record so that the sim refuses it with its own reason (OutOfIsland,
+        // TileNotOwned, ...), the same verdict the ghost shows.
+        ghost_hover_ = tile;
+        if (!tile && frame != nullptr) {
+            if (const auto any = pick_point(*frame, in.px, in.py)) {
+                ghost_hover_ = any->tile;
+            }
+        }
+        const std::optional<sim::TileXY> at = ghost_hover_;
         if (in.kind == K::Move) {
-            if (tile && input_.pressed()) {
-                forward(DevEvent::Kind::Move, *tile, out); // motion never makes a command
+            if (at && input_.pressed()) {
+                forward(DevEvent::Kind::Move, *at, out); // motion never makes a command
             }
             break;
         }
-        if (!tile) {
-            // A press off the island starts nothing; a release there drops the press, so it
-            // cannot place anything later.
+        if (!at) {
+            // A press with no map tile under it (outside the window, no frame) starts nothing; a
+            // release there drops the press, so it cannot place anything later.
             if (in.kind == K::Release && input_.pressed()) {
                 forward(DevEvent::Kind::Abort, {}, out);
                 message_ = why + ": nothing sent";
@@ -318,11 +332,11 @@ std::vector<sim::Command> DevTool::handle(const ToolInput& in, const PointerFram
             break;
         }
         if (in.kind == K::Press) {
-            press_ = tile;
-            forward(DevEvent::Kind::Press, *tile, out);
+            press_ = at;
+            forward(DevEvent::Kind::Press, *at, out);
         } else {
             press_.reset();
-            forward(DevEvent::Kind::Release, *tile, out);
+            forward(DevEvent::Kind::Release, *at, out);
         }
         break;
     }

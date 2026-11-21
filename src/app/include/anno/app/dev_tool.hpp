@@ -66,6 +66,9 @@ struct DevToolSetup {
     sim::PlayerId issuer;
     /// Another player's city on another island (none when the world has no second city).
     std::optional<ForeignSpot> foreign;
+    /// ROADS-3: road drag rules read from the created world (enabled == 1 enables L-drag &
+    /// variants).
+    sim::RoadRules road_rules;
 };
 
 /// One drawn frame, as the pointer needs it: how drawable pixels map to its scene pixels, the
@@ -126,6 +129,10 @@ class DevTool {
     [[nodiscard]] std::optional<sim::TileXY> pick(const PointerFrame& frame, double px, double py,
                                                   std::string* why = nullptr) const;
     [[nodiscard]] bool enabled() const { return enabled_; }
+    /// ROADS-3: true when the tool is active, not in demolish mode, and a land road is armed.
+    [[nodiscard]] bool land_road_armed() const {
+        return enabled_ && !input_.demolish_mode() && input_.land_road_selected();
+    }
     /// Arms `type` directly and turns the tool on (UI.2 C4: a construction-menu cell click, not a
     /// developer Next/PrevType cycle). It also leaves the demolish mode, as the original's grid
     /// click does (UI-PLACE-1: GOG Wine runner, pickaxe on, then a cell: the panel opens and the

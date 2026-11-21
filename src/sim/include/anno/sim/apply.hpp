@@ -6,6 +6,7 @@
 
 #include <anno/sim/command.hpp>
 #include <anno/sim/reject.hpp>
+#include <anno/sim/road_drag.hpp>
 
 namespace anno::sim {
 
@@ -32,6 +33,10 @@ struct Commands {
     /// World::check_build_record: one record through Build's record check without earlier
     /// records. Read-only.
     static Reject check_build(const World& w, CityRef city, const PlacementWire& record);
+    /// World::check_build_path: read-only prefix evaluation of a multi-record path against
+    /// cumulative virtual placements and budget (ROADS-3).
+    static RoadPathCheck check_build_path(const World& w, CityRef city,
+                                          std::span<const PlacementWire> records);
 };
 
 } // namespace anno::sim

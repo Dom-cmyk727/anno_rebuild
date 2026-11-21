@@ -51,7 +51,8 @@ PointerFrame pointer_frame(render::Rect view, const render::Resample* resample, 
 
 DevTool::DevTool(DevToolSetup setup)
     : setup_(std::move(setup)),
-      input_(setup_.registry, setup_.types, setup_.city.value_or(sim::CityRef{}), setup_.issuer) {}
+      input_(setup_.registry, setup_.types, setup_.city.value_or(sim::CityRef{}), setup_.issuer,
+             setup_.road_rules) {}
 
 std::optional<sim::TileXY> DevTool::pick(const PointerFrame& frame, double px, double py,
                                          std::string* why) const {

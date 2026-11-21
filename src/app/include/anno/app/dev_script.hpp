@@ -11,7 +11,12 @@
 //                         the cheapest of the tool's types that costs gold (not a road)
 //   rotate R              press T until the rotation is R
 //   click X Y             move to, press and release over the drawn centre of tile (X, Y)
-//   click_px X Y          move to, press and release at the raw drawable pixel (X, Y) (UI.2 C4:
+//   click-land X Y        move to, press and release over terrain ground height of tile (X, Y)
+//   ldown-land X Y        move to, press left button over terrain ground height of tile (X, Y)
+//   lmove-land X Y        drag pointer with left button held to terrain ground height of tile (X,
+//   Y) lup-land X Y          drag pointer with left button held and release at ground height of (X,
+//   Y) hover-land X Y        move pointer over terrain ground height of tile (X, Y) click_px X Y
+//   move to, press and release at the raw drawable pixel (X, Y) (UI.2 C4:
 //                         construction_handle's own coordinate space, data/ui/'s 1024 x 768
 //                         reference - not a world tile; `click`'s window_point projection does
 //                         not apply)

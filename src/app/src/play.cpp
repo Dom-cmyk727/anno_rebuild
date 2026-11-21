@@ -268,6 +268,7 @@ DevToolSetup dev_tool_setup(const PlayLoad& load, sim::PlayerId player) {
     s.registry = load.registry;
     s.issuer = player;
     const sim::World& world = load.world;
+    s.road_rules = world.road_rules();
     for (const auto& island : world.islands()) {
         if (!island || s.city) {
             continue;
@@ -1126,6 +1127,7 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
     }
     fill_inspection(*next); // also without a city: the requested tile is answered as empty
     fill_build_probe(*next);
+    fill_road_probe(*next);
     // UI-MINIMAP-1 B2: the minimap's owners (republished unchanged while equal) and its figures.
     refresh_territory();
     next->territory = territory_;
@@ -1407,6 +1409,19 @@ void PlayRunner::fill_build_probe(PlaySnapshot& next) {
     }
 }
 
+void PlayRunner::fill_road_probe(PlaySnapshot& next) {
+    std::optional<RoadPathProbe> probe;
+    {
+        const std::lock_guard lock(inspect_mu_);
+        probe = road_probe_;
+    }
+    next.road_probe.reset();
+    if (probe) {
+        next.road_probe =
+            RoadPathProbeAnswer{*probe, world_.check_build_path(probe->city, probe->records)};
+    }
+}
+
 void PlayRunner::refresh_territory() {
     TerritoryView now = collect_territory_view(world_, territory_.get());
     if (territory_ && territory_->same_content(now)) {
@@ -1579,21 +1594,28 @@ void PlayRunner::answer_inspection_while_paused() {
     }
     std::optional<sim::TileXY> requested;
     std::optional<BuildProbe> probe;
+    std::optional<RoadPathProbe> road_probe;
     {
         const std::lock_guard lock(inspect_mu_);
         requested = inspect_tile_;
         probe = build_probe_;
+        road_probe = road_probe_;
     }
     const auto current = snapshot();
     const auto answered = current && current->build_probe
                               ? std::optional<BuildProbe>(current->build_probe->probe)
                               : std::nullopt;
-    if (!current || (current->inspected == requested && answered == probe)) {
+    const auto road_answered = current && current->road_probe
+                                   ? std::optional<RoadPathProbe>(current->road_probe->probe)
+                                   : std::nullopt;
+    if (!current ||
+        (current->inspected == requested && answered == probe && road_answered == road_probe)) {
         return;
     }
     auto next = std::make_shared<PlaySnapshot>(*current);
     fill_inspection(*next);
     fill_build_probe(*next); // UI-GHOST-1: the ghost's verdict while paused, too
+    fill_road_probe(*next);  // ROADS-3: road path probe while paused, too
     publish_snapshot(std::move(next));
 }
 

@@ -351,6 +351,11 @@ int run(const std::vector<std::string>& raw) {
             // default; the rule itself stays behind that flag in the sim).
             fixed_options.extensions.fisher_rules.enabled =
                 args->fisher_rules ? std::uint8_t{1} : std::uint8_t{0};
+            // ROADS-3: interactive road drag rules (L-path, 40 cap, per-tile territory, no
+            // downgrade, kind-9 prefix commit) default on in --play unless disabled by
+            // --road-rules off, leaving sim::World / FixedPlayOptions defaults (enabled=0) intact.
+            fixed_options.extensions.road_rules.enabled =
+                args->road_rules.value_or(true) ? std::uint8_t{1} : std::uint8_t{0};
             if (const char* g = std::getenv("ANNO_DEV_GOLD"); g != nullptr && *g != 0) {
                 fixed_options.gold = std::strtoll(g, nullptr, 10);
             }
@@ -725,9 +730,13 @@ int run(const std::vector<std::string>& raw) {
         if (opening) {
             invocation += anno::app::format_opening_identity(opening->identity);
         }
-        // FISHER-VIEW-1: the developer switches a replay needs as well (information lines).
+        // FISHER-VIEW-1 & ROADS-3: the developer switches a replay needs as well (information
+        // lines).
         if (args->fisher_rules) {
             invocation += "extension fisher_rules\n";
+        }
+        if (!opening && args->road_rules.value_or(true)) {
+            invocation += "extension road_rules\n";
         }
         if (args->play_player) {
             invocation += "player " + std::to_string(*args->play_player) + "\n";

@@ -260,8 +260,8 @@ std::string outcome_text(const std::optional<CommandOutcome>& o) {
 /// The number of arguments each verb takes (a negative count: at least that many).
 int arity(const std::string& verb) {
     if (verb == "look" || verb == "pan" || verb == "lookw" || verb == "sail" || verb == "rdown" ||
-        verb == "rup" || verb == "click-land" || verb == "hover-land" || verb == "hover-sea" ||
-        verb == "lpan") {
+        verb == "rup" || verb == "click-land" || verb == "ldown-land" || verb == "lmove-land" ||
+        verb == "lup-land" || verb == "hover-land" || verb == "hover-sea" || verb == "lpan") {
         return 2;
     }
     if (verb == "pick-ship" || verb == "lookship") {
@@ -703,13 +703,16 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             act.look_world =
                 std::pair{std::atof(x->second.c_str()) + 0.5, std::atof(y->second.c_str()) + 0.5};
         } else if (s.verb == "sail" || s.verb == "rdown" || s.verb == "rup" ||
-                   s.verb == "click-land" || s.verb == "hover-land" || s.verb == "hover-sea") {
+                   s.verb == "click-land" || s.verb == "ldown-land" || s.verb == "lmove-land" ||
+                   s.verb == "lup-land" || s.verb == "hover-land" || s.verb == "hover-sea") {
             const auto t = tile_arg(0);
             std::optional<std::pair<double, double>> px;
             if (t && st.frame != nullptr) {
-                px = (s.verb == "click-land" || s.verb == "hover-land")
-                         ? ground_pixel(*st.frame, *t)
-                         : sea_pixel(*st.frame, t->x + 0.5, t->y + 0.5);
+                const bool land_pick = s.verb == "click-land" || s.verb == "ldown-land" ||
+                                       s.verb == "lmove-land" || s.verb == "lup-land" ||
+                                       s.verb == "hover-land";
+                px = land_pick ? ground_pixel(*st.frame, *t)
+                               : sea_pixel(*st.frame, t->x + 0.5, t->y + 0.5);
             }
             if (!px || !(st.density > 0.0F)) {
                 fail(s, "the tile is not drawn in the window");
@@ -717,14 +720,24 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             }
             const std::pair<float, float> at{static_cast<float>(px->first / st.density),
                                              static_cast<float>(px->second / st.density)};
-            push_motion(act.events, at, 0);
-            const bool land = s.verb == "click-land";
-            const std::uint8_t button = land ? SDL_BUTTON_LEFT : SDL_BUTTON_RIGHT;
-            if (s.verb == "sail" || land || s.verb == "rdown") {
-                push_button(act.events, at, button, true);
-            }
-            if (s.verb == "sail" || land || s.verb == "rup") {
-                push_button(act.events, at, button, false);
+            if (s.verb == "lmove-land") {
+                push_motion(act.events, at, SDL_BUTTON_LMASK);
+            } else if (s.verb == "lup-land") {
+                push_motion(act.events, at, SDL_BUTTON_LMASK);
+                push_button(act.events, at, SDL_BUTTON_LEFT, false);
+            } else if (s.verb == "ldown-land") {
+                push_motion(act.events, at, 0);
+                push_button(act.events, at, SDL_BUTTON_LEFT, true);
+            } else {
+                push_motion(act.events, at, 0);
+                const bool land = s.verb == "click-land";
+                const std::uint8_t button = land ? SDL_BUTTON_LEFT : SDL_BUTTON_RIGHT;
+                if (s.verb == "sail" || land || s.verb == "rdown") {
+                    push_button(act.events, at, button, true);
+                }
+                if (s.verb == "sail" || land || s.verb == "rup") {
+                    push_button(act.events, at, button, false);
+                }
             }
         } else if (s.verb == "pick-ship") {
             const auto id = arg(0);

@@ -26,4 +26,12 @@ class World;
 [[nodiscard]] BuildCmd make_road_drag_cmd(CityRef city, TypeId road_type, TileXY start, TileXY end,
                                           std::uint8_t rotation = 0, std::uint32_t cap = 40);
 
+/// ROADS-3: read-only multi-tile prefix verdict returned by `World::check_build_path`.
+struct RoadPathCheck {
+    std::uint32_t valid_prefix = 0; ///< leading site-valid records (stops at first site refusal)
+    std::uint32_t affordable_prefix = 0; ///< leading valid records fitting cumulative budget
+    Reject first_refusal = Reject::None; ///< refusal at affordable/valid boundary, else None
+    friend bool operator==(const RoadPathCheck&, const RoadPathCheck&) = default;
+};
+
 } // namespace anno::sim

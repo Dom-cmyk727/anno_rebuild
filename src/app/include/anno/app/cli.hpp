@@ -42,8 +42,9 @@ inline constexpr const char* kUsage =
     "--city-booking on|off, given together with --rules, sets that one field after the profile. "
     "A save or recording made with one profile refuses to resume or replay with another.)\n"
     "(--play only, developer: [--fisher-rules on|off] creates the world with the fisher rule "
-    "extension on (default off); [--player <n>] is the player slot the developer tool builds "
-    "for (default 1))\n"
+    "extension on (default off); [--road-rules on|off] creates the world with the road drag rules "
+    "extension (default on in --play); [--player <n>] is the player slot the developer tool "
+    "builds for (default 1))\n"
     "(--group 0-2: the built zoom levels; 3 and up: derived levels, --png only, bounded by "
     "--max-derived-levels)\n"
     "(--png only: [--zoom-factor <scale>] [--resample nearest|bilinear|box|area], the picture "
@@ -185,6 +186,11 @@ struct Args {
     /// (sim::ExtensionContext; the sim rule itself stays behind that flag). Off, or absent, is
     /// the default: the world is created with default extensions, as before.
     bool fisher_rules = false;
+    /// --road-rules on|off (ROADS-3): --play developer switch (not --ship-start). When nullopt in
+    /// --play, main.cpp enables `road_rules` so interactive road drags follow the original L-path,
+    /// 40-tile cap, no-downgrade and kind-9 prefix rules while faithful World::create defaults stay
+    /// off.
+    std::optional<bool> road_rules;
     /// --player <n> (FISHER-VIEW-1): --play only - the player slot the developer tool builds for
     /// and the snapshot reports (default commands_file's developer_player(), slot 1). A shipped
     /// scenario seats its human elsewhere (Tutorial/02Trade01: player 2, its city on island 3).

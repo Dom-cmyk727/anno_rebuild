@@ -28,6 +28,7 @@ add_library(anno_app_core
   src/picture_check.cpp
   src/picture_trace.cpp
   src/placement_ghost.cpp
+  src/road_drag_ui.cpp
   src/play.cpp
   src/play_follow.cpp
   src/png.cpp
@@ -98,7 +99,7 @@ if(ANNO_BUILD_TESTS)
     tests/minimap_test.cpp tests/hud_tabs_test.cpp tests/status_bar_test.cpp
     tests/balance_rows_test.cpp tests/atlas_pages_lan5_test.cpp tests/info_preview_test.cpp
     tests/fertility_indicator_test.cpp tests/tile_object_picture_test.cpp
-    tests/placement_ghost_test.cpp)
+    tests/placement_ghost_test.cpp tests/road_drag_ui_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   target_compile_definitions(anno_app_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic"
@@ -433,6 +434,25 @@ if(ANNO_BUILD_TESTS)
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/ghost_pixel_check.py
                 $<TARGET_FILE:anno1503>)
       set_tests_properties(viewer_wiring_ui_ghost_pixel_check PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 300 PROCESSORS 4)
+      # ROADS-3 / UI-ROADS-1: press-hold L-drag road building from the construction menu,
+      # live ghost path, unaffordable tail blink, yellow 1x1 refusal rectangle, 40-tile cap,
+      # stay armed on release, right-click disarm (ANNO_DEV_GOLD=20 -> 4 affordable tiles of 7).
+      add_test(NAME viewer_wiring_ui_roads
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_roads
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_roads PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4
+        ENVIRONMENT "ANNO_DEV_GOLD=20")
+      # ROADS-3: pixel check on ui_roads screenshots (refusal diamond, live L-drag ghost path,
+      # unaffordable tail blink diff between phase 0 and phase 1, chrome stays on top).
+      add_test(NAME viewer_wiring_ui_roads_pixel_check
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/roads_ghost_pixel_check.py
+                $<TARGET_FILE:anno1503>)
+      set_tests_properties(viewer_wiring_ui_roads_pixel_check PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 300 PROCESSORS 4)
       # W4-UI-2 V2: construction_full_proof's own recording (commands.txt/hashes.txt), replayed
       # headlessly in a fresh process (main.cpp's --commands/--replay-hashes, no window, no SDL -

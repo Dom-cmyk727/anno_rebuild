@@ -626,3 +626,91 @@ TEST_CASE("road drag: Anlagen.dat road corpus classification") {
         }
     }
 }
+
+TEST_CASE("check_build_path: valid/affordable prefixes, tail site refusal, same-family free, cap") {
+    const RoadKit kit = make_kit();
+
+    // 1. Partial affordability with remaining site-valid tail: 20 gold -> 4 affordable, 7 valid.
+    {
+        sim::World w = make_road_world(kit, default_road_rules(), 20);
+        const std::uint64_t hash_before = w.state_hash();
+        const auto cmd =
+            sim::make_road_drag_cmd(kCity0, kit.dirt, {kX0 + 1, kY0 + 10}, {kX0 + 7, kY0 + 10});
+        const sim::RoadPathCheck c = w.check_build_path(kCity0, cmd.placements);
+        CHECK(c.valid_prefix == 7);
+        CHECK(c.affordable_prefix == 4);
+        CHECK(c.first_refusal == sim::Reject::CannotAfford);
+        CHECK(w.state_hash() == hash_before);
+    }
+
+    // 2. Site obstacle stops valid_prefix after affordable/unaffordable tiles alike.
+    {
+        sim::World w =
+            make_road_world(kit, default_road_rules(), 30); // house costs 10 -> 20 gold left
+        sim::BuildCmd house;
+        house.city = kCity0;
+        house.placements.push_back({kit.house, kX0 + 6, kY0 + 10, 0, 0, 0});
+        REQUIRE(w.apply({sim::PlayerId{0}, house}).ok());
+        const auto cmd =
+            sim::make_road_drag_cmd(kCity0, kit.dirt, {kX0 + 1, kY0 + 10}, {kX0 + 8, kY0 + 10});
+        const sim::RoadPathCheck c = w.check_build_path(kCity0, cmd.placements);
+        // Tiles 0..3 affordable (20 gold), tile 4 valid-unaffordable, tile 5+6 house (Occupied).
+        CHECK(c.valid_prefix == 5);
+        CHECK(c.affordable_prefix == 4);
+        CHECK(c.first_refusal == sim::Reject::CannotAfford);
+
+        // Tile 0 itself occupied -> valid_prefix == 0, affordable_prefix == 0.
+        const auto blocked =
+            sim::make_road_drag_cmd(kCity0, kit.dirt, {kX0 + 6, kY0 + 10}, {kX0 + 7, kY0 + 10});
+        const sim::RoadPathCheck c0 = w.check_build_path(kCity0, blocked.placements);
+        CHECK(c0.valid_prefix == 0);
+        CHECK(c0.affordable_prefix == 0);
+        CHECK(c0.first_refusal == sim::Reject::Occupied);
+    }
+
+    // 3. Same-family re-lay extends affordable prefix; downgrade stops prefix.
+    {
+        sim::World w = make_road_world(kit, default_road_rules(), 100);
+        REQUIRE(w.apply({sim::PlayerId{0},
+                         sim::make_road_drag_cmd(kCity0, kit.dirt, {kX0 + 2, kY0 + 12},
+                                                 {kX0 + 2, kY0 + 12})})
+                    .ok());
+        REQUIRE(w.apply({sim::PlayerId{0},
+                         sim::make_road_drag_cmd(kCity0, kit.cobble, {kX0 + 4, kY0 + 12},
+                                                 {kX0 + 4, kY0 + 12})})
+                    .ok());
+        sim::World w_poor = make_road_world(kit, default_road_rules(), 10);
+        REQUIRE(w_poor
+                    .apply({sim::PlayerId{0},
+                            sim::make_road_drag_cmd(kCity0, kit.dirt, {kX0 + 2, kY0 + 12},
+                                                    {kX0 + 2, kY0 + 12})})
+                    .ok());
+        // Remaining money: 5 gold. Drag (1,12)->(4,12): tile 0 pays 5 (0 left), tile 1 re-lay is
+        // FREE, tile 2 cannot afford (valid=3, affordable=2).
+        const auto cmd = sim::make_road_drag_cmd(kCity0, kit.dirt_corner, {kX0 + 1, kY0 + 12},
+                                                 {kX0 + 4, kY0 + 12});
+        const sim::RoadPathCheck c_free = w_poor.check_build_path(kCity0, cmd.placements);
+        CHECK(c_free.valid_prefix == 4);
+        CHECK(c_free.affordable_prefix == 2);
+        CHECK(c_free.first_refusal == sim::Reject::CannotAfford);
+
+        // Downgrade over cobblestone at (4, 12): stops before (4, 12) (valid_prefix == 3).
+        const sim::RoadPathCheck c_down = w.check_build_path(kCity0, cmd.placements);
+        CHECK(c_down.valid_prefix == 3);
+        CHECK(c_down.affordable_prefix == 3);
+        CHECK(c_down.first_refusal == sim::Reject::Occupied);
+    }
+
+    // 4. drag_cap truncates valid_prefix and sets PrefixStopped.
+    {
+        sim::RoadRules rr = default_road_rules();
+        rr.drag_cap = 3;
+        sim::World w = make_road_world(kit, rr, 100);
+        const auto cmd =
+            sim::make_road_drag_cmd(kCity0, kit.dirt, {kX0 + 1, kY0 + 14}, {kX0 + 6, kY0 + 14});
+        const sim::RoadPathCheck c = w.check_build_path(kCity0, cmd.placements);
+        CHECK(c.valid_prefix == 3);
+        CHECK(c.affordable_prefix == 3);
+        CHECK(c.first_refusal == sim::Reject::PrefixStopped);
+    }
+}

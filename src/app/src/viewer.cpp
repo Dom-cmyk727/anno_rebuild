@@ -26,6 +26,7 @@
 #include <anno/app/live_resize.hpp>
 #include <anno/app/placement_ghost.hpp>
 #include <anno/app/png.hpp>
+#include <anno/app/road_drag_ui.hpp>
 #include <anno/app/sdl_input.hpp>
 #include <anno/app/section_overlap.hpp>
 #include <anno/app/selection.hpp>
@@ -882,8 +883,16 @@ class Viewer {
     std::optional<std::pair<double, double>> ghost_pointer_;
     assets::Rgba ghost_canvas_;
     std::uint64_t ghost_pixels_ = 0;
+    /// ROADS-3: live road ghost path, plan, probe match state and drawn sprite count.
+    std::vector<sim::PlacementWire> road_ghost_path_;
+    RoadGhostPlan road_ghost_plan_;
+    bool road_probe_matched_ = false;
+    std::size_t road_ghost_drawn_ = 0;
+    bool last_road_commit_matched_preview_ = false;
+    [[nodiscard]] std::vector<Preview> road_ghost_previews(const render::Scene& scene,
+                                                           std::uint64_t time) const;
     /// Asks the sim about the record a click would send (PlayRunner::request_build_probe) and
-    /// chooses the state from the latest published answer. True when the state changed.
+    /// chooses the state from the latest published answer. True when what is shown changed.
     bool ghost_refresh();
     /// Advances the blink by the window milliseconds since the last tick and refreshes the state;
     /// marks the frame dirty when what the ghost shows changed.
@@ -1584,8 +1593,26 @@ void Viewer::handle(const SDL_Event& e) {
         // receipts are kept for the feedback.
         const bool was_on = dev_->enabled();
         const auto hovered = dev_->hover();
+        const auto ghost_hovered = dev_->ghost_hover();
+        const bool check_road_commit = e.type == SDL_EVENT_MOUSE_BUTTON_UP &&
+                                       e.button.button == SDL_BUTTON_LEFT &&
+                                       dev_->land_road_armed();
+        std::vector<sim::TypeId> expected_road_variants;
+        if (check_road_commit && !road_ghost_path_.empty()) {
+            expected_road_variants.reserve(road_ghost_path_.size());
+            for (const sim::PlacementWire& w : road_ghost_path_) {
+                expected_road_variants.push_back(w.type);
+            }
+        }
         ToolStep step = dev_tool_step(*dev_, e, SDL_GetWindowPixelDensity(window_),
                                       pointer_frame_ ? &*pointer_frame_ : nullptr);
+        if (check_road_commit && !step.commands.empty() &&
+            !dev_->input().last_commit_variants().empty()) {
+            const auto committed = dev_->input().last_commit_variants();
+            last_road_commit_matched_preview_ =
+                committed.size() == expected_road_variants.size() &&
+                std::equal(committed.begin(), committed.end(), expected_road_variants.begin());
+        }
         for (sim::Command& command : step.commands) {
             latest_receipt_ = play_->runner().post_command(std::move(command));
         }
@@ -1603,7 +1630,9 @@ void Viewer::handle(const SDL_Event& e) {
                 }
             }
             // A motion within the same tile changes nothing shown: no redraw, no new title.
-            if (e.type != SDL_EVENT_MOUSE_MOTION || dev_->hover() != hovered) {
+            if (e.type != SDL_EVENT_MOUSE_MOTION || dev_->hover() != hovered ||
+                dev_->ghost_hover() != ghost_hovered) {
+                static_cast<void>(ghost_refresh());
                 update_title();
                 dirty_ = true;
             }
@@ -1964,6 +1993,7 @@ void Viewer::disarm_tool() {
         }
         drag_ = false;
     }
+    static_cast<void>(ghost_refresh());
 }
 
 void Viewer::construction_close() {
@@ -2901,13 +2931,74 @@ void Viewer::refresh_visibility_title() {
     }
 }
 
+std::vector<Preview> Viewer::road_ghost_previews(const render::Scene& scene,
+                                                 std::uint64_t time) const {
+    std::vector<Preview> out;
+    if (dev_ == nullptr || !dev_->land_road_armed()) {
+        return out;
+    }
+    const std::size_t n = std::min(road_ghost_plan_.draw_count, road_ghost_path_.size());
+    out.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        const sim::PlacementWire& rec = road_ghost_path_[i];
+        if (auto p =
+                make_type_preview(scene, rec.type, rec.rotation, {rec.x, rec.y}, group_, time)) {
+            out.push_back(std::move(*p));
+        }
+    }
+    // Painter's order so isometric depth overlaps consistently across multi-tile road ghosts.
+    std::sort(out.begin(), out.end(), [](const Preview& a, const Preview& b) {
+        const std::uint32_t da = static_cast<std::uint32_t>(a.object.first.x) +
+                                 static_cast<std::uint32_t>(a.object.first.y);
+        const std::uint32_t db = static_cast<std::uint32_t>(b.object.first.x) +
+                                 static_cast<std::uint32_t>(b.object.first.y);
+        return da != db ? da < db : a.object.first.x < b.object.first.x;
+    });
+    return out;
+}
+
 bool Viewer::ghost_refresh() {
     const GhostState before = ghost_;
-    GhostInputs in;
-    std::optional<BuildProbe> probe;
-    const sim::BuildingType* type = dev_ != nullptr ? dev_->input().selected_type() : nullptr;
+    const std::size_t prev_draw = road_ghost_plan_.draw_count;
+    const std::size_t prev_path_size = road_ghost_path_.size();
+    const bool pointer_on_chrome = construction_menu_ != nullptr && ghost_pointer_ &&
+                                   ui_hit_at(ghost_pointer_->first, ghost_pointer_->second).chrome;
     const std::optional<sim::TileXY> hover =
         dev_ != nullptr ? dev_->ghost_hover() : std::optional<sim::TileXY>{};
+    if (dev_ != nullptr && dev_->land_road_armed() && hover && dev_->setup().city) {
+        if (play_ != nullptr) {
+            play_->runner().request_build_probe(std::nullopt);
+        }
+        road_ghost_path_ = dev_->input().road_preview_placements(*hover);
+        RoadPathProbe probe{*dev_->setup().city, road_ghost_path_};
+        std::optional<sim::RoadPathCheck> verdict;
+        if (play_ != nullptr) {
+            play_->runner().request_road_probe(probe);
+            const auto snap = play_->runner().snapshot();
+            if (snap && snap->road_probe && snap->road_probe->probe == probe) {
+                verdict = snap->road_probe->check;
+            }
+        }
+        road_probe_matched_ = verdict.has_value();
+        road_ghost_plan_ =
+            plan_road_ghost(RoadGhostInputs{true, pointer_on_chrome, road_ghost_path_.size(),
+                                            verdict, ghost_, ghost_blink_.hidden()});
+        if (!road_probe_matched_ && road_ghost_plan_.state != GhostState::Hidden) {
+            road_ghost_plan_.draw_count = std::min(prev_draw, road_ghost_path_.size());
+            road_ghost_plan_.draw_refusal_box = (road_ghost_plan_.state == GhostState::Refused);
+        }
+        ghost_ = road_ghost_plan_.state;
+        return ghost_ != before || road_ghost_plan_.draw_count != prev_draw ||
+               road_ghost_path_.size() != prev_path_size;
+    }
+
+    road_ghost_path_.clear();
+    road_ghost_plan_ = {};
+    road_probe_matched_ = false;
+    GhostInputs in;
+    in.pointer_on_chrome = pointer_on_chrome;
+    std::optional<BuildProbe> probe;
+    const sim::BuildingType* type = dev_ != nullptr ? dev_->input().selected_type() : nullptr;
     if (dev_ != nullptr && dev_->enabled() && !dev_->input().demolish_mode() && type != nullptr &&
         hover && dev_->setup().city) {
         in.armed = true;
@@ -2918,15 +3009,8 @@ bool Viewer::ghost_refresh() {
         probe = BuildProbe{*dev_->setup().city,
                            sim::PlacementWire{type->id, o.x, o.y, dev_->turn(), 0, 0}};
     }
-    // The whole-map hover (DevTool::ghost_hover, UI-GHOST-1 R1): off the city's island the sim
-    // answers OutOfIsland / TileNotOwned / TerrainRefused, so the refused footprint shows there as
-    // the original's does everywhere (OQ-760 resolved).
-    // HE-observed, GOG unread (OQ-757): the ghost and its radius outline hide while the pointer is
-    // over the drawn chrome (docs/BUILDINGSOBJECTS.md part B 5.1 (4)).
-    if (construction_menu_ != nullptr && ghost_pointer_) {
-        in.pointer_on_chrome = ui_hit_at(ghost_pointer_->first, ghost_pointer_->second).chrome;
-    }
     if (play_ != nullptr) {
+        play_->runner().request_road_probe(std::nullopt);
         play_->runner().request_build_probe(probe);
         if (probe) {
             const auto snap = play_->runner().snapshot();
@@ -2936,7 +3020,7 @@ bool Viewer::ghost_refresh() {
         }
     }
     ghost_ = ghost_state(in, ghost_);
-    return ghost_ != before;
+    return ghost_ != before || prev_draw != 0 || prev_path_size != 0;
 }
 
 void Viewer::ghost_tick() {
@@ -2954,9 +3038,11 @@ void Viewer::ghost_tick() {
         ghost_tick_at_ = now;
     }
     const bool shown_before = ghost_building_shown();
+    const std::size_t road_before = road_ghost_plan_.draw_count;
     static_cast<void>(ghost_blink_.advance(dt));
     const bool changed = ghost_refresh();
-    if (changed || ghost_building_shown() != shown_before) {
+    if (changed || ghost_building_shown() != shown_before ||
+        road_ghost_plan_.draw_count != road_before) {
         dirty_ = true;
     }
 }
@@ -2976,6 +3062,9 @@ std::optional<Viewer::GhostLines> Viewer::ghost_lines(const render::Scene& scene
     if (!hover || type == nullptr) {
         return std::nullopt;
     }
+    if (dev_->land_road_armed() && !road_ghost_plan_.draw_refusal_box) {
+        return std::nullopt; // Roads draw no radius outline; only the yellow refusal rectangle.
+    }
     const auto extent = dev_->input().footprint_extent(*hover, dev_->turn());
     if (!extent || extent->w == 0 || extent->h == 0) {
         return std::nullopt;
@@ -2983,8 +3072,9 @@ std::optional<Viewer::GhostLines> Viewer::ghost_lines(const render::Scene& scene
     const GhostBox box{extent->x0, extent->y0, extent->w, extent->h};
     GhostLines out;
     // Refused: the footprint only (0x1004846b); valid and unaffordable: the radius (0x10048491).
-    out.edges = ghost_ == GhostState::Refused ? footprint_outline(box)
-                                              : radius_outline(box, type->action_radius);
+    out.edges = (ghost_ == GhostState::Refused || dev_->land_road_armed())
+                    ? footprint_outline(box)
+                    : radius_outline(box, type->action_radius);
     if (out.edges.empty()) {
         return std::nullopt;
     }
@@ -3310,6 +3400,9 @@ void Viewer::script_tick() {
     // the rotate arrows turn), and the turn the map ghost is drawn and a click builds at
     // (DevTool::turn: the same, or the coast's turn for a coast kind such as the Kontor).
     const bool tool_armed = dev_ != nullptr && dev_->enabled() && dev_->input().selected();
+    st.facts["tool.armed"] = tool_armed && !dev_->input().demolish_mode()
+                                 ? std::to_string(dev_->input().selected()->v)
+                                 : std::string("none");
     st.facts["ui.info.rotation"] = construction_placement_open_ && tool_armed
                                        ? std::to_string(dev_->input().rotation())
                                        : std::string("none");
@@ -3320,15 +3413,28 @@ void Viewer::script_tick() {
     st.facts["tool.ghost.phase"] = ghost_blink_.hidden() ? "1" : "0";
     st.facts["tool.ghost.flips"] = std::to_string(ghost_blink_.flips());
     st.facts["tool.ghost.pixels"] = std::to_string(ghost_pixels_);
+    // ROADS-3: road drag path, sim prefix verdict, drawn sprites and preview/commit parity.
+    const bool road_armed = dev_ != nullptr && dev_->land_road_armed();
+    st.facts["tool.road.dragging"] = (road_armed && dev_->input().pressed()) ? "1" : "0";
+    st.facts["tool.road.path"] = std::to_string(road_ghost_path_.size());
+    st.facts["tool.road.ready"] = (road_armed && road_probe_matched_) ? "1" : "0";
+    st.facts["tool.road.valid"] = (road_armed && road_probe_matched_)
+                                      ? std::to_string(road_ghost_plan_.valid_count)
+                                      : std::string("pending");
+    st.facts["tool.road.affordable"] = (road_armed && road_probe_matched_)
+                                           ? std::to_string(road_ghost_plan_.affordable_count)
+                                           : std::string("pending");
+    st.facts["tool.road.unaffordable"] =
+        (road_armed && road_probe_matched_)
+            ? std::to_string(road_ghost_plan_.valid_count - road_ghost_plan_.affordable_count)
+            : std::string("pending");
+    st.facts["tool.road.drawn"] = std::to_string(road_ghost_drawn_);
+    st.facts["tool.road.commit_matched_preview"] = last_road_commit_matched_preview_ ? "1" : "0";
     // UI-PRODBAR-1 B1: the fertility indicator over the ghost (fertility_indicator.hpp,
-    // docs/re/ui.md 4.1). Named placeholder `fertility-indicator-needs-sim` (OQ-715): the window
-    // has no FertilityTileSource until the sim answers the crop test and the tile-object
-    // placement, so the decision stops there and no bar is drawn. The gates as this window knows
-    // them: a preview the window's own knowledge does not refuse, one ghost (always the last), a
-    // footprint with tiles, the armed type in the registry; the projection is the frame drawn.
+    // docs/re/ui.md 4.1). Roads never show a fertility bar (`BUILDINGSOBJECTS.md` §10.1 item 9).
     {
         std::string fertility = "none";
-        if (tool_armed && !dev_->input().demolish_mode() && dev_->hover()) {
+        if (tool_armed && !dev_->input().demolish_mode() && !road_armed && dev_->hover()) {
             const sim::TileXY fert_hover = *dev_->hover();
             const auto fert_extent = dev_->input().footprint_extent(fert_hover);
             const auto fert_snap = play_ != nullptr ? play_->runner().snapshot() : nullptr;
@@ -4012,9 +4118,17 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     // indicator over it (UI-PRODBAR-1, figure 1557) is the named placeholder
     // `fertility-indicator-needs-sim` until a FertilityTileSource exists (OQ-715): nothing drawn.
     std::vector<render::SpriteDraw> overlay;
-    if (dev_ != nullptr && ghost_building_shown()) {
-        if (auto p = make_preview(*dev_, *gen, group_, time_ms())) {
-            overlay = std::move(p->sprites);
+    road_ghost_drawn_ = 0;
+    if (dev_ != nullptr) {
+        if (dev_->land_road_armed()) {
+            for (Preview& p : road_ghost_previews(*gen, time_ms())) {
+                overlay.insert(overlay.end(), p.sprites.begin(), p.sprites.end());
+                ++road_ghost_drawn_;
+            }
+        } else if (ghost_building_shown()) {
+            if (auto p = make_preview(*dev_, *gen, group_, time_ms())) {
+                overlay = std::move(p->sprites);
+            }
         }
     }
     if (opening_ != nullptr) {
@@ -4410,8 +4524,15 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         }
     }
     ghost_pixels_ = 0;
+    road_ghost_drawn_ = 0;
     if (dev_ != nullptr) {
-        if (ghost_building_shown()) {
+        if (dev_->land_road_armed()) {
+            const auto previews = road_ghost_previews(*gen, time_ms());
+            for (const Preview& p : previews) {
+                blend_preview(*gen, p, group_, time_ms(), view, buffer_.data());
+            }
+            road_ghost_drawn_ = previews.size();
+        } else if (ghost_building_shown()) {
             if (const auto p = make_preview(*dev_, *gen, group_, time_ms())) {
                 blend_preview(*gen, *p, group_, time_ms(), view, buffer_.data());
                 // UI-PRODBAR-1: the fertility indicator (blend_fertility_frame, figure 1557) goes

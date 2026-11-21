@@ -305,11 +305,13 @@ int run(const std::vector<std::string>& raw) {
     // The ship-start opening (--ship-start): what was loaded besides the PlayLoad.
     std::optional<anno::app::OpeningLoad> opening;
     std::vector<anno::app::SceneBuilding> buildings;
+    std::vector<anno::app::SceneTileObject> tile_objects;
     std::vector<anno::app::ScriptedCommand> commands;
-    // The loader's classification of Anlagen ids as a table, taken from the world before it moves
+    // The loader's classification of Anlagen ids as tables, taken from the world before it moves
     // into the runner (the ids below kPictureAnlageIds, those ScenePicture classifies): nothing on
     // the window side reads the world afterwards.
     std::vector<bool> building_classes;
+    std::vector<bool> tile_object_classes;
     std::vector<anno::app::ShipLayer::Wanted> ship_kinds;
     anno::app::SceneObjects objects;
     const anno::app::SceneObjects* objects_ptr = nullptr;
@@ -381,18 +383,25 @@ int run(const std::vector<std::string>& raw) {
                                  *args->replay_hashes, opening ? &opening->identity : nullptr);
         }
         buildings = anno::app::play_buildings(play->world);
+        tile_objects = anno::app::play_tile_objects(play->world);
         if (opening) {
             ship_kinds = anno::app::opening_ship_kinds(play->world);
         }
         building_classes.assign(anno::app::kPictureAnlageIds, false);
+        tile_object_classes.assign(anno::app::kPictureAnlageIds, false);
         for (std::size_t id = 0; id < building_classes.size(); ++id) {
-            building_classes[id] =
-                anno::app::anlage_is_building(play->world, static_cast<std::uint16_t>(id));
+            const auto uid = static_cast<std::uint16_t>(id);
+            building_classes[id] = anno::app::anlage_is_building(play->world, uid);
+            tile_object_classes[id] = anno::app::anlage_is_tracked_tile_object(play->world, uid);
         }
         objects.is_building = [&building_classes](std::uint16_t id) {
             return id < building_classes.size() && building_classes[id];
         };
         objects.buildings = buildings;
+        objects.is_tile_object = [&tile_object_classes](std::uint16_t id) {
+            return id < tile_object_classes.size() && tile_object_classes[id];
+        };
+        objects.tile_objects = tile_objects;
         objects_ptr = &objects;
         links = play->links;
     }
@@ -560,6 +569,7 @@ int run(const std::vector<std::string>& raw) {
         // scene as loaded and the buildings at tick 0, before the world moves into the runner.
         // Two builders (PictureLimits holds the other bounds with their reasons).
         anno::app::sort_buildings(buildings);
+        anno::app::sort_tile_objects(tile_objects);
         anno::app::PictureLimits limits;
         if (trace) {
             // The bridge's steps, from the window thread and the builders (WindowTrace is
@@ -570,8 +580,9 @@ int run(const std::vector<std::string>& raw) {
                              version);
             };
         }
-        picture = std::make_unique<anno::app::ScenePicture>(shown, buildings, objects.is_building,
-                                                            2, std::move(limits));
+        picture = std::make_unique<anno::app::ScenePicture>(
+            shown, buildings, tile_objects, objects.is_building, objects.is_tile_object, 2,
+            std::move(limits));
         // FISHER-VIEW-1: --player picks the developer tool's player for --play (a shipped scenario
         // seats its human elsewhere than slot 1).
         const anno::sim::PlayerId tool_player =

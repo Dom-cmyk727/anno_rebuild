@@ -3228,6 +3228,11 @@ void Viewer::script_tick() {
         st.snapshot->inspection->id == selection_.selected->id) {
         st.facts["selection.kind"] = st.snapshot->inspection->kind;
     }
+    if (play_ != nullptr) {
+        st.facts["picture.tile_objects"] =
+            std::to_string(play_->picture().live_tile_object_count());
+        st.facts["picture.cleared_tiles"] = std::to_string(play_->picture().cleared_tile_count());
+    }
     if (opening_ != nullptr) {
         for (auto& [key, value] : opening_facts()) {
             st.facts[key] = std::move(value);

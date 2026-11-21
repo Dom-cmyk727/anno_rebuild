@@ -80,7 +80,14 @@ wait outcome
 expect outcome Refused Occupied
 wait drawn
 expect visibility NoVisualChange
+# (1188, 516) on lan5 holds a forest tree cleared visually by ROADS-0: the first demolish clears
+# that tree visibly, and demolishing the now-empty tile a second time leaves the picture unchanged.
 key x
+click 1188 516
+wait outcome
+expect outcome Applied
+wait drawn
+expect visibility Visible
 click 1188 516
 wait outcome
 expect outcome Applied

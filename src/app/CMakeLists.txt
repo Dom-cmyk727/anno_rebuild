@@ -96,7 +96,7 @@ if(ANNO_BUILD_TESTS)
     tests/construction_menu_test.cpp tests/inspect_building_test.cpp tests/selection_test.cpp
     tests/minimap_test.cpp tests/hud_tabs_test.cpp tests/status_bar_test.cpp
     tests/balance_rows_test.cpp tests/atlas_pages_lan5_test.cpp tests/info_preview_test.cpp
-    tests/fertility_indicator_test.cpp)
+    tests/fertility_indicator_test.cpp tests/tile_object_picture_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   target_compile_definitions(anno_app_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic"
@@ -156,7 +156,7 @@ if(ANNO_BUILD_TESTS)
     # publication and R4's occupancy wiring. They need the original game files and skip (77)
     # without them. Reverting the window's call sites fails them (docs/app/game-shell.md).
     if(Python3_FOUND)
-      foreach(case r1_held_publication r4_occupancy)
+      foreach(case r1_held_publication r4_occupancy roads_picture_objects)
         add_test(NAME viewer_wiring_${case}
           COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
                   $<TARGET_FILE:anno1503> ${case})

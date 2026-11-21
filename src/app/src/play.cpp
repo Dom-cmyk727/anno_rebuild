@@ -382,6 +382,47 @@ bool anlage_is_building(const sim::World& world, std::uint16_t anlage) {
     return world.config().layout.list_for(type->prodtype).has_value();
 }
 
+bool anlage_is_tracked_tile_object(const sim::World& world, std::uint32_t anlage) {
+    const sim::BuildingType* type = world.types().find(sim::TypeId{anlage});
+    if (type == nullptr || world.config().layout.list_for(type->prodtype).has_value()) {
+        return false;
+    }
+    return (type->flags_word & sim::kRoadFlag) != 0;
+}
+
+std::vector<SceneTileObject> play_tile_objects(const sim::World& world) {
+    std::vector<SceneTileObject> out;
+    const auto& islands = world.islands();
+    for (std::size_t i = 0; i < islands.size(); ++i) {
+        if (!islands[i]) {
+            continue;
+        }
+        const sim::TileLayer& tiles = islands[i]->tiles;
+        const std::uint32_t w = tiles.width();
+        if (w == 0) {
+            continue;
+        }
+        const std::uint32_t slot = static_cast<std::uint32_t>(i);
+        const std::uint64_t n = tiles.tile_count();
+        for (std::uint64_t idx = 0; idx < n; ++idx) {
+            const std::uint32_t obj = tiles.object(idx);
+            if (obj == 0 || tiles.foot_dx(idx) != 0 || tiles.foot_dy(idx) != 0 ||
+                !anlage_is_tracked_tile_object(world, obj)) {
+                continue;
+            }
+            const std::uint64_t lx = idx % w;
+            const std::uint64_t ly = idx / w;
+            if (lx > 65535 || ly > 65535) {
+                continue;
+            }
+            out.push_back(SceneTileObject{slot, obj, static_cast<std::uint16_t>(lx),
+                                          static_cast<std::uint16_t>(ly), tiles.foot_rotation(idx),
+                                          tiles.item_height(idx), tiles.phase(idx)});
+        }
+    }
+    return out;
+}
+
 PlayRunner::PlayRunner(sim::World world, unsigned speed_percent, PlaySchedule* schedule)
     : world_(std::move(world)), schedule_(schedule) {
     if (schedule_ == nullptr) {
@@ -401,9 +442,42 @@ PlayRunner::PlayRunner(sim::World world, unsigned speed_percent, PlaySchedule* s
             std::make_shared<const std::vector<MapFigure>>(collect_map_figures(world_));
         snap_ = std::move(first);
     }
-    // The picture was built from these buildings at load, so the first diff starts here.
+    // The picture was built from these buildings and tracked tile objects at load, so the first
+    // diff starts here.
     buildings_ = play_buildings(world_);
     sort_buildings(buildings_);
+    building_type_mask_.assign(kPictureAnlageIds, 0);
+    tracked_type_mask_.assign(kPictureAnlageIds, 0);
+    for (const sim::BuildingType& type : world_.types().types()) {
+        if (type.id.v >= kPictureAnlageIds) {
+            continue;
+        }
+        if (world_.config().layout.list_for(type.prodtype).has_value()) {
+            building_type_mask_[type.id.v] = 1;
+        } else if ((type.flags_word & sim::kRoadFlag) != 0) {
+            tracked_type_mask_[type.id.v] = 1;
+        }
+    }
+    const auto& islands = world_.islands();
+    initial_scenery_.resize(islands.size());
+    for (std::size_t i = 0; i < islands.size(); ++i) {
+        if (!islands[i]) {
+            continue;
+        }
+        const sim::TileLayer& tiles = islands[i]->tiles;
+        const std::uint64_t n = tiles.tile_count();
+        auto& mask = initial_scenery_[i];
+        mask.assign(static_cast<std::size_t>(n), 0);
+        for (std::uint64_t idx = 0; idx < n; ++idx) {
+            const std::uint32_t obj = tiles.object(idx);
+            if (obj != 0 && !is_building_id(obj) && !is_tracked_id(obj) &&
+                tiles.foot_dx(idx) == 0 && tiles.foot_dy(idx) == 0) {
+                mask[static_cast<std::size_t>(idx)] = 1;
+            }
+        }
+    }
+    tile_objects_ = collect_tile_objects();
+    sort_tile_objects(tile_objects_);
     // The developer player's first city (the one the developer input builds in).
     for (std::size_t i = 0; i < world_.islands().size() && !developer_city_; ++i) {
         const auto& island = world_.islands()[i];
@@ -885,17 +959,95 @@ const BuildingInspection* live_inspection(const PlaySnapshot& snapshot, bool dev
     return snapshot.inspection.get();
 }
 
+bool PlayRunner::is_building_id(std::uint32_t id) const {
+    if (id < building_type_mask_.size()) {
+        return building_type_mask_[id] != 0;
+    }
+    const sim::BuildingType* type = world_.types().find(sim::TypeId{id});
+    return type != nullptr && world_.config().layout.list_for(type->prodtype).has_value();
+}
+
+bool PlayRunner::is_tracked_id(std::uint32_t id) const {
+    if (id < tracked_type_mask_.size()) {
+        return tracked_type_mask_[id] != 0;
+    }
+    return anlage_is_tracked_tile_object(world_, id);
+}
+
+std::vector<SceneTileObject> PlayRunner::collect_tile_objects() const {
+    std::vector<SceneTileObject> out;
+    const auto& islands = world_.islands();
+    for (std::size_t i = 0; i < islands.size(); ++i) {
+        if (!islands[i]) {
+            continue;
+        }
+        const sim::TileLayer& tiles = islands[i]->tiles;
+        const std::uint32_t w = tiles.width();
+        if (w == 0) {
+            continue;
+        }
+        const std::uint32_t slot = static_cast<std::uint32_t>(i);
+        const std::uint64_t n = tiles.tile_count();
+        const auto& init_mask = initial_scenery_[i];
+        for (std::uint64_t idx = 0; idx < n; ++idx) {
+            const std::uint32_t obj = tiles.object(idx);
+            const bool init_scenery = init_mask[static_cast<std::size_t>(idx)] != 0;
+            if (obj == 0) {
+                if (!init_scenery) {
+                    continue;
+                }
+                const std::uint64_t lx = idx % w;
+                const std::uint64_t ly = idx / w;
+                if (lx <= 65535 && ly <= 65535) {
+                    out.push_back(SceneTileObject{slot, 0, static_cast<std::uint16_t>(lx),
+                                                  static_cast<std::uint16_t>(ly), 0, 0, 0});
+                }
+                continue;
+            }
+            if (is_tracked_id(obj)) {
+                if (tiles.foot_dx(idx) == 0 && tiles.foot_dy(idx) == 0) {
+                    const std::uint64_t lx = idx % w;
+                    const std::uint64_t ly = idx / w;
+                    if (lx <= 65535 && ly <= 65535) {
+                        out.push_back(SceneTileObject{slot, obj, static_cast<std::uint16_t>(lx),
+                                                      static_cast<std::uint16_t>(ly),
+                                                      tiles.foot_rotation(idx),
+                                                      tiles.item_height(idx), tiles.phase(idx)});
+                    }
+                }
+                continue;
+            }
+            if (init_scenery && is_building_id(obj)) {
+                const std::uint64_t lx = idx % w;
+                const std::uint64_t ly = idx / w;
+                if (lx <= 65535 && ly <= 65535) {
+                    out.push_back(SceneTileObject{slot, 0, static_cast<std::uint16_t>(lx),
+                                                  static_cast<std::uint16_t>(ly), 0, 0, 0});
+                }
+            }
+        }
+    }
+    return out;
+}
+
 std::shared_ptr<const BuildingBatch> PlayRunner::building_batch(std::uint64_t turn) {
     std::vector<SceneBuilding> cur = play_buildings(world_);
     sort_buildings(cur);
     std::vector<BuildingDelta> deltas = diff_sorted_buildings(buildings_, cur);
     buildings_ = std::move(cur);
-    if (deltas.empty()) {
+
+    std::vector<SceneTileObject> cur_tiles = collect_tile_objects();
+    sort_tile_objects(cur_tiles);
+    std::vector<TileObjectDelta> tile_deltas = diff_sorted_tile_objects(tile_objects_, cur_tiles);
+    tile_objects_ = std::move(cur_tiles);
+
+    if (deltas.empty() && tile_deltas.empty()) {
         return nullptr;
     }
     auto batch = std::make_shared<BuildingBatch>();
     batch->turn = turn;
     batch->deltas = std::move(deltas);
+    batch->tile_deltas = std::move(tile_deltas);
     return batch;
 }
 
@@ -1046,6 +1198,7 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
     // the island count, and the test "a prepared copy made when full is unused" covers the
     // interleaving (round du, step 6).
     std::vector<SceneBuilding> full_list;
+    std::vector<SceneTileObject> full_tiles;
     bool may_collapse = false;
     {
         std::lock_guard lock(snap_mu_);
@@ -1053,6 +1206,7 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
     }
     if (may_collapse) {
         full_list = buildings_;
+        full_tiles = tile_objects_;
     }
     const bool pushed = batch != nullptr;
     // The outcomes are recorded before the snapshot that follows them is published, so a reader
@@ -1086,13 +1240,13 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
             }
         }
         observed->batch = pushed;
-        observed->deltas = batch ? batch->deltas.size() : 0;
+        observed->deltas = batch ? (batch->deltas.size() + batch->tile_deltas.size()) : 0;
         observed->published = std::chrono::steady_clock::now();
     }
     {
         std::lock_guard lock(snap_mu_);
         if (batch) {
-            mailbox_.push_prepared(std::move(batch), std::move(full_list));
+            mailbox_.push_prepared(std::move(batch), std::move(full_list), std::move(full_tiles));
             batches_waiting_.store(true);
         }
         snap_ = std::move(next);

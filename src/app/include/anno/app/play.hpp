@@ -96,6 +96,13 @@ load_play(const std::filesystem::path& game_dir, const std::filesystem::path& fi
 /// The scenario loader's split: an Anlagen id whose type has a list in the layout.
 [[nodiscard]] bool anlage_is_building(const sim::World& world, std::uint16_t anlage);
 
+/// Whether an Anlagen id is a tracked non-building tile object for the play picture (roads first,
+/// data-driven via `sim::kRoadFlag` without hardcoded type ids; later crops/trees widen this rule).
+[[nodiscard]] bool anlage_is_tracked_tile_object(const sim::World& world, std::uint32_t anlage);
+
+/// The world's tracked runtime tile objects (anchor tiles only, in island-slot order).
+[[nodiscard]] std::vector<SceneTileObject> play_tile_objects(const sim::World& world);
+
 /// The types the developer tool cycles (round ee, D1), registry data in TypeId order and of any id
 /// width: every type whose PRODTYPE has a list in `layout` (what the sim's Build places;
 /// without a list it answers Unsupported, apply.cpp) and every road type (kRoadFlag: the drag's
@@ -538,8 +545,18 @@ class PlayRunner {
     /// prints their median, p95 and max to stderr. Off: nothing is kept or printed.
     bool publish_stats_ = false;
     std::vector<std::uint64_t> stat_turn_us_, stat_snapshot_us_;
-    // The sorted building list the picture has been given so far (sim thread only).
+    /// The tracked and cleared tile objects of `world_` after the turn (sim thread).
+    [[nodiscard]] std::vector<SceneTileObject> collect_tile_objects() const;
+    [[nodiscard]] bool is_building_id(std::uint32_t id) const;
+    [[nodiscard]] bool is_tracked_id(std::uint32_t id) const;
+
+    // The sorted building and tile-object lists the picture has been given so far (sim thread).
     std::vector<SceneBuilding> buildings_;
+    std::vector<SceneTileObject> tile_objects_;
+    std::vector<std::uint8_t> building_type_mask_;
+    std::vector<std::uint8_t> tracked_type_mask_;
+    /// Per island, per tile: 1 iff tick 0 held a non-building, non-tracked object anchor there.
+    std::vector<std::vector<std::uint8_t>> initial_scenery_;
     // The lock only protects the shared_ptr copy/swap and the mailbox's push or
     // take. Snapshot allocation, the building diff and all simulation work
     // happen before it is acquired.

@@ -70,9 +70,12 @@ says who is doing what, where the work is, and what it waits on.
       exact-head CI `44904803422` 12/12 green. 2 minor non-blocking notes recorded in the review.
     - **Stacking:** already stacks `ROADS-0` + `ROADS-1` + `UI-GHOST-1` on `BUILDINGS-REF-2` / Candidate 10 +
       `origin/main` `a6468efd`; queued for the post-Candidate-11 candidate wave.
-  - **Next available Windows work (no Mac required):** **`UI-GHOST-2`** (`task/UI-GHOST-2`, `5f4957f3`, owner-approved
-    2026-11-19; stacks on `ROADS-0` + `UI-GHOST-1`, or directly on `ROADS-3` `7288379f`), plus the Windows render/gate
-    lane (`RENDER-DIRECT-2`, `GATE-2a`).
+  - **`UI-GHOST-2` DISPATCHED (Swarm worker `win-exec-ui`)** (`task/UI-GHOST-2`, worktree
+    `E:/anno1503-worktrees/anno1503-UI-GHOST-2`, base `5f4957f3`; stacks cleanly onto accepted `origin/task/ROADS-3`
+    `7288379f`, carrying `ROADS-0` + `ROADS-1` + `UI-GHOST-1` + `origin/main` `a6468efd`, conflict-free per
+    `merge-tree`; reserved OQ range `790–794`).
+  - **Queued next sequentially (one heavy Windows executor at a time):** **`GATE-2a`** (`docs/orchestration/tasks/gate-2a.md`,
+    owner-approved), then **`RENDER-DIRECT-2`** (ADR 0007 stage 2, pending packet draft).
 
 Earlier updates (2026-11-17 to 2026-11-19, by the Claude Code orchestrator):
 - **`main` is `4dfdd9b7`** (2026-11-17, 09:40): RENDER-DIRECT-1a and LAYER-CHECK-1 landed through `land.py`

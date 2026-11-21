@@ -258,6 +258,10 @@ mkdir -p "$G/wsl-tmp-$TAG"; export TMPDIR="$G/wsl-tmp-$TAG"
 # broken gate as green.
 OVERALL_RC=0
 
+lane_summary() {
+  awk '/^COUNTS/{c=$0} /^VERDICT/{v=$0} END{if(c)printf "%s ", c; if(v)printf "%s ", v}' "$1"
+}
+
 run_lane() {
   local name=$1 select=$2 jobs=$3; shift 3
   local start=$(date +%s)
@@ -265,7 +269,7 @@ run_lane() {
     --select "$select" --exclude-label heavy --jobs "$jobs" --timeout 6000 \
     --log "$G/wsl-$TAG-$name.log" "$@" > "$G/wsl-$TAG-$name.out" 2>&1
   local rc=$?
-  echo "$name lane rc=$rc elapsed=$(( $(date +%s) - start ))s $(grep -E 'COUNTS|VERDICT' "$G/wsl-$TAG-$name.out" | tr '\n' ' ') $(date -Is)" >> "$S"
+  echo "$name lane rc=$rc elapsed=$(( $(date +%s) - start ))s $(lane_summary "$G/wsl-$TAG-$name.out")$(date -Is)" >> "$S"
   if [ "$rc" -ne 0 ]; then
     OVERALL_RC=1
   fi
@@ -300,7 +304,7 @@ if [ "$GPU_LANE" -eq 1 ]; then
       --select '^anno_render_gpu_tests\.' --exclude-label heavy --jobs 1 --timeout 6000 \
       --allow-skip gpu --skip-auto-contract --log "$G/wsl-$TAG-gpu.log" > "$G/wsl-$TAG-gpu.out" 2>&1
     rc=$?
-    echo "gpu lane (lavapipe, ANNO_REQUIRE_GPU=1) rc=$rc elapsed=$(( $(date +%s) - start ))s $(grep -E 'COUNTS|VERDICT' "$G/wsl-$TAG-gpu.out" | tr '\n' ' ') $(date -Is)" >> "$S"
+    echo "gpu lane (lavapipe, ANNO_REQUIRE_GPU=1) rc=$rc elapsed=$(( $(date +%s) - start ))s $(lane_summary "$G/wsl-$TAG-gpu.out")$(date -Is)" >> "$S"
     if [ "$rc" -ne 0 ]; then
       OVERALL_RC=1
     fi

@@ -112,8 +112,8 @@ tests were originally intended. Do not manufacture that missing evidence.
 Exit codes: 0 accepted under the declared policy; 1 test/CTest failure; 2 build
 failure; 4 sanitizer; 5 workflow/preflight/infrastructure failure; 6 disallowed
 prerequisite skip; 7 empty doctest child; 8 no test outcomes; 9 incomplete or
-contradictory evidence. A zero selection is refused before execution as workflow
-failure. Initial failures and corrected reruns stay separate.
+contradictory evidence; 10 refused tests (not run). A zero selection is refused
+before execution as workflow failure. Initial failures and corrected reruns stay separate.
 
 ## Workflow maintenance
 
@@ -138,7 +138,8 @@ the review record, and keep gameplay/rendering changes in their own packages.
 - **The full WSL gate below and the full MSVC game-file run** are the orchestrator's, once per landing at the merge.
 - **A refused test did not run.** `[anno-test memory] refused … reason=low-memory stop` (or `wait deadline`, or a
   coordinator refusal) is thrown before the test's own work starts, so it is neither a failure nor a pass.
-  - Rerun only the refused tests, alone (`--jobs 1`), and keep both runs in the evidence.
+  - Rerun only the refused tests, alone (`--jobs 1`), and keep both runs in the evidence: `tools/test/run_selected.py`
+    now retries refused tests itself by default (`--no-retry-refused` turns it off).
   - Never rerun a whole gate or lane on the same commit. It only repeats tests whose evidence already stands, and a
     full WSL gate costs well over an hour.
 - **After a fix,** rerun the failed tests and the lanes the fix reaches; the rest of the earlier evidence stands.

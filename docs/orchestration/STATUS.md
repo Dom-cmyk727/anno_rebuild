@@ -4,7 +4,7 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-20, by the Windows orchestrator:
+**Last updated:** 2026-11-21, by the Windows orchestrator:
 - **2026-11-20 (Windows orchestrator takeover; targeted unfreeze for Candidate 10):**
   - **`UI-MAGNIFIER-MAC-1` ACCEPTED WITH NOTES** (`task/UI-MAGNIFIER-MAC-1`, code `cbfa8b1a`, report `e2e4b617`,
     exact-head CI `44713929677` 12/12 green, base Candidate 10 `95897a55` + `origin/main` `a6468efd` CI pin;
@@ -54,11 +54,25 @@ says who is doing what, where the work is, and what it waits on.
       2 minor non-blocking notes recorded in the review.
     - **Stacking:** descends from `BUILDINGS-REF-2` (`60a26f0d`) / Candidate 10 (`95897a55`) + `origin/main` (`a6468efd`);
       queued for the next candidate wave **after** Candidate 11 (`refs/candidates/ui-magnifier-mac-1`, `e2e4b617`) lands.
-  - **Unblocked & next for Windows executor:** **`ROADS-3` (`UI-ROADS-1`)** (`task/ROADS-3`, `0e8a15c9`, owner-approved
-    2026-11-19; stacks on accepted `ROADS-0` `944d317f`, `ROADS-1` `45dc2c3e`, and `UI-GHOST-1` `7a51050d`, all carrying
-    `origin/main` `a6468efd`). **`UI-GHOST-2`** (`task/UI-GHOST-2`, `5f4957f3`) is also unblocked (stacks on `ROADS-0`
-    `944d317f` + `UI-GHOST-1` `7a51050d`). Windows render/gate lane (`RENDER-DIRECT-2`, `GATE-2a`) also remains available
-    independently of the Mac lane.
+  - **`ROADS-3` (`UI-ROADS-1`) ACCEPTED WITH NOTES** (`task/ROADS-3`, prereq merges `280141a0` `ROADS-0` +
+    `024091c2` `ROADS-1` + `09a7e53c` `UI-GHOST-1`, feature `56c7cbfa`, skip-fix+report `7288379f`, exact-head CI
+    `44904803422` 12/12 green; independent orchestrator review:
+    [`reviews/2026-11-21-roads-3-review.md`](reviews/2026-11-21-roads-3-review.md)):
+    - **Scope & OQs:** read-only `World::check_build_path`, `--road-rules on|off` (default `on` in `--play`, compiled
+      `RoadRules{}` default `0`), `RoadVariantDeck` (`HEAD[11]` UI-side parity), `plan_road_ghost` (solid affordable
+      prefix, 699/700 ms blinking unaffordable tail, `0xffff00` 1x1 refusal box, no radius/fertility), `DevInput`
+      L-drag (`sim::is_land_road`, `drag_cap`), kind-9 prefix commit staying armed, right-click disarm, `buildv`/`buildcv`.
+      `kStateHashVersion = 139`, `0` fixture diffs, `0` pins moved, reserved OQ range `785–789` unused.
+    - **Evidence:** `lint_sim: ok`, `clang-format 23.1.3` exit 0 (24 C++ files), `pins.log` 1,713/1,713 executed (0
+      failed / 0 refused / 0 pins moved), `gate-msvc-app.log` 500/500 + 12/12 required contracts (6 UI oracles +
+      `roads_picture_objects` + `ui_ghost*` + `ui_roads*`), RTX 4090 `gate-msvc-gpu.log` 2/2 + `ui_roads --gpu` PASS,
+      WSL GCC 13.3 + Clang 18.1.3 clean, post-skipfix no-assets (`required-asset=2 other=0`) + 12/12 with-assets PASS,
+      exact-head CI `44904803422` 12/12 green. 2 minor non-blocking notes recorded in the review.
+    - **Stacking:** already stacks `ROADS-0` + `ROADS-1` + `UI-GHOST-1` on `BUILDINGS-REF-2` / Candidate 10 +
+      `origin/main` `a6468efd`; queued for the post-Candidate-11 candidate wave.
+  - **Next available Windows work (no Mac required):** **`UI-GHOST-2`** (`task/UI-GHOST-2`, `5f4957f3`, owner-approved
+    2026-11-19; stacks on `ROADS-0` + `UI-GHOST-1`, or directly on `ROADS-3` `7288379f`), plus the Windows render/gate
+    lane (`RENDER-DIRECT-2`, `GATE-2a`).
 
 Earlier updates (2026-11-17 to 2026-11-19, by the Claude Code orchestrator):
 - **`main` is `4dfdd9b7`** (2026-11-17, 09:40): RENDER-DIRECT-1a and LAYER-CHECK-1 landed through `land.py`

@@ -16845,7 +16845,7 @@ Branch `task/ROADS-0`, base `60a26f0d` / packet `c3489403`, code SHA `b0b022c6` 
 followed by this report commit. Zero changes in `src/sim/` (state stays 139) or `src/render/` (`gpu.wgsl`/`gpu.cpp` sea passes
 untouched). Touched: `src/app/` (`loader`, `building_delta`, `play`, `scene_picture`, `main`, `viewer`, tests),
 `tools/test/viewer_wiring/{roads_picture_objects,boundary_view}.script`, and `docs/BUILDINGSOBJECTS.md` (gap row 16, §10.1-10.2).
-Settled OQ-775..779 for runtime road drawing and cleared scenery suppression under placed/demolished footprints.
+Reserved OQ range 775-779 was unused; no new OQs were opened in `docs/open-questions.md`.
 
 **Deliverables & acceptance proof (code + tests, after final C++ edit unless noted).**
 - `building_delta_test` + `building_mailbox_test`: `TileObjectDelta` diff (add/remove/rot/height/cleared/wide id 100000), 50-turn quiet
@@ -16889,3 +16889,14 @@ Settled OQ-775..779 for runtime road drawing and cleared scenery suppression und
 
 **NOT_RUN:** `-L heavy` corpus tests; non-picture and Radeon-iGPU `anno_render_gpu_tests` (no `src/render/` GPU edits); native
 Linux/macOS test runs (WSL compiled all C++ sources with `-Werror` only); `game/` and `E:\anno1503` untouched.
+
+### ROADS-0 Fix Round 1 Addendum — 2026-11-21 — READY FOR REVIEW
+
+- **Fixes (F1–F2):** Merged `origin/main` (`a6468efd`) via `--no-ff` (`5bd871ff`; 0 `src/` or `fixtures/` diffs); corrected OQ note above (range `775–779` unused, no new OQs opened in `docs/open-questions.md`); verified `clang-format` 23.1.3 `--dry-run --Werror` exits `0` on all 13 C++ files from `b0b022c6`; `src/sim/`, `src/render/`, and `fixtures/` remain untouched vs `c3489403..HEAD`.
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Reviewer disposition |
+|---|---|---|---|---|
+| Tile-object delta diff & unbounded ids (`SceneTileObject`, `TileObjectDelta`, `BuildingMailbox`) | `diff_sorted_tile_objects` tracks add/remove/rot/height/cleared & wide id `100000`; `BuildingMailbox` resync collapses & matches incremental apply; 50-turn `02Trade01` emits `batches.empty()` | Clearing `tile_deltas` breaks `tile_object_picture` (`live_tile_object_count() == 0`) & `viewer_wiring_roads_picture_objects` | `building_delta_test`, `building_mailbox_test` (`anno_app_tests`, PASS) | Pending review |
+| Placed road `(id, rotation)` reaches picture (`Visible`, pixel diff, bare-ground demolish) | Land road `2520` rot 0/1 -> `Applied` + `Visible`, `picture.tile_objects == 1 -> 2 -> 1`, pixels differ from bare tile & match `load_placed_scene`, demolish restores bare ground | Clearing `tile_deltas` yields `NoVisualChange` & `0 px` diff; empty redemolish -> `NoVisualChange` | `tile_object_picture_test` (2 cases, 88 assertions, PASS); `viewer_wiring_roads_picture_objects` (PASS) | Pending review |
+| Cleared scenery under placed/demolished footprints disappears | Trees under pioneer house, road, and direct forest demolish `1188 516` emit `{0}` cleared markers (`picture.cleared_tiles == 2`), stay bare on demolish & resync; flag-`0x10` rocks preserved | Clearing `tile_deltas` leaves trees drawn; second empty demolish at `1188 516` -> `NoVisualChange` | `tile_object_picture_test` (PASS); `viewer_wiring_roads_picture_objects` & `boundary_view` (PASS) | Pending review |
+| No sim/render-sea edits & existing gates | `src/sim/`, `src/render/`, `fixtures/` untouched (`kStateHashVersion = 139`); `anno_app_tests` (`459/459`), 6 UI oracles + wiring (`7/7`), RTX 4090 GPU (`15/15`), `anno_render_tests` (`211/211`), `clang-format` & `check_unix_warnings.sh` clean | Deliberate `tile_deltas.clear()` mutation fails `tile_object_picture` (2/2, 21 assertions) and `viewer_wiring_roads_picture_objects` (line 17) | `cache/roads-0/gate-msvc-{app-2,gpu-2,render}.log` (`GATE_END status=0`) | Pending review |

@@ -389,6 +389,15 @@ class World {
     /// commands the host stamped come in order, one call each; the AI seam's commands
     /// are applied inside advance by the same code and are not logged by anyone.
     ApplyResult apply(const Command& command);
+    /// UI-GHOST-1: the verdict a Build command of `city`'s owner would give the one record
+    /// `record` now: steps 1-7 of §8.4 exactly as `apply` checks a record (the footprint owner
+    /// rule, buildings under the footprint, the placement rule, eligibility, research, serials,
+    /// affordability, the first-assignment and city-booking checks), with no earlier records.
+    /// UnknownIsland / UnknownCity / UnknownIssuer when `city` or its owner does not resolve;
+    /// Reject::None when the record would be placed (or is type 0, which Build skips). A pure
+    /// read: no state, stream, hash, event or draw changes (the placement ghost asks it every
+    /// turn; docs/BUILDINGSOBJECTS.md part B section 5.1).
+    [[nodiscard]] Reject check_build_record(CityRef city, const PlacementWire& record) const;
 
     /// The structural facts and the derived-equals-recomputed facts of docs/sim/
     /// state.md §9.6 that exist at this stage. Empty when they all hold, else one

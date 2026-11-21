@@ -632,7 +632,8 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             push_button(act.events, at, SDL_BUTTON_LEFT, false);
         } else if (s.verb == "hover_px") {
             // UI-STATUS-1 B: the pointer moves to a raw drawable pixel with no button (over chrome,
-            // the status bar keeps the last map tile, OQ-700).
+            // the status bar keeps the last map tile, OQ-700; UI-GHOST-1: the placement ghost
+            // hides there).
             const auto x = arg(0), y = arg(1);
             if (!x || !y) {
                 fail(s, "not a pixel position");

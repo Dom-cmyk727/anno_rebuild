@@ -497,29 +497,35 @@ TEST_CASE("dev tool: a resized window maps the same tile with its new frame" *
     }
 }
 
-TEST_CASE("dev tool: off the city's island, outside the window and non-finite points make no "
-          "command and say why" *
+TEST_CASE("dev tool: off the city's island a click is sent for the sim to refuse, outside the "
+          "window and non-finite points make no command and say why" *
           doctest::test_suite("dev_tool")) {
     const auto sc = scene();
     const double mx = kX0 + 15, my = kY0 + 15;
     Window win{sc, (my - mx) * 21.0, (mx + my) * 10.5, 0, 42, 21, 1600, 1000, 1.0F};
     app::DevTool tool(setup());
     feed(tool, win, {key(SDLK_B)});
-    // Open sea next to the island, and the tile just outside its far corner.
+    // Open sea next to the island, and the tile just outside its far corner (UI-GHOST-1 R1): no
+    // city-island hover, but the whole-map tile under the pointer; the click sends its record (the
+    // sim refuses it, OutOfIsland) and the ghost's hover names the same tile.
     for (const sim::TileXY& t :
          {sim::TileXY{kX0 - 1, kY0 + 3}, sim::TileXY{kX0 + kSize, kY0 + kSize}}) {
         const auto at = win.point_at(t.x, t.y);
-        CHECK(feed(tool, win, {button(true, at), button(false, at)}).empty());
-        CHECK(tool.message().find("not the city's island") != std::string::npos);
+        const auto cmds = feed(tool, win, {button(true, at), button(false, at)});
+        REQUIRE(cmds.size() == 1);
+        CHECK_FALSE(tool.hover().has_value());
+        REQUIRE(tool.ghost_hover().has_value());
+        CHECK(placements(cmds[0]) ==
+              std::vector<sim::TileXY>{tool.input().origin(*tool.ghost_hover())});
     }
     CHECK(feed(tool, win, {button(true, {-3.0F, 10.0F}), button(false, {-3.0F, 10.0F})}).empty());
     CHECK(tool.message().find("outside the window") != std::string::npos);
     CHECK(feed(tool, win, {button(true, {2000.0F, 10.0F})}).empty());
     const float nan = std::numeric_limits<float>::quiet_NaN();
     CHECK(feed(tool, win, {button(true, {nan, 10.0F}), button(false, {nan, 10.0F})}).empty());
-    // A press on the island and a release off it: nothing, and the press is gone.
+    // A press on the island and a release outside the window: nothing, and the press is gone.
     const auto on = win.point_at(kX0 + 5, kY0 + 5);
-    const auto off = win.point_at(kX0 - 2, kY0 + 5);
+    const std::pair<float, float> off{-3.0F, 10.0F};
     CHECK(feed(tool, win, {button(true, on), button(false, off)}).empty());
     CHECK(tool.message().find("nothing sent") != std::string::npos);
     CHECK_FALSE(tool.input().pressed());

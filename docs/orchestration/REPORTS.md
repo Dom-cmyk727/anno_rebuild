@@ -16777,6 +16777,272 @@ locks the cell, never switches the category. Compare with HE `ui_9` 2:25-2:30.
 - The selected frame is the open category's, also while the placement panel shows
   (`r2_place_pioneer_house` shows public selected).
 
+## UI-GHOST-1 — the placement ghost as the original shows it (stages A and B) — READY FOR REVIEW
+
+Branch `task/UI-GHOST-1`, base origin/main `4dfdd9b7`. Packet `docs/orchestration/tasks/ui-ghost-1.md`. Commits:
+`c3724220` (merge of the docs-only `task/BUILDINGS-REF-1`), `c54adcf3` stage A (docs), `91486cd4` the sim query (sim
+code, its own commit as asked), `3031338c` the UI work, then this entry.
+
+**Stage A (docs, `docs/BUILDINGSOBJECTS.md` part B §5.1).**
+- The blink writer (OQ-730 answered, D + P): the draw list sits at view frame `+0x14`, so its writer is AnnoFrame
+  `0x100038f2` `xor byte [ebx+0x1420],1`. The accumulator at `+0x1422` adds the frame's milliseconds and flips above
+  699. HE `ui_9` at 80 fps: 0.700 s shown and 0.700 s hidden, 17 cycles.
+- The refused footprint `0x10041050`: a 1-px `0xffff00` outline along the tile corners at ground height + 0.08, also
+  over open sea.
+- The radius outline `0x100443c0`: a midpoint-circle staircase around the footprint's centre tile, for every
+  Default-cursor type, and it does not blink.
+- Over the panel HE hides the ghost and its outline (OQ-700 answered for HE; GOG unread, OQ-757). OQ-756 and OQ-758
+  are new.
+
+**Stage B (code).**
+
+| Requirement | Positive proof | Negative control / failure proof | Evidence |
+|---|---|---|---|
+| The verdict is the sim's own rule, read-only | `World::check_build_record` runs Build's `check_record` on one record; `anno_sim_tests."check_build_record gives Build's verdict and changes nothing"`: the verdict equals Build's for None, Occupied, OutOfIsland, TileNotOwned, TerrainRefused, UnknownType, BadRotation, the type-0 skip, UnknownIsland, UnknownCity and CannotAfford (gold, goods); hash and save unchanged | mutant C (the query maps CannotAfford to None): the case fails | `cache/gates/gate-01.log`, `fp-C.log` |
+| State priority hidden > refused > unaffordable > valid | `anno_app_tests."ghost state: ..."` | mutant B (CannotAfford → valid, chrome test off): the unit case, `viewer_wiring_ui_ghost` (line 30 `wait fact tool.ghost == hidden`: it stayed 'refused') and the pixel check fail | `fp-B.log` |
+| Blink: acc > 699, subtract 699, flip | `"ghost blink: ..."` at 0 ms, 1 ms steps (699 holds, 700 flips, then every 699 ms), 350 + 350 = 700, surplus 2000 → 1301 → 602 | mutant A (`<` instead of `<=`): the case fails | `fp-A.log` |
+| Radius table and outlines | the table by hand for r = 0, 1, 4, 24; footprint and radius outlines; a closed outline | — | `gate-01.log` |
+| Outline colour exact `0xffff00`, 1 px, under the chrome | `"outline pixels: ..."`; `viewer_wiring_ui_ghost_pixel_check` in the real window: valid 1408 exact pixels (box 563 x 371), refused 160 (box 81 x 41, 2:1), hidden 0, panel column 0 in all three | the hidden shot is the negative control; mutant A (`0xfffe00`): the pixel check and the unit case fail | `gate-01.log`, `fp-A.log` |
+| States through the real window | `viewer_wiring_ui_ghost` (lan5, `ANNO_DEV_GOODS_TONS=3`): valid at (1140,516), refused over the inlet (1148,536), hidden on the panel (950,600), one house built, then unaffordable with the phase going 1 then 0, refused again with an empty stock | mutant B | `gate-01.log`, `fp-B.log` |
+
+**Gates** (MSVC Release, `ANNO1503_GAME_DIR`, `ANNO_TEST_THREADS=16`, `ANNO_UI_ORACLE_SHOTS`, `ANNO_UI_HE_CAPTURES`,
+`ANNO_UI_ROTATION_SHOTS`, head `3031338c`):
+- Configure `cmake --preset msvc` (new build dir). Build `anno_sim_tests anno_app_tests anno1503 anno_ui_mock`: no
+  warnings, no errors.
+- clang-format 23.1.3 `--dry-run --Werror` on every changed `.cpp`/`.hpp`: clean.
+- Canary `run_selected.py --jobs 8 --select 'ghost|radius half-widths|footprint outline|radius outline|outline pixels|check_build_record'`:
+  `selected=9 executed=9 failed=0 skipped=0`, PASS (`cache/gates/canary-01.log`).
+- Gate `run_selected.py --jobs 8 --select 'live_screen_matches_oracle|ui_dynamic_draw_check|info_panel|selected_house_pixel_check|ui_panels_match_gog|ui_window_matches_he|ui_mock_matches_oracle|^viewer_wiring_ui_|^viewer_wiring_construction|^anno_app_tests\..*(hud|ui|construction|selection|ghost|outline|radius)|^anno_sim_tests\.(build |check_build_record|demolish |free build)'`
+  with eight `--require-test` (the six oracle tests plus `viewer_wiring_ui_ghost`, `viewer_wiring_ui_ghost_pixel_check`):
+  `selected=165 executed=163 failed=0 empty=0 skipped=2 (opt-in=2) incomplete=0 sanitizer_lines=0`, PASS
+  (`cache/gates/gate-01.log`). The two skips are the opt-in `probe:` cases the `ui` pattern also matched.
+- Failure proofs (each mutant built and run, then restored): A, B and C as above (`cache/gates/fp-{A,B,C}.log`).
+  After restoring: rebuilt, the canary again `selected=9 executed=9 failed=0`, PASS (`canary-02.log`).
+- WSL `check_unix_warnings.sh`: GCC 13 and Clang 18, viewer with and without GPU (418 / 85 files): all clean, both negative controls caught (`cache/gates/unix-warnings-01.log`), one run, after the previous run on the PC had ended.
+
+**ADAPTATIONS** (orchestrator, 2026-11-17):
+- The 0.08 lift is applied in HEIGHT units (the original's unit is unread; under a pixel).
+- The ghost is hidden over open sea outside the city's island rectangle, because the dev tool picks no tile there
+  (OQ-760). The follow-up "pick over the whole map" is in the packet and gap 7.
+- Hidden over chrome: "HE-observed, GOG unread (OQ-757)".
+
+**NOT_RUN:** the GPU path through a real window (only the CPU path is in CTest; the GPU layer code shares the drawing
+functions and is the owner's test); macOS; the full suite (only the changed lanes, per the landing evidence split).
+
+**Decisions and reasoning:**
+- The verdict comes from a new read-only sim query, not from the window's `PlacementKnowledge::check`, as the packet
+  asks. `check_record` takes a `CheckEnv` of const references so the query needs no `const_cast`; Build passes the
+  same members, so the two cannot drift.
+- The window asks once per frame and the runner answers each turn (and while paused). While the answer is pending,
+  the last state stays, so a moving pointer does not flash the ghost off; from hidden it stays hidden until the first
+  answer.
+- The blink runs on the window's steady clock (it keeps running while paused, like the original's frame clock), one
+  flip per frame as the original, and the window's event wait is cut to the time left until the next flip.
+- The CPU path draws the outline into the frame before the chrome; the GPU path draws it into the frame-sized UI
+  layer only where that is transparent, so the chrome stays on top in both.
+- `tool.ghost.pixels` lets the wiring script see that an outline was drawn without a screenshot; the colour itself is
+  checked by the pixel check.
+
+**Owner's viewer test (default rules, the developer city):**
+1. Start the lan5 developer city with one house's worth of wood:
+   `$env:ANNO_DEV_GOODS_TONS=3; build\msvc\src\app\Release\anno1503.exe --play data\maps\lan5.txt --game-dir E:\anno1503\game\app --construction-menu on --layout data\ui`
+   (no `--rules living`).
+2. Press B, open the public category and arm the pioneer house.
+3. Move the ghost over land in your city: the house and a yellow staircase radius outline.
+4. Move it over the inlet near (1148, 536) or other water inside the island: only a yellow footprint diamond, no
+   house.
+5. Move the pointer onto the right panel: the ghost and the outline vanish; back on the map they return.
+6. Place one house (it uses the 3 t of wood). Move the ghost over free land again: the house blinks, about 0.7 s
+   shown and 0.7 s hidden, while the radius outline stays steady.
+7. Over open sea outside the island the ghost stays hidden (ADAPTATION, OQ-760).
+
+READY FOR REVIEW.
+
+## UI-GHOST-1 addendum — fix round R1: ghost and click on the whole map — READY FOR REVIEW
+
+**Cause** (the UI lane's trace of the owner's live session, `cache/owner_ghost_trace.txt`): the owner saw no ghost
+at all. Over the map the hover was always empty. `DevTool::pick` gives a tile only on the developer city's island
+rectangle, and the owner's view was not over that island. Every stage-B script ran `look 1148 522` first, so none of
+them saw it. Stage B's OQ-760 adaptation therefore hid the ghost almost everywhere.
+
+**Fix** (`9bcc4efb`, app only, no sim change):
+- `pick_point(frame, px, py)`: FrameProjection::pick's rule, factored out. It returns any island's ground above the
+  waterline (each island's own placement rounding), else the sea-level tile (`render::pick_ray` at `kSeaLevel`,
+  as the status bar uses).
+- `DevTool::ghost_hover()`: the city island's exact pick (`hover()`, rounding fix kept) where it gives a tile,
+  else `pick_point`'s tile.
+- The ghost asks `check_build_record` for that record. Off the city's island the sim answers OutOfIsland, so the
+  ghost is refused and shows the yellow footprint, as the original draws everywhere (AnnoFrame `0x10041050`
+  has no island test).
+- Clicks (presses and releases) use the same tile, so a click off the city's island is sent and the sim refuses
+  it with its own reject. The ghost's "refused" and the click's verdict agree (orchestrator's addition 1).
+  `hover()` stays the city island's pick for the inspection and the preview sprites.
+- The outline is drawn no lower than sea level.
+- OQ-760 is resolved and the packet's follow-up is marked done.
+- Two existing unit tests expected the old local refusal and now expect the sent record: `anno_app_input_tests`
+  "dev tool: off the city's island a click is sent for the sim to refuse, outside the window ..." and
+  "dev tool data: another player's city on another island ...". The tile and the city of the record are checked.
+
+**Start view (report only; not changed, per addition 2):** for `--play data/maps/lan5.txt` the viewer centres the
+camera on the scene's bounds (`viewer.cpp` around line 445: `cam = bounds centre`). For lan5 that is the map's
+middle, the contested middle island 100 at (648, 648) (T_128X128_0038). It is not the developer city, which is on
+island 1 at (1048, 440) with its start at (1284, 540). `viewer_wiring_ui_ghost_world` confirms it: from the
+default view, the pixel left of centre is land of an island other than the city's, and the sim answers OutOfIsland.
+
+| Requirement | Positive proof | Negative control / failure proof | Evidence |
+|---|---|---|---|
+| The ghost works away from the city, from the default view | `viewer_wiring_ui_ghost_world` (no `look`): refused with outline pixels on the middle island, the click there `Refused OutOfIsland`; `lookw 1380 680` (open sea) refused with pixels, the click `Refused OutOfIsland`; then on the city's island valid | mutant D (the old city-island-only pick): line 16 `wait fact tool.ghost == refused` times out with `tool.ghost` 'hidden' | `cache/gates/gate-r1b.log`, `fp-D.log` |
+| A click off the city's island reaches the sim | the two `expect outcome Refused OutOfIsland` above; the dev tool unit tests check the record sent | — | `gate-r1b.log` |
+
+**Gates** (head `9bcc4efb`, MSVC Release, the same env as stage B):
+- Build `anno_sim_tests anno_app_tests anno_app_input_tests anno1503 anno_ui_mock`: no warnings.
+- clang-format 23.1.3 on the changed files: clean.
+- Canary over the ghost and dev tool cases: `selected=28 executed=28 failed=0`, PASS (`canary-r1c.log`).
+- Gate: the stage-B selection plus `^anno_app_input_tests\.dev tool`, nine required tests (the six oracle tests and
+  the three ghost tests): `selected=184 executed=182 failed=0 empty=0 skipped=2 (opt-in=2) incomplete=0
+  sanitizer_lines=0`, PASS (`cache/gates/gate-r1b.log`).
+  - A first attempt, `gate-r1.log`, ran without the game dir in its environment (my shell chain dropped the
+    export): `live_screen_matches_oracle` was skipped for a required asset, so the workflow refused it. It is kept,
+    not counted.
+- Failure proof D built and run, then restored. Its restore reverted my uncommitted R1 edits as well; they were
+  re-applied from their edit scripts, committed, rebuilt, and the gate above ran on that commit.
+- WSL `check_unix_warnings.sh`, one run: GCC 13 and Clang 18, with and without GPU (418 / 85 files), clean, both
+  negative controls caught (`cache/gates/unix-warnings-r1.log`).
+
+**NOT_RUN:** the GPU path in a real window (the owner's test), macOS.
+
+**Owner's test (default rules), updated:** the default `--play` view starts on the middle island, not the city. Arm
+the pioneer house there: a yellow footprint diamond (refused, another island), also over open sea. A click there is
+refused (OutOfIsland). Then move the view to the developer city (island 1, world tile about (1150, 520); the minimap
+shows it): there the house with its yellow radius outline. Over the inlet near (1148, 536): the diamond. With
+`ANNO_DEV_GOODS_TONS=3`, after one house the ghost blinks about 0.7 s on and 0.7 s off.
+
+READY FOR REVIEW.
+
+## UI-GHOST-1 R2 (start the play camera at the developer city) — HALTED, work in progress
+
+Halted on the owner's order (2026-11-17). Head is the WIP commit below; **it does not build**. R1 (`32958430`) is the
+last gated state.
+
+**Done in the WIP commit:**
+- `DevToolSetup::home`: the city's Kontor (`warehouse_prodtypes`), else its first building, else the island's centre.
+- The viewer's start camera on that tile when a play session has a developer city (the owner's decision of
+  2026-11-17, "Start at my city"); otherwise the scene's middle as before.
+- New `viewer_wiring_ui_start_view` (the camera tile on island 1, near the Kontor at (1284, 540)).
+- `ui_ghost_world` now looks at the middle island (712, 712) first.
+
+**State:** the R2 build failed. `play.cpp` reads `world.config().cargo`, but `CargoRules` is a member of `Rules`;
+the fix is `world.rules().cargo` (`cache/gates/build-r2.log`). The `^viewer_wiring_` run that followed
+(`cache/gates/wiring-r2-01.log`) therefore ran the R1 binary: 33 selected, 32 passed, 1 failed (the new
+`ui_start_view`, as expected without R2). It is not evidence for R2.
+
+**Remains:**
+1. Fix that line and build.
+2. Run `^viewer_wiring_`; fix any script that relied on the old start view.
+3. Gate: the ghost, dev tool and oracle cases, all required, plus the sim determinism, replay and save cases (213
+   tests by name; `pins.py check --area sim` if quick). State that no pin or golden moved.
+4. clang-format, one WSL run, a REPORTS addendum, push and mirror.
+
+## UI-GHOST-1 addendum — fix round R2: the play window opens on the developer city — READY FOR REVIEW
+
+Owner's decision (2026-11-17, "Start at my city"): his R1 retest happened on the start-view island, the middle island
+100, where building is refused correctly. Commits: `4c586744` (WIP, did not build; halted that evening), `6634cb8d`
+(the one-line fix `world.rules().cargo`, completing it), then this entry.
+
+- `DevToolSetup::home`: the developer city's warehouse (the Kontor, `Rules::cargo.warehouse_prodtypes`), else its
+  first building in the canonical order, else the island's centre. Computed in `dev_tool_setup` from read-only
+  queries of the loaded world. No hardcoded coordinates.
+- The viewer's start camera centres on that tile, at sea level, when a play session has a developer city. Otherwise
+  (scene views, sessions with no city yet) it stays on the scene's middle. The ship-start opening still overrides it
+  with its ship. The code is marked as the owner's decision. BUILDINGSOBJECTS §5.1 ("Off the island") notes it.
+- Camera only: viewer state, no sim, stream or save change.
+
+| Requirement | Proof | Evidence |
+|---|---|---|
+| The start camera is on the developer city's island | new `viewer_wiring_ui_start_view` (no `look`): `camera.tile` inside island 1 (1048..1303, 440..695) and within ±6 of the Kontor at (1284, 540) | `cache/gates/gate-r2b.log` |
+| R1's off-island coverage kept | `viewer_wiring_ui_ghost_world` now looks at the middle island (712, 712) first | `gate-r2b.log` |
+| No script relied on the old start view | `^viewer_wiring_` on the R2 build: `selected=33 executed=33 failed=0`, PASS. No other script needed a `look` | `cache/gates/wiring-r2-02.log` |
+| Determinism unchanged | the sim replay, determinism, save, golden, pin and hash cases plus the `anno_sim_replay_*` CLI cases (213 by name, inside the gate): all passed, one opt-in skip (`SCRIPT2 original encoded canary replay worker`). **No pin or golden moved**: `git diff 4dfdd9b7..HEAD -- fixtures` is empty. `pins.py check` was skipped as instructed | `gate-r2b.log` |
+
+**Gate** (head `6634cb8d`, MSVC Release, the same env; each heavy job only after checking that no other cl/link or
+WSL compile ran, the new PC-sharing rule):
+- Build `anno1503 anno_app_tests anno_app_input_tests anno_ui_mock anno_sim_tests sim_replay`: no warnings.
+  clang-format 23.1.3: clean.
+- `run_selected.py --jobs 8` over the oracle, `^viewer_wiring_`, ghost, dev-tool, construction/selection, Build
+  and determinism/replay/save lanes, with ten required tests (the six oracle tests, `viewer_wiring_ui_ghost`,
+  `_ghost_world`, `_ghost_pixel_check`, `_start_view`): `selected=407 executed=404 failed=0 empty=0 skipped=3
+  (opt-in=3) incomplete=0 sanitizer_lines=0`, PASS (`gate-r2b.log`).
+- A first run, `gate-r2.log`, failed 45 `anno_sim_replay_*` cases: `sim_replay` had never been built in this build
+  dir ("no such file"). It was built and that lane rerun alone (`46/46`, `gate-r2-replay.log`), then the whole gate
+  was rerun for one verdict (above). The first run is kept, not counted.
+- WSL `check_unix_warnings.sh`, one run: GCC 13 and Clang 18, with and without GPU (418 / 85 files), clean, both
+  negative controls caught (`cache/gates/unix-warnings-r2.log`).
+
+**Owner's test:** start as before (`--play data\maps\lan5.txt`, default rules). The window now opens on your city's
+Kontor. Arm the pioneer house: free land shows the house and its yellow radius outline; water shows the yellow
+diamond. With `ANNO_DEV_GOODS_TONS=3` the ghost blinks after one house. Other islands show the diamond, and a click
+there is refused (OutOfIsland).
+
+READY FOR REVIEW.
+
+## UI-GHOST-1 addendum — merge of the landing candidate `ui-info-2d-buildcat` (95897a55) — READY FOR REVIEW
+
+The candidate (UI-STATUS-1, MINIMAP-2, INFO-2b, INFO-2d, BUILDCAT-1, PRODBAR-1 B, ISLAND-CROPS-1, FERTILITY-1a and
+BUILDINGS-REF-1 on main) merged into `task/UI-GHOST-1` as one merge commit `4a93bac6` (parents `cff27308` and
+`95897a55`; never rebased), the conflict resolutions inside it. Two small follow-up commits after it, so the merge can
+be repeated against a new candidate: `a03131cb` (below). Head `a03131cb`.
+
+**Conflicts and resolutions (inside `4a93bac6`):**
+
+| File | Conflict | Resolution |
+|---|---|---|
+| `frame_projection.hpp` | UI-STATUS-1 and UI-GHOST-1 both split `pick_point` out of `FrameProjection::pick`, same signature and body; the doc comments differed | one declaration, the doc comment names the status bar's cursor tile and the ghost's whole-map hover. `frame_projection.cpp` merged by itself to the one shared `pick_point` |
+| `viewer.cpp`, facts | the ghost's `tool.ghost*` facts against PRODBAR's `tool.fertility` block | both kept, in that order |
+| `viewer.cpp`, CPU draw | the ghost's shown-building gate and outline against PRODBAR's fertility placeholder comment | the ghost's gate and outline, the placeholder comment inside the building branch |
+| `src/app/CMakeLists.txt` | the `anno_app_tests` source list | every test file of both sides: `status_bar`, `balance_rows`, `atlas_pages_lan5`, `info_preview`, `fertility_indicator` and `placement_ghost`; the new wiring cases registered by the auto-merge (`ui_status_island`, `ui_buildcat`, `ui_ghost*`, `ui_start_view`) |
+| `docs/open-questions.md` | both sides appended OQ sections | the union, in numeric order: 727, 750-754, 756-758, 759, 760 |
+| `docs/orchestration/REPORTS.md` | both sides appended entries | the union: the candidate's entries first, then UI-GHOST-1's |
+
+**`a03131cb` (after the merge):** UI-STATUS-1 and UI-GHOST-1 had both added the dev-script verb `hover_px` with the same
+behaviour; Git kept both branches (the second unreachable). One branch stays, its comment and the header line name both
+users. The fertility comment that the resolution indented is rewrapped by clang-format 23.1.3.
+
+**Gate** (MSVC Release, the usual env; each heavy job after checking that no other cl, link or WSL compile ran):
+- Build `anno1503 anno_app_tests anno_app_input_tests anno_ui_mock anno_sim_tests sim_replay` after configure: no warnings
+  (the one-verb cleanup rebuilt `anno1503 anno_app_input_tests`: no warnings). clang-format 23.1.3 `--dry-run --Werror`
+  on every `.cpp`/`.hpp` that differs from the candidate: clean.
+- `run_selected.py --jobs 8`: the six oracle tests, `^viewer_wiring_`, the ghost, dev-tool, status bar, hud, ui,
+  construction, selection, info preview, buildcat and fertility `anno_app_tests` cases, the `check_build_record` and
+  Build sim cases, and the determinism, replay and save lane (the replay CLI cases included), with twelve required
+  tests (the six oracles, `viewer_wiring_ui_ghost`, `_ghost_world`, `_ghost_pixel_check`, `_start_view`,
+  `_status_island`, `_buildcat`): `selected=448 executed=445 failed=0 empty=0 skipped=3 (opt-in=3) incomplete=0
+  sanitizer_lines=0`, PASS (`cache/gates/gate-merge.log`). The three skips are opt-in cases (the SCRIPT2 canary worker
+  and the two `probe:` bursts).
+- **No pin or golden moved by this branch**: `git diff 95897a55..HEAD -- fixtures` is empty.
+- WSL `check_unix_warnings.sh`, one run: GCC 13 and Clang 18, with and without GPU (437 / 94 files), clean, both
+  negative controls caught (`cache/gates/unix-warnings-merge.log`).
+
+**NOT_RUN:** the GPU path in a real window (the owner's test), macOS, the full suite.
+
+READY FOR REVIEW.
+
+## UI-GHOST-1 addendum — merge of origin/main (CI pinned to ubuntu-24.04) — READY FOR REVIEW
+
+Head `0068c34b` went red on the Linux jobs because main pinned them to ubuntu-24.04 (`a6468efd`; CI run 44495678229).
+`origin/main` merged as one clean merge commit `e7118670` (parents `0068c34b` and `a6468efd`, no rebase, **no
+conflicts**). The only code that came in is `.github/workflows/ci.yml`; the rest is docs and task packets.
+
+**Short gate** (MSVC Release, the usual env, after checking that no other cl/link or WSL compile ran; the build was
+up to date, no warnings): the twelve required tests each ran alone and passed, `selected=1 executed=1 failed=0` per
+test: the six oracles (`live_screen_matches_oracle`, `ui_dynamic_draw_check`, `info_panel_gog_compare`,
+`info_panel_rotation_gog_compare`, `selected_house_pixel_check`, `ui_panels_match_gog`),
+`viewer_wiring_ui_ghost`, `_ghost_world`, `_ghost_pixel_check`, `_start_view`, `_status_island` and `_buildcat`
+(`cache/gates/gate-main-merge2.log`). The runner's closing line reads `selected=0` because it ran them as required
+contracts, so nothing was left for the main selection. The first run (`gate-main-merge.log`) was the same.
+
+**NOT_RUN:** WSL (no code of this branch changed since the clean WSL run on `a03131cb`; the merge brought only the CI
+file), the wider lanes (the merge brought no code), macOS. CI is not polled.
+
 READY FOR REVIEW.
 
 ## BUILDINGS-REF-2: roads, over-building, selection (research, docs only) — 2026-11-19 — READY FOR REVIEW

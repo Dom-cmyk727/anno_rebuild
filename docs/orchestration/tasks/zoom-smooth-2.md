@@ -118,3 +118,26 @@ READY FOR REVIEW, about 60 lines:
 - NOT_RUN;
 - Decisions and reasoning;
 - QUESTIONs.
+
+## ZOOM-SMOOTH-2f: guard the move trigger's thread
+
+**Status:** written 2026-11-16 by the Claude Code orchestrator for the Windows executor; **RELEASED**
+2026-11-16 after the review of ZOOM-SMOOTH-3b. From the [owner's proof of 2e](../reviews/2026-11-16-zoom-smooth-2e-owner-proof.md).
+
+**Base:** `task/ZOOM-SMOOTH-2` `46fd1f2b`, same branch and worktree, new commits. About 45 minutes. One concern.
+Never rebase, force-push or push `main`. No reviewer subagents.
+
+**Why:** the event watch draws on `SDL_EVENT_WINDOW_MOVED`. That it runs on the window thread is argued in a
+comment, for Windows, from the SDL source. SDL calls an event watch on whichever thread pushes the event, and the
+build also targets Linux. A guard makes the property hold instead of being argued.
+
+**Do:**
+1. Remember the window thread's id where the watch is installed. In the watch, for both triggers, after the
+   event-type test and before any shared state is read: if the calling thread is not that thread, return without
+   drawing. Count such calls in an atomic counter and print the count once at exit when it is not 0.
+2. A unit test of the decision as a pure function (same thread draws, another thread does not), next to the
+   existing `live_resize` tests. No test may start a real window.
+3. Rebuild and repeat the scripted resize check the branch already has; report its numbers against 2e's.
+
+**Report:** about 30 lines. **Gates:** `anno_app_tests`, `viewer_wiring_*`, clang-format 23.1.3, the WSL `-Werror`
+check on the touched files.

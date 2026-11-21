@@ -137,3 +137,109 @@ READY FOR REVIEW, about 60 lines:
 - NOT_RUN;
 - Decisions and reasoning;
 - QUESTIONs.
+
+## ZOOM-SMOOTH-3b: classify the `finish` spikes
+
+**Status:** written and **RELEASED** 2026-11-16 by the Claude Code orchestrator for the Windows executor, from the
+[review of ZOOM-SMOOTH-3](../reviews/2026-11-16-zoom-smooth-3-and-bounce-3.md) (F1 to F3).
+
+**Base:** `task/ZOOM-SMOOTH-3` `3526d253`, same branch and worktree, new commits. About 2 hours. One concern: say
+what the slow `wgpuCommandEncoderFinish` calls are. Measurement and diagnostics only; no fix, no change to what is
+drawn. Never rebase, force-push or push `main`. No reviewer subagents. No WSL while the orchestrator runs a gate
+(ask if unsure).
+
+**Why:** ZOOM-SMOOTH-3 found frames where `finish` alone takes 4.4 to 10.8 ms, and showed they happen in frames
+with no new work. It did not show what the time is. Whether RENDER-DIRECT has to fix this depends on the answer.
+
+**Do:**
+1. **Fix the count's name (F1).** "visible chunks" is `chunks_built + chunks_missing`. Print it as what it is
+   ("chunks built", "chunks missing") and add the real number of chunks drawn in the frame.
+2. **Add the counts the packet asked for (F2):** draws per pass and bind groups set, per frame. If the compositor
+   does not count them yet, count them where the passes are recorded, in `GpuStats`.
+3. **CPU time against wall time of the one `finish` call (F3).** Read the calling thread's CPU time before and
+   after (`QueryThreadCycleTime` or `GetThreadTimes` on Windows, `clock_gettime(CLOCK_THREAD_CPUTIME_ID)`
+   elsewhere), behind the existing hitch switch. Wall time far above CPU time means waiting (a lock, the
+   scheduler); the two equal means the call computes.
+4. **Look back more than one frame.** For every slow `finish`, print the sums of planes freed, chunks dropped and
+   sprites decoded over the 8 frames before it.
+5. **The distribution, not only the worst frames.** Over one live session at maximum zoom-out and one control
+   sweep: the number of frames, and `finish` at the median, the 99th and 99.9th percentile and the maximum; and
+   `finish` against draws per pass (does the ordinary cost grow with the draws, and do the spikes sit off that
+   line?).
+6. **Which threads call wgpu.** List, from the code, every thread other than the window thread that calls a wgpu
+   function (uploads, plane creation, releases), with file and function. No change.
+
+**Report** (one REPORTS entry, about 60 lines): the table of step 5; for the slow calls, CPU against wall time and
+the look-back sums; the list of step 6; one conclusion with its evidence: computing, waiting on a lock, descheduled,
+or deferred destruction; and what, if anything, the application can change. Guesses are marked as guesses.
+
+**Gates:** the changed lanes only (`anno_app_tests`, `anno_render_tests` and `anno_render_gpu_tests` if `GpuStats`
+changes, `viewer_wiring_*`), clang-format 23.1.3, the WSL `-Werror` check on the touched files. A test refused for
+memory is rerun alone.
+
+## ZOOM-SMOOTH-3c: catch a slow `finish` in the act
+
+**Status:** written 2026-11-16 by the Claude Code orchestrator for the Windows executor; **queued after
+ZOOM-SMOOTH-2f**. From the [review of 3b](../reviews/2026-11-16-zoom-smooth-3b-review.md) (F1 to F5).
+
+**Base:** `task/ZOOM-SMOOTH-3` `73f06bd2`, same branch and worktree, new commits. About 2 hours. One concern: one
+slow `wgpuCommandEncoderFinish` call, caught with enough around it to say what it waited for or computed.
+Measurement and diagnostics only. Never rebase, force-push or push `main`. No reviewer subagents. **Nothing else
+runs on the PC during a measurement** (no tests, no second viewer); say so in the report.
+
+**Do:**
+1. **Take the system call off the ordinary frame (F3).** Read the thread's CPU measure only when the hitch line is
+   on.
+2. **Cycles instead of `GetThreadTimes` (F2).** On Windows use `QueryThreadCycleTime` around the `finish` call.
+   Report cycles per millisecond of wall time: the median over the ordinary calls of the run is the yardstick; print
+   each slow call's value against it. Keep `clock_gettime` elsewhere.
+3. **Log the three background wgpu sections (3b item 6)** with the window trace's clock, behind the hitch switch:
+   begin and end of the pre-creation thread's texture creation, of the fluid job's `make_grid`, and of
+   `free_job_in_background`'s release. For every `finish` over 2 ms print which of these sections overlap the call
+   and by how many milliseconds. Add the counts "fluid windows new" and "planes pre-created" per frame to the hitch
+   line.
+4. **Run the session that showed the spikes (F1):** the same `drive2.py` live session over the five locations as
+   ZOOM-SMOOTH-3, twice, with the hitch line on every frame. If no call exceeds 4 ms in two runs, run it twice
+   more. Report the number of frames and the calls over 2 ms and over 4 ms per run.
+5. **The line (F4):** from the frames of step 4, the least-squares slope and intercept of `finish` against
+   `draw_calls`, in milliseconds per 100 draws, and the same for `record`.
+
+**Report** (about 60 lines): for each slow call, its cycles per millisecond against the yardstick, the overlapping
+background sections, the look-back sums and the frame's counts; then one conclusion: computing, waiting behind a
+named background section, descheduled (few cycles and no overlap), or still unknown. If four runs show no call over
+4 ms, say so plainly and stop: the residual is then closed as "not reproducible after ZOOM-SMOOTH-1", with the
+3.1 ms rule of the ZOOM-SMOOTH-3 review.
+
+**Gates:** the changed lanes only (`anno_app_tests`, `anno_render_tests`, `anno_render_gpu_tests`,
+`viewer_wiring_*`), run after the measurements, not during them; clang-format 23.1.3; the WSL `-Werror` check on the
+touched files.
+
+## ZOOM-SMOOTH-3d: the overlap check reads after the call
+
+**Status:** written and **RELEASED** 2026-11-16 by the Claude Code orchestrator for the Windows executor, from the
+[review of 3c](../reviews/2026-11-16-zoom-smooth-3c-review.md) (F1). Next in the lane: if UNIX-WARN-1 or
+TRACE-COLS-1 is already started, finish it first, then this.
+
+**Base:** `task/ZOOM-SMOOTH-3` `7bec1780`, same branch and worktree, new commits. About 1 hour. One concern: make
+the overlap check able to see a background section that runs during the `finish` call, then measure once more.
+Measurement and diagnostics only. The last packet of this series. Never rebase, force-push or push `main`. No
+reviewer subagents. **Nothing else runs during the capture**; check the process list before and after and say so.
+
+**Do:**
+1. Read the three sections' stamps **after** the frame's `finish` call returns, not before it.
+2. A section whose latest begin is newer than its latest end is **in progress**: treat it as running from its
+   begin to the read time, and report it as such.
+3. Keep the last few instances of each section (a small ring, its size a named field with its reason), so two
+   runs of a section close together are both checked.
+4. A unit test of the overlap decision as a pure function: a section entirely inside the call, one that starts
+   during it, one in progress at the read, one entirely before; the old code must fail the second and third.
+5. Run the five-location session once more, alone, with the hitch line on every frame. If no call exceeds 4 ms,
+   run it once more; then stop either way.
+
+**Report** (about 40 lines): the counts per run as in 3c; for every call over 2 ms, the cycle ratio and the
+overlapping sections (now including in-progress ones); one conclusion: waiting behind a named section (which), or
+waiting with no named section running (lock elsewhere or scheduler; not distinguished by this method). Guesses
+marked as guesses.
+
+**Gates:** the changed lanes only, run after the capture; clang-format 23.1.3; the WSL `-Werror` check on the
+touched files.

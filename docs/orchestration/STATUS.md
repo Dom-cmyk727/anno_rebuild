@@ -70,12 +70,25 @@ says who is doing what, where the work is, and what it waits on.
       exact-head CI `44904803422` 12/12 green. 2 minor non-blocking notes recorded in the review.
     - **Stacking:** already stacks `ROADS-0` + `ROADS-1` + `UI-GHOST-1` on `BUILDINGS-REF-2` / Candidate 10 +
       `origin/main` `a6468efd`; queued for the post-Candidate-11 candidate wave.
-  - **`UI-GHOST-2` DISPATCHED (Swarm worker `win-exec-ui`)** (`task/UI-GHOST-2`, worktree
-    `E:/anno1503-worktrees/anno1503-UI-GHOST-2`, base `5f4957f3`; stacks cleanly onto accepted `origin/task/ROADS-3`
-    `7288379f`, carrying `ROADS-0` + `ROADS-1` + `UI-GHOST-1` + `origin/main` `a6468efd`, conflict-free per
-    `merge-tree`; reserved OQ range `790–794`).
-  - **Queued next sequentially (one heavy Windows executor at a time):** **`GATE-2a`** (`docs/orchestration/tasks/gate-2a.md`,
-    owner-approved), then **`RENDER-DIRECT-2`** (ADR 0007 stage 2, pending packet draft).
+  - **`UI-GHOST-2` ACCEPTED WITH NOTES (2026-11-21, Swarm worker `win-exec-ui`, independent orchestrator audit):**
+    `task/UI-GHOST-2` (`825ad577`; merge `f08e4ab0` over accepted `ROADS-3` `7288379f` + `ROADS-0` `944d317f` + `ROADS-1`
+    `45dc2c3e` + `UI-GHOST-1` `7a51050d` + `origin/main` `a6468efd`, zero `src/sim/` / `fixtures/` / `open-questions.md`
+    diff, reserved OQs `790–794` unused). Ephemeral render-layer `ObjectsPatch` suppresses flag-`0x20` objects under
+    valid, phase-0 unaffordable, and drawn road ghosts while preserving flag-`0x10` rocks via `overwrites()`; yellow
+    `0xffff00` refusal rectangle and opt-in default-OFF `--occupied-outline` ADAPTATION verified on CPU (`427/427`
+    app/UI + `220/220` render), RTX 4090 GPU (`20/20` + `ui_ghost2` / `ui_ghost2_occupied`), WSL GCC 13.3 + Clang 18.1.3,
+    and exact-head GitHub Actions CI `44951265341` (`12/12` `success`). Review:
+    [2026-11-21-ui-ghost-2-review.md](reviews/2026-11-21-ui-ghost-2-review.md). Non-blocking notes: prefer
+    `scene.generation()` over raw pointer compare in `Viewer::ghost_update_patch`; check `patch_submerged_pipe`
+    interaction when stacking `WATER-SUBMERGED-1`; schedule the two `6.84 GiB` digest corpus tests in the clean
+    post-Candidate-11 PC gate.
+  - **`GATE-2a` DISPATCHED (Swarm worker `win-exec-gate`):** `task/GATE-2a` in
+    `E:/anno1503-worktrees/anno1503-GATE-2a` from `origin/main` `a6468efd` (`docs/orchestration/tasks/gate-2a.md`;
+    isolated test/harness tooling work — `ctest_verdict.py` exit `10` memory-refusal classification, `run_selected.py`
+    serial `-j 1` retry + `COUNTS (after retry)` + `--no-retry-refused`, `wsl_gate.sh`, `workflow_test.py`,
+    `ctest_verdict_test.py`, `docs/testing/README.md`).
+  - **Queued next sequentially (one heavy Windows executor at a time):** **`RENDER-DIRECT-2`** (ADR 0007 stage 2,
+    pending packet draft).
 
 Earlier updates (2026-11-17 to 2026-11-19, by the Claude Code orchestrator):
 - **`main` is `4dfdd9b7`** (2026-11-17, 09:40): RENDER-DIRECT-1a and LAYER-CHECK-1 landed through `land.py`

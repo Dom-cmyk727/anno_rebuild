@@ -82,13 +82,21 @@ says who is doing what, where the work is, and what it waits on.
     `scene.generation()` over raw pointer compare in `Viewer::ghost_update_patch`; check `patch_submerged_pipe`
     interaction when stacking `WATER-SUBMERGED-1`; schedule the two `6.84 GiB` digest corpus tests in the clean
     post-Candidate-11 PC gate.
-  - **`GATE-2a` DISPATCHED (Swarm worker `win-exec-gate`):** `task/GATE-2a` in
-    `E:/anno1503-worktrees/anno1503-GATE-2a` from `origin/main` `a6468efd` (`docs/orchestration/tasks/gate-2a.md`;
-    isolated test/harness tooling work — `ctest_verdict.py` exit `10` memory-refusal classification, `run_selected.py`
-    serial `-j 1` retry + `COUNTS (after retry)` + `--no-retry-refused`, `wsl_gate.sh`, `workflow_test.py`,
-    `ctest_verdict_test.py`, `docs/testing/README.md`).
-  - **Queued next sequentially (one heavy Windows executor at a time):** **`RENDER-DIRECT-2`** (ADR 0007 stage 2,
-    pending packet draft).
+  - **`GATE-2a` ACCEPTED WITH NOTES (2026-11-21, Swarm worker `win-exec-gate`, independent orchestrator audit):**
+    `task/GATE-2a` (code+tests+docs `7d2797a1`, `REPORTS.md` `74f087ab`, from `origin/main` `a6468efd`; `7` files changed
+    across `tools/test/` and `docs/testing/README.md`, zero `src/` / `fixtures/` / `TASKS.md` / `STATUS.md` edits;
+    exact-head GitHub Actions CI `44957444089` `12/12` `success`). Adds `REFUSED` (`exit 10`) classification with real-failure/sanitizer
+    precedence (`1`/`4` > `10`), automatic serial `-j 1` retry under `== retry refused <name>` + `--no-retry-refused` +
+    `COUNTS (after retry)` + `RETRIED: <name> passed`, `recorded_verdict` retry support, and `wsl_gate.sh` `lane_summary()`;
+    verified with `ctest_verdict_test.py` (`29/29`), `workflow_test.py` (`35/35`), real-log re-reads (`canonical-gate.log`
+    `6` refused / `0` failed, `wsl-play-live-1a-sim.log` `3` refused / `0` failed), live MSVC Release `ANNO_TEST_STOP_MB=999999`
+    (`rc=10` & normal `PASS`), deliberate precedence (`1`/`4`), and WSL `bash -n` (`LF`-only). Review:
+    [2026-11-21-gate-2a-review.md](reviews/2026-11-21-gate-2a-review.md). Completes the owner-queued **`2, go`** Windows run
+    (`UI-GHOST-2` -> `GATE-2a`).
+  - **Idle / Next Windows queue:** **`RENDER-DIRECT-2`** (ADR 0007 stage 2, pending packet draft). Candidate 11
+    (`refs/candidates/ui-magnifier-mac-1`, `e2e4b617`) still waits on the Mac's `GATE-RUN ui-magnifier-mac-1` before
+    landing on `main`; post-Candidate-11 Windows branches (`ROADS-1`, `ROADS-0`, `ROADS-3`, `UI-GHOST-2`, plus `GATE-2a`)
+    are ready for the next candidate/landing wave.
 
 Earlier updates (2026-11-17 to 2026-11-19, by the Claude Code orchestrator):
 - **`main` is `4dfdd9b7`** (2026-11-17, 09:40): RENDER-DIRECT-1a and LAYER-CHECK-1 landed through `land.py`

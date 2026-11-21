@@ -79,8 +79,11 @@ def main(argv):
         print("skipping: the screenshot step is Windows-only (viewer.cpp)")
         return 77
     game_dir = os.environ.get("ANNO1503_GAME_DIR")
-    if not game_dir or not Path(game_dir, "Anlagen.dat").is_file():
-        print("skipping: ANNO1503_GAME_DIR is unset or lacks Anlagen.dat")
+    if not game_dir:
+        print("skipping: ANNO1503_GAME_DIR is not set (needs the original game files)")
+        return 77
+    if not Path(game_dir, "Anlagen.dat").is_file():
+        print(f"skipping: Anlagen.dat is not in this game directory ({game_dir})")
         return 77
     try:
         from PIL import Image

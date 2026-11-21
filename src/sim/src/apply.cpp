@@ -22,6 +22,7 @@
 #include <anno/sim/freight.hpp>
 #include <anno/sim/mine_source.hpp>
 #include <anno/sim/placement.hpp>
+#include <anno/sim/road_drag.hpp>
 #include <anno/sim/ship_cargo.hpp>
 #include <anno/sim/ship_orders.hpp>
 #include <anno/sim/site_checks.hpp>
@@ -286,6 +287,7 @@ struct Checked {
     bool free = false;
     /// A tile object (a land road): no building record, no serial (MAP-ROAD-1).
     bool tile_object = false;
+    bool is_road = false;
     std::optional<CityAccounts> accounts_after;
 };
 
@@ -332,6 +334,7 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
             out.status = Reject::UnknownType; // F4
             return out;
         }
+        out.is_road = is_land_road(*type);
         if (rec.rotation > 3) {
             out.status = Reject::BadRotation; // F4
             return out;
@@ -340,15 +343,20 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
         // skips Create for the blocks above 0xa0). The ordinary land roads are ported as tile
         // objects (MAP-ROAD-1); every other such class is not (O-4).
         const bool tile_object = !env.cfg.layout.list_for(type->prodtype).has_value();
-        if (tile_object && !is_land_road(*type)) {
+        if (tile_object && !out.is_road) {
             out.status = Reject::Unsupported;
             return out;
         }
         out.tile_object = tile_object;
         // 2. The footprint on the island, on the city's tiles (D 0x10058890).
-        if (const Reject r = footprint_owner_rule(is, env.cfg, *type, rec, city.number);
-            r != Reject::None) {
-            out.status = r;
+        // With road_rules enabled, road drags require every tile to be owned by `city`.
+        const Reject owner_reject =
+            (out.tile_object && out.is_road && env.w.road_drag_enabled() &&
+             env.w.road_rules().every_tile_territory != 0)
+                ? footprint_all_owned_rule(is, env.cfg, *type, rec, city.number)
+                : footprint_owner_rule(is, env.cfg, *type, rec, city.number);
+        if (owner_reject != Reject::None) {
+            out.status = owner_reject;
             return out;
         }
         // Buildings first: a tile a building stands on (live) or an earlier record of the
@@ -365,6 +373,28 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
         if (taken) {
             out.status = Reject::Occupied;
             return out;
+        }
+        // ROADS-1: no downgrade (AnnoFrame 0x1004b11b-0x1004b141: dirt over cobblestone refused).
+        if (out.tile_object && out.is_road && env.w.road_drag_enabled() &&
+            env.w.road_rules().no_downgrade != 0) {
+            bool downgrade = false;
+            for_each_footprint_tile(is, *type, rec, [&](std::uint64_t idx) {
+                std::uint32_t existing_id = is.tiles.object(idx);
+                if (budget != nullptr) {
+                    if (const auto it = budget->objects.find(idx); it != budget->objects.end()) {
+                        existing_id = it->second.v;
+                    }
+                }
+                const BuildingType* existing =
+                    existing_id != 0 ? env.types.find(TypeId{existing_id}) : nullptr;
+                if (existing != nullptr && is_road_downgrade(*existing, *type)) {
+                    downgrade = true;
+                }
+            });
+            if (downgrade) {
+                out.status = Reject::Occupied;
+                return out;
+            }
         }
         // The default rule reads the latest objects through PlacementParams::object_overlay (one
         // view: an earlier record's road supersedes the physical object). A placement seam takes no
@@ -430,6 +460,18 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
         if (p.type == rec.type)
             break;
     }
+    // ROADS-1: figure veto per road tile (AnnoFrame 0x1004af90 -> 0x10045080), after
+    // City::Build / eligibility (BUILDINGSOBJECTS §10.1 4e-f).
+    // footprint() swaps width/height on odd rotation, matching veto::scan_extents.
+    if (out.tile_object && out.is_road && env.w.road_drag_enabled() &&
+        env.w.road_rules().figure_veto != 0) {
+        const auto [fw, fh] = footprint(*type, rec.rotation);
+        if (const Reject vr = check_road_figure_veto(env.w, city.owner, rec.x, rec.y, fw, fh);
+            vr != Reject::None) {
+            out.status = vr;
+            return out;
+        }
+    }
     // 5. Research (Rules::enforce_research, O-30; default off: the original has no
     // sim-side research gate on Build).
     if (env.rules.enforce_research && type->research_id != 0 &&
@@ -455,7 +497,28 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
     // by Rules::free_build_cheat (F13: the original's free-build flag 0x2000000 came from
     // the payload; here it is a hashed session rule, never a wire field; OQ-125). A waiver
     // skips the check and the charge (I: "cost waiver"; OQ-126).
-    out.free = env.rules.free_build_cheat || owner.free_build;
+    bool same_family_free = false;
+    if (out.tile_object && out.is_road && env.w.road_drag_enabled() &&
+        env.w.road_rules().free_same_family != 0) {
+        bool any_tile = false;
+        bool all_same_family = true;
+        for_each_footprint_tile(is, *type, rec, [&](std::uint64_t idx) {
+            any_tile = true;
+            std::uint32_t existing_id = is.tiles.object(idx);
+            if (budget != nullptr) {
+                if (const auto it = budget->objects.find(idx); it != budget->objects.end()) {
+                    existing_id = it->second.v;
+                }
+            }
+            const BuildingType* existing =
+                existing_id != 0 ? env.types.find(TypeId{existing_id}) : nullptr;
+            if (existing == nullptr || !same_road_family(*existing, *type)) {
+                all_same_family = false;
+            }
+        });
+        same_family_free = any_tile && all_same_family;
+    }
+    out.free = env.rules.free_build_cheat || owner.free_build || same_family_free;
     if (!out.free) {
         const std::int64_t gold_before = budget != nullptr ? budget->money : 0;
         if (owner.money < gold_before + std::int64_t{type->cost_gold}) {
@@ -653,10 +716,28 @@ ApplyResult build(Env& env, const Command& c, const BuildCmd& cmd) {
     // checks, so a validated record is created).
     bool placed_any = false;
     Reject first_failure = Reject::None;
+    std::uint32_t road_count = 0;
+    const bool road_drag = env.w.road_drag_enabled();
+    const std::uint32_t drag_cap = env.w.road_rules().drag_cap;
+    const bool stop_on_refusal = road_drag && env.w.road_rules().stop_at_first_refusal != 0;
     for (std::size_t i = 0; i < cmd.placements.size(); ++i) {
         const Checked chk = check_record(env, is, city, *owner, cmd.placements[i], nullptr);
         if (chk.skip) {
             continue;
+        }
+        if (road_drag && chk.is_road) {
+            if (road_count >= drag_cap) {
+                for (std::size_t j = i; j < cmd.placements.size(); ++j) {
+                    if (cmd.placements[j].type.v != 0) {
+                        result.records[j].status = Reject::PrefixStopped;
+                    }
+                }
+                if (first_failure == Reject::None) {
+                    first_failure = Reject::PrefixStopped;
+                }
+                break;
+            }
+            ++road_count;
         }
         if (chk.status == Reject::None) {
             result.records[i] = place(env, is, city, *owner, chk);
@@ -665,8 +746,20 @@ ApplyResult build(Env& env, const Command& c, const BuildCmd& cmd) {
         }
         if (result.records[i].status == Reject::None) {
             placed_any = true;
-        } else if (first_failure == Reject::None) {
-            first_failure = result.records[i].status;
+        } else {
+            if (first_failure == Reject::None) {
+                first_failure = result.records[i].status;
+            }
+            // Kind-9 prefix commit (AnnoFrame 0x1004b5c7, OQ-043): stop at first refusal
+            // for road placements (never stopping ordinary multi-building BuildCmds).
+            if (stop_on_refusal && (chk.is_road || road_count > 0)) {
+                for (std::size_t j = i + 1; j < cmd.placements.size(); ++j) {
+                    if (cmd.placements[j].type.v != 0) {
+                        result.records[j].status = Reject::PrefixStopped;
+                    }
+                }
+                break;
+            }
         }
     }
     // The command is rejected only when it changed nothing: no record placed and at

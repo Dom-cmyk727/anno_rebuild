@@ -264,6 +264,33 @@ bool is_land_road(const BuildingType& t, const RoadParams& p) {
            t.width > 0 && t.height > 0;
 }
 
+bool is_road_family(const BuildingType& t, const RoadParams& p) {
+    return t.prodtype != 0 && group_of(t.prodtype) == p.road_group &&
+           t.prodtype != p.bridge_prodtype && (t.flags_word & p.road_family_flag) != 0;
+}
+
+bool same_road_family(const BuildingType& a, const BuildingType& b, const RoadParams& p) {
+    if (!is_road_family(a, p) || !is_road_family(b, p)) {
+        return false;
+    }
+    if (a.cost_gold != b.cost_gold || a.cost_goods.size() != b.cost_goods.size()) {
+        return false;
+    }
+    for (std::size_t i = 0; i < a.cost_goods.size(); ++i) {
+        if (a.cost_goods[i].goods != b.cost_goods[i].goods ||
+            a.cost_goods[i].amount_88 != b.cost_goods[i].amount_88) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool is_road_downgrade(const BuildingType& existing, const BuildingType& placed,
+                       const RoadParams& p) {
+    return is_road_family(existing, p) && is_road_family(placed, p) &&
+           placed.cost_gold < existing.cost_gold;
+}
+
 PlacementResult placement_rule(const Island& island, const TypeRegistry& types,
                                const BuildingType& effective, const PlacementRecord& rec,
                                const PlacementParams& params) {
@@ -455,6 +482,28 @@ Reject footprint_owner_rule(const Island& island, const SimConfig& cfg, const Bu
     }
     if (!common.has_value() || *common != city.v) {
         return Reject::TileNotOwned;
+    }
+    return Reject::None;
+}
+
+Reject footprint_all_owned_rule(const Island& island, const SimConfig& cfg,
+                                const BuildingType& type, const PlacementRecord& rec, CityNo city) {
+    const auto [fw, fh] = footprint(type, rec.rotation);
+    const TileLayer& tiles = island.tiles;
+    if (!inside_layer(tiles.x0(), tiles.y0(), tiles.width(), tiles.height(), rec.x, rec.y, fw,
+                      fh)) {
+        return Reject::OutOfIsland;
+    }
+    const TileBox box =
+        clip_to_layer(tiles.x0(), tiles.y0(), tiles.width(), tiles.height(), rec.x, rec.y, fw, fh);
+    for (std::int64_t y = box.y0; y < box.y1; ++y) {
+        for (std::int64_t x = box.x0; x < box.x1; ++x) {
+            const std::uint32_t owner =
+                tiles.owner(static_cast<std::uint64_t>(y * tiles.width() + x));
+            if (owner == cfg.neutral_owner || owner != city.v) {
+                return Reject::TileNotOwned;
+            }
+        }
     }
     return Reject::None;
 }

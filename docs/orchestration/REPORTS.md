@@ -16900,3 +16900,65 @@ Linux/macOS test runs (WSL compiled all C++ sources with `-Werror` only); `game/
 | Placed road `(id, rotation)` reaches picture (`Visible`, pixel diff, bare-ground demolish) | Land road `2520` rot 0/1 -> `Applied` + `Visible`, `picture.tile_objects == 1 -> 2 -> 1`, pixels differ from bare tile & match `load_placed_scene`, demolish restores bare ground | Clearing `tile_deltas` yields `NoVisualChange` & `0 px` diff; empty redemolish -> `NoVisualChange` | `tile_object_picture_test` (2 cases, 88 assertions, PASS); `viewer_wiring_roads_picture_objects` (PASS) | Pending review |
 | Cleared scenery under placed/demolished footprints disappears | Trees under pioneer house, road, and direct forest demolish `1188 516` emit `{0}` cleared markers (`picture.cleared_tiles == 2`), stay bare on demolish & resync; flag-`0x10` rocks preserved | Clearing `tile_deltas` leaves trees drawn; second empty demolish at `1188 516` -> `NoVisualChange` | `tile_object_picture_test` (PASS); `viewer_wiring_roads_picture_objects` & `boundary_view` (PASS) | Pending review |
 | No sim/render-sea edits & existing gates | `src/sim/`, `src/render/`, `fixtures/` untouched (`kStateHashVersion = 139`); `anno_app_tests` (`459/459`), 6 UI oracles + wiring (`7/7`), RTX 4090 GPU (`15/15`), `anno_render_tests` (`211/211`), `clang-format` & `check_unix_warnings.sh` clean | Deliberate `tile_deltas.clear()` mutation fails `tile_object_picture` (2/2, 21 assertions) and `viewer_wiring_roads_picture_objects` (line 17) | `cache/roads-0/gate-msvc-{app-2,gpu-2,render}.log` (`GATE_END status=0`) | Pending review |
+
+## ROADS-1 (SIM-ROADS-1) — READY FOR REVIEW (2026-11-20)
+- **Code head:** `bb3dcaf6` (branch `task/ROADS-1`, base `df15310b`).
+- **What changed:**
+  - `src/sim/include/anno/sim/road_drag.hpp`, `src/sim/src/road_drag.cpp`: `road_path(start, end, cap=40)` (`AnnoFrame 0x1004b392`-`0x1004b51f`, L-path, longer axis first, y first on tie, cut at `cap`), `check_road_figure_veto` (`0x1004af90` -> `0x10045080`), `make_road_drag_cmd`.
+  - `src/sim/include/anno/sim/placement.hpp`, `src/sim/src/placement.cpp`: `footprint_all_owned_rule` (`0x1004af90`), `is_road_family`, `same_road_family`, `is_road_downgrade` (`0x1004b11b`-`0x1004b141`, data-driven via `RoadParams` `road_group=0xc1`, `bridge_prodtype=198`, `road_family_flag=0x100`, `cost_gold`).
+  - `src/sim/include/anno/sim/extension_context.hpp`, `world.hpp`, `src/sim/src/apply.cpp`: ADR 0006 header extension tag 2 `road_rules` (`enabled=0` default, `drag_cap=40`, `every_tile_territory=1`, `no_downgrade=1`, `free_same_family=1`, `stop_at_first_refusal=1`, `figure_veto=1`); `BuildCmd` applies per-tile territory, no downgrade, figure veto, same-family free re-lay (bridges always pay), and kind-9 prefix commit (`0x1004b5c7`, OQ-043) when `road_drag_enabled()`.
+  - `src/sim/tests/road_drag_test.cpp`, `extensions_test.cpp`, `world_state_test.cpp` (unknown tag 2->3): 9 new test cases including `Anlagen.dat` 2500-2537 corpus classification; `docs/sim/state.md` §9.8 & `docs/BUILDINGSOBJECTS.md` §10.1 updated.
+- **Pin diff:** `kStateHashVersion` unchanged (139); `0 pins moved; 0 fixture byte changes`.
+- **Gates & classified counts:**
+  - `python -I tools/pins.py check --build-dir build/msvc --config Release --jobs 8 --log cache/gates/pins-roads1.log` (`ANNO1503_GAME_DIR=E:\anno1503\game\app`): `selected=1727 executed=1702 failed=4 empty=0 skipped=21 (opt-in=18 other=3) incomplete=0 sanitizer_lines=0` (`0 pins moved`). Of the 4 failures: `section extensions` was fixed (tag 2->3) and passed on rerun; the other 3 (`population A`, `scenario corpus`, `scenario corpus: every island gets its crop list`) were `[anno-test memory] refused ... reason=low-memory stop` (free < 2048 MiB).
+  - Rerun alone (`--jobs 1`, `cache/gates/sim-refused-rerun.log`): `selected=4 executed=1 failed=3` (`section extensions` PASS; same 3 heavy tests refused by `anno_budget_coord` `low-memory stop`).
+  - Post-edit final MSVC Release (`cache/gates/roads1-final.log`): `^anno_sim_tests\.(road_path:|road drag:|anno_sim_tests_lint)` -> `selected=9 executed=9 failed=0 empty=0 skipped=0 VERDICT: PASS`.
+  - `clang-format.exe` 23.1.3 `--dry-run --Werror` on all 10 touched C++ files: clean (rc=0).
+  - `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`: GCC 13.3 `-O3 -Werror` (437 + 92 files) and Clang 18.1.3 `-O3 -Werror` (437 + 92 files): clean (rc=0).
+- **Failure proofs (mutated then restored):**
+  1. `road_drag.cpp`: changed `adx > ady` to `adx >= ady` -> `road_path: L shape, longer axis first, y first on tie, cap 40` failed at lines 149-151 (`tie[1..3]`).
+  2. `placement.cpp`: forced `is_road_downgrade` to `false` -> `road drag: no downgrade refuses dirt over cobblestone` failed at lines 294, 297, 298.
+- **Decisions & reasoning:**
+  1. *ADR 0006 tag 2 `road_rules` (`enabled=0` default)* instead of changing `BuildCmd` default or `fields(Rules)`: preserves `kStateHashVersion=139`, emits 0 extension bytes by default, keeps existing `build_terrain_test.cpp` legacy `BuildCmd` contracts & all pins untouched.
+  2. *Data-driven family/cost classification* (`road_group=0xc1`, `bridge_prodtype=198`, `flags_word & 0x100`, `cost_gold` comparison) instead of hardcoded IDs `2500..2537` or gold `5`/`10`: verified on `Anlagen.dat` 2500-2537 (all cobblestone=10, dirt=5, `BRUECKE`=198 excluded).
+  3. *`world_state_test.cpp` unknown tag 2 -> 3*: tag 2 is now registered (`road_rules`).
+  4. *`road_drag_test.cpp` `s.players.resize(2)`*: avoids GCC 13 `-O3 -Werror=null-dereference` on copying `PlayerSpec` with empty vector.
+- **NOT_RUN:** The 3 heavy corpus tests refused for `low-memory stop`; full WSL ASan/UBSan gate (`wsl_gate.sh`); `anno_render_gpu_tests`/`anno_app_tests` (not touched); hosted CI (pending push).
+
+## ROADS-1 (SIM-ROADS-1) — Fix Round 1 READY FOR REVIEW (2026-11-20)
+- **Final code head:** `ed040a55` (branch `task/ROADS-1`, merged `origin/main` `a6468efd` with `--no-ff`).
+- **Fixes (F1-F8):**
+  - **F1:** Added `road_rules` header tag `2` to `tools/lint_sim_allow.txt`; `python -I tools/lint_sim.py --root .` exits 0 (`lint_sim: ok`).
+  - **F2:** Removed duplicate `check_road_figure_veto` before `construction_eligibility` in `apply.cpp`; added test proving `ConstructionDenied` precedes `FigureInTheWay`.
+  - **F3:** Appended `Reject::PrefixStopped` (`reject.hpp`, `reject_name()`, `docs/sim/state.md` §8.3); kind-9 prefix stop marks all trailing non-skip placements `Reject::PrefixStopped` and is scoped to road records (`chk.is_road || road_count > 0`); added tests for `PrefixStopped`, non-road multi-building continuation, and `Rules::build_atomic`.
+  - **F4:** Enforced `RoadRules::drag_cap` in `apply.cpp::build()` (excess road records get `Reject::PrefixStopped`); `RoadRulesExtension::validate()` rejects `enabled == 0 && payload != default_value()`.
+  - **F5:** Gated road drag rules on `out.tile_object && out.is_road`, guarded empty footprints in `same_family_free`, tested rotated 2x1 figure veto, all 5 fallback toggles (`enabled = 1`), and full ADR 0006 tag-2 persistence in `extensions_test.cpp` (16-byte header-only delta, `HashTree` section 0 only, tag 1+2 coexist, corrupt/invalid refusals).
+  - **F6:** Merged `origin/main` (`a6468efd`, `ubuntu-24.04` CI pin) with `--no-ff`.
+- **Oracle & pin impact:** `tools/placement_ref.py`: `0 changes`; `kStateHashVersion`: `139`; `0 pins moved; 0 fixture byte changes`.
+- **Gates (post-edit, `ANNO1503_GAME_DIR=E:\anno1503\game\app`):**
+  - `python -I tools/pins.py check --build-dir build/msvc --config Release --jobs 8 --log cache/gates/pins-roads1-r2.log`: `selected=1732 executed=1711 failed=0 empty=0 skipped=21 (required-asset=0 platform=0 opt-in=18 gpu=0 other=3) incomplete=0 sanitizer_lines=0`; `0 pins moved; 0 fixture byte changes` (exit 1 solely from 3 pre-existing `ship start:` `other` skips on Windows).
+  - `tools/test/run_selected.py ... --log cache/gates/roads1-r2-contracts.log`: `selected=1 executed=1 failed=0` (+4 required contracts `anno_sim_tests_lint_sim_passes`, `anno_sim_tests_lint_sim_self_test`, `placement_reference_agrees`, `placement_tile_corpus_reference_agrees` PASS), `VERDICT: PASS`.
+  - `anno_app_tests` (`cache/gates/roads1-r2-app.log`): `selected=369 executed=366 failed=0 empty=0 skipped=3 (opt-in=3)`, `VERDICT: PASS`.
+  - `anno_render_gpu_tests` (`ANNO_GPU_ADAPTER=4090`, `cache/gates/roads1-r2-gpu.log`): `selected=135 executed=134 failed=0 empty=0 skipped=1 (opt-in=1)`, `VERDICT: PASS`.
+  - `clang-format.exe` 23.1.3 `--dry-run --Werror`: clean (rc=0); `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`: GCC 13.3 + Clang 18.1.3 `-O3 -Werror` (437 + 92 files): clean (rc=0).
+- **Mutation controls (mutated -> named test failed -> restored & rebuilt):**
+  1. `road_drag.cpp` `adx >= ady`: `road_path: L shape...` failed (lines 153-155).
+  2. `road_drag.cpp` `check_road_figure_veto` -> `Reject::None`: `figure veto stops prefix and rotated footprint` failed (lines 282-296).
+  3. `placement.cpp` `is_road_downgrade` -> `false`: `no downgrade refuses dirt over cobblestone` failed (lines 334-340).
+  4. `placement.cpp` `same_road_family` -> `false`: `same-family re-lay free...` failed (lines 377-379).
+  5. `placement.cpp` `footprint_all_owned_rule` -> `footprint_owner_rule`: `every tile must be owned` failed (line 222).
+  6. `apply.cpp` `drag_cap = 1000000U` & `stop_on_refusal = false`: `drag_cap enforced in BuildCmd` (lines 422-439) & `City::Build refusal stops prefix` (lines 252-258) failed.
+- **Acceptance Table:**
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Reviewer disposition |
+|---|---|---|---|---|
+| `road_path(start, end, cap=40)` (`AnnoFrame 0x1004b392`-`0x1004b51f`) | L-path, longer axis first, y first on tie, truncated at `cap=40` | Tie does NOT go x-first; `(0,0)->(50,0)` does NOT reach `(50,0)` | `road_drag_test.cpp`: `road_path: L shape...` | pending |
+| Same island as start (`AnnoFrame 0x1004af90`) | Drag within island 0 succeeds | Drag off-island stops at `OutOfIsland`, tail `PrefixStopped` | `road_drag_test.cpp`: `stops at first off-island tile` | pending |
+| Every tile owned by single city (`0x1004af90`) | All owned tiles pass | Neutral or rival tile stops with `TileNotOwned`, tail `PrefixStopped` | `road_drag_test.cpp`: `every tile must be owned by single city` | pending |
+| `City::Build` & eligibility precedence (`0x1004af90`) | Valid road accepted; non-road multi-building continues | Building obstacle -> `Occupied`; `ConstructionDenied` precedes `FigureInTheWay` | `road_drag_test.cpp`: `City::Build refusal`, `ConstructionDenied precedes...`, `non-road multi-building` | pending |
+| Figure veto (`0x1004af90` -> `0x10045080`) | Clear tile accepted | Blocking figure (incl. rotated 2x1) -> `FigureInTheWay`, tail `PrefixStopped` | `road_drag_test.cpp`: `figure veto stops prefix and rotated footprint` | pending |
+| No downgrade (`0x1004b11b`-`0x1004b141`) | Cobblestone over dirt accepted | Dirt over cobblestone -> `Occupied`, tail `PrefixStopped` | `road_drag_test.cpp`: `no downgrade refuses dirt over cobblestone` | pending |
+| Cost & same-family free (`0x1004b1ac`-`0x1004b278`) | Same-family re-lay 0 gold; upgrade pays; bridges always pay | Insufficient gold stops at `CannotAfford`, tail `PrefixStopped` | `road_drag_test.cpp`: `same-family re-lay free...`, `Anlagen.dat road corpus` | pending |
+| Kind-9 prefix, `drag_cap`, ADR 0006 tag 2 (`0x1004b5c7`, `state.md` §9.8) | 40-tile cap & custom cap; 0B default; tag 1+2 round-trip | Excess/trailing -> `PrefixStopped`; invalid `RoadRules` refused | `road_drag_test.cpp`: `drag_cap enforced...`; `extensions_test.cpp`: `road_rules extension...` | pending |
+
+- **NOT_RUN:** UI pixel-oracle tests (`src/app` and `src/render` untouched, N/A); full WSL ASan/UBSan gate (`wsl_gate.sh`, orchestrator); hosted CI (in progress on push).

@@ -1839,7 +1839,9 @@ enum class Reject : std::uint16_t {
     NoBuildingAtTile, LineNotFound, BadIndex,
     BadValue,         // a numeric field outside what its state allows (a trade-list index that names no entry, a given payload that does not fit)
     ListFull,         // the building list cannot grow (a list of 0xFFFFFFFF elements; S6, own design)
-    Unencodable       // S9: the command has no wire form (encode_record refuses it); Recorder::submit answers it without logging or applying
+    Unencodable,      // S9: the command has no wire form (encode_record refuses it); Recorder::submit answers it without logging or applying
+    // ... MAP-2..MAP-EXTRACT-1 enumerators ...
+    PrefixStopped     // ROADS-1: trailing road placement not attempted after an earlier refusal or drag_cap cutoff
 };
 struct RecordResult { Reject status = Reject::None; BuildingId building; };
 struct ApplyResult { Reject status = Reject::None; std::vector<RecordResult> records; bool ok() const { return status == Reject::None; } };
@@ -2060,6 +2062,7 @@ production world with optional features off still writes exactly 1a's bytes: eac
 | Tag | Section | Name | Owner packet | Status | Payload fields |
 |---|---|---|---|---|---|
 | 1 | header | fisher_rules | FISHER-1b | Implemented | u8 enabled: 0 off (default), 1 on; other values refused |
+| 2 | header | road_rules | ROADS-1 | Implemented | u8 enabled (0 off default), u32 drag_cap (40), u8 every_tile_territory (1), u8 no_downgrade (1), u8 free_same_family (1), u8 stop_at_first_refusal (1), u8 figure_veto (1) |
 | 0xF000–0xFFFF | Test contexts only | Reserved test range | SAVE-SECTIONS-1b | Reserved | See synthetic proof below |
 
 Tag 0 is never assigned. Tag 1 is the first production entry (reserved on the board 2026-11-14). A feature reserves its tag on the board

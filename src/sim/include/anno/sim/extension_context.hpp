@@ -64,12 +64,55 @@ struct FisherRulesExtension {
         return payload.enabled <= 1 ? "" : "enabled must be 0 or 1";
     }
 };
+// Header tag 2 (ROADS-1): persistent road drag rules; default (enabled = 0) emits 0 bytes.
+struct RoadRules {
+    std::uint8_t enabled = 0;
+    std::uint32_t drag_cap = 40;
+    std::uint8_t every_tile_territory = 1;
+    std::uint8_t no_downgrade = 1;
+    std::uint8_t free_same_family = 1;
+    std::uint8_t stop_at_first_refusal = 1;
+    std::uint8_t figure_veto = 1;
+    friend bool operator==(const RoadRules&, const RoadRules&) = default;
+};
+struct RoadRulesExtension {
+    using Payload = RoadRules;
+    static constexpr std::uint16_t tag = 2;
+    static constexpr const char* name = "road_rules";
+    static constexpr Payload default_value() { return {}; }
+    template <class Context> static auto& state(Context& context) { return context.road_rules; }
+    template <class A, class P> static void fields(A& a, P& payload) {
+        a.u8(payload.enabled);
+        a.u32(payload.drag_cap);
+        a.u8(payload.every_tile_territory);
+        a.u8(payload.no_downgrade);
+        a.u8(payload.free_same_family);
+        a.u8(payload.stop_at_first_refusal);
+        a.u8(payload.figure_veto);
+    }
+    static std::string validate(const Payload& payload) {
+        if (payload.enabled > 1 || payload.every_tile_territory > 1 || payload.no_downgrade > 1 ||
+            payload.free_same_family > 1 || payload.stop_at_first_refusal > 1 ||
+            payload.figure_veto > 1) {
+            return "road_rules boolean fields must be 0 or 1";
+        }
+        if (payload.drag_cap == 0) {
+            return "drag_cap must be positive";
+        }
+        if (payload.enabled == 0 && payload != default_value()) {
+            return "disabled road_rules must equal default_value()";
+        }
+        return {};
+    }
+};
 struct ExtensionContext {
     FisherRules fisher_rules;
+    RoadRules road_rules;
     friend bool operator==(const ExtensionContext&, const ExtensionContext&) = default;
-    using Lists = std::tuple<ExtensionList<FisherRulesExtension>, ExtensionList<>, ExtensionList<>,
-                             ExtensionList<>, ExtensionList<>, ExtensionList<>, ExtensionList<>,
-                             ExtensionList<>, ExtensionList<>, ExtensionList<>>;
+    using Lists =
+        std::tuple<ExtensionList<FisherRulesExtension, RoadRulesExtension>, ExtensionList<>,
+                   ExtensionList<>, ExtensionList<>, ExtensionList<>, ExtensionList<>,
+                   ExtensionList<>, ExtensionList<>, ExtensionList<>, ExtensionList<>>;
     template <StateSection S> using List = std::tuple_element_t<static_cast<std::size_t>(S), Lists>;
 };
 

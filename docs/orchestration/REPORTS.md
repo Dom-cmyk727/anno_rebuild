@@ -17537,3 +17537,19 @@ reported (NOT_RUN on this headless host; see there).
   which has nothing to do with which pixels are submerged in Enhanced water.
 
 READY FOR REVIEW.
+
+## UI-CATNAV-1 (executor, 2026-11-19): a category tab shows its grid and keeps the armed type
+
+**Rule found.** Code (GOG, read): the tab strip's handler `View.dll 0x1002bf90` (registered at `0x1002bb23`, tab index = property `0x1b3`) swaps the panel's gadget groups (removes the vector at `[this+0x5e4]` and the info gadget, adds the clicked tab's group), stores the index at `[this+0x5f0]` and sends the tab a message; it calls no cursor (AnnoFrame) code and posts no cancel, and compares nothing with the stored index. HE (ui_10 10:03-10:13, frame 10:08): the road grid shows while the building stays armed. So: (1) a tab click shows that category's grid and keeps the armed type; (2) no disarm; (3) the tab already open takes the same path (code; HE not captured). Unread/HE-only parts: OQ-773 (whether the info panel is one of the swapped groups; GOG panel switch not read to its end), OQ-774 (second click on the open tab).
+
+**Changed.** `construction_menu.hpp/.cpp`: `ConstructionPanelState` + `after_category_click` (grid, category, nothing disarmed), commented with the evidence. `viewer.cpp`: the SwitchCategory click uses it (the old code changed only the category, so the info panel stayed); new facts `ui.panel` (none/grid/info) and `tool.armed` (Anlagen id or none). Tests: unit case in `construction_menu_test.cpp`; wiring `tools/test/viewer_wiring/ui_catnav.script` + `viewer_wiring_ui_catnav` in `src/app/CMakeLists.txt` (arm 501, click all eight tabs and the open one, arm the dirt road 2520 via the roads grid, tab click, ESC closes and disarms). Docs: `docs/re/ui.md` 2.6, `docs/BUILDINGSOBJECTS.md` B 6 row, OQ-773/774.
+
+**Gate.** msvc Release, game dir, GOG shots, HE captures, rotation shots, `run_selected.py --jobs 8 --select 'hud|ui |ui_|construction|selection|^viewer_wiring_ui_|live_screen_matches_oracle|ui_dynamic_draw_check|info_panel_gog_compare|info_panel_rotation_gog_compare|selected_house_pixel_check|ui_panels_match_gog'`, all six oracle tests and `viewer_wiring_ui_catnav` required: `COUNTS: selected=83 executed=83 failed=0 empty=0 skipped=0 incomplete=0 sanitizer_lines=0`, `VERDICT: PASS` (`cache/gates/ui-catnav-1-01.log` first run, `-02.log` after the failure proof and restore). `viewer_wiring_ui_buildcat` and `ui_panels_match_gog` in the selection, green. clang-format 23.1.3 `--dry-run --Werror` clean. WSL `check_unix_warnings.sh`: GCC 13 and Clang 18, with and without GPU, all clean, negative control fails as expected (one note: another WSL compile was running when it started, so the run overlapped it).
+
+**Failure proof.** With `after_category_click` keeping `placement_open`: the unit case fails (`CHECK_FALSE(next.placement_open)` lines 507, 512) and `viewer_wiring_ui_catnav` fails at `ui.panel is 'info', expected == grid` after the first tab click. Restored; green again.
+
+**Owner test (default rules, plenty of resources, `ANNO_DEV_GOODS_TONS=2000`):** `anno1503 --play data/maps/lan5.txt --construction-menu on --layout data/ui`; B, click a building cell (panel with picture and costs), click any category tab: that category's grid shows, the ghost on the map is still the building; click a cell in the grid: that type arms. Arm the dirt road, click another tab: grid, road still armed. X and ESC behave as before.
+
+NOT_RUN: GPU window live, Linux/Mac CI.
+
+READY FOR REVIEW.

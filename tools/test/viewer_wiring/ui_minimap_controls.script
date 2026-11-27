@@ -78,20 +78,18 @@ wait frames 3
 expect fact minimap.zoom == 100
 expect fact minimap.clicks == 2
 # The magnifier's + (796, 135) and - (826, 153), 19 x 21: one built level per press (tile widths
-# 20 -> 42 -> 84, clamped at level 0), then back.
+# 20 -> 42 -> 84, clamped at level 0), then back. A step can wait for the target group's sea
+# pattern. Observe the new level before sending the next press.
 expect fact view.tile_w == 20
 click_px 805 145
-wait frames 3
-expect fact view.tile_w == 42
+wait fact view.tile_w == 42
 click_px 805 145
-wait frames 3
-expect fact view.tile_w == 84
+wait fact view.tile_w == 84
 click_px 805 145
 wait frames 3
 expect fact view.tile_w == 84
 click_px 835 163
-wait frames 3
-expect fact view.tile_w == 42
+wait fact view.tile_w == 42
 # The chevrons (965, 140) and (986, 140), 19 x 31: taken, nothing turns (VIEW-TURN-1).
 click_px 974 155
 wait frames 3

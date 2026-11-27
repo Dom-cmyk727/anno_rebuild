@@ -1,0 +1,43 @@
+# UI-HARVEST-ICON-1 R1: the owner's ui test (2026-11-27): the forester's status icon showed while
+# zoomed out and was gone after zooming back in. The same sequence: the icon appears, zoom out
+# twice, zoom back in to the closest level; the icon must be produced at every stage
+# (status_icons.drawn) and drawn (the screenshots, status_icon_zoom pixel check).
+resize 1024 768
+wait frames 5
+look 1140 516
+wait frames 5
+key b
+wait frames 3
+select 801
+rotate 0
+expect title build 801
+click 1156 516
+wait outcome
+expect outcome Applied
+key esc
+wait frames 3
+wait fact inspection.status_icon == 1 within 200000
+wait fact status_icons.drawn >= 1 within 10000
+look 1156 516
+wait frames 10
+note fact zoom.target
+screenshot icon_start
+checkpoint icon_start
+wheel -3
+wait frames 30
+expect fact status_icons.drawn >= 1
+screenshot icon_out1
+wheel -3
+wait frames 30
+expect fact status_icons.drawn >= 1
+screenshot icon_out2
+checkpoint zoomed_out
+wheel 12
+wait frames 30
+look 1156 516
+wait frames 10
+expect fact zoom.at_max == 1
+expect fact status_icons.drawn >= 1
+screenshot icon_closest
+checkpoint zoomed_in
+quit

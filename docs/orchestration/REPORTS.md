@@ -17601,3 +17601,28 @@ done to keep this packet docs only); the darkening factor measurement (OQ-796); 
 - **OQ-796 narrowed:** about 5/8 per channel (0.625 fits 27,022 sampled changed pixels, 0.75 15,135), the shadow brush's
   factor; not bit-exact through the capture path. The drawing code in GOG stays unread (OQ-767 answered in part).
 - ORCH III's nit fixed: ui.md 12.1 rows 6 and 7 back in order. B draft updated (no owner gate; factor 5/8).
+
+## UI-RANGE-1 B1 — which tiles the range display darkens (app only) — READY FOR REVIEW
+
+UI lane, 2026-11-27. Branch `task/UI-RANGE-1` (merges cand12 `c5af390c`). Scope as ORCH III approved: the lit-set logic,
+the triggers as data, two dev facts, unit cases and a wiring case from the default start view; no drawing (B2).
+
+- **Code:** `src/app` `range_view.hpp/.cpp`. `range_city(RangeInput, RangeTriggers, TerritoryView)` returns the lit city
+  (`RangeCity{island index, owner value}`) or none: the armed tool wins over the selection; the city is the owner of the
+  selected building's tile, or of the pointer tile for an armed tool; a neutral tile gives none. `range_dark` is the
+  per-tile predicate for either B2 path; `range_dark_count` feeds the fact. `RangeTriggers` (data): selected PRODTYPE
+  33-35, armed PRODTYPE 33-35, the armed road (`docs/re/ui.md` 12, GOG capture).
+- **Facts:** `ui.range_city` (`island:owner` or `none`), `ui.range_dark_tiles` (viewer.cpp, next to `tool.armed`).
+- **Tests:** six doctest cases (a selected Kontor; Kontor and market combined; an armed market over the selection, a
+  neutral and an off-island pointer; the armed road and the trigger list as data; nothing or an unlisted type; two cities
+  on one island) and `viewer_wiring_ui_range` (lan5, no `look`: the Kontor selected, Esc, the dirt road armed with the
+  pointer on the city).
+- **Gates (this PC, quiet; WSL after the render lane's check):** msvc build clean; `run_selected` over range, the
+  `viewer_wiring_ui_` scripts, the GOG oracle (`ANNO_UI_ORACLE_SHOTS`) and `anno_app_tests`: 443 selected, 439 executed,
+  0 failed, 4 skips (1 platform, 3 opt-in); the six range cases and `viewer_wiring_ui_range` among the executed. WSL GCC 13
+  / Clang 18 clean (444 + 99), after one fix: a `? 1 : 0` added to a `size_t` (`-Wsign-conversion`, GCC only). The gate's
+  name check refused a test name with a semicolon first; renamed.
+- **OQ-797** (every armed building? a neutral pointer tile) opened; a far-zoom pioneer-house GOG capture closes it.
+- **NOT_RUN:** a failure proof by mutation (the unit cases assert each trigger and the dark predicate directly); macOS.
+- **Decisions:** the armed tool wins over the selection, and the city comes from a tile's owner (no city lookup needed);
+  both are L and named in the header.

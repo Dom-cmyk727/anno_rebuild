@@ -17,6 +17,7 @@
 #include <thread>
 #include <tuple>
 
+#include <anno/render/direct_instances.hpp>
 #include <anno/render/gpu.hpp>
 #include <anno/render/gpu_fluid.hpp>
 #include <anno/render/residency.hpp>
@@ -768,6 +769,21 @@ struct GpuFrame::Impl {
         std::size_t built = 0, fallbacks = 0;
     };
     ChunkBuild cb;
+
+    /// RENDER-DIRECT-3 stage 3a (docs/render/direct-object-pass-3a.md): a direct instanced draw
+    /// of `cb.residency`'s own resident atlas through the existing `sprite_pipe` (no new WGSL, no
+    /// new pipeline - only this bind group differs from the sprite-pipe's own never-evicting
+    /// `atlas`). A separate instance buffer from the sprite pipe's `instances`: this draw's
+    /// content (static object instances) and lifetime are unrelated to the per-frame sprite list.
+    struct DirectObjects {
+        BindGroup bind;
+        /// The atlas view `bind` was built from - `cb.atlas_view` changes handle (not just
+        /// contents) on a grow (`cb_grow_atlas`), same reason `CbScratch::sig_atlas` exists.
+        WGPUTextureView sig_atlas = nullptr;
+        Buffer buf;
+        std::uint64_t cap = 0;
+    };
+    DirectObjects direct_objects;
     /// The generation the render() in progress draws, when its caller passed an owning handle
     /// (null otherwise, and between frames): what render() starts that outlives it holds this.
     std::shared_ptr<const Scene> frame_scene;
@@ -2595,6 +2611,125 @@ struct GpuFrame::Impl {
             instances_size = size;
         }
         wgpuQueueWriteBuffer(queue(), instances.get(), 0, bytes.data(), bytes.size());
+    }
+
+    /// RENDER-DIRECT-3 3a: `direct_objects.bind`, rebuilt only when `cb.atlas_view`'s handle
+    /// changed (a grow) - not every frame, same reuse rule `CbScratch`'s own bind group follows.
+    /// nullptr before `cb.residency` exists (no chunk has been built yet this run).
+    WGPUBindGroup direct_atlas_bind() {
+        if (!cb.residency) {
+            return nullptr;
+        }
+        if (direct_objects.bind.get() != nullptr &&
+            direct_objects.sig_atlas == cb.atlas_view.get()) {
+            return direct_objects.bind.get();
+        }
+        const std::array entries = {view_entry(0, cb.atlas_view.get())};
+        WGPUBindGroupDescriptor desc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
+        desc.label = sv("direct objects atlas");
+        desc.layout = atlas_layout.get();
+        desc.entryCount = entries.size();
+        desc.entries = entries.data();
+        direct_objects.bind = BindGroup(wgpuDeviceCreateBindGroup(dev(), &desc));
+        direct_objects.sig_atlas = cb.atlas_view.get();
+        return direct_objects.bind.get();
+    }
+
+    void write_direct_instances(const std::vector<std::uint8_t>& bytes) {
+        if (bytes.empty()) {
+            return;
+        }
+        if (!direct_objects.buf || direct_objects.cap < bytes.size()) {
+            std::uint64_t size = 4096;
+            while (size < bytes.size()) {
+                size *= 2;
+            }
+            direct_objects.buf = make_buffer(dev(), "direct objects", size,
+                                             WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst);
+            direct_objects.cap = size;
+        }
+        wgpuQueueWriteBuffer(queue(), direct_objects.buf.get(), 0, bytes.data(), bytes.size());
+    }
+
+    /// RENDER-DIRECT-3 3a: draws `instances` through the existing `sprite_pipe`/`sprite_vs`/
+    /// `sprite_fs` (gpu.wgsl), sourced from `cb.residency`'s atlas instead of the sprite pipe's
+    /// own never-evicting one (`direct_atlas_bind`, above) - the design in
+    /// docs/render/direct-object-pass-3a.md. `layer_shadow.y` is `record.flags` as-is: for a
+    /// shadow record (`Scene::object_record`, scene.cpp), that is exactly `kShadow |
+    /// height << kHeightShift | 0` (depth_bits(Rule{}) is 0 for the default/no-class rule shadows
+    /// always get) - bit-for-bit the same value `pack_sprites` computes for a shadow sprite with
+    /// `tested = false`. **This identity holds only for Class::None/shadow records (3a's scope);
+    /// a Class::Z record's `depth_bits` would collide with `sprite_fs`'s own bit 16/17 meanings
+    /// (river tolerance, ship-in-water) - 3a2 must not reuse this packing unexamined.**
+    /// `scissor` is `view`-relative chunk rects, one draw per visible chunk (not one combined
+    /// buffer sliced by byte offset): each chunk is resolved against `cb.residency` and uploaded
+    /// on its own, which also keeps a chunk with nothing to draw a no-op with no empty draw call.
+    void draw_direct_objects(WGPURenderPassEncoder p, const Scene& scene,
+                             const ChunkInstanceBuckets& buckets,
+                             std::span<const std::pair<int, int>> visible_chunks,
+                             std::uint32_t track, bool depth_test, const depth::Params& dparams,
+                             Rect view, std::uint32_t target_w, std::uint32_t target_h,
+                             std::uint64_t max_upload_bytes) {
+        const WGPUBindGroup direct_atlas = direct_atlas_bind();
+        if (direct_atlas == nullptr || cb.ft == nullptr) {
+            return;
+        }
+        for (const auto& chunk : visible_chunks) {
+            const std::array<std::pair<int, int>, 1> one = {chunk};
+            std::vector<FrameRef> needed;
+            const auto records = resolve_direct_records(buckets, one, scene, *cb.residency, track,
+                                                        depth_test, dparams, needed);
+            if (records.empty()) {
+                continue;
+            }
+            if (!needed.empty()) {
+                std::vector<FrameId> ids;
+                ids.reserve(needed.size());
+                for (const FrameRef& r : needed) {
+                    ids.push_back(r.id);
+                }
+                cb_resident(ids, *cb.ft, max_upload_bytes);
+            }
+            const auto placed = place_direct_instances(records, *cb.residency);
+            if (placed.empty()) {
+                continue;
+            }
+            Bytes bytes;
+            for (const auto& inst : placed) {
+                bytes.i32(inst.record.x);
+                bytes.i32(inst.record.y);
+                bytes.u32(inst.atlas.width);
+                bytes.u32(inst.atlas.height);
+                bytes.u32(inst.atlas.x);
+                bytes.u32(inst.atlas.y);
+                bytes.u32(inst.atlas.layer);
+                bytes.u32(inst.record.flags);
+            }
+            write_direct_instances(bytes.b);
+            const auto [cx, cy] = chunk;
+            const auto on_screen = chunk_rect(cx, cy).intersect(view);
+            if (!on_screen) {
+                continue; // not actually visible this frame (reach() over-estimates slightly)
+            }
+            const std::int32_t sx = on_screen->x - view.x, sy = on_screen->y - view.y;
+            const std::uint32_t sw =
+                std::min<std::uint32_t>(on_screen->w, target_w - std::max(sx, 0));
+            const std::uint32_t sh =
+                std::min<std::uint32_t>(on_screen->h, target_h - std::max(sy, 0));
+            if (sw == 0 || sh == 0) {
+                continue;
+            }
+            wgpuRenderPassEncoderSetScissorRect(p, static_cast<std::uint32_t>(std::max(sx, 0)),
+                                                static_cast<std::uint32_t>(std::max(sy, 0)), sw,
+                                                sh);
+            wgpuRenderPassEncoderSetPipeline(p, sprite_pipe.get());
+            wgpuRenderPassEncoderSetBindGroup(p, 1, empty_bind.get(), 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(p, 2, direct_atlas, 0, nullptr);
+            wgpuRenderPassEncoderSetVertexBuffer(p, 0, direct_objects.buf.get(), 0,
+                                                 WGPU_WHOLE_SIZE);
+            wgpuRenderPassEncoderDraw(p, 6, static_cast<std::uint32_t>(placed.size()), 0, 0);
+        }
+        wgpuRenderPassEncoderSetScissorRect(p, 0, 0, target_w, target_h); // restore full scissor
     }
 
     const Sea* current_sea() const {

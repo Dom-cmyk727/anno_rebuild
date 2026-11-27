@@ -59,13 +59,37 @@ delivering the real win yet; 3a2 (below) is where real objects move.
   **measured** tolerance (ADR 0007 decision 8) - report the tolerance's actual numbers (max and
   mean per channel, the pixel count over the threshold), the 4090 and the Radeon both named, and
   write them into the ADR before this stage is accepted. Do not guess the numbers first.
+  **Met** (`direct_objects_proof_test.cpp`, commit 0277a470): max per-channel diff R=0 G=0 B=0 A=1,
+  mean A < 0.05, 0 pixels over a threshold of 2 on both scenes and both adapters (RTX 4090 and the
+  Radeon iGPU) - bit-exact in practice. Numbers written into ADR 0007 decision 8.
 - **Seam proof required:** one case with an instance that spans two chunks, drawn once (not
   blended twice) with the scissor in place; the same case with the scissor removed must show the
   double blend, proving the scissor is load-bearing, not redundant.
+  **Met:** a chunk-spanning shadow's R-deficit is 96 with the scissor (one blend) and 156 without
+  it (two blends) - matches the predicted 0.375 vs 1-0.625² exactly.
 - A mutation control (one wrong instance in the uploaded buffer) must exceed the tolerance.
+  **Met:** a 5 px shift is caught (454 pixels over the threshold).
 - Switch off: 0 digest change anywhere (`--png`, every recorded digest, every existing test).
+  **Met by construction:** nothing in `GpuFrame::render` calls `draw_direct_objects` - the proof's
+  own `draw_direct_objects_test` entry point is 3a's only caller, so render() is untouched; the
+  full `anno_render_tests` (235/235) and `anno_render_gpu_tests` (141/141) suites pass unchanged.
 - Units and ships stay on the old path this stage (a later stage names when they move - see
   below). Size: should fit well under 3 h, now that it is shadows-only with no bake-filter change.
+- **Two real bugs found and fixed while writing the proof, neither caught by the earlier CPU-only
+  work (commit 5163634c/53154854):** (1) each visible chunk's instance bytes were written to the
+  GPU buffer at a shared offset 0 and drawn immediately - `wgpuQueueWriteBuffer` only enqueues the
+  copy, so by the time the GPU executed the pass every draw call read whichever chunk's write
+  landed last, not the chunk it was recorded for (invisible on CI/MSVC's own compile check; only a
+  real multi-chunk run exposes it - fixed by resolving every chunk first, appending each one's
+  bytes at its own offset, then drawing with that offset). (2) the proof's own
+  `draw_direct_objects_test` entry point never set `cb.ft` (`GpuFrame::render` sets it itself for
+  the production path; `build_chunk_planes` sidesteps it by taking `frames` directly) - every real
+  draw silently resolved zero records and drew nothing, which the first (unfixed) run of the proof
+  surfaced as "87% of every chunk's pixels wrong on alpha only" (shadows at 0 opacity where the CPU
+  oracle expected partial). Also fixed, while in the area: CI's two real sign-conversion errors in
+  the scissor-rect clamp (not cosmetic - a genuine `int`→`uint32_t` narrowing CI's `-Werror` was
+  right to catch), and `direct_atlas_bind()` was moved to after the resolve/upload loop, not
+  before, since `cb_resident` can grow or recreate `cb.atlas_view` mid-loop.
 
 **3a2 - the real win: `Class::Z` objects, with depth and clip, carried into the direct pass.**
 - Adds `cb_depth_at`'s per-pixel depth test (against `cb_terrain`/`cb_atlas_z`, as

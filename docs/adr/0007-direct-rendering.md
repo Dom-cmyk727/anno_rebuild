@@ -71,6 +71,15 @@
      a stated tolerance per channel at integer scales, and within a stated tolerance and pixel share at fractional
      scales. The exact numbers are set by RENDER-DIRECT-3's measurement and written into this ADR before it is
      accepted.
+     - **3a's own measurement** (shadows/`Class::None` only, the direct instanced draw into a cleared target vs. the
+       CPU replay of the same filtered records, `direct_objects_proof_test.cpp`; `Class::Z` and the rest of 3a's
+       scope land with 3a2): on `Single_01.sze` (1056 chunks, 45,315 shadow instances) and `lan5.txt` (1494 chunks,
+       89,879 shadow instances), on both the RTX 4090 and the Radeon iGPU (Vulkan): max per-channel diff R=0, G=0,
+       B=0, A=1 (8-bit rounding only); mean per-channel diff under 0.05 on A, 0 on R/G/B; **0 pixels over a
+       threshold of 2** on every scene and adapter - bit-exact in practice. A mutation control (one instance shifted
+       5 px) is caught (454 pixels over). The per-chunk scissor is load-bearing: a chunk-spanning shadow's
+       R-deficit is 96 with it (one blend, ≈0.375·255) and 156 without it (two blends, ≈(1−0.625²)·255) - the
+       predicted double blend.
    - **The headless `--png` path, its digests and `anno-dump` stay exact,** on the CPU.
    - **The camera sweep of ZOOM-MEASURE-1 is the acceptance test:**
      - 0 frames with non-ready content;

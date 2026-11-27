@@ -441,7 +441,8 @@ TEST_CASE("plank text: the live public screen's glyphs are where the GOG shot ha
     int count = 0, x0 = 1024, x1 = -1, y0 = 768, y1 = -1;
     for (int y = 250; y < 302; ++y) {
         for (int x = 783; x < 1024; ++x) {
-            const std::size_t i = (static_cast<std::size_t>(y) * im.width + x) * 4;
+            const std::size_t i =
+                (static_cast<std::size_t>(y) * im.width + static_cast<std::size_t>(x)) * 4;
             if (im.pixels[i] == 255 && im.pixels[i + 1] == 255 && im.pixels[i + 2] == 255) {
                 ++count;
                 x0 = std::min(x0, x);

@@ -26,8 +26,8 @@ each object instance is drawn every frame, so the darkening is one multiply in t
 2. **Ground pass:** the fragment looks up its tile's owner, and darkens where `lit_owner` is set and the owner differs.
 3. **Object pass:** each instance carries its anchor tile (RENDER-DIRECT-2's lists place instances by tile; not checked here); the instance's owner is read
    once per instance (vertex stage) from the same grid. A building straddling the boundary is lit or dark as a whole,
-   by its anchor tile. Whether the original goes by anchor or per pixel is not read: the B1 rule says "anchored",
-   label L until a capture of a straddling building settles it (it can share OQ-796's capture).
+   by its anchor tile. **Settled (OQ-907, P):** GOG darkens per object - in the UI-RANGE-1 A capture the lit/dark
+   boundary follows the tree crowns' outlines, not tile edges.
 4. **Sea pass:** sea pixels inside an island rectangle use the tile under them, which needs the same lookup as the
    ground; open sea is never dark.
 5. **Factor:** data (`data/ui/`, 5/8 with its source), applied after the per-pixel depth (ADR 0007 "Added after

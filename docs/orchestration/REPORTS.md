@@ -18135,3 +18135,51 @@ GELAENDE records end up empty - not drawing id 5.
   zero-risk hardening, not scope creep.
 
 READY FOR REVIEW.
+
+## UI-PLANK-1 — the construction plank names the open category — READY FOR REVIEW
+
+UI lane, 2026-11-27. Branch `task/UI-PLANK-1` on cand13 `aeb65424`. Stage A (accepted): `docs/re/ui.md` 2.4 "Banner
+text".
+
+- **Code:**
+  - `data/ui/hud.txt` `plank_text`: pos 783 261, size 241 25, `MainSmall.zei`, `align centre`,
+    `text_section TOOLTIP:BAUMENU_EX`, measured on `r2_construction_public`;
+  - `UiElement::text_section`;
+  - `TexCache::text_line` (Texte.dat sections, read once);
+  - `plank_text_of` and a shared `draw_centred_text`, which `draw_info_content` now also uses;
+  - drawn right after `plankegross` on the CPU and GPU-overlay paths;
+  - public `construction_plank_text`; fact `ui.plank_text` (spaces as `_`).
+- **Behaviour:** the open category's line (tab index = construction.txt `index` - 1). Arming a building or the road
+  leaves it, as the original (the tab handler is its only writer).
+- **Tests:**
+  - `plank text: the open category's TOOLTIP:BAUMENU_EX line` (all eight strings from the real Texte.dat);
+  - `plank text: the live public screen's glyphs are where the GOG shot has them` (441 white pixels, box x 843..962,
+    y 264..277, equal to GOG);
+  - `viewer_wiring_ui_plank` from the default start view: all eight tabs, then the dirt road armed keeps
+    "Squares, Streets".
+- **Failure proofs** (data only, restored after each):
+  - `text_section` pointed at `TOOLTIP:BAUMENUINFO`: the section check and all eight strings fail;
+  - pos y 262: the pixel case fails on y0/y1.
+- **Gates (this PC, msvc Release):**
+  - `run_selected` over hud / ui / construction / selection / `^viewer_wiring_ui_` / the oracle and panel compares /
+    plank / ui transform-layout-placement-layer: 108 selected, 102 executed, 0 failed, 6 skipped (the shot compares
+    without their env vars), `VERDICT: PASS` (`cache/plank-gate-01.log`);
+  - with `ANNO_UI_ORACLE_SHOTS` and `ANNO_UI_ROTATION_SHOTS` set: `ui_panels_match_gog`, `info_panel_gog_compare`,
+    `info_panel_rotation_gog_compare`, `ui_subtabs_compare`, `ui_balance_rows_compare`, `live_screen_matches_oracle`:
+    6/6 PASS (`cache/plank-gate-02.log`);
+  - `ui_window_matches_he` left skipped: it compares the idle HUD only, which this change does not draw on;
+  - WSL GCC 13 / Clang 18: the first run caught an `int` -> `size_t` index in the new test (fixed); re-run clean (453 + 102 files, negative controls fail as expected).
+- **OQs:**
+  - OQ-905 answered (font and position, from the existing GOG shot; no capture needed);
+  - OQ-907 answered from the existing UI-RANGE-1 A capture: per object (the lit/dark boundary follows the tree crowns),
+    so no Wine run was needed for it either;
+  - OQ-904 open (which panel message re-sets the text).
+- **Owner test:**
+
+  ```
+  anno1503 --play data\maps\lan5.txt --game-dir E:\anno1503\game\app --construction-menu on --layout data\ui
+  ```
+
+  Press B, then click through the eight tabs: the plank names each category, and arming a building or the road keeps
+  it.
+

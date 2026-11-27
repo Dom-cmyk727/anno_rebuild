@@ -17537,3 +17537,41 @@ reported (NOT_RUN on this headless host; see there).
   which has nothing to do with which pixels are submerged in Enhanced water.
 
 READY FOR REVIEW.
+
+## UI-RANGE-1 A — the range display, read — READY FOR REVIEW
+
+UI lane (this session, for ORCH III), 2026-11-27. Branch `task/UI-RANGE-1` on `refs/candidates/cand12` `446e7c1c`. Docs
+only: `docs/re/ui.md` 12, `docs/BUILDINGSOBJECTS.md` (G7 row, §10.1 note), OQ-767 narrowed, OQ-795/796 new, B draft
+`docs/orchestration/tasks/ui-range-1-b-draft.md`. Earlier range work checked first: none on `origin/task/UI-*` beyond
+UI-GHOST-1's radius outline (part B §5.1).
+
+**Findings:**
+1. **HE (pixels):** a selected Kontor/market, an armed territory-bound building or an armed road darkens every island tile
+   whose owner is not that city, sea tiles inside the island rectangle included; the open sea never; objects on dark
+   tiles (trees) too; gone when nothing is selected or armed. It is a per-tile owner test, so Kontor + market show their
+   combined range (he_01 3:28, 3:55-4:19, 5:30-5:50; ui_10 10:48-11:13).
+2. **The ghost's range outline** turning with rotation is already fully read (AnnoFrame `0x100443c0`, part B §5.1 (3)):
+   centred on the footprint centre, which moves when rotation swaps w/h. Nothing new.
+3. **GOG (disassembly):** no darkening in the cursor draws `0x10048450`/`0x1004b7f0`; no owner-nibble test at all in
+   `AnnoDisplay` or `View`; AnnoFrame's four hits are MD5 (`0x100771b0`); every AnnoWelt hit is sim or bitfield code
+   (addresses in `ui.md` 12.2). So GOG may not darken at all: OQ-795.
+4. **Rebuild:** `TerritoryView` already carries every tile's owner; no sim change is needed.
+
+**Evidence:** D = capstone linear sweep of the GOG DLLs (private listings and helper in `cache/range/`); H = he_01/ui_10
+frames; P = GOG Wine captures `f12_info_kontor_1302`, `p1_c_armed_1301` (closest zoom, inside the range: they cannot show
+darkening).
+
+**NOT_RUN:** a GOG Wine capture at the farthest zoom (the decisive check for OQ-795; pre-authorized, about 30 min, not
+done to keep this packet docs only); the darkening factor measurement (OQ-796); C++ gates (docs only, not required).
+
+**Decisions and reasoning:**
+- I stopped the static search at a time box: a ground-draw accessor could still exist, and one capture decides it more
+  cheaply than tracing the renderer.
+- B is split (B1 app + CPU reference, B2 GPU), because B2 touches render files and the factor is unmeasured.
+- OQ numbers 795-796 only, from the UI lane's range.
+
+**QUESTIONs:**
+- **For the owner, via ORCH III:** if GOG does not darken (OQ-795), should the rebuild show HE's darkening by default,
+  behind an option, or not at all?
+- **For ORCH III:** run the GOG Wine capture before B1 (recommended), or start B1 now with the trigger logic and keep the
+  draw behind the OQ-795 answer?

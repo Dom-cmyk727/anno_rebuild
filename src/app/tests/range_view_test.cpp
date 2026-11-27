@@ -88,7 +88,7 @@ TEST_CASE("range: an armed market lights the city under the pointer, over the se
     CHECK_FALSE(anno::app::range_city(in, RangeTriggers{}, v).has_value());
 }
 
-TEST_CASE("range: an armed road darkens; the trigger list is data") {
+TEST_CASE("range: an armed road darkens, and the trigger list is data") {
     const TerritoryView v = two_islands();
     RangeInput in;
     in.armed_road = true;

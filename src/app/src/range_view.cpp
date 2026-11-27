@@ -62,7 +62,7 @@ std::size_t range_dark_count(const TerritoryView& view, const RangeCity& city) {
     for (std::size_t s = 0; s < view.islands.size(); ++s) {
         const std::size_t tiles = std::size_t{view.islands[s].w} * view.islands[s].h;
         for (std::size_t i = 0; i < tiles; ++i) {
-            n += range_dark(view, s, i, city) ? 1 : 0;
+            n += range_dark(view, s, i, city) ? std::size_t{1} : std::size_t{0};
         }
     }
     return n;

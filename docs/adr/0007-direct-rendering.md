@@ -105,7 +105,8 @@
 2. **RENDER-DIRECT-2:** per-island instance lists at load and their patching on a building change. The CPU raster of
    the lists equals today's CPU chunk for a static scene, exactly.
 3. **RENDER-DIRECT-3:** the direct object and ground passes, and the per-pixel planes. Measure the tolerance against
-   the CPU reference, and write it into this ADR.
+   the CPU reference, and write it into this ADR. Covers OQ-775 (ghost patch over submerged pixels in enhanced
+   water).
 4. **RENDER-DIRECT-4:** the art set chosen by scale, with hysteresis, and the optional scale blend shown to the owner.
 5. **RENDER-DIRECT-5:** the enhanced water in world space.
 6. **RENDER-DIRECT-6:** the direct path made the default, stand-ins and dissolves removed from it, and the sweep at 0.

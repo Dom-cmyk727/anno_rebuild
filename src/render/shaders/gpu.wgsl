@@ -971,6 +971,8 @@ fn patch_objects_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32>
 
 @fragment
 fn patch_submerged_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+    // shortcut: no sea over submerged pixels inside a ghost patch in enhanced water (needs 17
+    // sampled textures + piece/river bindings), fixed by the direct passes in RENDER-DIRECT-3 (OQ-775).
     if frame.enhanced != 0u || patch_u.has_submerged == 0u || (chunk.flags & 4u) == 0u {
         discard;
     }

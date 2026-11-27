@@ -17950,3 +17950,49 @@ UI lane, 2026-11-27. Branch `task/ROADS-2` (on ROADS-2a `b5d42107`).
   Arm the dirt road, drag an L, then a T off it, then a cross over it, and lay a road beside an existing one. Check that
   the tiles turn and join, and that the ghost shows what the release builds.
 - **NOT_RUN:** a GOG capture of a road turning into the sea (OQ-765); macOS/Linux CI until pushed.
+## CAND12-PATCH-SUB-1 — ghost-patch submerged fix deferred (OQ-775) — READY FOR REVIEW (task/CAND12-PATCH-SUB-1, from refs/candidates/cand12 446e7c1c)
+
+**Bug (packet W1):** `patch_submerged_fs` discards unconditionally when `frame.enhanced != 0u`, so a placement
+ghost over a pier shows no sea over its submerged pixels in enhanced water, unlike the chunk pass
+(`sea_submerged_fs`, WATER-SUBMERGED-1).
+
+**Counted the patch pipeline's bind-group layouts (gpu.cpp:3167-3180) before changing anything:** patch-frame 2 +
+chunk 9 + patch 3 = **14** textures, exactly the ceiling gpu.wgsl:930 already documents (no further rationale
+found in history). `sea_shade(pos, true)`, the chunk pass's enhanced-water colour, statically reaches more than
+the packet's own "bindings 5 and 6": `sea_filled` (binding 3, read unconditionally, gpu.wgsl:827) is a third
+texture; the `river` uniform (binding 7, gpu.wgsl:858) and the `piece` uniform (group 2 binding 1, via
+`piece.transparent`/`chunk_local`) are two more layout gaps - `piece` is missing from `patch_layout` by UI-GHOST-2's
+own design (`shade_object_in_water` takes explicit params instead). Extending would cost 14 -> 17 textures, over
+the documented ceiling and likely the real device one (the ordinary chunk pipeline already uses 15; WebGPU's spec
+default `maxSampledTexturesPerShaderStage` is 16, unconfirmed by an explicit override in this code).
+
+**Sent ORCH III a QUESTION with the counts and two costed options** (A: a dedicated pipeline layout for
+`patch_submerged_pipe` alone, 16 textures, zero headroom, plus the same `piece` wiring gap; B: raise the device's
+required texture limit on every adapter). **Decision (ORCH III, 2026-11-27): neither.** The gap only shows while a
+ghost overlaps submerged pixels in enhanced water, only while shown; RENDER-DIRECT-3 (ADR 0007) replaces these
+chunk passes with the direct object/ground passes anyway, so the real fix belongs there. Changes no original
+behaviour, no owner default.
+
+**Change:** one comment at the `patch_submerged_fs` discard (gpu.wgsl) naming the shortcut and OQ-775; OQ-775
+(`open-questions.md`) records the counts, both options and the decision; one line added to RENDER-DIRECT-3's item
+in `docs/adr/0007-direct-rendering.md`'s work list ("covers OQ-775"). No C++ touched.
+
+**Gates:**
+- clang-format / `check_unix_warnings.sh`: N/A, no `.cpp`/`.hpp` changed.
+- Build: `anno_render_gpu_tests` + `anno1503` (msvc Release) - clean; the WGSL (including the new comment) parses
+  at pipeline creation.
+- `anno_render_gpu_tests` (GPU-labelled, 4090): "the sea over submerged objects: GPU = CPU on a Kontor in the
+  water", "...pier poles sink in too (WATER-SUBMERGED-1)", "GPU ObjectsPatch suppression matches the CPU path" -
+  all 3 pass (these exercise the surrounding code the comment sits next to; no behaviour changed to test
+  directly, since the discard condition itself is unchanged).
+- `viewer_wiring_ui_ghost`/`ui_ghost_world`/`ui_ghost_pixel_check`/`ui_ghost2`/`ui_ghost2_occupied`/
+  `ui_ghost2_pixel_check`: run on "PC free" - **6/6 passed**.
+
+**Decisions and reasoning:**
+- Did not add a GPU test for "no change": the discard condition is byte-identical (`frame.enhanced != 0u` still
+  discards everything), only a comment moved in - there is no new behaviour to assert, and the existing ghost/
+  submerged tests above already cover that nothing regressed around it.
+- Chose a one-line shortcut comment over any structural change, per ORCH III's explicit decision and ponytail
+  (the smallest complete change: a documented, reasoned no-op).
+
+READY FOR REVIEW.

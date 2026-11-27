@@ -30,7 +30,7 @@ wait frames 30
 expect fact status_icons.drawn >= 1
 screenshot icon_out2
 checkpoint zoomed_out
-wheel 12
+wheel 40
 wait frames 30
 look 1156 516
 wait frames 10

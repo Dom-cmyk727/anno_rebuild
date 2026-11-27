@@ -4,7 +4,20 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-21, by the Windows orchestrator:
+**Last updated:** 2026-11-27, by the Claude Code orchestrator (ORCH III):
+- **Plan [plan-2026-11-27.md](plan-2026-11-27.md)** (owner request; independent review ACCEPT WITH CHANGES, applied).
+  Render lane "anno rendering executor windows": W1 CAND12-PATCH-SUB-1, then RENDER-DIRECT-2a, PICTURE-IDS-1,
+  RENDER-DIRECT-2c, 2d (2d waits for the owner on OQ-727). UI lane "Executor Job Status und Shared Folder":
+  UI-RANGE-1 A, B, UI-PLANK-1. The Mac is away; Mac-lane work is not dispatched.
+- **Candidate 12 `refs/candidates/cand12` = `446e7c1c`:** candidate 11 + UI-GHOST-2 (with ROADS-0/1/3, UI-GHOST-1,
+  BUILDINGS-REF-2) + GATE-2a + FLAKE-RESIZE-1 + WATER-SUBMERGED-1 + `main` `2bba18e3`; UI-CATNAV-1 is stacked next.
+- **The owner, 2026-11-27:** asked whether one full game-file run on this PC (with GATE-2a's retry of refused
+  tests) may stand in for the Mac's run so this bundle lands, the owner answered "Yes, PC run lands it" (bundle B0
+  only).
+- **Owner rules of 2026-11-27** (ponytail for everyone, heavy tests per bundle by hardware, advisor reviews bundles
+  only) are in TASKS.md and on `main` `2bba18e3`.
+
+Earlier (2026-11-21, by the Windows orchestrator):
 - **2026-11-20 (Windows orchestrator takeover; targeted unfreeze for Candidate 10):**
   - **`UI-MAGNIFIER-MAC-1` ACCEPTED WITH NOTES** (`task/UI-MAGNIFIER-MAC-1`, code `cbfa8b1a`, report `e2e4b617`,
     exact-head CI `44713929677` 12/12 green, base Candidate 10 `95897a55` + `origin/main` `a6468efd` CI pin;

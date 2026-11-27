@@ -3885,8 +3885,12 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
                 wgpuRenderPassEncoderSetBindGroup(p, 0, pass2.get(), 0, nullptr);
             }
         }
-        if (style == WaterStyle::Original) {
-            // The sea once more over the submerged object pixels (depth.md §2.3).
+        if (m.limits.submerged_over_objects) {
+            // The sea once more over the submerged object pixels (depth.md §2.3): in
+            // both styles now (WATER-SUBMERGED-1) - sea_submerged_fs itself branches on
+            // frame.enhanced for the colour, since object_in_water's column-foot
+            // heuristic misses tall thin objects like pier poles that this per-pixel
+            // pass still covers.
             wgpuRenderPassEncoderSetPipeline(p, m.sea_over_pipe.get());
             draw_chunks(p);
             if (!patch_chunks.empty() && m.patch_has_submerged) {

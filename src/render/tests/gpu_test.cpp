@@ -1477,6 +1477,92 @@ TEST_CASE("the sea over submerged objects: GPU = CPU on a Kontor in the water (g
     }
 }
 
+TEST_CASE("the sea over submerged objects, enhanced water: pier poles sink in too "
+          "(WATER-SUBMERGED-1, game files)") {
+    const auto dir = anno::test::game_dir();
+    auto ctx = device_or_skip();
+    if (!dir || !ctx) {
+        return;
+    }
+    // Same Kontor as the Original-water test above (S01_02_01, tile 421, 605, rotation 1, its
+    // piles towards the sea): Chunk::submerged does not depend on WaterStyle (it is the
+    // per-pixel depth test against the sea plane, depth.md §2.3), so the same pole pixels are
+    // marked submerged under enhanced water too. Before WATER-SUBMERGED-1, sea_submerged_fs
+    // discarded whenever frame.enhanced != 0u, so this pass never ran in enhanced water and the
+    // poles stayed opaque above the sea (object_in_water's column-foot heuristic misses them -
+    // docs/render/water_rca, owner report on ui_10.mp4). GpuLimits::submerged_over_objects
+    // (new) lets this test isolate exactly that pass's effect by disabling it, which reproduces
+    // the pre-fix picture without reverting any product code.
+    const Loaded loaded = load_scene(*dir, "S01_02_01.sze", "0100Kampagne01");
+    auto& scene = *loaded.scene;
+    scene.depth_test = true;
+    gpu::GpuLimits on, off;
+    on.uploads_per_frame = off.uploads_per_frame = SIZE_MAX;
+    off.submerged_over_objects = false;
+    auto a = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, on);
+    auto b = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, off);
+    REQUIRE(a);
+    REQUIRE(b);
+    constexpr int kW = 640, kH = 400;
+    const auto [cx0, cy0] = render::tile_top(421, 605, 0);
+    const render::Rect view{cx0 - kW / 2, cy0 - kH / 2, kW, kH};
+    render::FrameRenderer fa(4, false), fb(4, false);
+    const auto ta = a.value()->offscreen_target(kW, kH);
+    const auto tb = b.value()->offscreen_target(kW, kH);
+    a.value()->render(fa, scene, view, 0, 0, render::WaterStyle::Enhanced, ta.second.get());
+    b.value()->render(fb, scene, view, 0, 0, render::WaterStyle::Enhanced, tb.second.get());
+    const auto pa = a.value()->read_back(ta.first.get(), kW, kH);
+    const auto pb = b.value()->read_back(tb.first.get(), kW, kH);
+    REQUIRE(pa.size() == pb.size());
+    // The submerged mask for this view, built the same way the Original-water test above counts
+    // it (Chunk::submerged, row-major per chunk - frame.cpp's own chunk_index formula).
+    std::vector<std::uint8_t> mask(std::size_t{kW} * kH, 0);
+    std::size_t submerged_total = 0;
+    for (const auto& [cx, cy] : render::visible_chunks(view)) {
+        const render::Chunk* c = fa.chunk({0, cx, cy});
+        if (c == nullptr || c->submerged.empty()) {
+            continue;
+        }
+        for (int ly = 0; ly < render::kChunk; ++ly) {
+            for (int lx = 0; lx < render::kChunk; ++lx) {
+                if (c->submerged[std::size_t(ly) * render::kChunk + std::size_t(lx)] == 0) {
+                    continue;
+                }
+                const int x = cx * render::kChunk + lx;
+                const int y = cy * render::kChunk + ly;
+                if (x < view.x || x >= view.x + view.w || y < view.y || y >= view.y + view.h) {
+                    continue;
+                }
+                mask[std::size_t(y - view.y) * kW + std::size_t(x - view.x)] = 1;
+                ++submerged_total;
+            }
+        }
+    }
+    REQUIRE(submerged_total > 0);
+    std::size_t changed_in_mask = 0, changed_out_of_mask = 0;
+    for (std::size_t i = 0; i < mask.size(); ++i) {
+        const std::size_t p = i * 4;
+        const bool differs = pa[p] != pb[p] || pa[p + 1] != pb[p + 1] || pa[p + 2] != pb[p + 2];
+        if (mask[i] != 0) {
+            changed_in_mask += differs ? 1U : 0U;
+        } else {
+            changed_out_of_mask += differs ? 1U : 0U;
+        }
+    }
+    const double coverage = double(changed_in_mask) / double(submerged_total);
+    INFO("submerged " << submerged_total << ", changed-in-mask " << changed_in_mask
+                      << ", changed-out-of-mask " << changed_out_of_mask);
+    // The pier rectangle: at least 95% of the submerged pixels actually changed colour with the
+    // pass on vs off (not every one needs to, e.g. where the sea colour happens to coincide).
+    CHECK(coverage >= 0.95);
+    // Deck and upper poles unchanged: sea_submerged_fs discards on submerged_tex == 0, so a
+    // pixel outside the mask can never be touched by this pass, by construction - not just
+    // measured here.
+    CHECK(changed_out_of_mask == 0);
+    CHECK(a.value()->errors() == 0);
+    CHECK(b.value()->errors() == 0);
+}
+
 TEST_CASE("enhanced water meets objects standing in it (game files)") {
     const auto dir = anno::test::game_dir();
     auto ctx = device_or_skip();

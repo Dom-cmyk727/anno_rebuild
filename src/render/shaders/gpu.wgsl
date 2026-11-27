@@ -882,12 +882,19 @@ fn sea_shade(pos: vec4<f32>, allow_fluid: bool) -> vec4<f32> {
     return vec4<f32>(mix(under, c, alpha), 1.0 - piece.transparent);
 }
 
-// The sea once more over the submerged object pixels, after the objects (Original
-// water; FrameRenderer::render's second sea pass, docs/render/depth.md §2.3): the
-// sea sprite over the object (blended by the pipeline), without the open-water fade.
+// The sea once more over the submerged object pixels, after the objects
+// (FrameRenderer::render's second sea pass, docs/render/depth.md §2.3): every sprite
+// pixel the chunk build marked submerged (Chunk::submerged, per-pixel against the sea
+// plane) gets the sea drawn over it again, so tall thin objects (pier poles) sink below
+// the surface the same way in both styles - not just the ones object_in_water's
+// column-foot heuristic happens to reach (WATER-SUBMERGED-1). Original: the sea sprite
+// over the object, without the open-water fade (unchanged). Enhanced: object_in_water
+// still owns the foam line at the contact, so this pass only shades (never adds foam)
+// and blends with a capped alpha - soft, not a hard sprite cutout - to avoid double
+// fading the same pixel twice.
 @fragment
 fn sea_submerged_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
-    if frame.enhanced != 0u || (chunk.flags & 68u) != 68u || piece.kind != 0u {
+    if (chunk.flags & 68u) != 68u || piece.kind != 0u {
         discard;
     }
     let px = scene_px(pos);
@@ -901,6 +908,14 @@ fn sea_submerged_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32>
     let f = textureLoad(field_tex, local, 0);
     if f.r == 0u || (f.a & 1u) == 0u {
         discard;
+    }
+    if frame.enhanced != 0u {
+        // Enhanced's own shading, not Original's dithered sea sprite: the checkerboard
+        // pattern (below) only covers about half of any given area by design (the
+        // classic look), which would halve this pass's coverage here for no reason -
+        // every submerged pixel sinks, not every other one.
+        let shaded = sea_shade(pos, true);
+        return vec4<f32>(shaded.rgb, 0.7 * (1.0 - piece.transparent));
     }
     let pi = vec2<i32>(wrap(px.x, frame.pattern_size.x), wrap(px.y, frame.pattern_size.y));
     let sprite = textureLoad(sea_sprite, pi, frame.steps.x, 0);

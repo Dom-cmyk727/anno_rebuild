@@ -17447,3 +17447,93 @@ Linux/macOS test runs (WSL compiled all C++ sources with `-Werror` only); `game/
 - **QUESTIONs:** None.
 
 READY FOR REVIEW.
+
+## WATER-SUBMERGED-1 — pier poles sink in Enhanced water too — READY FOR REVIEW (task/WATER-SUBMERGED-1, from origin/main `a6468efd`)
+
+**Bug (owner, ui_10.mp4):** with `--water enhanced` the Kontor's pier poles stand opaque above the
+sea; classic water covers them below the sea plane.
+
+**Root cause, verified against code (the UI lane's read-only RCA,
+`cache/water_rca.md`, confirmed correct):** the per-pixel submerged pass
+(`sea_submerged_fs`, gpu.wgsl, drawn after objects at gpu.cpp) ran only in Original water
+(`if (style == WaterStyle::Original)`, gpu.cpp; `if frame.enhanced != 0u { discard; }`, gpu.wgsl).
+Enhanced relied only on `object_in_water` (gpu.wgsl, applied per object pixel): a per-COLUMN
+heuristic sampled once at the object's foot pixel, with early-outs (base plane > 0.6 tile_h above
+the anchor, cover/sd <= 0 at the foot). Pier poles are long and thin, many columns; most columns'
+foot samples land on shallow/edge pixels and take an early return, leaving the whole pole opaque
+and sharply cut - `object_in_water` was built for rocks/cliffs standing in water, not thin tall
+poles (its own test, `gpu_test.cpp`, only ever checks rocks at a river mouth).
+
+**Fix (GPU compositor only; the CPU path's enhanced water has no `object_in_water` equivalent, so
+no CPU change needed, per the RCA):**
+- `src/render/src/gpu.cpp`: the `sea_over_pipe` draw (the submerged pass) now runs in both
+  styles, gated by a new `GpuLimits::submerged_over_objects` (default on) instead of
+  `style == WaterStyle::Original`.
+- `src/render/shaders/gpu.wgsl` (`sea_submerged_fs`): dropped the `frame.enhanced != 0u` discard.
+  Original is unchanged (the sea sprite's checkerboard over the object). Enhanced branches before
+  sampling the checkerboard sprite at all (sampling it and gating on its own alpha there cut
+  coverage to ~50% in testing - the checkerboard is Original's own dithered look, not a property
+  of which pixels are submerged) and instead shades with `sea_shade(pos, true)` (Enhanced's own
+  sea colour) at a capped alpha (soft blend, not a hard cutout), so the same pixel is never faded
+  twice against `object_in_water`'s foam line at the contact (which is kept, foam-only, for that).
+- `src/render/include/anno/render/gpu.hpp`: new `GpuLimits::submerged_over_objects` (default on) -
+  a test/diagnostic switch (used by the new test's failure proof and its A/B comparison), not a
+  player-facing option; there is no faithful reason to run water without the per-pixel pass.
+
+**Cost checked, not just assumed:** `Chunk::submerged`'s mask is built whenever
+`Scene::depth_test` is on (default), independent of `WaterStyle` (`src/app/src/main.cpp:417`,
+`src/render/src/gpu.cpp:1364`) - the mask this pass now reads in Enhanced water was already being
+built and uploaded there before this fix, only never drawn with. No new texture, no new compute
+pass; one more full-chunk draw call per frame (the same pipeline Original water already runs for
+this pass). `docs/perf/README.md` has the measurement attempt and why a GPU-timestamp number isn't
+reported (NOT_RUN on this headless host; see there).
+
+**Proof:**
+- New GPU test (`src/render/tests/gpu_test.cpp`, "the sea over submerged objects, enhanced water:
+  pier poles sink in too (WATER-SUBMERGED-1, game files)"): the Kontor of `S01_02_01.sze` (tile
+  421, 605, same scene/tile as the existing Original-water submerged test above it), Enhanced
+  water, `GpuLimits::submerged_over_objects` on vs off (an in-repo A/B, not a reverted commit).
+  Builds the submerged mask for the view from `Chunk::submerged` (1,768 pixels in view) and checks:
+  coverage - at least 95% of submerged pixels actually changed colour between on/off (measured
+  100%: `changed-in-mask 1768/1768` after the checkerboard-gating fix, up from 884/1768 = 50%
+  before it); `changed_out_of_mask == 0` (deck and upper poles unchanged - true by construction,
+  since the shader discards outside the submerged mask, not just measured).
+- **Failure proof:** reverted only the product fix (`gpu.cpp` + `gpu.wgsl`, via
+  `git checkout HEAD --`, keeping the new test and the new `GpuLimits` field) and reran the new
+  test: `CHECK( 0 >= 0.95 )` - `submerged 1768, changed-in-mask 0, changed-out-of-mask 0`, i.e. the
+  pre-fix code reproduces the bug exactly (zero of the submerged pixels change in Enhanced water).
+  Restored the fix, rebuilt, confirmed the test passes again.
+- **The rocks test stays green:** "enhanced water meets objects standing in it (game files)"
+  (gpu_test.cpp, river-mouth rocks, `object_in_water`'s own test) - unchanged, still passing.
+- **Ships/rivers/zoom-levels/foam-at-sea-only:** not separately re-derived; the full `gpu` label
+  (120 doctest cases in `anno_render_gpu_tests`, msvc Release, `ANNO1503_GAME_DIR` set) - which
+  includes the ship-waterline, river and derived-zoom-level tests the RCA's own risk list named -
+  all pass (100% out of 120; the one `Skipped` is an unrelated pre-existing opt-in case).
+
+**Gates:**
+- `anno_render_gpu_tests` (label `gpu`, msvc Release, game dir, 4090): 120/120 passed (one
+  pre-existing opt-in case skipped, unrelated).
+- `clang-format` 23.1.3 (WSL pip install): the four changed `.cpp`/`.hpp` files, clean after one
+  auto-format pass (a multi-line `INFO(...)` in the new test).
+- `tools/check_unix_warnings.sh` (WSL, GCC 13 / Clang 18, `-Werror`, viewer+GPU and without): all
+  four configurations clean (GCC 418/85 files, Clang 18 418/85 files); both negative controls
+  caught the shadowed-variable probe as expected.
+
+**Decisions and reasoning:**
+- Kept `object_in_water` exactly as-is (foam line only) rather than folding its fade logic into
+  the new per-pixel pass or vice versa: the task asked to avoid double-fading, and the two passes
+  now have a clean split - `object_in_water`'s column-foot heuristic owns only the foam line at
+  the contact; the per-pixel submerged pass owns the actual "sinks below the surface" shading in
+  both styles, matching what classic water already did for every object, piers included.
+  `object_in_water`'s own early-outs/fade on non-foam pixels become redundant under the submerged
+  mask but are left alone (not this task's scope, and harmless: the two passes never disagree on
+  a submerged pixel's final look since the per-pixel pass draws over it after).
+- Used a new `GpuLimits` boolean instead of reverting code for the failure proof and the A/B test:
+  a toggle the test suite owns, rather than a scripted git-revert step a reviewer has to trust was
+  run correctly - the failure-proof revert was still done and recorded above for the bug itself,
+  separately from the A/B mechanism the committed test uses.
+- Did not gate the new shader branch on the sea sprite's own alpha (as the Original branch does):
+  measured directly (50% coverage) that doing so inherits Original's dithered checkerboard look,
+  which has nothing to do with which pixels are submerged in Enhanced water.
+
+READY FOR REVIEW.

@@ -2,16 +2,12 @@
 
 namespace anno::render {
 
-std::vector<DirectObjectInstance>
-direct_object_instances(const ChunkInstanceBuckets& buckets,
-                        std::span<const std::pair<int, int>> visible_chunks, const Scene& scene,
-                        AtlasResidency& atlas, std::uint32_t track, bool depth_test,
-                        const depth::Params& dparams, std::uint64_t max_upload_bytes) {
-    // Resolve every visible instance first (object_record), collecting which frames still need
-    // making resident, so ensure() is called once for the whole batch - not once per instance
-    // (residency.hpp's own contract: it pins the layers it places for this frame).
+std::vector<ObjectRecord>
+resolve_direct_records(const ChunkInstanceBuckets& buckets,
+                       std::span<const std::pair<int, int>> visible_chunks, const Scene& scene,
+                       const AtlasResidency& atlas, std::uint32_t track, bool depth_test,
+                       const depth::Params& dparams, std::vector<FrameRef>& needed) {
     std::vector<ObjectRecord> resolved;
-    std::vector<FrameRef> needed;
     for (const auto& chunk : visible_chunks) {
         const auto it = buckets.find(chunk);
         if (it == buckets.end()) {
@@ -28,14 +24,16 @@ direct_object_instances(const ChunkInstanceBuckets& buckets,
             }
         }
     }
-    if (!needed.empty()) {
-        atlas.ensure(needed, AtlasClass::Static, max_upload_bytes);
-    }
+    return resolved;
+}
+
+std::vector<DirectObjectInstance> place_direct_instances(std::span<const ObjectRecord> records,
+                                                         const AtlasResidency& atlas) {
     std::vector<DirectObjectInstance> out;
-    out.reserve(resolved.size());
-    for (std::size_t i = 0; i < resolved.size(); ++i) {
-        if (const auto place = atlas.place(resolved[i].frame)) {
-            out.push_back({resolved[i], *place});
+    out.reserve(records.size());
+    for (const ObjectRecord& rec : records) {
+        if (const auto place = atlas.place(rec.frame)) {
+            out.push_back({rec, *place});
         }
         // else: Overflow/Deferred this call - left out, the caller falls back for it.
     }

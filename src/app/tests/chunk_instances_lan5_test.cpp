@@ -16,10 +16,26 @@
 #include <anno/render/chunk_instances.hpp>
 #include <anno/render/scene.hpp>
 #include <anno/test/chunk_instances_check.hpp>
+#include <anno/test/direct_class_counts_check.hpp>
 #include <anno/test/game_dir.hpp>
 
 namespace app = anno::app;
 namespace render = anno::render;
+
+TEST_CASE("RENDER-DIRECT-3 3a scope: depth-class counts on lan5.txt, every island (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const std::filesystem::path lan5 =
+        std::filesystem::path(ANNO_REPO_DIR) / "data" / "maps" / "lan5.txt";
+    auto play = app::load_play(*dir, lan5, app::FixedPlayOptions{});
+    REQUIRE_MESSAGE(bool(play), "load_play: " << (play ? "" : play.error()));
+    auto loaded = app::load_placed_scene(*dir, play.value().name, play.value().placed);
+    REQUIRE_MESSAGE(bool(loaded), "load_placed_scene: " << (loaded ? "" : loaded.error()));
+    anno::test::count_depth_classes(*loaded.value().scene, "lan5.txt");
+}
 
 TEST_CASE("resolve_static_instances on lan5.txt reproduces place_prepared's own full result, "
           "every island, every group (game files)" *

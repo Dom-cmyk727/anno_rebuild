@@ -29,16 +29,27 @@ struct DirectObjectInstance {
 /// `buckets`' entries in `visible_chunks` (duplicates across chunk boundaries are not
 /// deduplicated here - a caller drawing every visible chunk already only visits a shared-reach
 /// instance once per chunk it is bucketed under, same as today's chunk-by-chunk draw), resolved
-/// via `scene.object_record` and `atlas`. Frames not yet resident are `ensure`d as one batch
-/// first (`AtlasClass::Static`, `max_upload_bytes` the same budget rule the chunk-build compute
-/// pass already uses) before any `place` lookup. An instance whose frame could not be made
-/// resident this call (`AtlasResidency::ensure`'s `Overflow`/`Deferred`) is left out - the caller
+/// via `scene.object_record`. Any frame not already `atlas.resident()` is appended to `needed`
+/// (`FrameRef`, deduplicated by the caller if it cares - a repeated frame across instances is
+/// harmless to pass twice to `ensure`, which is itself idempotent per call). **This function never
+/// calls `AtlasResidency::ensure` itself and takes no upload budget**: `ensure`'s real job is
+/// uploading GPU texels (`write_layer` in `gpu.cpp`'s own `cb_resident`), which needs the device/
+/// queue this GPU-free library does not have - calling `ensure` without that upload step would
+/// mark frames resident in the bookkeeping with nothing actually written to the atlas texture.
+/// The caller (gpu.cpp) collects `needed` across every visible chunk, calls its own residency
+/// wrapper once for the whole frame's batch, then calls `place_direct_instances` below.
+std::vector<ObjectRecord>
+resolve_direct_records(const ChunkInstanceBuckets& buckets,
+                       std::span<const std::pair<int, int>> visible_chunks, const Scene& scene,
+                       const AtlasResidency& atlas, std::uint32_t track, bool depth_test,
+                       const depth::Params& dparams, std::vector<FrameRef>& needed);
+
+/// Looks up each record's current placement in `atlas` (after the caller has made every frame
+/// `resolve_direct_records` listed in `needed` resident). A record whose frame still is not
+/// resident (`AtlasResidency::ensure`'s `Overflow`/`Deferred` this call) is left out - the caller
 /// falls back to the baked-chunk path for it, same as `objects_draws` already does for other
 /// reasons (CLAUDE.md: a path, not a failure).
-std::vector<DirectObjectInstance>
-direct_object_instances(const ChunkInstanceBuckets& buckets,
-                        std::span<const std::pair<int, int>> visible_chunks, const Scene& scene,
-                        AtlasResidency& atlas, std::uint32_t track, bool depth_test,
-                        const depth::Params& dparams, std::uint64_t max_upload_bytes);
+std::vector<DirectObjectInstance> place_direct_instances(std::span<const ObjectRecord> records,
+                                                         const AtlasResidency& atlas);
 
 } // namespace anno::render

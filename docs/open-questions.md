@@ -3980,6 +3980,7 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Question:** What does selecting several tile objects (kind 5, `AnnoWelt` vtable `0x100c20f4`) do, how does `0x10077730` open the panel, and what does the unit pick `0x10050b90` do for ships?
 - **What we know:** Part B 10.3 items 3-4: kinds 2, 3, 4, 5 and the validity rule (PRODTYPE group at most `0xa0`).
 - **How to resolve:** Read `0x10019c20`, `0x10077730` and `0x10050b90`.
+
 ## OQ-773: Where the info panel's gadget group goes when a category tab is clicked (UI-CATNAV-1, 2026-11-19; OPEN)
 - **Question:** View.dll `0x1002bf90` (the tab strip's handler, registered at `0x1002bb23`; the tab index is property `0x1b3`) removes the gadget groups in the vector at `[this+0x5e4]` from the container `[this+0x56c]`, adds the clicked tab's group, stores the index at `[this+0x5f0]` and sends the tab a message (`vfunc 0x9c`). Is the placement/info panel one of those groups, or a separate layer a later message hides?
 - **What we know:** the handler touches no cursor (AnnoFrame) code and posts no cancel message, so an armed type stays armed (read, GOG). That the grid then shows instead of the info panel is HE-observed (ui_10 10:03-10:13, "switch to roads": the road grid on the right, the building still armed); the GOG panel switch itself was not read to its end.

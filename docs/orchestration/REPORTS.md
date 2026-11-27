@@ -17775,3 +17775,25 @@ READY FOR REVIEW.
   `ui_balance_rows_compare` 3/3 executed and passed. `check_unix_warnings.sh` (GCC 13, Clang 18): clean, 444 + 99 files.
 - NOT_RUN: `ui_window_matches_he` (needs the HE captures; the merge does not touch the window); macOS; the owner's
   forester test (next, on ORCH III's integration build).
+
+## UI-HARVEST-ICON-1 R1 — the owner's "icon gone after zooming back in" — READY FOR REVIEW (no code fix)
+
+UI lane, 2026-11-27, on the merged branch (cand12 + UI-HARVEST-ICON-1, `d5cdbc21`).
+
+- **Finding:** not a zoom or draw bug. The forester's icon 1 (KeinRohstoff) is cleared by the original on the first
+  production step that makes wood (`0x10072fb0(0x0e)` at `0x10072ff1`, `docs/re/ui.md` 11.2, D). Measured at --speed 200
+  (lan5, forester at (1156,516)): the icon appears at turn 644-649, wood arrives about 5 s later (turn 698-703), and the
+  icon clears one turn after that. The owner zoomed back in 1-2 minutes after the icon appeared, so it was correctly gone.
+- **Repro first (as asked):** the owner's sequence (icon, zoom out twice, back in to the closest zoom) on the GPU with
+  classic and with enhanced water: the icon is produced (`status_icons.drawn`) and visible in the screenshots at every
+  zoom; no failure reproduced, so there is nothing to fix.
+- **The case kept:** `viewer_wiring_status_icon_zoom_gpu` (enhanced water): the icon appears, the game is paused
+  (space; the turn stays fixed), the icon stays drawn through zooming out twice and in to the closest zoom while
+  `inspection.raw_88 == 0`; unpaused, wood arrives and the icon count drops to 0 within 5 s. GPU only: a paused CPU
+  window draws no frame, so the script cannot advance there.
+- **OQ-902:** whether the original clears at the first wood in stock (as the rebuild) or at the first production step
+  (the forester needs 16 of 32), not yet decided.
+- **Gates:** msvc build; `run_selected` over the two forester cases and `anno_app_tests.status*`: 20 selected, 20
+  executed, 0 failed. No C++ change (the script, its CMake registration, docs), so no WSL compile is needed.
+- **NOT_RUN:** a "fails before the fix" proof (there is no fix: the case documents intended behaviour); an automated
+  pixel check (the screenshots were checked by eye: the sign with its flag above the roof at the closest zoom).

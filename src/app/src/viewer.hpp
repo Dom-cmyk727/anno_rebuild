@@ -24,6 +24,7 @@
 #include <anno/app/play_follow.hpp>
 #include <anno/app/publication_hold.hpp>
 #include <anno/app/ship_layer.hpp>
+#include <anno/app/status_icons.hpp>
 #include <anno/app/window_trace.hpp>
 #include <anno/render/scene.hpp>
 
@@ -101,6 +102,11 @@ struct ViewerHooks {
     /// so they do nothing in `Classic` rather than collide; `Dev` keeps the pan/quit meaning.
     /// Arrow keys (and A/W for pan) are unaffected in both surfaces.
     UiSurface ui = UiSurface::Classic;
+    /// UI-HARVEST-ICON-1 B: the status icon figures (status_icons.hpp), drawn over the local
+    /// player's buildings from PlaySnapshot::status_icons. Null leaves the icons out.
+    std::shared_ptr<const StatusIconLayer> status_icons;
+    /// UI-GHOST-2 ADAPTATION (default off): outline blocking footprint(s) on Reject::Occupied.
+    bool occupied_outline = false;
 };
 
 /// Opens the window and runs until it is closed; an empty string on

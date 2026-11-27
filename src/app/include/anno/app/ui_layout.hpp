@@ -70,6 +70,11 @@ struct UiElement {
     /// `rotate_right` +1 (GOG View.dll click handlers 0x10030440 and 0x10030480, docs/re/ui.md
     /// section 2.5). Absent for every other element.
     std::optional<int> turn;
+    /// UI-INFO-2b: `figure <id>`, a FigurenHeader.dat entry the element draws: on
+    /// `info_preview_arrows`, the entrance arrows of the info panel's picture (1573, AnnoGame.dll
+    /// 0x1000bb60; docs/re/ui.md section 2.5). The bound 65535 is load_figure_facings' id type.
+    /// Absent for every other element.
+    std::optional<int> figure;
     /// UI-TABS-1 (docs/re/ui.md 5.4): `view <name>` on a main tab names the view it shows; on a
     /// sub-tab, with `subtab <k>`, the view whose column holds it (k counts from 0). `body
     /// <panel>` is the `panel` group sub-tab k shows. Empty / absent for every other element.
@@ -213,6 +218,14 @@ struct ConstructionLayout {
     /// nullptr when (category, col, row) is empty or not in the file.
     [[nodiscard]] const ConstructionCell* cell(const std::string& category, int col, int row) const;
 };
+
+/// UI-BUILDCAT-1: the construction menu's category tab for `category`, hud.txt's element
+/// `viewbautab_<index - 1>` (construction.txt `index`, 1-based), or nullptr when hud.txt has none
+/// or it lacks a position or size. The tab count is construction.txt's category count, not a
+/// constant (View.dll 0x1002bb4f builds one 42 x 46 VIEWBAUTAB gadget per category; docs/re/ui.md
+/// section 2.4).
+[[nodiscard]] const UiElement* construction_category_tab(const HudLayout& hud,
+                                                         const ConstructionCategory& category);
 
 /// UI-WINDOW-1: where the 1024 x 768 reference layout lands in a UI layer of `ui_w` x `ui_h`
 /// pixels (at least the reference; ui_transform.hpp). Built by `place_hud` from hud.txt alone.

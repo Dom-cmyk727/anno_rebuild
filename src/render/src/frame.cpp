@@ -312,6 +312,62 @@ Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy,
 
 } // namespace
 
+std::optional<ObjectsPatch> build_objects_patch(const Scene& scene, std::size_t group,
+                                                const ObjectsExclusion& exclude, bool ships,
+                                                bool bases) {
+    if (group >= kGroups || exclude.island >= scene.islands.size() || exclude.indices.empty()) {
+        return std::nullopt;
+    }
+    std::optional<Rect> clip;
+    for (const Placement& p : scene.layouts[group]) {
+        if (p.index == exclude.island) {
+            clip = p.bounds;
+            break;
+        }
+    }
+    if (!clip) {
+        return std::nullopt;
+    }
+    const auto& list = scene.island_lists(exclude.island).other;
+    std::optional<Rect> box;
+    for (const std::size_t idx : exclude.indices) {
+        if (idx >= list.size()) {
+            continue;
+        }
+        const auto r = scene.object_bounds(exclude.island, list[idx], group);
+        if (!r || r->w <= 0 || r->h <= 0) {
+            continue;
+        }
+        box = box ? box->unite(*r) : *r;
+    }
+    if (!box) {
+        return std::nullopt;
+    }
+    const auto rect = box->intersect(*clip);
+    if (!rect || rect->w <= 0 || rect->h <= 0) {
+        return std::nullopt;
+    }
+    const ChunkDraws draws =
+        scene.objects_draws(*rect, group, ships, bases, kDefaultBinPx, &exclude);
+    std::optional<depth::Target> dt;
+    if (scene.depth_test) {
+        const auto [unused_ground, probe] = scene.ground_with_probe(*rect, group, false);
+        static_cast<void>(unused_ground);
+        dt = depth::Target::from_terrain(*rect, depth::params(group, scene.lift),
+                                         scene.terrain_plane(probe));
+    }
+    Canvas canvas = dt ? replay(draws, scene.frame_table, *dt) : replay(draws, scene.frame_table);
+    ObjectsPatch out;
+    out.rect = *rect;
+    out.group = group;
+    out.objects = to_px(canvas);
+    out.base = std::move(canvas.base);
+    if (dt) {
+        out.submerged = dt->submerged(depth::sea_h64(scene.shore_height));
+    }
+    return out;
+}
+
 std::array<ChunkKey, 4> derived_children(const ChunkKey& key, const ZoomLevels& levels) {
     const auto [group, cx, cy] = key;
     const std::size_t src = levels[group].source;
@@ -886,22 +942,43 @@ FrameStats FrameRenderer::render(const std::shared_ptr<const Scene>& scene_ptr, 
     stats.water_objects_ms += ms_since(t);
 
     // Cached objects.
+    const ObjectsPatch* patch =
+        objects_patch_ && objects_patch_->group == group && objects_patch_->rect.w > 0 &&
+                objects_patch_->rect.h > 0 &&
+                objects_patch_->objects.size() ==
+                    to_size(objects_patch_->rect.w) * to_size(objects_patch_->rect.h)
+            ? objects_patch_.get()
+            : nullptr;
+    const auto patch_has_base = [&](int sx, int sy) -> const Px* {
+        if (patch == nullptr || sx < patch->rect.x || sy < patch->rect.y ||
+            sx >= patch->rect.x + patch->rect.w || sy >= patch->rect.y + patch->rect.h) {
+            return nullptr;
+        }
+        const std::size_t idx =
+            to_size(sy - patch->rect.y) * to_size(patch->rect.w) + to_size(sx - patch->rect.x);
+        return &patch->objects[idx];
+    };
     t = Clock::now();
     par_bands(out, view, threads, [&](std::uint32_t* band, Rect rows) {
         for (const auto& [cx, cy] : chunks) {
             const Chunk& c = get(cx, cy);
-            if (c.objects.empty()) {
-                continue;
-            }
             const auto r = chunk_rect(cx, cy).intersect(rows);
             if (!r) {
+                continue;
+            }
+            const bool touches_patch = patch != nullptr && r->intersect(patch->rect).has_value();
+            if (c.objects.empty() && !touches_patch) {
                 continue;
             }
             for (int y = r->y; y < r->y + r->h; ++y) {
                 const std::size_t d = index(rows, r->x, y);
                 const std::size_t s = chunk_index(cx, cy, r->x, y);
                 for (std::size_t k = 0; k < to_size(r->w); ++k) {
-                    over_rgb(band[d + k], c.objects[s + k]);
+                    if (const Px* p = patch_has_base(r->x + static_cast<int>(k), y)) {
+                        over_rgb(band[d + k], *p);
+                    } else if (!c.objects.empty()) {
+                        over_rgb(band[d + k], c.objects[s + k]);
+                    }
                 }
             }
         }
@@ -910,25 +987,47 @@ FrameStats FrameRenderer::render(const std::shared_ptr<const Scene>& scene_ptr, 
     if (const sea::SeaPattern* pattern = scene.sea(group);
         pattern != nullptr && style == WaterStyle::Original) {
         const Lift lift = scene.lift;
+        const bool patch_submerged =
+            patch != nullptr &&
+            patch->submerged.size() == to_size(patch->rect.w) * to_size(patch->rect.h);
         par_bands(out, view, threads, [&](std::uint32_t* band, Rect rows) {
             for (const auto& [cx, cy] : chunks) {
                 const Chunk& c = get(cx, cy);
-                if (c.submerged.empty() || c.field.empty() || c.objects.empty()) {
+                if (c.field.empty()) {
                     continue;
                 }
                 const auto r = chunk_rect(cx, cy).intersect(rows);
                 if (!r) {
                     continue;
                 }
+                const bool touches_sub = patch_submerged && r->intersect(patch->rect).has_value();
+                if ((c.submerged.empty() || c.objects.empty()) && !touches_sub) {
+                    continue;
+                }
                 const std::size_t d = index(rows, r->x, r->y);
                 const auto rw = to_size(r->w);
                 const int ccx = cx, ccy = cy;
                 const Rect rr = *r;
-                auto field = [&c, rw, ccx, ccy, rr](std::size_t i) -> sea::FieldPx {
-                    const std::size_t k = chunk_index(ccx, ccy, rr.x + static_cast<int>(i % rw),
-                                                      rr.y + static_cast<int>(i / rw));
+                auto field = [&c, rw, ccx, ccy, rr, patch,
+                              patch_submerged](std::size_t i) -> sea::FieldPx {
+                    const int sx = rr.x + static_cast<int>(i % rw);
+                    const int sy = rr.y + static_cast<int>(i / rw);
+                    const std::size_t k = chunk_index(ccx, ccy, sx, sy);
                     const std::size_t s = k * 4;
-                    if (c.submerged[k] == 0 || c.field[s] == 0) {
+                    if (c.field[s] == 0) {
+                        return {0, 0, 0, 0};
+                    }
+                    std::uint8_t sub = 0;
+                    if (patch_submerged && sx >= patch->rect.x && sy >= patch->rect.y &&
+                        sx < patch->rect.x + patch->rect.w && sy < patch->rect.y + patch->rect.h) {
+                        const std::size_t pidx =
+                            to_size(sy - patch->rect.y) * to_size(patch->rect.w) +
+                            to_size(sx - patch->rect.x);
+                        sub = patch->submerged[pidx];
+                    } else if (!c.submerged.empty()) {
+                        sub = c.submerged[k];
+                    }
+                    if (sub == 0) {
                         return {0, 0, 0, 0};
                     }
                     // Cover 1: the sea sprite only, without the open-water fade (depth.md §2.3).

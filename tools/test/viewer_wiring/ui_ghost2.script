@@ -1,0 +1,108 @@
+# UI-GHOST-2: ghost hides overlappable scenery/tile objects (flag 0x20) under its footprint,
+# immediately restores them on move/cancel/unaffordable-phase-1, keeps placed tiles cleared,
+# draws only the yellow (0xffff00) empty rectangle on refusal without hiding trees, and keeps the
+# Occupied blocking-footprint outline ADAPTATION default OFF.
+# Run with ANNO_DEV_GOODS_TONS=6: pioneer house 501 (wood 3) is Valid; market 1301 (wood 7) is Unaffordable.
+resize 1024 768
+look 1188 516
+wait frames 5
+expect fact tool.ghost == hidden
+expect fact tool.ghost.suppressed == 0
+screenshot forest_baseline
+
+key b
+wait frames 5
+click_px 833 330
+wait frames 5
+expect title build 501
+
+# 1) Valid hover over forest tile (1188, 516) suppresses underlying flag-0x20 object(s).
+hover-land 1188 516
+wait fact tool.ghost == valid
+wait frames 3
+expect fact tool.ghost.suppressed > 0
+expect fact tool.ghost.pixels > 0
+expect fact tool.ghost.occupied_pixels == 0
+screenshot forest_valid
+
+# 2) Moving away immediately restores (1188, 516).
+hover-land 1176 516
+wait frames 3
+screenshot forest_moved_away
+
+# 3) Hover back (suppresses again), then right-click cancel (restores immediately).
+hover-land 1188 516
+wait fact tool.ghost == valid
+wait frames 3
+expect fact tool.ghost.suppressed > 0
+rclick_px 400 384
+wait fact tool.ghost == hidden
+wait frames 3
+expect fact tool.ghost.suppressed == 0
+expect fact tool.ghost.pixels == 0
+screenshot forest_cancelled
+
+# 4) Re-arm pioneer house 501 -> refused over inlet (1148, 536) draws yellow box only, suppresses 0.
+click_px 833 330
+wait frames 5
+look 1148 536
+wait frames 3
+hover-land 1148 536
+wait fact tool.ghost == refused
+wait frames 3
+expect fact tool.ghost.suppressed == 0
+expect fact tool.ghost.pixels > 0
+expect fact tool.ghost.occupied_pixels == 0
+screenshot ghost_refused
+
+# 5) Occupied refusal over 4x4 Kontor (1284, 540): ADAPTATION is default OFF -> 0 red outline pixels.
+look 1284 540
+wait frames 3
+hover-land 1283 540
+wait fact tool.ghost.verdict == Occupied
+expect fact tool.ghost == refused
+wait frames 3
+expect fact tool.ghost.suppressed == 0
+expect fact tool.ghost.pixels > 0
+expect fact tool.ghost.occupied_pixels == 0
+screenshot occupied_default_off
+
+# 6) Unaffordable blink phase 0 vs phase 1 over forest (1188, 516) using market 1301 (wood 7 > 6).
+rclick_px 400 384
+wait frames 3
+click_px 937 330
+wait frames 5
+expect title build 1301
+look 1188 516
+wait frames 3
+hover-land 1188 516
+wait fact tool.ghost == unaffordable
+wait fact tool.ghost.phase == 1
+wait fact tool.ghost.phase == 0
+wait frames 2
+expect fact tool.ghost.suppressed > 0
+expect fact tool.ghost.pixels > 0
+screenshot forest_unaff_phase0
+
+wait fact tool.ghost.phase == 1
+wait frames 2
+expect fact tool.ghost.suppressed == 0
+expect fact tool.ghost.pixels > 0
+screenshot forest_unaff_phase1
+
+# 7) Placing pioneer house 501 over (1188, 516) clears its footprint permanently while cancelling restores.
+rclick_px 400 384
+wait frames 3
+click_px 833 330
+wait frames 5
+click 1188 516
+wait outcome
+expect outcome Applied
+wait drawn
+expect visibility Visible
+expect fact picture.cleared_tiles > 0
+rclick_px 400 384
+wait fact tool.ghost == hidden
+wait frames 3
+screenshot forest_placed
+quit

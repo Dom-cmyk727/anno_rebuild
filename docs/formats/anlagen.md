@@ -35,6 +35,18 @@ The `FigurenHeader.dat` entry layout ([`figuren.md`](figuren.md)): 8-byte prefix
 
 Frame colour table: `ANNO/COLORS` table with id `COLORS[frame.palette]` of the frame's entry; `frame.palette` is always a valid index into the list and never selects a 0 (P, asserted). Visual: the palace (1380) uses `SchlossHauptteil1.pcx`, the castle (2223) `Militär\GrosseBurg01.pcx`, and both render in correct colours.
 
+### `OBJECTPOS` (UI-INFO-2d)
+
+A list of sub-records, each a 6-byte NUL-padded name, a `u16` size and `size` data bytes, filling the record exactly (P: 426 records, no tail). Names and counts in the GOG file: `FIRE` 281, `SCHUSS` 102, `WPLANE` 60, `AUSPOS` 15, `HIMAP` 11, `CONPO2` 184, `CONPOS` 1 (type 1542); at most one `CONPO2` per type (P). The loader walks them by name (AnnoGame `0x10009af1..`; `SCHUSS` `0x10009b3e`, `CONPOS` `0x10009d96`, `CONPO2` `0x10009e3e`, `HIMAP` `0x10009ee4`; D).
+
+| Sub-record | Layout | Meaning | Evidence |
+|---|---|---|---|
+| `CONPO2` | `size / 3` records of `u8 x3, u8 y3, u8 side` | the entrance arrows of the info panel picture: x and y in thirds of a tile from the footprint corner, side 0 = -x, 1 = +y, 2 = +x, 3 = -y; count to type `+0x6b`, records to `+0x22c`. 852 records in 184 types; types 261 and 1571 carry side 215 | D AnnoGame `0x10009e3e..0x10009edf`, consumer `0x1000bb60` ([`docs/re/ui.md`](../re/ui.md) 2.5); P counts |
+| `CONPOS` | `size / 2` records of 2 bytes | old form: the loader keeps byte 0 as x, writes byte 1 and then 0 to the y slot (`[+1]` twice) and never writes the side byte | D `0x10009d96..0x10009e39` |
+| others | raw | not decoded | ? |
+
+Reader and writer: `anno::formats::objectpos` (`ObjectPos::parse`, `to_bytes`, `conpo2`); round trip byte-identical over all 426 records (`objectpos corpus`).
+
 ### `TEXTURES` (pixel volumes)
 
 | Offset | Size | Type | Name | Meaning | Evidence |

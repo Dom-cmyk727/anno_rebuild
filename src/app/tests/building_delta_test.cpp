@@ -107,8 +107,54 @@ TEST_CASE("play: a turn with no commands publishes no building changes") {
                              "commands: "
                           << batches.size() << " batches, " << deltas << " deltas");
     CHECK(initial_buildings.size() > 0);
+    CHECK(batches.empty());
     CHECK(deltas == 0);
     CHECK(runner.take_building_batches().empty());
+}
+
+TEST_CASE("tile object delta: equal lists, add, remove, rotation/height/cleared/wide id, total "
+          "order") {
+    using anno::app::diff_sorted_tile_objects;
+    using anno::app::SceneTileObject;
+    using anno::app::sort_tile_objects;
+    using anno::app::tile_object_before;
+    using anno::app::TileObjectDelta;
+
+    auto obj = [](std::uint32_t island, std::uint16_t x, std::uint16_t y, std::uint32_t type,
+                  std::uint8_t rotation = 0, std::uint8_t height = 32, std::uint8_t phase = 0) {
+        return SceneTileObject{island, type, x, y, rotation, height, phase};
+    };
+    auto sorted_tiles = [](std::vector<SceneTileObject> list) {
+        sort_tile_objects(list);
+        return list;
+    };
+
+    const auto a = sorted_tiles({obj(0, 10, 20, 2520, 0), obj(1, 5, 6, 100000U, 2, 48, 3)});
+    const auto b = sorted_tiles({obj(1, 5, 6, 100000U, 2, 48, 3), obj(0, 10, 20, 2520, 0)});
+    CHECK(diff_sorted_tile_objects(a, b).empty());
+
+    // Cleared marker (type 0), rotation change (emits Removed then Added), and wide id (> 0x1000).
+    const auto prev =
+        sorted_tiles({obj(0, 10, 20, 2520, 0, 32, 0), obj(0, 12, 20, 2520, 1, 32, 0)});
+    const auto cur =
+        sorted_tiles({obj(0, 10, 20, 2520, 1, 32, 0), obj(0, 11, 20, 0, 0, 0, 0),
+                      obj(0, 12, 20, 2520, 1, 32, 0), obj(0, 15, 20, 100000U, 0, 32, 2)});
+    const auto deltas = diff_sorted_tile_objects(prev, cur);
+    REQUIRE(deltas.size() == 4);
+    CHECK(deltas[0].kind == TileObjectDelta::Kind::Removed);
+    CHECK(deltas[0].object == obj(0, 10, 20, 2520, 0, 32, 0));
+    CHECK(deltas[1].kind == TileObjectDelta::Kind::Added);
+    CHECK(deltas[1].object == obj(0, 10, 20, 2520, 1, 32, 0));
+    CHECK(deltas[2].kind == TileObjectDelta::Kind::Added);
+    CHECK(deltas[2].object == obj(0, 11, 20, 0, 0, 0, 0));
+    CHECK(deltas[3].kind == TileObjectDelta::Kind::Added);
+    CHECK(deltas[3].object == obj(0, 15, 20, 100000U, 0, 32, 2));
+
+    CHECK(tile_object_before(obj(0, 1, 1, 0), obj(0, 1, 1, 2520)));
+    CHECK(tile_object_before(obj(0, 1, 1, 2520, 0), obj(0, 1, 1, 2520, 1)));
+    CHECK(tile_object_before(obj(0, 1, 1, 2520, 1, 32), obj(0, 1, 1, 2520, 1, 40)));
+    CHECK(tile_object_before(obj(0, 1, 1, 2520, 1, 32, 0), obj(0, 1, 1, 2520, 1, 32, 1)));
+    CHECK_FALSE(tile_object_before(obj(0, 1, 1, 2520), obj(0, 1, 1, 2520)));
 }
 
 TEST_CASE("play: the building diff on the heavy endless scenario") {

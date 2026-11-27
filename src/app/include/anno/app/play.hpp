@@ -26,8 +26,10 @@
 #include <anno/app/loader.hpp>
 #include <anno/app/minimap.hpp>
 #include <anno/app/opening_view.hpp>
+#include <anno/app/status_icons.hpp>
 #include <anno/app/territory_view.hpp>
 #include <anno/formats/result.hpp>
+#include <anno/sim/road_drag.hpp>
 #include <anno/sim/world.hpp>
 
 namespace anno::app {
@@ -96,6 +98,13 @@ load_play(const std::filesystem::path& game_dir, const std::filesystem::path& fi
 /// The scenario loader's split: an Anlagen id whose type has a list in the layout.
 [[nodiscard]] bool anlage_is_building(const sim::World& world, std::uint16_t anlage);
 
+/// Whether an Anlagen id is a tracked non-building tile object for the play picture (roads first,
+/// data-driven via `sim::kRoadFlag` without hardcoded type ids; later crops/trees widen this rule).
+[[nodiscard]] bool anlage_is_tracked_tile_object(const sim::World& world, std::uint32_t anlage);
+
+/// The world's tracked runtime tile objects (anchor tiles only, in island-slot order).
+[[nodiscard]] std::vector<SceneTileObject> play_tile_objects(const sim::World& world);
+
 /// The types the developer tool cycles (round ee, D1), registry data in TypeId order and of any id
 /// width: every type whose PRODTYPE has a list in `layout` (what the sim's Build places;
 /// without a list it answers Unsupported, apply.cpp) and every road type (kRoadFlag: the drag's
@@ -143,26 +152,55 @@ struct BuildingInspection {
 inspect_building(const sim::World& world, sim::CityRef city, sim::TileXY tile);
 
 /// What the window reads. Not a World.
-/// UI-WINDOW-1 fix round R2: one of the local player's cities as the HUD's status bar shows it
-/// (the city on the island the view is centred on, else the first; docs/re/ui.md 5.2). Read on the
-/// sim thread at publication from existing read-only accessors only: World::islands(), the island's
-/// tile rectangle (TileLayer::x0/y0/width/height), City::owner/number/stock and
+/// UI-WINDOW-1 fix round R2, UI-STATUS-1 B: a city whose figures the status bar can show
+/// (docs/re/ui.md 5.6): a city of the local player (its materials and residents), or another
+/// player's city that knows the local player (City::player_mask; its residents only, AnnoFrame
+/// 0x10009b5b..0x10009b84). Read on the sim thread at publication from existing read-only
+/// accessors only: World::islands(), City::owner/number/stock/player_mask and
 /// World::city_population. No state, stream, hash or draw changes.
 struct CityCounters {
     sim::CityRef city;
-    /// The island's tile rectangle in world tiles.
-    std::int32_t island_x0 = 0, island_y0 = 0;
-    std::uint32_t island_w = 0, island_h = 0;
-    /// The city's goods stock (8.8 tons per goods number) and its population.
+    /// A city of the local player (the default; another player's city that knows the local
+    /// player is published with false).
+    bool own = true;
+    /// The city's goods stock (8.8 tons per goods number); empty for another player's city (the
+    /// original never shows a foreign city's materials).
     std::vector<std::uint32_t> goods;
     std::optional<std::int64_t> population;
     /// UI-TABS-1 stage B: a read-only copy of the city's accounts (sim::City::accounts: the
     /// statistics 0, 4, 5 and the cost buckets 1, 2 the balance pages read; docs/re/ui.md 5.5).
     sim::CityAccounts accounts;
-    [[nodiscard]] bool island_contains(std::int64_t x, std::int64_t y) const {
-        return x >= island_x0 && y >= island_y0 && x < std::int64_t{island_x0} + island_w &&
-               y < std::int64_t{island_y0} + island_h;
-    }
+};
+
+/// UI-GHOST-1: one Build record of a city the placement ghost asks the sim about.
+struct BuildProbe {
+    sim::CityRef city;
+    sim::PlacementWire record;
+    friend bool operator==(const BuildProbe&, const BuildProbe&) = default;
+};
+
+/// The sim's verdict on a BuildProbe (World::check_build_record).
+struct BuildProbeAnswer {
+    BuildProbe probe;
+    sim::Reject verdict = sim::Reject::None;
+};
+
+/// ROADS-3: multi-record road path the placement ghost asks the sim about
+/// (World::check_build_path).
+struct RoadPathProbe {
+    sim::CityRef city;
+    std::vector<sim::PlacementWire> records;
+    friend bool operator==(const RoadPathProbe&, const RoadPathProbe&) = default;
+};
+
+/// The sim's prefix verdict on a RoadPathProbe (World::check_build_path).
+struct RoadPathProbeAnswer {
+    RoadPathProbe probe;
+    sim::RoadPathCheck check;
+    /// ROADS-2b: the records the commit would place after the reshaper (World::shape_road_path):
+    /// the path's records with their shaped pieces, then the rewritten neighbours. The ghost draws
+    /// these, so the preview equals the commit.
+    std::vector<sim::PlacementWire> shaped;
 };
 
 struct PlaySnapshot {
@@ -179,8 +217,10 @@ struct PlaySnapshot {
     /// The last turn this snapshot follows (its index), so a reader can check
     /// the snapshot against the mailbox.
     std::uint64_t turn = 0;
-    /// The developer player's money after the turn, and the goods stock (8.8 tons,
-    /// per goods number) of its city. Empty when the player has no city.
+    /// The local player's money after the turn (UI-STATUS-1 B: also before its first city; 0
+    /// when the world has no such player, `has_local_player` false), and the goods stock (8.8
+    /// tons, per goods number) of its city, empty when the player has no city.
+    bool has_local_player = false;
     std::int64_t money = 0;
     std::vector<std::uint32_t> goods;
     /// Build costs are waived for the developer player (its free-build flag, or the session's
@@ -206,6 +246,12 @@ struct PlaySnapshot {
     /// `inspection` is null). The selection (selection.hpp) needs it to tell "answered: nothing
     /// there" from "not answered yet" (W4-NEXT-2 K).
     std::optional<sim::TileXY> inspected;
+    /// UI-GHOST-1: the placement ghost's question (request_build_probe) and the sim's verdict on
+    /// it, `World::check_build_record` taken in the same turn as this snapshot (a pure read: no
+    /// state, stream, hash or draw change). nullopt when nothing is asked.
+    std::optional<BuildProbeAnswer> build_probe;
+    /// ROADS-3: multi-record road path probe answer (`World::check_build_path`).
+    std::optional<RoadPathProbeAnswer> road_probe;
     /// `World::construction_eligibility(local player, type).allowed()` for every type the
     /// registry defines, ascending by id (UI.2 C2: the sim's own lock authority is the one and
     /// only source the construction menu's lock display reads — never a copy of it, and never
@@ -220,9 +266,13 @@ struct PlaySnapshot {
     /// draw change - it wraps `residents_at_or_above`'s own existing aggregate for a `CityRef`).
     /// nullopt when the player has no city yet, matching `money`/`goods`/`eligibility` above.
     std::optional<std::int64_t> population;
-    /// UI-WINDOW-1 fix round R2: every city of the local player, in (island, city) order. Null
-    /// when the player has none.
+    /// UI-WINDOW-1 fix round R2, UI-STATUS-1 B: every city of the local player and every other
+    /// player's city that knows the local player, in (island, city) order (CityCounters). Null
+    /// when there is none.
     std::shared_ptr<const std::vector<CityCounters>> cities;
+    /// UI-STATUS-1 B: the runner's local player (set_local_player), whose cities and discovered
+    /// islands the status bar asks about.
+    std::uint32_t local_player = 0;
     /// UI-MINIMAP-1 B2: every island's tile owners and cities (territory_view.hpp), taken at
     /// publication from read-only accessors (World::islands, TileLayer::owner, City number, owner
     /// and player_mask, SimConfig::neutral_owner). The same object is republished while the
@@ -231,6 +281,11 @@ struct PlaySnapshot {
     std::shared_ptr<const TerritoryView> territory;
     /// UI-MINIMAP-1 B2: the figures the minimap marks (collect_map_figures), every turn.
     std::shared_ptr<const std::vector<MapFigure>> map_figures;
+    /// UI-HARVEST-ICON-1 B: the status icons over the local player's buildings
+    /// (collect_status_icons, read-only), every turn. The same object is republished while the
+    /// content does not change, so the window re-places the icons only on a change. Never null
+    /// after the runner's constructor.
+    std::shared_ptr<const std::vector<StatusIconView>> status_icons;
     /// UI-TABS-1 stage B: whether the sim keeps the cities' accounts up to date
     /// (sim::Rules::city_booking: the cost buckets follow building creation and removal and the
     /// statistics decay at each booking only while it is on; docs/sim/economy-booking.md). The
@@ -260,8 +315,11 @@ struct PlaySnapshot {
                                                   std::optional<sim::PlayerId> local);
 
 /// UI-MINIMAP-1 B2: the territory of `world` (TerritoryView, version 0). Read-only; O(island
-/// tiles + cities).
-[[nodiscard]] TerritoryView collect_territory_view(const sim::World& world);
+/// tiles + cities). UI-STATUS-1 B: each island's land test (TerritoryIsland::land) is taken from
+/// `previous` when it holds the same island (index, rectangle, terrain digest), so it is computed
+/// once per terrain, not per publication; without it, from the island's height column.
+[[nodiscard]] TerritoryView collect_territory_view(const sim::World& world,
+                                                   const TerritoryView* previous = nullptr);
 
 /// UI-MINIMAP-1 B2: the figures the minimap may mark: every ship (a figure with a navigation
 /// state and no parent, the same set OpeningView::ships lists) as list 1, the original's SCHIFF
@@ -407,6 +465,19 @@ class PlayRunner {
         const std::lock_guard lock(inspect_mu_);
         inspect_tile_ = tile;
     }
+    /// UI-GHOST-1: the placement ghost's record, answered in every snapshot published from now on
+    /// (PlaySnapshot::build_probe), also while paused, until another replaces it or
+    /// `std::nullopt` turns it off. Thread-safe; the same pattern as request_inspect.
+    void request_build_probe(std::optional<BuildProbe> probe) {
+        const std::lock_guard lock(inspect_mu_);
+        build_probe_ = probe;
+    }
+    /// ROADS-3: the placement ghost's road drag path, answered in every snapshot published from now
+    /// on (PlaySnapshot::road_probe), also while paused, until replaced or cleared with nullopt.
+    void request_road_probe(std::optional<RoadPathProbe> probe) {
+        const std::lock_guard lock(inspect_mu_);
+        road_probe_ = std::move(probe);
+    }
     /// Ends a capture that was asked for and has not run (the requester is going away).
     /// Thread-safe.
     void cancel_capture() {
@@ -510,6 +581,10 @@ class PlayRunner {
     void find_local_city();
     /// Fills `inspection` and `inspected` from the requested tile.
     void fill_inspection(PlaySnapshot& next);
+    /// Fills `build_probe` from the requested probe (UI-GHOST-1).
+    void fill_build_probe(PlaySnapshot& next);
+    /// Fills `road_probe` from the requested path probe (ROADS-3).
+    void fill_road_probe(PlaySnapshot& next);
     [[nodiscard]] std::uint64_t p95_locked() const;
 
     sim::World world_;
@@ -531,8 +606,18 @@ class PlayRunner {
     /// prints their median, p95 and max to stderr. Off: nothing is kept or printed.
     bool publish_stats_ = false;
     std::vector<std::uint64_t> stat_turn_us_, stat_snapshot_us_;
-    // The sorted building list the picture has been given so far (sim thread only).
+    /// The tracked and cleared tile objects of `world_` after the turn (sim thread).
+    [[nodiscard]] std::vector<SceneTileObject> collect_tile_objects() const;
+    [[nodiscard]] bool is_building_id(std::uint32_t id) const;
+    [[nodiscard]] bool is_tracked_id(std::uint32_t id) const;
+
+    // The sorted building and tile-object lists the picture has been given so far (sim thread).
     std::vector<SceneBuilding> buildings_;
+    std::vector<SceneTileObject> tile_objects_;
+    std::vector<std::uint8_t> building_type_mask_;
+    std::vector<std::uint8_t> tracked_type_mask_;
+    /// Per island, per tile: 1 iff tick 0 held a non-building, non-tracked object anchor there.
+    std::vector<std::vector<std::uint8_t>> initial_scenery_;
     // The lock only protects the shared_ptr copy/swap and the mailbox's push or
     // take. Snapshot allocation, the building diff and all simulation work
     // happen before it is acquired.
@@ -562,12 +647,17 @@ class PlayRunner {
     std::optional<sim::FoundCmd> probe_;
     std::mutex inspect_mu_;
     std::optional<sim::TileXY> inspect_tile_;
+    std::optional<BuildProbe> build_probe_;   // under inspect_mu_
+    std::optional<RoadPathProbe> road_probe_; // under inspect_mu_
     std::function<void(WorldCapture)> capture_;
     // The developer player's city (sim thread, found at construction) and the last refusal
     // shown in the title.
     std::optional<sim::CityRef> developer_city_;
     /// UI-MINIMAP-1 B2: the territory last published (sim thread only).
     std::shared_ptr<const TerritoryView> territory_;
+    /// The last published status icons (PlaySnapshot::status_icons); replaced only on a change.
+    std::shared_ptr<const std::vector<StatusIconView>> status_icons_;
+    void refresh_status_icons();
     /// Takes the world's territory and keeps territory_ when its content is the same (sim thread).
     void refresh_territory();
     /// developer_city_ has a value: the window's title reads it, developer_city_ is the sim

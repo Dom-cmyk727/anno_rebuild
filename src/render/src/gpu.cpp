@@ -45,7 +45,9 @@ constexpr std::uint64_t kInstanceBytes = 32;
 /// the frame (a few hundred pixels) is under one pixel. The shift is a 4-bit field.
 constexpr unsigned kMaxShipShift = 10;
 /// Bytes of the frame uniform (see Frame in gpu.wgsl).
-constexpr std::uint64_t kFrameUniformBytes = 96;
+constexpr std::uint64_t kFrameUniformBytes = 112;
+/// Bytes of the patch uniform (see PatchU in gpu.wgsl).
+constexpr std::uint64_t kPatchUniformBytes = 32;
 
 /// Little-endian byte writer for uniforms and instances.
 struct Bytes {
@@ -252,6 +254,10 @@ std::vector<std::uint8_t> frame_uniform_bytes(const FrameUniform& f) {
     for (const float v : {f.fluid_cpt, f.river_flow ? 1.0F : 0.0F, f.river_lambda, f.fluid_fade}) {
         u.f32(v);
     }
+    u.i32(f.patch_origin.first);
+    u.i32(f.patch_origin.second);
+    u.i32(f.patch_size.first);
+    u.i32(f.patch_size.second);
     return std::move(u.b);
 }
 
@@ -370,6 +376,17 @@ struct GpuFrame::Impl {
     BindGroup empty_bind;
     PipelineLayout chunk_pl, sprite_pl;
     RenderPipeline ground_pipe, terrain_pipe, objects_pipe, sea_pipe, sprite_pipe, sea_over_pipe;
+    /// UI-GHOST-2 dynamic objects patch (group 0 subset + chunk_layout + group 2 patch bindings).
+    BindGroupLayout patch_frame_layout, patch_layout;
+    PipelineLayout patch_pl;
+    RenderPipeline patch_objects_pipe, patch_submerged_pipe;
+    Buffer patch_uniform;
+    Texture patch_objects_t, patch_base_t, patch_submerged_t;
+    TextureView patch_objects_v, patch_base_v, patch_submerged_v;
+    BindGroup patch_bind;
+    std::uint32_t patch_tex_w = 0, patch_tex_h = 0;
+    std::uint64_t patch_serial = 0;
+    bool patch_has_base = false, patch_has_submerged = false;
     /// Ground and sea with blending, for the draws of chunks fading in.
     RenderPipeline ground_fade_pipe, sea_fade_pipe;
     Buffer frame_uniform;
@@ -1476,18 +1493,13 @@ struct GpuFrame::Impl {
         return atlas ? std::uint64_t{atlas->layers} * cb_layer_bytes() : 0;
     }
 
-    /// The chunk atlas budget in bytes (gpu-chunks.md 4.3 rule 6, OQ-096):
-    /// GpuLimits::atlas_budget_mb, or 512 MiB on a discrete adapter / 256 MiB
-    /// otherwise, clamped to what the device's array layers hold. The OQ-096
-    /// budget covers BOTH atlases together, so the per-frame sprite atlas's
-    /// current footprint is subtracted (G3): the two never exceed the budget.
+    /// The chunk atlas budget in bytes (gpu-chunks.md 4.3 rule 6, OQ-096/OQ-096b):
+    /// atlas_budget_bytes_before_sprite (gpu.hpp), the default/clamp as a pure, directly
+    /// testable function. The OQ-096 budget covers BOTH atlases together, so the per-frame
+    /// sprite atlas's current footprint is subtracted here (G3): the two never exceed the budget.
     std::uint64_t cb_atlas_budget_bytes() const {
-        std::uint64_t mb = limits.atlas_budget_mb;
-        if (mb == 0) {
-            mb = adapter_type == WGPUAdapterType_DiscreteGPU ? 512 : 256;
-        }
-        const std::uint64_t total =
-            std::min(mb << 20, std::uint64_t{max_layers} * cb_layer_bytes());
+        const std::uint64_t total = atlas_budget_bytes_before_sprite(
+            limits.atlas_budget_mb, adapter_type, max_layers, cb_layer_bytes());
         const std::uint64_t sprite = sprite_atlas_bytes();
         return sprite >= total ? 0 : total - sprite;
     }
@@ -2594,7 +2606,8 @@ struct GpuFrame::Impl {
     }
 
     void write_frame_uniform(Rect view, std::size_t group, std::uint64_t time_ms, WaterStyle style,
-                             const Scene& scene, bool fluid_on, bool river_flow) {
+                             const Scene& scene, bool fluid_on, bool river_flow,
+                             const ObjectsPatch* patch = nullptr) {
         FrameUniform f;
         f.view = view;
         if (const Sea* s = current_sea()) {
@@ -2613,6 +2626,10 @@ struct GpuFrame::Impl {
         f.objects_water = limits.object_waterline;
         f.river_flow = river_flow;
         f.river_lambda = sea::river_view(group, scene.lift, *levels).lambda;
+        if (patch != nullptr) {
+            f.patch_origin = {patch->rect.x, patch->rect.y};
+            f.patch_size = {patch->rect.w, patch->rect.h};
+        }
         // Fluid window: origin (world cells), size, on, cells per tile.
         if (fluid && fluid_on) {
             if (const auto w = fluid->window()) {
@@ -2917,6 +2934,94 @@ struct GpuFrame::Impl {
         desc.entries = entries.data();
         return BindGroup(wgpuDeviceCreateBindGroup(dev(), &desc));
     }
+
+    BindGroup patch_frame_bind() const {
+        const Sea* s = current_sea();
+        const WGPUTextureView sprite = s != nullptr ? s->sprite_v.get() : dummy_array.second.get();
+        const std::array entries = {
+            buffer_entry(0, frame_uniform.get(), kFrameUniformBytes),
+            view_entry(1, under_v ? under_v.get() : dummy_color.second.get()),
+            view_entry(2, sprite),
+        };
+        WGPUBindGroupDescriptor desc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
+        desc.label = sv("patch-frame");
+        desc.layout = patch_frame_layout.get();
+        desc.entryCount = entries.size();
+        desc.entries = entries.data();
+        return BindGroup(wgpuDeviceCreateBindGroup(dev(), &desc));
+    }
+
+    void ensure_patch_gpu(const ObjectsPatch& patch) {
+        const auto pw = static_cast<std::uint32_t>(patch.rect.w);
+        const auto ph = static_cast<std::uint32_t>(patch.rect.h);
+        const std::size_t n = std::size_t{pw} * ph;
+        const bool has_base = patch.base.size() == n;
+        const bool has_sub = patch.submerged.size() == n;
+        const bool need_upload = patch.serial == 0 || patch.serial != patch_serial || !patch_bind;
+        bool rebind = !patch_bind;
+        if (!patch_objects_t || patch_tex_w < pw || patch_tex_h < ph) {
+            const std::uint32_t alloc_w = std::max(pw, patch_tex_w);
+            const std::uint32_t alloc_h = std::max(ph, patch_tex_h);
+            constexpr WGPUTextureUsage kUsage =
+                WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+            patch_objects_t = make_texture(dev(), "patch-objects", WGPUTextureFormat_RGBA8Unorm,
+                                           alloc_w, alloc_h, 1, kUsage);
+            patch_objects_v = make_view(patch_objects_t.get(), false);
+            patch_base_t = make_texture(dev(), "patch-base", WGPUTextureFormat_R8Uint, alloc_w,
+                                        alloc_h, 1, kUsage);
+            patch_base_v = make_view(patch_base_t.get(), false);
+            patch_submerged_t = make_texture(dev(), "patch-sub", WGPUTextureFormat_R8Uint, alloc_w,
+                                             alloc_h, 1, kUsage);
+            patch_submerged_v = make_view(patch_submerged_t.get(), false);
+            patch_tex_w = alloc_w;
+            patch_tex_h = alloc_h;
+            rebind = true;
+        }
+        if (has_base != patch_has_base || has_sub != patch_has_submerged) {
+            rebind = true;
+        }
+        if (rebind) {
+            const std::array entries = {
+                buffer_entry(2, patch_uniform.get(), kPatchUniformBytes),
+                view_entry(3, patch_objects_v.get()),
+                view_entry(4, has_base ? patch_base_v.get() : dummy_base.second.get()),
+                view_entry(5, has_sub ? patch_submerged_v.get() : dummy_base.second.get()),
+            };
+            WGPUBindGroupDescriptor desc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
+            desc.label = sv("patch");
+            desc.layout = patch_layout.get();
+            desc.entryCount = entries.size();
+            desc.entries = entries.data();
+            patch_bind = BindGroup(wgpuDeviceCreateBindGroup(dev(), &desc));
+            patch_has_base = has_base;
+            patch_has_submerged = has_sub;
+        }
+        // Always rewrite the tiny uniform (origin may shift, or cached serial restored after
+        // blink).
+        Bytes u;
+        u.i32(patch.rect.x);
+        u.i32(patch.rect.y);
+        u.i32(patch.rect.w);
+        u.i32(patch.rect.h);
+        u.u32(has_base ? 1U : 0U);
+        u.u32(has_sub ? 1U : 0U);
+        u.u32(0);
+        u.u32(0);
+        wgpuQueueWriteBuffer(queue(), patch_uniform.get(), 0, u.b.data(), u.b.size());
+        if (need_upload || rebind) {
+            write_layer(queue(), patch_objects_t.get(), 0, 0, 0, pw, ph, 4, patch.objects.data(),
+                        patch.objects.size() * 4);
+            if (has_base) {
+                write_layer(queue(), patch_base_t.get(), 0, 0, 0, pw, ph, 1, patch.base.data(),
+                            patch.base.size());
+            }
+            if (has_sub) {
+                write_layer(queue(), patch_submerged_t.get(), 0, 0, 0, pw, ph, 1,
+                            patch.submerged.data(), patch.submerged.size());
+            }
+            patch_serial = patch.serial;
+        }
+    }
 };
 
 namespace {
@@ -3058,6 +3163,22 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
         pd.bindGroupLayoutCount = rl.size();
         pd.bindGroupLayouts = rl.data();
         m.reduce_pl = PipelineLayout(wgpuDeviceCreatePipelineLayout(d, &pd));
+        // UI-GHOST-2 dynamic objects patch (group 0 subset + group 1 chunk + group 2 patch).
+        m.patch_frame_layout =
+            layout(d, "patch-frame",
+                   {uniform_entry(0), texture_entry(1, kFloat, WGPUTextureViewDimension_2D),
+                    texture_entry(2, kFloat, WGPUTextureViewDimension_2DArray)});
+        m.patch_layout =
+            layout(d, "patch",
+                   {uniform_entry(2), texture_entry(3, kFloat, WGPUTextureViewDimension_2D),
+                    texture_entry(4, WGPUTextureSampleType_Uint, WGPUTextureViewDimension_2D),
+                    texture_entry(5, WGPUTextureSampleType_Uint, WGPUTextureViewDimension_2D)});
+        const std::array pl_patch = {m.patch_frame_layout.get(), m.chunk_layout.get(),
+                                     m.patch_layout.get()};
+        pd.label = sv("patch");
+        pd.bindGroupLayoutCount = pl_patch.size();
+        pd.bindGroupLayouts = pl_patch.data();
+        m.patch_pl = PipelineLayout(wgpuDeviceCreatePipelineLayout(d, &pd));
     }
     WGPUBlendState alpha{};
     alpha.color = {WGPUBlendOperation_Add, WGPUBlendFactor_SrcAlpha,
@@ -3093,6 +3214,10 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
                                 format, &alpha);
     m.sea_over_pipe = m.pipeline("sea over objects", m.chunk_pl.get(), "chunk_vs",
                                  "sea_submerged_fs", nullptr, 0, format, &alpha);
+    m.patch_objects_pipe = m.pipeline("patch objects", m.patch_pl.get(), "patch_vs",
+                                      "patch_objects_fs", nullptr, 0, format, &alpha);
+    m.patch_submerged_pipe = m.pipeline("patch submerged", m.patch_pl.get(), "patch_vs",
+                                        "patch_submerged_fs", nullptr, 0, format, &alpha);
     m.sprite_pipe =
         m.pipeline("sprite", m.sprite_pl.get(), "sprite_vs", "sprite_fs", &vbl, 1, format, &alpha);
     m.scale_pipe =
@@ -3131,6 +3256,8 @@ GpuFrame::create(const Context& c, WGPUTextureFormat format, GpuLimits limits) {
         return "pipelines: " + err;
     }
     m.frame_uniform = make_buffer(d, "frame", kFrameUniformBytes,
+                                  WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
+    m.patch_uniform = make_buffer(d, "patch", kPatchUniformBytes,
                                   WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
     m.scale_uniform =
         make_buffer(d, "scale", kScaleBytes, WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
@@ -3449,9 +3576,19 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         stats.planes_prewarmed = static_cast<std::size_t>(created_now - m.warm_planes_created_prev);
         m.warm_planes_created_prev = created_now;
     }
+    const auto& patch_ptr = frames.objects_patch();
+    const ObjectsPatch* patch =
+        patch_ptr && patch_ptr->group == group && patch_ptr->rect.w > 0 && patch_ptr->rect.h > 0 &&
+                patch_ptr->objects.size() == static_cast<std::size_t>(patch_ptr->rect.w) *
+                                                 static_cast<std::size_t>(patch_ptr->rect.h)
+            ? patch_ptr.get()
+            : nullptr;
+    if (patch != nullptr) {
+        m.ensure_patch_gpu(*patch);
+    }
     const bool river_flow = style == WaterStyle::Enhanced &&
                             frames.river_flow == RiverFlowMode::Flow && scene.river_active();
-    m.write_frame_uniform(view, group, time_ms, style, scene, fluid_on, river_flow);
+    m.write_frame_uniform(view, group, time_ms, style, scene, fluid_on, river_flow, patch);
     stats.fluid_fade = m.fluid_fade_drawn;
     {
         RiverParams rp = scene.river_cfg.params();
@@ -3720,10 +3857,55 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         }
         wgpuRenderPassEncoderSetPipeline(p, m.objects_pipe.get());
         draw_chunks(p);
-        if (style == WaterStyle::Original) {
-            // The sea once more over the submerged object pixels (depth.md §2.3).
+        BindGroup patch_frame;
+        std::vector<WGPUBindGroup> patch_chunks;
+        if (patch != nullptr) {
+            for (const auto& [cx, cy] : visible) {
+                if (!chunk_rect(cx, cy).intersect(patch->rect)) {
+                    continue;
+                }
+                if (const auto it = m.chunks.find({group, cx, cy});
+                    it != m.chunks.end() && it->second.real) {
+                    patch_chunks.push_back(it->second.bind.get());
+                }
+            }
+            if (!patch_chunks.empty()) {
+                patch_frame = m.patch_frame_bind();
+                wgpuRenderPassEncoderSetPipeline(p, m.patch_objects_pipe.get());
+                wgpuRenderPassEncoderSetBindGroup(p, 0, patch_frame.get(), 0, nullptr);
+                wgpuRenderPassEncoderSetBindGroup(p, 2, m.patch_bind.get(), 0, nullptr);
+                for (WGPUBindGroup cb_bg : patch_chunks) {
+                    wgpuRenderPassEncoderSetBindGroup(p, 1, cb_bg, 0, nullptr);
+                    wgpuRenderPassEncoderDraw(p, 6, 1, 0, 0);
+                    ++draw_calls;
+                    bind_group_sets += 1;
+                }
+                bind_group_sets += 2;
+                // Restore frame pass2 bind group 0 for subsequent passes.
+                wgpuRenderPassEncoderSetBindGroup(p, 0, pass2.get(), 0, nullptr);
+            }
+        }
+        if (m.limits.submerged_over_objects) {
+            // The sea once more over the submerged object pixels (depth.md §2.3): in
+            // both styles now (WATER-SUBMERGED-1) - sea_submerged_fs itself branches on
+            // frame.enhanced for the colour, since object_in_water's column-foot
+            // heuristic misses tall thin objects like pier poles that this per-pixel
+            // pass still covers.
             wgpuRenderPassEncoderSetPipeline(p, m.sea_over_pipe.get());
             draw_chunks(p);
+            if (!patch_chunks.empty() && m.patch_has_submerged) {
+                wgpuRenderPassEncoderSetPipeline(p, m.patch_submerged_pipe.get());
+                wgpuRenderPassEncoderSetBindGroup(p, 0, patch_frame.get(), 0, nullptr);
+                wgpuRenderPassEncoderSetBindGroup(p, 2, m.patch_bind.get(), 0, nullptr);
+                for (WGPUBindGroup cb_bg : patch_chunks) {
+                    wgpuRenderPassEncoderSetBindGroup(p, 1, cb_bg, 0, nullptr);
+                    wgpuRenderPassEncoderDraw(p, 6, 1, 0, 0);
+                    ++draw_calls;
+                    bind_group_sets += 1;
+                }
+                bind_group_sets += 2;
+                wgpuRenderPassEncoderSetBindGroup(p, 0, pass2.get(), 0, nullptr);
+            }
         }
         // Ships last, as Scene::draw_units draws them after all objects.
         if (m.instances && atlas != nullptr && n_ships > 0) {

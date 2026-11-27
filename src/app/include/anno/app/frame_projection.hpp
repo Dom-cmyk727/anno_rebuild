@@ -33,6 +33,15 @@ class FrameProjection final : public ScreenProjection {
     const OpeningView* drawn_;
 };
 
+/// What drawable pixel (`px`, `py`) of `frame` is over, anywhere on the map: the ground tile of an
+/// island above the waterline (the sim's land average, kLandAverage, solved with that island's own
+/// placement rounding), else the sea point and the tile under it at sea level (render::pick_ray at
+/// kSeaLevel). nullopt off the drawable or without a scene. FrameProjection::pick's rule; the
+/// status bar's cursor tile (UI-STATUS-1 B) and the placement ghost's whole-map hover (UI-GHOST-1
+/// R1) use it too.
+[[nodiscard]] std::optional<PickedPoint> pick_point(const PointerFrame& frame, double px,
+                                                    double py);
+
 /// The pixel (drawable) at which a world point on the sea surface is drawn in `frame`: the forward
 /// rule of the pick at sea level (the inverse of FrameProjection::pick's sea point). Tests and the
 /// scripted session use it to aim at a point of the sea.

@@ -1,0 +1,100 @@
+# ROADS-3 / UI-ROADS-1: press-hold L-drag road building through the construction menu
+# (docs/BUILDINGSOBJECTS.md §10.1 items 1, 2, 3, 9, 10).
+# Run with ANNO_DEV_GOLD=20: dirt road (id 2520) costs 5 gold per tile -> 4 affordable, 3 blinking.
+# (1144, 516) holds a freshly placed pioneer house 501 (0 gold) for the yellow refusal rectangle test;
+# (1150, 516) -> (1154, 518) is an L-drag of 7 tiles (dx=+4, dy=+2) over clear owned grass.
+resize 1024 768
+wait frames 5
+look 1148 522
+key b
+wait frames 5
+
+# Place 0-gold pioneer house 501 at (1144, 516) as an Occupied target, then right-click map back to grid.
+click_px 833 330
+wait frames 3
+click-land 1144 516
+wait outcome
+expect outcome Applied
+wait drawn
+rclick_px 400 384
+wait frames 3
+
+# Open Roads category (tab 1, y=372) and arm dirt road 2520 (cell (0,0)).
+click_px 770 372
+wait frames 3
+expect fact ui.category == roads
+click_px 833 330
+wait frames 3
+expect fact tool.armed == 2520
+expect fact tool.fertility == none
+
+# Pointer on chrome hides ghost, outline and road preview (negative control shot).
+hover_px 950 600
+wait fact tool.ghost == hidden
+wait frames 3
+expect fact tool.ghost.pixels == 0
+expect fact tool.road.drawn == 0
+screenshot road_hidden
+
+# Hovered over occupied house at (1144, 516): refused with yellow 1x1 empty rectangle only.
+hover-land 1144 516
+wait fact tool.road.ready == 1
+expect fact tool.ghost == refused
+expect fact tool.road.valid == 0
+expect fact tool.road.drawn == 0
+wait frames 3
+expect fact tool.ghost.pixels > 0
+expect fact tool.fertility == none
+screenshot road_refused
+
+# Press at (1150, 516) and hold-move to (1154, 518): L-path of 7 tiles, 4 affordable + 3 unaffordable tail.
+ldown-land 1150 516
+lmove-land 1154 518
+wait fact tool.road.ready == 1
+expect fact tool.road.dragging == 1
+expect fact tool.road.path == 7
+expect fact tool.road.valid == 7
+expect fact tool.road.affordable == 4
+expect fact tool.road.unaffordable == 3
+expect fact tool.ghost == unaffordable
+expect fact tool.fertility == none
+
+# Sync onto fresh blink phase 0 (all 7 valid tiles drawn), then phase 1 (only 4 affordable tiles drawn).
+wait fact tool.ghost.phase == 1
+wait fact tool.ghost.phase == 0
+wait frames 2
+expect fact tool.ghost.pixels == 0
+expect fact tool.road.drawn == 7
+screenshot road_drag_phase0
+
+wait fact tool.ghost.phase == 1
+wait frames 2
+expect fact tool.road.drawn == 4
+screenshot road_drag_phase1
+
+# Release commits the affordable prefix (kind 9, 4 tiles), stays armed, commit == preview variants.
+lup-land 1154 518
+wait outcome
+expect outcome Applied
+wait drawn
+expect visibility Visible
+expect fact picture.tile_objects == 4
+expect fact tool.armed == 2520
+expect fact tool.road.dragging == 0
+expect fact tool.road.commit_matched_preview == 1
+
+# 40-tile cap: a 45-tile diagonal/L drag (1135, 509) -> (1157, 531) caps at 40 tiles; right click disarms mid-drag.
+ldown-land 1135 509
+lmove-land 1157 531
+wait fact tool.road.ready == 1
+expect fact tool.road.dragging == 1
+expect fact tool.road.path == 40
+rclick_px 400 384
+wait frames 3
+expect fact tool.armed == none
+expect fact tool.ghost == hidden
+expect fact tool.road.dragging == 0
+expect fact tool.road.path == 0
+expect fact tool.road.drawn == 0
+expect fact picture.tile_objects == 4
+quit

@@ -435,8 +435,17 @@ TEST_CASE("dev tool data: another player's city on another island: its commands 
     CHECK(build.city == sim::CityRef{sim::IslandId{7}, sim::CityNo{2}});
     CHECK(build.placements[0].x == x1 + 6);
     CHECK(build.placements[0].y == kY0 + 7);
-    // A click on island 0 (another island) is not the city's: nothing is sent.
-    CHECK(click(tool, f, kX0 + 20, kY0 + 7).empty());
+    // A click on island 0 (another island) is not the city's: since UI-GHOST-1 R1 it is sent for
+    // the city all the same (the sim refuses it, OutOfIsland), at the tile under the pointer.
+    cmds = click(tool, f, kX0 + 20, kY0 + 7);
+    REQUIRE(cmds.size() == 1);
+    CHECK(std::get<sim::BuildCmd>(cmds[0].body).city ==
+          sim::CityRef{sim::IslandId{7}, sim::CityNo{2}});
+    REQUIRE(tool.ghost_hover().has_value());
+    const sim::TileXY o = tool.input().origin(*tool.ghost_hover());
+    CHECK(std::get<sim::BuildCmd>(cmds[0].body).placements[0].x == o.x);
+    CHECK(std::get<sim::BuildCmd>(cmds[0].body).placements[0].y == o.y);
+    CHECK(tool.ghost_hover()->x < x1); // on island 0, not the city's island
     key(tool, app::ToolInput::Kind::ToggleDemolish);
     cmds = click(tool, f, x1 + 6, kY0 + 7);
     REQUIRE(cmds.size() == 1);

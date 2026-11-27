@@ -1,0 +1,52 @@
+# UI-HARVEST-ICON-1 R1 (the owner's ui test, 2026-11-27: "when i scrolled/zoomed back in the icon was
+# gone"). The forester's "no raw material" icon (1, KeinRohstoff) appears after the farm's 60 000-tick
+# missing-input interval and clears on the first production step that makes wood (AnnoFrame
+# 0x10072fb0(0x0e) at 0x10072ff1, docs/re/ui.md 11.2): at --speed 200 that is about 5 s after it
+# appears (measured: icon at turn 649, wood at 703, icon off at 704). So the owner's icon was gone
+# because the forester had wood, not because of the zoom. This case pins it: with the game paused while
+# raw_88 is 0 the icon stays drawn through zooming out and back in to the closest zoom; unpaused, it
+# clears once wood arrives.
+resize 1024 768
+wait frames 5
+look 1140 516
+wait frames 5
+key b
+wait frames 3
+select 801
+rotate 0
+expect title build 801
+click 1156 516
+wait outcome
+expect outcome Applied
+wait fact status_icons.count >= 1 within 200000
+key space
+# A paused window draws only when something changes: every step below moves the camera.
+look 1156 516
+wait frames 10
+expect fact inspection.raw_88 == 0
+expect fact status_icons.drawn >= 1
+screenshot icon_start
+checkpoint icon_on_paused
+wheel -3
+wait frames 30
+expect fact status_icons.drawn >= 1
+screenshot icon_out1
+wheel -3
+wait frames 30
+expect fact status_icons.drawn >= 1
+screenshot icon_out2
+wheel 40
+wait frames 30
+look 1156 516
+wait frames 10
+expect fact view.tile_w >= 84
+expect fact status_icons.drawn >= 1
+expect fact inspection.raw_88 == 0
+screenshot icon_closest
+checkpoint icon_kept_through_zoom
+key space
+wait fact inspection.raw_88 > 0 within 600000
+checkpoint wood_arrived
+wait fact status_icons.count == 0 within 5000
+checkpoint icon_cleared
+quit

@@ -17,7 +17,7 @@ std::uint32_t group_of(std::uint32_t prodtype) {
     return ((prodtype - 1U) & ~0x1fU) + 1U;
 }
 
-enum class Class : std::uint8_t { Ordinary, Coast, Road, Mountain, Other };
+enum class Class : std::uint8_t { Ordinary, Coast, Road, Mountain, TileObject, Other };
 
 /// Whether the registry holds ore evidence for `ware`: a figure type that is an ore symbol
 /// (BEWOHNTYPE 145) of that WARE (stream 135 FigureType::ware, AnnoWelt deposit class +0x84). The
@@ -70,6 +70,13 @@ Class classify(const BuildingType& t, const PlacementParams& p, const TypeRegist
     }
     if (is_land_road(t)) {
         return Class::Road;
+    }
+    // FERTILITY-1 1a: the single-quad tile object (AnnoGame 0x10008fa1: the type's own flag word &
+    // 3
+    // == 1 selects the four-vertex mean before any window or class test). The shipped words are all
+    // 0x29 (291 types: ROHSTWACHS, ROHSTOFF, ROHSTDUERR); bit 0x10 types returned Other above.
+    if ((t.flags_word & 3U) == 1U) {
+        return Class::TileObject;
     }
     if ((t.flags_word & ~p.ignored_flag_bits) == p.ordinary_class) {
         return Class::Ordinary;
@@ -216,6 +223,38 @@ PlacementResult coverage_rule(const Island& island, const TypeRegistry& types,
     return {Reject::None, 0};
 }
 
+/// The single-quad tile object's height and level test (FERTILITY-1 1a, docs/sim/ship-placement.md
+/// section 2a). The byte is the floor of the mean of the four vertices of the record's tile: the
+/// original adds the bytes at p, p + 1, p + stride and p + stride + 1 and shifts the sum right by 2
+/// (AnnoGame 0x10008fae-0x10008fd9, `cdq; and edx, 3; add; sar 2` on a non-negative sum), whatever
+/// the footprint and the rotation. The island function writes it to record byte 8 (0x1007cbbf) and
+/// skips the level test for the classes of params.level_exempt_classes and the group
+/// params.exempt_group (0x1007cbc2-0x1007cbe9); otherwise the byte must reach params.min_level
+/// (0x1007cbeb-0x1007cc06). Unsupported when a vertex cannot be read.
+PlacementResult tile_object_height(const VertexGrid& grid, const BuildingType& t,
+                                   const PlacementRecord& rec, const PlacementParams& params) {
+    std::uint32_t sum = 0;
+    for (std::int64_t dy = 0; dy <= 1; ++dy) {
+        for (std::int64_t dx = 0; dx <= 1; ++dx) {
+            const std::optional<std::uint8_t> v = grid.at(rec.x + dx, rec.y + dy);
+            if (!v) {
+                return {Reject::Unsupported, 0};
+            }
+            sum += *v;
+        }
+    }
+    const std::uint32_t byte = sum >> 2U; // at most 0xff: four bytes
+    const std::uint32_t cls = t.flags_word & 0x7000U;
+    const bool exempt =
+        std::find(params.level_exempt_classes.begin(), params.level_exempt_classes.end(), cls) !=
+            params.level_exempt_classes.end() ||
+        group_of(t.prodtype) == params.exempt_group;
+    if (!exempt && byte < params.min_level) {
+        return {Reject::TerrainRefused, 0};
+    }
+    return {Reject::None, static_cast<std::uint8_t>(byte)};
+}
+
 } // namespace
 
 bool is_land_road(const BuildingType& t, const RoadParams& p) {
@@ -223,6 +262,33 @@ bool is_land_road(const BuildingType& t, const RoadParams& p) {
     return t.prodtype == p.prodtype && t.flags_word <= 0xffffU && (t.flags_word & 0x10U) == 0 &&
            (cls == p.road_class || cls == p.slope_class) && (t.flags_word & 3U) != 1U &&
            t.width > 0 && t.height > 0;
+}
+
+bool is_road_family(const BuildingType& t, const RoadParams& p) {
+    return t.prodtype != 0 && group_of(t.prodtype) == p.road_group &&
+           t.prodtype != p.bridge_prodtype && (t.flags_word & p.road_family_flag) != 0;
+}
+
+bool same_road_family(const BuildingType& a, const BuildingType& b, const RoadParams& p) {
+    if (!is_road_family(a, p) || !is_road_family(b, p)) {
+        return false;
+    }
+    if (a.cost_gold != b.cost_gold || a.cost_goods.size() != b.cost_goods.size()) {
+        return false;
+    }
+    for (std::size_t i = 0; i < a.cost_goods.size(); ++i) {
+        if (a.cost_goods[i].goods != b.cost_goods[i].goods ||
+            a.cost_goods[i].amount_88 != b.cost_goods[i].amount_88) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool is_road_downgrade(const BuildingType& existing, const BuildingType& placed,
+                       const RoadParams& p) {
+    return is_road_family(existing, p) && is_road_family(placed, p) &&
+           placed.cost_gold < existing.cost_gold;
 }
 
 PlacementResult placement_rule(const Island& island, const TypeRegistry& types,
@@ -292,6 +358,9 @@ PlacementResult placement_rule(const Island& island, const TypeRegistry& types,
     }
     if (cls == Class::Road) {
         return road_window(grid, effective, rec, fw, fh, params, RoadParams{});
+    }
+    if (cls == Class::TileObject) {
+        return tile_object_height(grid, effective, rec, params);
     }
     if (cls == Class::Coast) {
         const site::TerrainVerdict v =
@@ -413,6 +482,28 @@ Reject footprint_owner_rule(const Island& island, const SimConfig& cfg, const Bu
     }
     if (!common.has_value() || *common != city.v) {
         return Reject::TileNotOwned;
+    }
+    return Reject::None;
+}
+
+Reject footprint_all_owned_rule(const Island& island, const SimConfig& cfg,
+                                const BuildingType& type, const PlacementRecord& rec, CityNo city) {
+    const auto [fw, fh] = footprint(type, rec.rotation);
+    const TileLayer& tiles = island.tiles;
+    if (!inside_layer(tiles.x0(), tiles.y0(), tiles.width(), tiles.height(), rec.x, rec.y, fw,
+                      fh)) {
+        return Reject::OutOfIsland;
+    }
+    const TileBox box =
+        clip_to_layer(tiles.x0(), tiles.y0(), tiles.width(), tiles.height(), rec.x, rec.y, fw, fh);
+    for (std::int64_t y = box.y0; y < box.y1; ++y) {
+        for (std::int64_t x = box.x0; x < box.x1; ++x) {
+            const std::uint32_t owner =
+                tiles.owner(static_cast<std::uint64_t>(y * tiles.width() + x));
+            if (owner == cfg.neutral_owner || owner != city.v) {
+                return Reject::TileNotOwned;
+            }
+        }
     }
     return Reject::None;
 }

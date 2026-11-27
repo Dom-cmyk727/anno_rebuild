@@ -51,12 +51,66 @@ TEST_CASE("construction menu: category_at finds each of the eight column bands, 
     }
     // public's own y (325) centre hits public specifically.
     CHECK(menu.category_at(790.0, 325.0) == std::optional<std::string>("public"));
-    // Left of the column (x < 779): no hit, even at a valid y.
+    // Left of the column (x < 762): no hit, even at a valid y.
     CHECK_FALSE(menu.category_at(700.0, 325.0).has_value());
-    // Right of the 42 px gadget width (x >= 779 + 42): no hit.
+    // Right of the 42 px gadget width (x >= 762 + 42): no hit.
     CHECK_FALSE(menu.category_at(825.0, 325.0).has_value());
-    // Above the first band (public's band starts at 325 - 23 = 302): no hit.
+    // Above the first tab (public's tab starts at y 303): no hit.
     CHECK_FALSE(menu.category_at(790.0, 100.0).has_value());
+}
+
+TEST_CASE("construction menu: one tab per category, each its own hud.txt gadget (UI-BUILDCAT-1)") {
+    const Layouts l = load();
+    const app::ConstructionMenu menu(l.hud, l.construction);
+    REQUIRE(l.construction.categories.size() == 8);
+    for (const auto& cat : l.construction.categories) {
+        CAPTURE(cat.name);
+        const app::UiElement* tab = app::construction_category_tab(l.hud, cat);
+        REQUIRE(tab != nullptr);
+        const int k = cat.index - 1;
+        // View.dll 0x1002bb4f: VIEWBAUTAB + 2k idle, + 1 selected, 42 x 46 (docs/re/ui.md 2.4);
+        // x 762, y 303 + 46k on the GOG shots.
+        CHECK(tab->pos_x == 762);
+        CHECK(tab->pos_y == 303 + 46 * k);
+        CHECK(tab->size_w == 42u);
+        CHECK(tab->size_h == 46u);
+        REQUIRE(tab->frame_idle.has_value());
+        REQUIRE(tab->frame_selected.has_value());
+        CHECK(*tab->frame_idle == 16 + 2 * k);
+        CHECK(*tab->frame_selected == 17 + 2 * k);
+        // Every pixel row of the tab hits it, the rows just outside hit the neighbours or none.
+        CHECK(menu.category_at(783.0, tab->pos_y) == std::optional<std::string>(cat.name));
+        CHECK(menu.category_at(783.0, tab->pos_y + 45.5) == std::optional<std::string>(cat.name));
+    }
+    CHECK_FALSE(menu.category_at(783.0, 302.5).has_value());
+    CHECK_FALSE(menu.category_at(783.0, 303.0 + 8 * 46.0).has_value());
+}
+
+TEST_CASE("construction menu: the column/grid boundary - x 803 is the tab, 804..807 nothing, 808 "
+          "grid column 0 (OQ-714, UI-BUILDCAT-1)") {
+    const Layouts l = load();
+    const app::ConstructionMenu menu(l.hud, l.construction);
+    const std::vector<std::pair<anno::sim::TypeId, bool>> none{};
+    for (const auto& cat : l.construction.categories) {
+        CAPTURE(cat.name);
+        const app::UiElement* tab = app::construction_category_tab(l.hud, cat);
+        REQUIRE(tab != nullptr);
+        const double y = tab->pos_y + 23.0;
+        CHECK(menu.category_at(762.0, y) == std::optional<std::string>(cat.name));
+        CHECK(menu.category_at(803.9, y) == std::optional<std::string>(cat.name));
+        CHECK_FALSE(menu.category_at(761.9, y).has_value());
+        CHECK_FALSE(menu.category_at(804.0, y).has_value());
+        const auto gap = menu.click(806.0, y, "public", false, &none);
+        CHECK(gap.kind == app::ConstructionClickKind::None);
+    }
+    // Grid column 0 (x 808..857) belongs to the grid on every row, also where the old 42 px band
+    // from x 779 reached (808..820): row 0 of public is a cell, not a category switch.
+    for (int x = 808; x <= 820; ++x) {
+        CAPTURE(x);
+        const auto r = menu.click(x + 0.5, 305.0 + 25.0, "public", false, &none);
+        CHECK(r.kind != app::ConstructionClickKind::SwitchCategory);
+        CHECK(menu.cell_at(x + 0.5, 305.0 + 25.0) == std::make_pair(0, 0));
+    }
 }
 
 TEST_CASE("construction menu: cell_at finds the grid's sprites, not the gutters, not outside "
@@ -433,4 +487,30 @@ TEST_CASE("info panel: the rotate arrows turn the armed type's rotation, left -1
     click_arrow(menu, tool, lx, y);
     CHECK(tool.input().rotation() == 3);
     CHECK(tool.turn() == 3); // a plain type: the ghost's and the build's turn is the cursor's
+}
+
+// UI-CATNAV-1: a click on a category tab while the info/placement panel shows resolves to
+// SwitchCategory (the tab column is live on both panels), and the state after it is the new
+// category's grid; the armed type is not part of this state, so nothing here can disarm it.
+TEST_CASE("construction menu: a category tab click with the info panel open shows that "
+          "category's grid") {
+    const Layouts l = load();
+    const app::ConstructionMenu menu(l.hud, l.construction);
+
+    const auto roads = menu.click(770.0, 372.0, "public", /*placement_open=*/true, nullptr);
+    REQUIRE(roads.kind == app::ConstructionClickKind::SwitchCategory);
+    CHECK(roads.category == "roads");
+
+    const app::ConstructionPanelState armed_info{"public", true};
+    const app::ConstructionPanelState next = app::after_category_click(armed_info, roads.category);
+    CHECK(next.category == "roads");
+    CHECK_FALSE(next.placement_open);
+
+    // The tab already open: the same path, the grid shows (OQ-774).
+    const app::ConstructionPanelState same = app::after_category_click(armed_info, "public");
+    CHECK(same.category == "public");
+    CHECK_FALSE(same.placement_open);
+
+    // With the grid already showing, a tab click leaves it a grid.
+    CHECK_FALSE(app::after_category_click({"farms", false}, "mines").placement_open);
 }

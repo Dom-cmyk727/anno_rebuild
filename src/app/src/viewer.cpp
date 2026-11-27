@@ -20,14 +20,19 @@
 #include <anno/app/balance_rows.hpp>
 #include <anno/app/dev_feedback.hpp>
 #include <anno/app/dev_script.hpp>
+#include <anno/app/fertility_indicator.hpp>
 #include <anno/app/frame_projection.hpp>
 #include <anno/app/hud_tabs.hpp>
 #include <anno/app/live_resize.hpp>
+#include <anno/app/placement_ghost.hpp>
 #include <anno/app/png.hpp>
+#include <anno/app/range_view.hpp>
+#include <anno/app/road_drag_ui.hpp>
 #include <anno/app/sdl_input.hpp>
 #include <anno/app/section_overlap.hpp>
 #include <anno/app/selection.hpp>
 #include <anno/app/ship_motion.hpp>
+#include <anno/app/status_bar.hpp>
 #include <anno/app/ui_mock.hpp>
 #include <anno/app/ui_transform.hpp>
 #include <anno/app/window_capture.hpp>
@@ -36,6 +41,8 @@
 #include <anno/render/iso.hpp>
 #include <anno/render/picking.hpp>
 #include <anno/sim/production.hpp>
+#include <anno/sim/reject.hpp>
+#include <anno/sim/road_shape.hpp>
 #ifdef ANNO_VIEWER_GPU
 #include <anno/render/gpu.hpp>
 
@@ -395,9 +402,11 @@ class Viewer {
           construction_game_dir_(construction_menu_ != nullptr ? hooks->construction_game_dir
                                                                : std::filesystem::path{}),
           construction_masks_(construction_menu_ != nullptr ? hooks->construction_masks : nullptr),
+          occupied_outline_(hooks != nullptr && hooks->occupied_outline),
           script_(dev_ != nullptr ? hooks->script : nullptr),
           hold_(dev_ != nullptr && hooks->script != nullptr ? hooks->hold : nullptr),
-          opening_(hooks != nullptr && play != nullptr ? hooks->opening : nullptr) {
+          opening_(hooks != nullptr && play != nullptr ? hooks->opening : nullptr),
+          status_layer_(hooks != nullptr && play != nullptr ? hooks->status_icons : nullptr) {
         if (dev_ != nullptr) {
             knowledge_.emplace(dev_->setup());
             attach_occupancy(*play_, *knowledge_, *dev_); // follows the takes; ensure() seeds
@@ -445,6 +454,19 @@ class Viewer {
         cam_x_ = b.x + b.w / 2.0;
         cam_y_ = b.y + b.h / 2.0;
         zoom_now_ = zoom_target_ = levels().tile_w(group);
+        // UI-GHOST-1 R2, the owner's decision of 2026-11-17 ("Start at my city"; the original
+        // starts the player at his own ship or settlement): a play session with a developer city
+        // opens on that city's home tile (DevToolSetup::home: its Kontor). Without one (a scene
+        // view, a session with no city yet) the camera stays on the scene's middle.
+        if (dev_ != nullptr && dev_->setup().city && dev_->setup().home) {
+            const auto g = render::pick_geometry_of(levels().tile_w(group), levels().tile_h(group));
+            const auto [sx, sy] =
+                render::corner_point(static_cast<double>(dev_->setup().home->x) + 0.5,
+                                     static_cast<double>(dev_->setup().home->y) + 0.5,
+                                     static_cast<double>(render::kSeaLevel), g);
+            cam_x_ = sx;
+            cam_y_ = sy;
+        }
         if (play_ == nullptr) {
             fixed_ = std::move(scene);
         }
@@ -808,12 +830,24 @@ class Viewer {
     /// sub-tab each view shows (hud_tabs.hpp; docs/re/ui.md 5.4), built from hud.txt; empty when
     /// there is no HUD layout or its views do not parse (the error is printed once).
     std::optional<HudTabs> hud_tabs_;
-    /// Whether the last frame drew the status bar's city counters (the `hud.counters` fact, R2).
-    bool hud_counters_shown_ = false;
+    /// The groups the last frame's status bar drew (the `hud.counters` fact; UI-STATUS-1 B).
+    StatusCounters hud_counters_ = StatusCounters::Gold;
+    /// The gold figure the last frame drew (the `hud.gold` fact; UI-STATUS-1 B), nullopt: none.
+    std::optional<std::int64_t> hud_gold_;
     /// And which city they showed (the `hud.counters.city` fact, fix round R4).
     std::optional<sim::CityRef> hud_counters_city_;
     /// Whether any frame drew the HUD yet (the fact says "not drawn" until then, R4).
     bool hud_counters_drawn_ = false;
+    /// UI-STATUS-1 B (status_bar.hpp, docs/re/ui.md 5.6): the map tile under the cursor, kept
+    /// while the pointer is over chrome or outside the window (OQ-700: the original's cursor keeps
+    /// its last map tile, as the History Edition frames suggest); the pick for it; the fertility
+    /// row with its pending hide (the window's clock, never sim time).
+    std::optional<sim::TileXY> status_tile_;
+    StatusPick status_pick_;
+    FertilityRow fertility_row_;
+    /// Re-reads the cursor's map tile from the last drawn frame and updates the pick and the row:
+    /// every frame, before the status bar is drawn (AnnoFrame 0x10005a10 -> 0x100052a0).
+    void update_status_bar();
     /// UI-TABS-1 stage B: the balance pages' figures the last frame had (HudCounters::rows; the
     /// `hud.row.<value>` facts).
     std::map<std::string, std::int64_t> hud_rows_;
@@ -844,6 +878,60 @@ class Viewer {
     UiLayerScaler ui_scaler_;
     /// The GPU path's UI layer, composed in place every frame (its storage is reused).
     assets::Rgba ui_canvas_;
+    /// UI-GHOST-1 (placement_ghost.hpp): the placement ghost's state, its blink on the window's
+    /// own clock (never game time, never sim state), the clock's last tick, the pointer's last
+    /// drawable position (the chrome test) and the GPU path's line layer when the frame has no 1:1
+    /// UI canvas to draw the outline into. `ghost_pixels_`: the outline pixels of the last frame.
+    GhostState ghost_ = GhostState::Hidden;
+    std::optional<sim::Reject> ghost_verdict_;
+    bool occupied_outline_ = false;
+    GhostBlink ghost_blink_;
+    std::optional<Clock::time_point> ghost_tick_at_;
+    std::optional<std::pair<double, double>> ghost_pointer_;
+    assets::Rgba ghost_canvas_;
+    std::uint64_t ghost_pixels_ = 0;
+    std::uint64_t ghost_occupied_pixels_ = 0;
+    std::size_t ghost_suppressed_ = 0;
+    const render::Scene* patch_scene_ = nullptr;
+    std::size_t patch_group_ = SIZE_MAX;
+    std::uint64_t patch_serial_ = 0;
+    std::size_t patch_island_ = 0;
+    std::vector<std::size_t> patch_indices_;
+    std::shared_ptr<const render::ObjectsPatch> cached_patch_;
+    /// ROADS-3: live road ghost path, plan, probe match state and drawn sprite count.
+    std::vector<sim::PlacementWire> road_ghost_path_;
+    /// ROADS-2b: the sim's shaped records for road_ghost_path_ (empty until the probe answered).
+    std::vector<sim::PlacementWire> road_ghost_shaped_;
+    RoadGhostPlan road_ghost_plan_;
+    bool road_probe_matched_ = false;
+    std::size_t road_ghost_drawn_ = 0;
+    bool last_road_commit_matched_preview_ = false;
+    [[nodiscard]] std::vector<Preview> road_ghost_previews(const render::Scene& scene,
+                                                           std::uint64_t time) const;
+    /// Asks the sim about the record a click would send (PlayRunner::request_build_probe) and
+    /// chooses the state from the latest published answer. True when what is shown changed.
+    bool ghost_refresh();
+    /// Updates `frames_.objects_patch()` so static flag-0x20 objects under an active valid /
+    /// phase-0 unaffordable ghost are suppressed without mutating `Scene` (UI-GHOST-2).
+    void ghost_update_patch(const render::Scene& scene);
+    /// Advances the blink by the window milliseconds since the last tick and refreshes the state;
+    /// marks the frame dirty when what the ghost shows changed.
+    void ghost_tick();
+    /// The building's sprites are drawn: valid, or unaffordable in the shown phase.
+    [[nodiscard]] bool ghost_building_shown() const;
+    /// The outline the state draws (refused: the footprint; valid, unaffordable: the radius) and
+    /// where its corners land in frame `pf`; nullopt when none is drawn.
+    struct GhostLines {
+        std::vector<CornerEdge> edges;
+        OutlineProjection projection;
+    };
+    [[nodiscard]] OutlineProjection ghost_projection(const render::Scene& scene,
+                                                     const PointerFrame& pf) const;
+    [[nodiscard]] std::optional<GhostLines> ghost_lines(const render::Scene& scene,
+                                                        const PointerFrame& pf) const;
+    /// UI-GHOST-2 ADAPTATION (default off): blocking footprint(s) on Reject::Occupied.
+    [[nodiscard]] std::optional<GhostLines> ghost_occupied_lines(const render::Scene& scene,
+                                                                 const PointerFrame& pf) const;
     /// The selected building (ADR 0004 "Selection", W4-NEXT-2 K, row 18): viewer UI state only.
     /// Active in `--play` with the classic surface, outside the ship-start opening, while the
     /// developer/construction tool is off (a tool's click stays the tool's).
@@ -885,10 +973,10 @@ class Viewer {
         bool selected_house = false;
         /// The city the status bar's counters show (fix round R4), nullopt when hidden.
         std::optional<sim::CityRef> counters_city;
+        /// The groups the status bar's counters show (UI-STATUS-1 B).
+        StatusCounters counters_groups = StatusCounters::Gold;
     };
     [[nodiscard]] ConstructionHudInputs construction_hud_inputs() const;
-    /// The world tile under the drawable's centre (the status bar's centred island, R2).
-    [[nodiscard]] std::optional<sim::TileXY> centre_tile() const;
     /// The scripted session (ViewerHooks::script), the frames drawn and the loop's start for it.
     DevScript* script_ = nullptr;
     PublicationHold* hold_ = nullptr;
@@ -938,6 +1026,17 @@ class Viewer {
     /// Takes the newest snapshot, revalidates the controls against its view, retargets the building
     /// tool at a city that appeared, and builds the ships to draw. Frame boundary; window thread.
     void opening_refresh();
+    // ---- the status icons over buildings (UI-HARVEST-ICON-1 B; status_icons.hpp) ----
+    std::shared_ptr<const StatusIconLayer> status_layer_;
+    /// The icon list and the scene the placement was made for (re-placed when either changes).
+    std::shared_ptr<const std::vector<StatusIconView>> status_icons_shown_;
+    const render::Scene* status_scene_ = nullptr;
+    std::uint64_t status_generation_ = 0;
+    std::vector<PlacedStatusIcon> status_placed_;
+    /// This frame's icons, and what the GPU frame draws: the ships, then the icons.
+    std::vector<render::UnitSprite> status_units_;
+    std::vector<render::UnitSprite> frame_units_;
+    void status_refresh(const render::Scene& scene);
     [[nodiscard]] UiFeed opening_feed() const;
     /// The named facts a scripted session waits on and expects (DevScriptState::facts).
     [[nodiscard]] std::map<std::string, std::string> opening_facts() const;
@@ -974,6 +1073,9 @@ class Viewer {
     std::uint64_t windows_seen_ = 0, resamples_seen_ = 0;
 #endif
     void back_off() {
+        if (!retry_at_ && trace_ != nullptr) {
+            trace_->note("retry_backoff 100ms");
+        }
         retry_at_ = Clock::now() + std::chrono::milliseconds(100);
         dirty_ = true;
     }
@@ -1112,17 +1214,14 @@ std::string Viewer::run() {
     if (const char* sz = std::getenv("ANNO_VIEW_SIZE"); sz != nullptr && *sz != 0) {
         int want_w = 0, want_h = 0;
         if (std::sscanf(sz, "%dx%d", &want_w, &want_h) == 2 && want_w > 0 && want_h > 0) {
-            float density = SDL_GetWindowPixelDensity(window_);
-            if (!(density > 0.0F)) {
-                density = 1.0F;
-            }
-            SDL_SetWindowSize(window_,
-                              static_cast<int>(std::lround(want_w / static_cast<double>(density))),
-                              static_cast<int>(std::lround(want_h / static_cast<double>(density))));
+            const float density = SDL_GetWindowPixelDensity(window_);
+            const auto [win_w, win_h] = window_points_for_drawable(want_w, want_h, density);
+            SDL_SetWindowSize(window_, win_w, win_h);
             SDL_SyncWindow(window_);
             const auto [got_w, got_h] = view_size();
             std::fprintf(stderr, "window: drawable %dx%d px (asked for %dx%d, density %.2f)\n",
-                         got_w, got_h, want_w, want_h, static_cast<double>(density));
+                         got_w, got_h, want_w, want_h,
+                         static_cast<double>(density > 0.0F ? density : 1.0F));
             if (trace_ != nullptr) {
                 trace_->note("drawable_asked " + std::to_string(want_w) + "x" +
                              std::to_string(want_h));
@@ -1398,14 +1497,9 @@ std::string Viewer::run() {
         }
         if (resize_at_ && Clock::now() >= *resize_at_) {
             resize_at_.reset();
-            float density = SDL_GetWindowPixelDensity(window_);
-            if (!(density > 0.0F)) {
-                density = 1.0F;
-            }
-            SDL_SetWindowSize(
-                window_,
-                static_cast<int>(std::lround(resize_to_.first / static_cast<double>(density))),
-                static_cast<int>(std::lround(resize_to_.second / static_cast<double>(density))));
+            const auto [win_w, win_h] = window_points_for_drawable(
+                resize_to_.first, resize_to_.second, SDL_GetWindowPixelDensity(window_));
+            SDL_SetWindowSize(window_, win_w, win_h);
             dirty_ = true;
         }
         if (retry_at_ && Clock::now() >= *retry_at_) {
@@ -1416,9 +1510,15 @@ std::string Viewer::run() {
         // A batch waiting in the mailbox, a change not committed yet, chunk builds and the
         // compositor's uploads and dissolves keep the frames coming, also while paused (round eb,
         // 1A): they finish without a new turn or an input event.
+        ghost_tick(); // UI-GHOST-1: the blink runs on the window's clock
         const bool animating = demand(can_draw).animating();
         if (!animating && !(dirty_ && can_draw)) {
             int wait_ms = 100;
+            if (ghost_ == GhostState::Unaffordable) {
+                // Wake for the next flip of the blink (at most 100 ms anyway).
+                wait_ms =
+                    static_cast<int>(std::clamp<std::uint64_t>(ghost_blink_.ms_to_flip(), 1, 100));
+            }
             if (retry_at_) {
                 const auto left =
                     std::chrono::duration_cast<std::chrono::milliseconds>(*retry_at_ - Clock::now())
@@ -1496,6 +1596,14 @@ void Viewer::handle(const SDL_Event& e) {
     if (script_ != nullptr && foreign_input(e)) {
         return; // a scripted session takes only its own input (dev_script.hpp, kScriptDevice)
     }
+    if (e.type == SDL_EVENT_MOUSE_MOTION) {
+        // UI-GHOST-1: where the pointer is, whoever takes the motion (the chrome test).
+        const double density = SDL_GetWindowPixelDensity(window_);
+        ghost_pointer_ = std::pair{static_cast<double>(e.motion.x) * density,
+                                   static_cast<double>(e.motion.y) * density};
+    } else if (e.type == SDL_EVENT_WINDOW_MOUSE_LEAVE) {
+        ghost_pointer_.reset();
+    }
     if (wake_event_ != 0 && e.type == wake_event_) {
         dirty_ = true; // a building batch or a command outcome (the runner's wake): draw it now
         update_title();
@@ -1516,8 +1624,26 @@ void Viewer::handle(const SDL_Event& e) {
         // receipts are kept for the feedback.
         const bool was_on = dev_->enabled();
         const auto hovered = dev_->hover();
+        const auto ghost_hovered = dev_->ghost_hover();
+        const bool check_road_commit = e.type == SDL_EVENT_MOUSE_BUTTON_UP &&
+                                       e.button.button == SDL_BUTTON_LEFT &&
+                                       dev_->land_road_armed();
+        std::vector<sim::TypeId> expected_road_variants;
+        if (check_road_commit && !road_ghost_path_.empty()) {
+            expected_road_variants.reserve(road_ghost_path_.size());
+            for (const sim::PlacementWire& w : road_ghost_path_) {
+                expected_road_variants.push_back(w.type);
+            }
+        }
         ToolStep step = dev_tool_step(*dev_, e, SDL_GetWindowPixelDensity(window_),
                                       pointer_frame_ ? &*pointer_frame_ : nullptr);
+        if (check_road_commit && !step.commands.empty() &&
+            !dev_->input().last_commit_variants().empty()) {
+            const auto committed = dev_->input().last_commit_variants();
+            last_road_commit_matched_preview_ =
+                committed.size() == expected_road_variants.size() &&
+                std::equal(committed.begin(), committed.end(), expected_road_variants.begin());
+        }
         for (sim::Command& command : step.commands) {
             latest_receipt_ = play_->runner().post_command(std::move(command));
         }
@@ -1535,7 +1661,9 @@ void Viewer::handle(const SDL_Event& e) {
                 }
             }
             // A motion within the same tile changes nothing shown: no redraw, no new title.
-            if (e.type != SDL_EVENT_MOUSE_MOTION || dev_->hover() != hovered) {
+            if (e.type != SDL_EVENT_MOUSE_MOTION || dev_->hover() != hovered ||
+                dev_->ghost_hover() != ghost_hovered) {
+                static_cast<void>(ghost_refresh());
                 update_title();
                 dirty_ = true;
             }
@@ -1563,7 +1691,8 @@ void Viewer::handle(const SDL_Event& e) {
         dirty_ = true;
         return;
     }
-    const float density = SDL_GetWindowPixelDensity(window_);
+    const float raw_density = SDL_GetWindowPixelDensity(window_);
+    const float density = raw_density > 0.0F ? raw_density : 1.0F;
     switch (e.type) {
     case SDL_EVENT_QUIT:
         running_ = false;
@@ -1574,15 +1703,35 @@ void Viewer::handle(const SDL_Event& e) {
     // No frames while nobody can see them (minimised or covered).
     case SDL_EVENT_WINDOW_MINIMIZED:
     case SDL_EVENT_WINDOW_OCCLUDED:
-    case SDL_EVENT_WINDOW_HIDDEN:
+    case SDL_EVENT_WINDOW_HIDDEN: {
+        const char* why = e.type == SDL_EVENT_WINDOW_MINIMIZED  ? "minimized"
+                          : e.type == SDL_EVENT_WINDOW_OCCLUDED ? "occluded"
+                                                                : "hidden";
+        if (!hidden_) {
+            std::fprintf(stderr, "window: hidden=1 (%s)\n", why);
+            if (trace_ != nullptr) {
+                trace_->note(std::string("hidden=1 ") + why);
+            }
+        }
         hidden_ = true;
         break;
+    }
     case SDL_EVENT_WINDOW_RESTORED:
     case SDL_EVENT_WINDOW_SHOWN:
-    case SDL_EVENT_WINDOW_EXPOSED:
+    case SDL_EVENT_WINDOW_EXPOSED: {
+        const char* why = e.type == SDL_EVENT_WINDOW_RESTORED ? "restored"
+                          : e.type == SDL_EVENT_WINDOW_SHOWN  ? "shown"
+                                                              : "exposed";
+        if (hidden_) {
+            std::fprintf(stderr, "window: hidden=0 (%s)\n", why);
+            if (trace_ != nullptr) {
+                trace_->note(std::string("hidden=0 ") + why);
+            }
+        }
         hidden_ = false;
         dirty_ = true;
         break;
+    }
     case SDL_EVENT_KEY_DOWN: {
         const auto [w, h] = view_size();
         const double dx = w / 4.0, dy = h / 4.0;
@@ -1830,6 +1979,28 @@ void Viewer::opening_refresh() {
     }
 }
 
+void Viewer::status_refresh(const render::Scene& scene) {
+    status_units_.clear();
+    if (status_layer_ == nullptr || play_ == nullptr) {
+        return;
+    }
+    const std::shared_ptr<const PlaySnapshot> snap = play_->runner().snapshot();
+    if (!snap || !snap->status_icons) {
+        return;
+    }
+    if (snap->status_icons != status_icons_shown_ || &scene != status_scene_ ||
+        scene.generation() != status_generation_) {
+        status_icons_shown_ = snap->status_icons;
+        status_scene_ = &scene;
+        status_generation_ = scene.generation();
+        status_placed_ = place_status_icons(*status_icons_shown_, scene);
+    }
+    // KNOWN DIVERGENCE (docs/re/ui.md 11.4, OQ-720): where the original shows the "no road"
+    // icon 1571 (a due code 1 or 2 rewritten to code 3), the sim reports code 1 or 2 and this
+    // draws KeinRohstoff or KeinLager.
+    status_units_ = status_layer_->units(status_placed_, time_ms());
+}
+
 void Viewer::opening_apply(const UiResult& result) {
     const std::uint64_t tick =
         opening_snapshot_ && opening_snapshot_->opening ? opening_snapshot_->opening->tick : 0;
@@ -1896,6 +2067,7 @@ void Viewer::disarm_tool() {
         }
         drag_ = false;
     }
+    static_cast<void>(ghost_refresh());
 }
 
 void Viewer::construction_close() {
@@ -2100,9 +2272,14 @@ bool Viewer::construction_handle(const SDL_Event& e) {
     switch (result.kind) {
     case ConstructionClickKind::None:
         return true;
-    case ConstructionClickKind::SwitchCategory:
-        construction_open_category_ = result.category;
+    case ConstructionClickKind::SwitchCategory: {
+        // UI-CATNAV-1: the tab shows its category's grid; an armed type stays armed (no Cancel).
+        const ConstructionPanelState next = after_category_click(
+            {construction_open_category_, construction_placement_open_}, result.category);
+        construction_open_category_ = next.category;
+        construction_placement_open_ = next.placement_open;
         return true;
+    }
     case ConstructionClickKind::Empty:
     case ConstructionClickKind::Locked:
         return true;
@@ -2181,8 +2358,12 @@ bool Viewer::minimap_press(double px, double py) {
     };
     // The magnifier's + and - (gadgets 1 and 2, commands 0xa and 9): the main view one level
     // closer / farther, clamped to the original's levels 0..2 (AnnoFrame 0x10007710,
-    // 0x10007692). The stepped zoom has exactly those levels; the continuous zoom goes to the
-    // next built level in that direction (magnifier_target), easing there as a key press does.
+    // 0x10007692). The stepped zoom keeps exactly that clamp. The continuous zoom steps through
+    // magnifier_stages instead (UI-MINIMAP-2, owner decisions 2026-11-17): the wheel's closest
+    // zoom-in (zoom_ceiling) and doublings below it, the built levels, then halvings down to the
+    // wheel's furthest zoom-out (zoom_floor) and that width itself, built at each press because
+    // the far end follows the window size. One press goes to the next stage in that direction
+    // (magnifier_target), easing there as a key press does.
     if (on("lupe_plus") || on("lupe_minus")) {
         const bool closer = on("lupe_plus");
         if (continuous_) {
@@ -2190,7 +2371,9 @@ bool Viewer::minimap_press(double px, double py) {
             for (std::size_t k = 0; k < levels().built_count(); ++k) {
                 level_w.push_back(levels().tile_w(k));
             }
-            if (const auto target = magnifier_target(level_w, zoom_target_, closer)) {
+            const auto stages = magnifier_stages(level_w, zoom_floor(levels(), zoom_min_tile()),
+                                                 zoom_ceiling(levels()));
+            if (const auto target = magnifier_target(stages, zoom_target_, closer)) {
                 zoom_to(*target);
             }
         } else {
@@ -2314,7 +2497,11 @@ UiHit Viewer::ui_hit_at(double px, double py) const {
         return {};
     }
     const HudLayout& hud = construction_menu_->hud();
-    const char* panel = construction_menu_open_ || !hud_tabs_ ? nullptr : hud_tabs_->body().c_str();
+    // UI-BUILDCAT-1: with the construction menu open, its category tabs (hud.txt `panel
+    // construction`) are the shown panel's elements: they stick out left of the column.
+    const char* panel = construction_menu_open_ ? "construction"
+                        : !hud_tabs_            ? nullptr
+                                                : hud_tabs_->body().c_str();
     // UI-MINIMAP-1 C: the minimap's click area, where the minimap is drawn (minimap_overlay).
     std::optional<UiRect> minimap;
     if (minimap_ && construction_tex_cache_ != std::nullopt) {
@@ -2823,6 +3010,339 @@ void Viewer::refresh_visibility_title() {
     }
 }
 
+std::vector<Preview> Viewer::road_ghost_previews(const render::Scene& scene,
+                                                 std::uint64_t time) const {
+    std::vector<Preview> out;
+    if (dev_ == nullptr || !dev_->land_road_armed()) {
+        return out;
+    }
+    const std::size_t n = std::min(road_ghost_plan_.draw_count, road_ghost_path_.size());
+    // ROADS-2b: the shaped pieces when the sim answered (the path's records first, then the
+    // rewritten neighbours, drawn only with the whole path, as their shapes assume it).
+    const bool shaped = road_ghost_shaped_.size() >= road_ghost_path_.size();
+    const std::vector<sim::PlacementWire>& recs = shaped ? road_ghost_shaped_ : road_ghost_path_;
+    const std::size_t total = shaped && n == road_ghost_path_.size() ? recs.size() : n;
+    out.reserve(total);
+    for (std::size_t i = 0; i < total; ++i) {
+        const sim::PlacementWire& rec = recs[i];
+        if (auto p =
+                make_type_preview(scene, rec.type, rec.rotation, {rec.x, rec.y}, group_, time)) {
+            out.push_back(std::move(*p));
+        }
+    }
+    // Painter's order so isometric depth overlaps consistently across multi-tile road ghosts.
+    std::sort(out.begin(), out.end(), [](const Preview& a, const Preview& b) {
+        const std::uint32_t da = static_cast<std::uint32_t>(a.object.first.x) +
+                                 static_cast<std::uint32_t>(a.object.first.y);
+        const std::uint32_t db = static_cast<std::uint32_t>(b.object.first.x) +
+                                 static_cast<std::uint32_t>(b.object.first.y);
+        return da != db ? da < db : a.object.first.x < b.object.first.x;
+    });
+    return out;
+}
+
+bool Viewer::ghost_refresh() {
+    const GhostState before = ghost_;
+    const std::size_t prev_draw = road_ghost_plan_.draw_count;
+    const std::size_t prev_path_size = road_ghost_path_.size();
+    const bool pointer_on_chrome = construction_menu_ != nullptr && ghost_pointer_ &&
+                                   ui_hit_at(ghost_pointer_->first, ghost_pointer_->second).chrome;
+    const std::optional<sim::TileXY> hover =
+        dev_ != nullptr ? dev_->ghost_hover() : std::optional<sim::TileXY>{};
+    if (dev_ != nullptr && dev_->land_road_armed() && hover && dev_->setup().city) {
+        if (play_ != nullptr) {
+            play_->runner().request_build_probe(std::nullopt);
+        }
+        road_ghost_path_ = dev_->input().road_preview_placements(*hover);
+        RoadPathProbe probe{*dev_->setup().city, road_ghost_path_};
+        std::optional<sim::RoadPathCheck> verdict;
+        if (play_ != nullptr) {
+            play_->runner().request_road_probe(probe);
+            const auto snap = play_->runner().snapshot();
+            road_ghost_shaped_.clear();
+            if (snap && snap->road_probe && snap->road_probe->probe == probe) {
+                verdict = snap->road_probe->check;
+                road_ghost_shaped_ = snap->road_probe->shaped;
+            }
+        }
+        const auto verdict_before = ghost_verdict_;
+        road_probe_matched_ = verdict.has_value();
+        road_ghost_plan_ =
+            plan_road_ghost(RoadGhostInputs{true, pointer_on_chrome, road_ghost_path_.size(),
+                                            verdict, ghost_, ghost_blink_.hidden()});
+        if (!road_probe_matched_ && road_ghost_plan_.state != GhostState::Hidden) {
+            road_ghost_plan_.draw_count = std::min(prev_draw, road_ghost_path_.size());
+            road_ghost_plan_.draw_refusal_box = (road_ghost_plan_.state == GhostState::Refused);
+        }
+        ghost_ = road_ghost_plan_.state;
+        if (ghost_ == GhostState::Hidden) {
+            ghost_verdict_.reset();
+        } else if (verdict) {
+            ghost_verdict_ = (verdict->valid_prefix < road_ghost_path_.size())
+                                 ? verdict->first_refusal
+                                 : sim::Reject::None;
+        }
+        return ghost_ != before || ghost_verdict_ != verdict_before ||
+               road_ghost_plan_.draw_count != prev_draw ||
+               road_ghost_path_.size() != prev_path_size;
+    }
+
+    road_ghost_path_.clear();
+    road_ghost_shaped_.clear();
+    road_ghost_plan_ = {};
+    road_probe_matched_ = false;
+    GhostInputs in;
+    in.pointer_on_chrome = pointer_on_chrome;
+    std::optional<BuildProbe> probe;
+    const sim::BuildingType* type = dev_ != nullptr ? dev_->input().selected_type() : nullptr;
+    if (dev_ != nullptr && dev_->enabled() && !dev_->input().demolish_mode() && type != nullptr &&
+        hover && dev_->setup().city) {
+        in.armed = true;
+        const auto extent = dev_->input().footprint_extent(*hover, dev_->turn());
+        in.footprint_empty = !extent || extent->w == 0 || extent->h == 0;
+        // The record a click here sends (DevInput::build_command with DevTool::turn).
+        const sim::TileXY o = dev_->input().origin(*hover);
+        probe = BuildProbe{*dev_->setup().city,
+                           sim::PlacementWire{type->id, o.x, o.y, dev_->turn(), 0, 0}};
+    }
+    if (play_ != nullptr) {
+        play_->runner().request_road_probe(std::nullopt);
+        play_->runner().request_build_probe(probe);
+        if (probe) {
+            const auto snap = play_->runner().snapshot();
+            if (snap && snap->build_probe && snap->build_probe->probe == *probe) {
+                in.verdict = snap->build_probe->verdict;
+            }
+        }
+    }
+    const auto verdict_before = ghost_verdict_;
+    ghost_ = ghost_state(in, ghost_);
+    if (ghost_ == GhostState::Hidden) {
+        ghost_verdict_.reset();
+    } else if (in.verdict) {
+        ghost_verdict_ = in.verdict;
+    }
+    return ghost_ != before || ghost_verdict_ != verdict_before || prev_draw != 0 ||
+           prev_path_size != 0;
+}
+
+void Viewer::ghost_update_patch(const render::Scene& scene) {
+    auto clear_patch = [&]() {
+        frames_.set_objects_patch({});
+        ghost_suppressed_ = 0;
+    };
+    if (dev_ == nullptr || !dev_->enabled() || dev_->input().demolish_mode() ||
+        ghost_ == GhostState::Hidden || group_ >= render::kGroups) {
+        clear_patch();
+        return;
+    }
+    std::optional<std::size_t> island_idx;
+    for (std::size_t k = 0; k < scene.islands.size(); ++k) {
+        if (scene.islands[k].x == dev_->setup().island.x0 &&
+            scene.islands[k].y == dev_->setup().island.y0) {
+            island_idx = k;
+            break;
+        }
+    }
+    if (!island_idx) {
+        clear_patch();
+        return;
+    }
+    std::vector<Cover> covers;
+    const auto ix0 = std::int64_t{dev_->setup().island.x0};
+    const auto iy0 = std::int64_t{dev_->setup().island.y0};
+    if (dev_->land_road_armed()) {
+        const std::size_t drawn = std::min(road_ghost_plan_.draw_count, road_ghost_path_.size());
+        covers.reserve(drawn);
+        for (std::size_t i = 0; i < drawn; ++i) {
+            const sim::PlacementWire& w = road_ghost_path_[i];
+            if (const auto c = cover_of(scene.anlagen, w.type.v, std::int64_t{w.x} - ix0,
+                                        std::int64_t{w.y} - iy0, w.rotation)) {
+                covers.push_back(*c);
+            }
+        }
+    } else if (ghost_building_shown()) {
+        if (const auto hover = dev_->ghost_hover(); hover) {
+            if (const sim::BuildingType* type = dev_->input().selected_type(); type != nullptr) {
+                const sim::TileXY o = dev_->input().origin(*hover);
+                if (const auto c = cover_of(scene.anlagen, type->id.v, std::int64_t{o.x} - ix0,
+                                            std::int64_t{o.y} - iy0, dev_->turn())) {
+                    covers.push_back(*c);
+                }
+            }
+        }
+    }
+    if (covers.empty()) {
+        clear_patch();
+        return;
+    }
+    std::vector<std::size_t> indices =
+        collect_suppressed_object_indices(scene, *island_idx, covers);
+    if (indices.empty()) {
+        clear_patch();
+        return;
+    }
+    if (cached_patch_ && patch_scene_ == &scene && patch_group_ == group_ &&
+        patch_island_ == *island_idx && patch_indices_ == indices) {
+        frames_.set_objects_patch(cached_patch_);
+        ghost_suppressed_ = indices.size();
+        return;
+    }
+    render::ObjectsExclusion excl{*island_idx, indices};
+    auto built = render::build_objects_patch(scene, group_, excl, false, true);
+    if (!built) {
+        clear_patch();
+        return;
+    }
+    built->serial = ++patch_serial_;
+    cached_patch_ = std::make_shared<const render::ObjectsPatch>(std::move(*built));
+    patch_scene_ = &scene;
+    patch_group_ = group_;
+    patch_island_ = *island_idx;
+    patch_indices_ = std::move(indices);
+    frames_.set_objects_patch(cached_patch_);
+    ghost_suppressed_ = patch_indices_.size();
+}
+
+void Viewer::ghost_tick() {
+    // Whole window milliseconds since the last tick; the fraction stays for the next one.
+    const auto now = Clock::now();
+    std::uint64_t dt = 0;
+    if (ghost_tick_at_) {
+        const auto ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - *ghost_tick_at_);
+        if (ms.count() > 0) {
+            dt = static_cast<std::uint64_t>(ms.count());
+            *ghost_tick_at_ += ms;
+        }
+    } else {
+        ghost_tick_at_ = now;
+    }
+    const bool shown_before = ghost_building_shown();
+    const std::size_t road_before = road_ghost_plan_.draw_count;
+    static_cast<void>(ghost_blink_.advance(dt));
+    const bool changed = ghost_refresh();
+    if (changed || ghost_building_shown() != shown_before ||
+        road_ghost_plan_.draw_count != road_before) {
+        dirty_ = true;
+    }
+}
+
+bool Viewer::ghost_building_shown() const {
+    return ghost_ == GhostState::Valid ||
+           (ghost_ == GhostState::Unaffordable && !ghost_blink_.hidden());
+}
+
+OutlineProjection Viewer::ghost_projection(const render::Scene& scene,
+                                           const PointerFrame& pf) const {
+    OutlineProjection projection;
+    projection.geometry = pf.geometry;
+    projection.map = pf.map;
+    // The city island's drawn rounding, as the pick undoes it (DevTool::pick).
+    for (std::size_t k = 0; k < scene.islands.size(); ++k) {
+        if (scene.islands[k].x == dev_->setup().island.x0 &&
+            scene.islands[k].y == dev_->setup().island.y0) {
+            projection.rounding = placement_rounding(scene, k, pf.group, pf.geometry.tile_w);
+            break;
+        }
+    }
+    // The ground, never below the sea surface the whole-map pick reads open water at (R1).
+    projection.height = [&scene](double u, double v) {
+        const double sea = static_cast<double>(render::kSeaLevel);
+        return std::max(
+            sea,
+            static_cast<double>(
+                scene.ground_height(static_cast<float>(u), static_cast<float>(v)).value_or(0.0F)));
+    };
+    return projection;
+}
+
+std::optional<Viewer::GhostLines> Viewer::ghost_lines(const render::Scene& scene,
+                                                      const PointerFrame& pf) const {
+    if (dev_ == nullptr || ghost_ == GhostState::Hidden) {
+        return std::nullopt;
+    }
+    const auto hover = dev_->ghost_hover();
+    const sim::BuildingType* type = dev_->input().selected_type();
+    if (!hover || type == nullptr) {
+        return std::nullopt;
+    }
+    if (dev_->land_road_armed() && !road_ghost_plan_.draw_refusal_box) {
+        return std::nullopt; // Roads draw no radius outline; only the yellow refusal rectangle.
+    }
+    const auto extent = dev_->input().footprint_extent(*hover, dev_->turn());
+    if (!extent || extent->w == 0 || extent->h == 0) {
+        return std::nullopt;
+    }
+    const GhostBox box{extent->x0, extent->y0, extent->w, extent->h};
+    GhostLines out;
+    // Refused: the footprint only (0x1004846b); valid and unaffordable: the radius (0x10048491).
+    out.edges = (ghost_ == GhostState::Refused || dev_->land_road_armed())
+                    ? footprint_outline(box)
+                    : radius_outline(box, type->action_radius);
+    if (out.edges.empty()) {
+        return std::nullopt;
+    }
+    out.projection = ghost_projection(scene, pf);
+    return out;
+}
+
+std::optional<Viewer::GhostLines> Viewer::ghost_occupied_lines(const render::Scene& scene,
+                                                               const PointerFrame& pf) const {
+    if (!occupied_outline_ || dev_ == nullptr || play_ == nullptr || !dev_->enabled() ||
+        dev_->input().demolish_mode() || ghost_ != GhostState::Refused ||
+        ghost_verdict_ != sim::Reject::Occupied) {
+        return std::nullopt;
+    }
+    const auto hover = dev_->ghost_hover();
+    if (!hover) {
+        return std::nullopt;
+    }
+    std::optional<GhostBox> target;
+    if (dev_->land_road_armed()) {
+        target = GhostBox{hover->x, hover->y, 1, 1};
+    } else if (const auto extent = dev_->input().footprint_extent(*hover, dev_->turn());
+               extent && extent->w > 0 && extent->h > 0) {
+        target = GhostBox{extent->x0, extent->y0, extent->w, extent->h};
+    }
+    if (!target) {
+        return std::nullopt;
+    }
+    std::optional<std::size_t> island_idx;
+    for (std::size_t k = 0; k < scene.islands.size(); ++k) {
+        if (scene.islands[k].x == dev_->setup().island.x0 &&
+            scene.islands[k].y == dev_->setup().island.y0) {
+            island_idx = k;
+            break;
+        }
+    }
+    if (!island_idx) {
+        return std::nullopt;
+    }
+    const std::uint32_t island_no = scene.islands[*island_idx].number;
+    const BlockingQuery query{
+        *target,
+        dev_->setup().island.x0,
+        dev_->setup().island.y0,
+        play_->picture().island_buildings(island_no),
+        dev_->setup().registry.get(),
+        &scene.anlagen,
+        play_->picture().island_tile_objects(island_no),
+        scene.island_lists(*island_idx).other,
+    };
+    const auto boxes = occupied_blocking_boxes(query);
+    if (boxes.empty()) {
+        return std::nullopt;
+    }
+    GhostLines out;
+    out.edges = blocking_footprint_outline(boxes);
+    if (out.edges.empty()) {
+        return std::nullopt;
+    }
+    out.projection = ghost_projection(scene, pf);
+    return out;
+}
+
 void Viewer::update_title() {
     // Whatever stage the title is about to show is the stage refresh_visibility_title compares to.
     if (dev_ != nullptr && play_ != nullptr && latest_receipt_) {
@@ -2897,6 +3417,7 @@ void Viewer::update_title() {
         // now, shown from `snap->inspection` next time (same one-turn-lag pattern as the founding
         // probe below — this frame's title still reads what the previous request answered).
         play_->runner().request_inspect(dev_->hover());
+        static_cast<void>(ghost_refresh()); // UI-GHOST-1: and the ghost's record
         // Why there is no preview, from the frame the pointer is over (its scene and zoom level).
         std::string note = pointer_frame_ && pointer_frame_->scene
                                ? preview_note(*dev_, *pointer_frame_->scene, pointer_frame_->group)
@@ -2966,8 +3487,10 @@ void Viewer::script_tick() {
         const double waited =
             std::chrono::duration<double, std::milli>(Clock::now() - started_).count();
         if (waited > DevScript::kWaitLimitMs) {
-            script_->abort("no frame was drawn within " +
-                           std::to_string(static_cast<int>(DevScript::kWaitLimitMs)) + " ms");
+            script_->abort(
+                "no frame was drawn within " +
+                std::to_string(static_cast<int>(DevScript::kWaitLimitMs)) + " ms (" +
+                format_no_frame_diagnostic(hidden_, retry_at_.has_value(), drawn_frames_) + ")");
             running_ = false;
         }
         return;
@@ -3038,9 +3561,24 @@ void Viewer::script_tick() {
                 st.facts["inspection.raw_88"] = std::to_string(insp->farm->raw_88);
                 st.facts["inspection.workers_out"] = std::to_string(insp->farm->workers_out);
             }
+            // UI-HARVEST-ICON-1 B: the status icon the snapshot gives the hovered building (its
+            // code, docs/re/ui.md 11.1), "none" when it has none.
+            std::string icon = "none";
+            if (st.snapshot->status_icons) {
+                for (const StatusIconView& v : *st.snapshot->status_icons) {
+                    if (v.id == insp->id) {
+                        icon = std::to_string(static_cast<int>(v.icon));
+                    }
+                }
+            }
+            st.facts["inspection.status_icon"] = icon;
         }
         // FISHER-VIEW-1: the game time the facts above belong to (the snapshot's clock).
         st.facts["game.ms"] = std::to_string(st.snapshot->game_ms);
+        // UI-HARVEST-ICON-1 B: the icons the snapshot carries, and the units this frame drew.
+        st.facts["status_icons.count"] =
+            std::to_string(st.snapshot->status_icons ? st.snapshot->status_icons->size() : 0);
+        st.facts["status_icons.drawn"] = std::to_string(status_units_.size());
     }
     // Row 18's selection (W4-NEXT-2 F1/G1, finding 1 of the 2026-11-11 fix review): a script that
     // waits on a fixed frame count to know a click's selection resolved races the sim thread's
@@ -3067,9 +3605,17 @@ void Viewer::script_tick() {
     // facts either; removing the extra call closes the gap structurally, not by timing.
     st.facts["selection.clicks"] = std::to_string(selection_clicks_);
     st.facts["ui.press"] = ui_press_ ? "1" : "0";
-    st.facts["hud.counters"] = !hud_counters_drawn_  ? "not drawn"
-                               : hud_counters_shown_ ? "shown"
-                                                     : "hidden";
+    // UI-STATUS-1 B: the groups the last frame's status bar drew ("gold", "residents",
+    // "materials+residents"), the cursor's map tile, its island and its territory's city, and the
+    // fertility row's segments (status_bar.hpp).
+    st.facts["hud.counters"] =
+        hud_counters_drawn_ ? status_counters_name(hud_counters_) : std::string("not drawn");
+    st.facts["hud.gold"] = hud_gold_ ? std::to_string(*hud_gold_) : std::string("none");
+    st.facts["hud.status.tile"] = status_tile_text(status_pick_.tile);
+    st.facts["hud.status.island"] = status_island_text(status_pick_);
+    st.facts["hud.status.city"] = status_city_text(status_pick_.city);
+    st.facts["hud.fertility"] = fertility_text(fertility_row_.shown());
+    st.facts["hud.fertility.pending"] = fertility_row_.hide_at() ? "yes" : "no";
     st.facts["hud.counters.city"] = hud_counters_city_
                                         ? std::to_string(hud_counters_city_->island.v) + ":" +
                                               std::to_string(hud_counters_city_->city.v)
@@ -3081,6 +3627,28 @@ void Viewer::script_tick() {
     st.facts["ui.tab"] = construction_menu_open_ ? std::string("construction")
                          : hud_tabs_             ? hud_tabs_->body()
                                                  : std::string("none");
+    // UI-BUILDCAT-1: the construction menu's open category and the category tab drawn in its
+    // selected frame (draw_category_tabs' rule: the open category's own hud.txt viewbautab_<k>).
+    {
+        std::string category = "none", category_tab = "none";
+        if (construction_menu_open_ && construction_menu_ != nullptr) {
+            category = construction_open_category_;
+            if (const ConstructionCategory* c =
+                    construction_menu_->construction().category(construction_open_category_)) {
+                if (const UiElement* tab =
+                        construction_category_tab(construction_menu_->hud(), *c)) {
+                    category_tab = tab->name;
+                }
+            }
+        }
+        st.facts["ui.category"] = category;
+        st.facts["ui.category_tab"] = category_tab;
+    }
+    // UI-CATNAV-1: the panel the open menu shows (grid / info), and the armed type (tool.armed:
+    // the Anlagen id, or none) - the two are independent, as the original's.
+    st.facts["ui.panel"] = !construction_menu_open_       ? std::string("none")
+                           : construction_placement_open_ ? std::string("info")
+                                                          : std::string("grid");
     st.facts["hud.view"] = hud_tabs_ ? hud_tabs_->view().name : std::string("none");
     st.facts["hud.subtab"] = hud_tabs_ ? std::to_string(hud_tabs_->subtab()) : std::string("none");
     // UI-TABS-1 stage B: each balance row's figure as drawn (balance_text) while its page shows,
@@ -3098,10 +3666,104 @@ void Viewer::script_tick() {
     // the rotate arrows turn), and the turn the map ghost is drawn and a click builds at
     // (DevTool::turn: the same, or the coast's turn for a coast kind such as the Kontor).
     const bool tool_armed = dev_ != nullptr && dev_->enabled() && dev_->input().selected();
+    st.facts["tool.armed"] = tool_armed && !dev_->input().demolish_mode()
+                                 ? std::to_string(dev_->input().selected()->v)
+                                 : std::string("none");
     st.facts["ui.info.rotation"] = construction_placement_open_ && tool_armed
                                        ? std::to_string(dev_->input().rotation())
                                        : std::string("none");
+    st.facts["tool.armed"] =
+        tool_armed ? std::to_string(dev_->input().selected()->v) : std::string("none");
     st.facts["tool.turn"] = tool_armed ? std::to_string(dev_->turn()) : std::string("none");
+    // UI-RANGE-1 B1: the city whose range the original darkens around, and how many tiles go dark
+    // (range_view.hpp, docs/re/ui.md 12). Decision only; drawing it is UI-RANGE-1 B2.
+    {
+        RangeInput rin;
+        if (selection_.selected && st.snapshot && st.snapshot->inspection &&
+            st.snapshot->inspection->id == selection_.selected->id) {
+            rin.selected_prodtype = st.snapshot->inspection->prodtype;
+            rin.selected_tile = selection_.selected->tile;
+        }
+        if (tool_armed && !dev_->input().demolish_mode()) {
+            rin.armed_road = dev_->land_road_armed();
+            if (const sim::BuildingType* t = dev_->input().selected_type(); t != nullptr) {
+                rin.armed_prodtype = t->prodtype;
+            }
+            rin.pointer_tile = dev_->ghost_hover();
+        }
+        const auto city = st.snapshot && st.snapshot->territory
+                              ? range_city(rin, RangeTriggers{}, *st.snapshot->territory)
+                              : std::nullopt;
+        st.facts["ui.range_city"] =
+            city ? std::to_string(city->island) + ":" + std::to_string(city->owner)
+                 : std::string("none");
+        st.facts["ui.range_dark_tiles"] =
+            city ? std::to_string(range_dark_count(*st.snapshot->territory, *city)) : "0";
+    }
+    // UI-GHOST-1: the ghost's state, the blink's phase (1: the unaffordable building hidden), its
+    // flips so far and the outline pixels the last frame drew.
+    st.facts["tool.ghost"] = std::string(ghost_state_name(ghost_));
+    st.facts["tool.ghost.phase"] = ghost_blink_.hidden() ? "1" : "0";
+    st.facts["tool.ghost.flips"] = std::to_string(ghost_blink_.flips());
+    st.facts["tool.ghost.pixels"] = std::to_string(ghost_pixels_);
+    st.facts["tool.ghost.verdict"] =
+        ghost_verdict_ ? std::string(sim::reject_name(*ghost_verdict_)) : std::string("none");
+    st.facts["tool.ghost.suppressed"] = std::to_string(ghost_suppressed_);
+    st.facts["tool.ghost.occupied_pixels"] = std::to_string(ghost_occupied_pixels_);
+    // ROADS-3: road drag path, sim prefix verdict, drawn sprites and preview/commit parity.
+    const bool road_armed = dev_ != nullptr && dev_->land_road_armed();
+    st.facts["tool.road.dragging"] = (road_armed && dev_->input().pressed()) ? "1" : "0";
+    st.facts["tool.road.path"] = std::to_string(road_ghost_path_.size());
+    st.facts["tool.road.ready"] = (road_armed && road_probe_matched_) ? "1" : "0";
+    st.facts["tool.road.valid"] = (road_armed && road_probe_matched_)
+                                      ? std::to_string(road_ghost_plan_.valid_count)
+                                      : std::string("pending");
+    st.facts["tool.road.affordable"] = (road_armed && road_probe_matched_)
+                                           ? std::to_string(road_ghost_plan_.affordable_count)
+                                           : std::string("pending");
+    st.facts["tool.road.unaffordable"] =
+        (road_armed && road_probe_matched_)
+            ? std::to_string(road_ghost_plan_.valid_count - road_ghost_plan_.affordable_count)
+            : std::string("pending");
+    st.facts["tool.road.drawn"] = std::to_string(road_ghost_drawn_);
+    st.facts["tool.road.commit_matched_preview"] = last_road_commit_matched_preview_ ? "1" : "0";
+    // ROADS-2b: the sim's shaped pieces for the current road preview, "id:rotation" per record in
+    // record order (the path, then the rewritten neighbours), or "none". A straight's cosmetic
+    // variant (2521-2524, the variant deck) is folded to its family's first straight.
+    {
+        const sim::RoadShapeTable table{};
+        std::string shaped;
+        for (const sim::PlacementWire& p : road_ghost_shaped_) {
+            std::uint32_t id = p.type.v;
+            if (const auto base = sim::road_shaped_base(table, id)) {
+                id = *base + (id >= table.dirt_first ? table.dirt_offset : 0U);
+            }
+            shaped +=
+                (shaped.empty() ? "" : ",") + std::to_string(id) + ":" + std::to_string(p.rotation);
+        }
+        st.facts["tool.road.shaped"] = shaped.empty() ? std::string("none") : shaped;
+    }
+    // UI-PRODBAR-1 B1: the fertility indicator over the ghost (fertility_indicator.hpp,
+    // docs/re/ui.md 4.1). Roads never show a fertility bar (`BUILDINGSOBJECTS.md` §10.1 item 9).
+    {
+        std::string fertility = "none";
+        if (tool_armed && !dev_->input().demolish_mode() && !road_armed && dev_->hover()) {
+            const sim::TileXY fert_hover = *dev_->hover();
+            const auto fert_extent = dev_->input().footprint_extent(fert_hover);
+            const auto fert_snap = play_ != nullptr ? play_->runner().snapshot() : nullptr;
+            FertilityGates fert_gates;
+            fert_gates.preview_valid =
+                !(knowledge_ && knowledge_->check(*dev_, fert_snap.get()).refused);
+            fert_gates.last_ghost = true;
+            fert_gates.rect_nonempty = fert_extent && fert_extent->area() > 0;
+            fert_gates.type_found = dev_->input().selected_type() != nullptr;
+            fert_gates.projected = pointer_frame_.has_value();
+            fertility = fertility_label(fertility_decision(
+                dev_->input().selected_type(), dev_->input().origin(fert_hover),
+                dev_->input().rotation(), dev_->setup().island, fert_gates, nullptr));
+        }
+        st.facts["tool.fertility"] = fertility;
+    }
     // UI-PLACE-1: what a map click does now - nothing, build the armed type, or demolish.
     st.facts["tool.mode"] = dev_ == nullptr || !dev_->enabled() ? "off"
                             : dev_->input().demolish_mode()     ? "demolish"
@@ -3114,8 +3776,19 @@ void Viewer::script_tick() {
         const auto [cx, cy] = camera_tile();
         st.facts["camera.tile.x"] = std::to_string(std::llround(cx));
         st.facts["camera.tile.y"] = std::to_string(std::llround(cy));
-        st.facts["view.tile_w"] =
-            std::to_string(std::llround(continuous_ ? zoom_target_ : levels().tile_w(group_)));
+        const double view_w = continuous_ ? zoom_target_ : levels().tile_w(group_);
+        st.facts["view.tile_w"] = std::to_string(std::llround(view_w));
+        // UI-MINIMAP-2: that tile width, the wheel's furthest zoom-out (zoom_floor, the
+        // magnifier's last stage) and closest zoom-in (zoom_ceiling, its first), all in
+        // thousandths of a pixel (the far stages are a pixel or two wide), and whether the view
+        // is at either end (within the magnifier's relative 1e-6).
+        const double floor_w = zoom_floor(levels(), zoom_min_tile());
+        const double ceiling_w = zoom_ceiling(levels());
+        st.facts["zoom.target"] = std::to_string(std::llround(view_w * 1000.0));
+        st.facts["zoom.min_tile"] = std::to_string(std::llround(floor_w * 1000.0));
+        st.facts["zoom.at_min"] = std::abs(view_w - floor_w) <= floor_w * 1e-6 ? "1" : "0";
+        st.facts["zoom.max_tile"] = std::to_string(std::llround(ceiling_w * 1000.0));
+        st.facts["zoom.at_max"] = std::abs(view_w - ceiling_w) <= ceiling_w * 1e-6 ? "1" : "0";
         st.facts["minimap.clicks"] = std::to_string(minimap_clicks_);
         if (minimap_) {
             st.facts["minimap.zoom"] = std::to_string(std::llround(minimap_->zoom * 100.0));
@@ -3142,6 +3815,11 @@ void Viewer::script_tick() {
     if (selection_.selected && st.snapshot != nullptr && st.snapshot->inspection != nullptr &&
         st.snapshot->inspection->id == selection_.selected->id) {
         st.facts["selection.kind"] = st.snapshot->inspection->kind;
+    }
+    if (play_ != nullptr) {
+        st.facts["picture.tile_objects"] =
+            std::to_string(play_->picture().live_tile_object_count());
+        st.facts["picture.cleared_tiles"] = std::to_string(play_->picture().cleared_tile_count());
     }
     if (opening_ != nullptr) {
         for (auto& [key, value] : opening_facts()) {
@@ -3255,7 +3933,9 @@ void Viewer::script_tick() {
         dirty_ = true;
     }
     if (act.resize) {
-        SDL_SetWindowSize(window_, act.resize->first, act.resize->second);
+        const auto [win_w, win_h] = window_points_for_drawable(
+            act.resize->first, act.resize->second, SDL_GetWindowPixelDensity(window_));
+        SDL_SetWindowSize(window_, win_w, win_h);
         dirty_ = true;
     }
     if (hold_ != nullptr && act.hold != DevScriptAction::Hold::None) {
@@ -3565,6 +4245,7 @@ void Viewer::draw() {
     follow_picture();
     opening_refresh(); // the ships of the newest snapshot (an opening only)
     const std::shared_ptr<const render::Scene> gen = current();
+    status_refresh(*gen); // the status icons of the newest snapshot (--play only)
     if (knowledge_ && play_ != nullptr) {
         // The first seed, and the reseed after a spell with the tool off, from the picture's
         // per-island list (O(the city), once); the takes keep it current otherwise (R4).
@@ -3581,6 +4262,7 @@ void Viewer::draw() {
         back_off();
         return;
     }
+    ghost_update_patch(*gen);
     const auto [w, h] = view_size();
     // Scene screen position of the window's top-left pixel.
     const render::Rect view{static_cast<int>(std::lround(cam_x_ - w / 2.0)),
@@ -3749,11 +4431,21 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     const gpu::TextureView target(wgpuTextureCreateView(texture.get(), &vd));
     const auto render_start = Clock::now();
     steps_.push_back({"surface view", since_ms(acquired, render_start)});
-    // The developer tool's preview: its sprites, drawn last (dev_feedback.hpp).
+    // The developer tool's preview: its sprites, drawn last (dev_feedback.hpp). The fertility
+    // indicator over it (UI-PRODBAR-1, figure 1557) is the named placeholder
+    // `fertility-indicator-needs-sim` until a FertilityTileSource exists (OQ-715): nothing drawn.
     std::vector<render::SpriteDraw> overlay;
+    road_ghost_drawn_ = 0;
     if (dev_ != nullptr) {
-        if (auto p = make_preview(*dev_, *gen, group_, time_ms())) {
-            overlay = std::move(p->sprites);
+        if (dev_->land_road_armed()) {
+            for (Preview& p : road_ghost_previews(*gen, time_ms())) {
+                overlay.insert(overlay.end(), p.sprites.begin(), p.sprites.end());
+                ++road_ghost_drawn_;
+            }
+        } else if (ghost_building_shown()) {
+            if (auto p = make_preview(*dev_, *gen, group_, time_ms())) {
+                overlay = std::move(p->sprites);
+            }
         }
     }
     if (opening_ != nullptr) {
@@ -3782,8 +4474,10 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
         ui_transform(static_cast<int>(w), static_cast<int>(h), ui_scale_, ui_rule_);
     if (construction_menu_ != nullptr && ui_t.ui_w > 0 && ui_t.ui_h > 0) {
         const auto ui_start = Clock::now();
+        update_status_bar();
         const auto in = construction_hud_inputs();
-        hud_counters_shown_ = in.counters.tools.has_value() || in.counters.residents.has_value();
+        hud_counters_ = in.counters_groups;
+        hud_gold_ = in.counters.gold;
         hud_counters_city_ = in.counters_city;
         hud_rows_ = in.counters.rows;
         hud_counters_drawn_ = true;
@@ -3819,9 +4513,49 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
             steps_.push_back({"ui scale", since_ms(scale_start, Clock::now())});
         }
     }
+    // The ships, then the status icons (UI-HARVEST-ICON-1 B): one list of live units.
+    frame_units_.clear();
+    frame_units_.insert(frame_units_.end(), live_units_.begin(), live_units_.end());
+    frame_units_.insert(frame_units_.end(), status_units_.begin(), status_units_.end());
+    // UI-GHOST-1 & UI-GHOST-2: the ghost's outline (0xffff00) and optional ADAPTATION blocking
+    // footprint outline (0xff4040), drawn into the frame-sized UI layer where it is transparent
+    // (chrome stays on top). Draw yellow first so chrome and the cursor's yellow box win over red
+    // on shared edges (`draw_outline_rgba_under` preserves non-zero alpha), matching CPU order.
+    ghost_pixels_ = 0;
+    ghost_occupied_pixels_ = 0;
+    if (dev_ != nullptr) {
+        const PointerFrame pf = pointer_frame(view, resample, group_, levels().tile_w(group_),
+                                              levels().tile_h(group_), gen, out_w, out_h);
+        auto ensure_layer = [&]() -> assets::Rgba* {
+            if (ui_overlay_ptr == &ui_canvas_) {
+                return &ui_canvas_;
+            }
+            if (ui_overlay_ptr == &ghost_canvas_) {
+                return &ghost_canvas_;
+            }
+            if (ui_overlay_ptr != nullptr) {
+                ghost_canvas_ = *ui_overlay_ptr;
+            } else {
+                ghost_canvas_.width = static_cast<std::uint16_t>(out_w);
+                ghost_canvas_.height = static_cast<std::uint16_t>(out_h);
+                ghost_canvas_.pixels.assign(
+                    static_cast<std::size_t>(out_w) * static_cast<std::size_t>(out_h) * 4, 0);
+            }
+            ui_overlay_ptr = &ghost_canvas_;
+            return &ghost_canvas_;
+        };
+        if (const auto lines = ghost_lines(*gen, pf)) {
+            ghost_pixels_ = draw_outline_rgba_under(lines->edges, lines->projection,
+                                                    *ensure_layer(), kGhostOutlineRgb);
+        }
+        if (const auto occ = ghost_occupied_lines(*gen, pf)) {
+            ghost_occupied_pixels_ = draw_outline_rgba_under(occ->edges, occ->projection,
+                                                             *ensure_layer(), kOccupiedOutlineRgb);
+        }
+    }
     const auto s =
         g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(), resample,
-                        overlay, live_units_, ui_overlay_ptr, hitch_tracking_enabled());
+                        overlay, frame_units_, ui_overlay_ptr, hitch_tracking_enabled());
     fluid_windows_ = s.fluid_windows;
     fluid_resamples_ = s.fluid_resamples;
     // ZOOM-SMOOTH-3c item 3: this frame's own new-window count, saved before windows_seen_ is
@@ -3947,25 +4681,41 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
 }
 #endif
 
-std::optional<sim::TileXY> Viewer::centre_tile() const {
-    // The world tile under the drawable's centre at sea level (render::pick_ray at kSeaLevel, the
-    // first step of FrameProjection::pick), from the last frame drawn: which island the view is
-    // centred on. Sea level rather than the ground: an island's rectangle is all that is asked.
-    if (!pointer_frame_ || !pointer_frame_->scene) {
-        return std::nullopt;
+void Viewer::update_status_bar() {
+    // UI-STATUS-1 B (docs/re/ui.md 5.6): the map tile under the cursor, re-read every frame from
+    // the last drawn frame (the pointer may stand still while the camera moves under it), and kept
+    // while the pointer is over chrome or outside the window (OQ-700).
+    if (cursor_ && pointer_frame_ && !ui_hit_at(cursor_->first, cursor_->second).chrome) {
+        if (const auto p = pick_point(*pointer_frame_, cursor_->first, cursor_->second)) {
+            status_tile_ = p->tile;
+        }
     }
-    const PointerFrame& f = *pointer_frame_;
-    const auto point = render::scene_point(f.map, f.drawable_w / 2.0, f.drawable_h / 2.0);
-    if (!point) {
-        return std::nullopt;
+    const auto snapshot = play_ != nullptr ? play_->runner().snapshot() : nullptr;
+    if (snapshot == nullptr || snapshot->territory == nullptr) {
+        status_pick_ = StatusPick{};
+        status_pick_.tile = status_tile_;
+        fertility_row_.update(status_pick_, 0);
+        return;
     }
-    const auto sea = render::pick_ray(point->first, point->second, f.geometry,
-                                      static_cast<double>(render::kSeaLevel));
-    if (!sea) {
-        return std::nullopt;
+    StatusBarRule rule;
+    rule.slots =
+        construction_menu_ != nullptr ? fertility_slot_count(construction_menu_->hud()) : 0;
+    // An armed building (the building tool on, a type selected, not demolishing): its footprint
+    // centred on the cursor tile, for the corner rule over island land outside every territory.
+    std::optional<sim::TileRect> armed;
+    if (status_tile_ && dev_ != nullptr && dev_->enabled() && dev_->input().selected() &&
+        !dev_->input().demolish_mode()) {
+        if (const auto e = dev_->input().footprint_extent(*status_tile_)) {
+            armed = sim::TileRect{static_cast<std::int32_t>(e->x0),
+                                  static_cast<std::int32_t>(e->y0), e->w, e->h};
+        }
     }
-    return sim::TileXY{static_cast<std::int32_t>(std::floor(sea->u1)),
-                       static_cast<std::int32_t>(std::floor(sea->v1))};
+    status_pick_ =
+        pick_status(*snapshot->territory, status_tile_, snapshot->local_player, armed, rule);
+    const auto now_ms = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now().time_since_epoch())
+            .count());
+    fertility_row_.update(status_pick_, now_ms, rule);
 }
 
 Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
@@ -3979,51 +4729,71 @@ Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
     // H2: the live numbers (goods_tools_ etc. resolved once, constructor; this file's own member
     // comment). Goods are 8.8 fixed-point tons (PlaySnapshot::goods's own doc comment) - sim::kTon
     // (production.hpp) is the 256 that separates the whole-ton bits from the fractional ones; a
-    // display counter only ever needs the whole tons. eligibility is null exactly when there is
-    // no city yet (its own doc comment says so, "matching money/goods above") - money/goods
-    // themselves are plain fields (0, not nullopt) in that case, so eligibility's nullness is the
-    // real "has a city" signal.
-    const bool has_city = snapshot != nullptr && snapshot->eligibility != nullptr;
-    // UI-WINDOW-1 fix round R4 (owner decision 2026-11-14, "Always show my city"; docs/re/ui.md
-    // 5.2): the five counters (tools, wood, bricks, marble, residents) show on every screen while
-    // the local player owns a city - the city on the island the view is centred on when it holds
-    // one of the player's cities, else the player's first city in (island, city) order (the one
-    // PlaySnapshot::goods follows). Hidden only before the first founding. The original's own
-    // rule over open sea and foreign islands is not evidenced (OQ-622).
-    const CityCounters* centred = nullptr;
-    if (has_city && snapshot->cities && !snapshot->cities->empty()) {
-        if (const auto tile = centre_tile()) {
-            for (const CityCounters& c : *snapshot->cities) {
-                if (c.island_contains(tile->x, tile->y)) {
-                    centred = &c;
-                    break;
-                }
+    // display counter only ever needs the whole tons (the original divides by 256 toward zero,
+    // AnnoFrame 0x10009c08..0x10009c6c). The gold counter shows in every mode, before the first
+    // founding too (0x10063c38/0x10063c70; GOG hud_idle_running): the local player's money, or 0
+    // when the world has no local player (the original's Update(zeros) without a player,
+    // 0x10009949). No snapshot (no play session): nothing.
+    const std::optional<std::int64_t> gold =
+        snapshot == nullptr
+            ? std::nullopt
+            : std::optional<std::int64_t>(snapshot->has_local_player ? snapshot->money : 0);
+    // UI-STATUS-1 B (docs/re/ui.md 5.6; the owner chose the original, OQ-703): the counters follow
+    // the city whose territory holds the tile under the cursor (update_status_bar): a city of the
+    // local player shows its four materials and its residents, another player's city that knows
+    // the local player only its residents, anything else gold only. Replaces R4's "Always show my
+    // city" and the view-centre point.
+    const CityCounters* shown = nullptr;
+    StatusCounters groups = StatusCounters::Gold;
+    if (snapshot != nullptr && snapshot->cities && status_pick_.counters_city) {
+        for (const CityCounters& c : *snapshot->cities) {
+            if (c.city == *status_pick_.counters_city) {
+                shown = &c;
+                break;
             }
         }
-        if (centred == nullptr) {
-            centred = &snapshot->cities->front();
+        if (shown != nullptr) {
+            groups = status_pick_.counters;
+            if (groups == StatusCounters::MaterialsResidents && !shown->own) {
+                groups = StatusCounters::Residents; // never a foreign city's materials
+            }
         }
     }
+    const bool materials = groups == StatusCounters::MaterialsResidents;
     auto whole_tons = [&](std::optional<sim::GoodsId> id) -> std::optional<std::uint32_t> {
-        if (centred == nullptr || !id || *id >= centred->goods.size())
+        if (!materials || shown == nullptr || !id || *id >= shown->goods.size())
             return std::nullopt;
-        return centred->goods[*id] / sim::kTon;
+        return shown->goods[*id] / sim::kTon;
     };
-    HudCounters counters{has_city ? std::optional<std::int64_t>(snapshot->money) : std::nullopt,
+    HudCounters counters{gold,
                          whole_tons(goods_tools_),
                          whole_tons(goods_wood_),
                          whole_tons(goods_bricks_),
                          whole_tons(goods_marble_),
-                         centred != nullptr ? centred->population : std::nullopt,
+                         shown != nullptr && groups != StatusCounters::Gold
+                             ? std::optional<std::int64_t>(shown->population.value_or(0))
+                             : std::nullopt,
+                         fertility_row_.shown(),
                          {}};
     // UI-TABS-1 stage B (docs/re/ui.md 5.5): the balance pages' figures. The player overview sums
     // over every city of the local player (none yet: the sums are 0, as the original's loop over
-    // an empty list); the "?" view's city page shows the status bar's city (`centred`, the
-    // owner's R4 rule) - the original shows the city whose Kontor or marketplace was clicked,
-    // which the rebuild does not open yet (OQ-691).
+    // an empty list; balance_rows.cpp skips the foreign cities CityCounters also lists). The "?"
+    // view's city page shows the status bar's city when it is the local player's, else the
+    // player's first city in (island, city) order - the original shows the city whose Kontor or
+    // marketplace was clicked, which the rebuild does not open yet (OQ-691). (UI-STATUS-1 merge:
+    // the status bar no longer has R4's centred city.)
     if (snapshot != nullptr) {
+        const CityCounters* page_city = shown != nullptr && shown->own ? shown : nullptr;
+        if (page_city == nullptr && snapshot->cities) {
+            for (const CityCounters& c : *snapshot->cities) {
+                if (c.own) {
+                    page_city = &c;
+                    break;
+                }
+            }
+        }
         counters.rows = balance_row_values(
-            BalanceInputs{snapshot->cities.get(), centred, snapshot->accounts_live,
+            BalanceInputs{snapshot->cities.get(), page_city, snapshot->accounts_live,
                           snapshot->stat_shown_num, snapshot->stat_shown_den});
     }
     // ADR 0004 row 18 (W4-NEXT-2 K): draw only once the sim's own answer for the selected
@@ -4033,8 +4803,13 @@ Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
                                 snapshot->inspection != nullptr &&
                                 snapshot->inspection->id == selection_.selected->id &&
                                 snapshot->inspection->kind == "House";
-    return {spec, std::move(counters), snapshot, selected_house,
-            centred != nullptr ? std::optional<sim::CityRef>(centred->city) : std::nullopt};
+    return {spec,
+            std::move(counters),
+            snapshot,
+            selected_house,
+            shown != nullptr && groups != StatusCounters::Gold ? std::optional(shown->city)
+                                                               : std::nullopt,
+            groups};
 }
 
 void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::Rect view) {
@@ -4066,6 +4841,8 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         play_->visibility().begin_frame(view, group_); // the CPU path's frame, as draw_gpu's
     }
     const auto s = frames_.render(gen, view, group_, time_ms(), water_, buffer_.data());
+    // The status icons over the buildings, after the scene's objects (UI-HARVEST-ICON-1 B).
+    blend_units(status_units_, *gen, group_, view, buffer_.data());
     if (opening_ != nullptr) {
         // The live ships after every object of the scene (the scene's own units are drawn last
         // too), then the founding cursor over them.
@@ -4078,9 +4855,36 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
             }
         }
     }
+    ghost_pixels_ = 0;
+    ghost_occupied_pixels_ = 0;
+    road_ghost_drawn_ = 0;
     if (dev_ != nullptr) {
-        if (const auto p = make_preview(*dev_, *gen, group_, time_ms())) {
-            blend_preview(*gen, *p, group_, time_ms(), view, buffer_.data());
+        if (dev_->land_road_armed()) {
+            const auto previews = road_ghost_previews(*gen, time_ms());
+            for (const Preview& p : previews) {
+                blend_preview(*gen, p, group_, time_ms(), view, buffer_.data());
+            }
+            road_ghost_drawn_ = previews.size();
+        } else if (ghost_building_shown()) {
+            if (const auto p = make_preview(*dev_, *gen, group_, time_ms())) {
+                blend_preview(*gen, *p, group_, time_ms(), view, buffer_.data());
+                // UI-PRODBAR-1: the fertility indicator (blend_fertility_frame, figure 1557) goes
+                // here once a FertilityTileSource exists; until then the named placeholder
+                // `fertility-indicator-needs-sim` (OQ-715, the `tool.fertility` fact) draws
+                // nothing.
+            }
+        }
+        // UI-GHOST-1 & UI-GHOST-2: outlines over the world, under the chrome drawn next (occupied
+        // blocking footprint drawn first so the cursor's yellow outline wins on shared edges).
+        const PointerFrame pf = pointer_frame(view, nullptr, group_, levels().tile_w(group_),
+                                              levels().tile_h(group_), gen, w, h);
+        if (const auto occ = ghost_occupied_lines(*gen, pf)) {
+            ghost_occupied_pixels_ = draw_outline_xrgb(occ->edges, occ->projection, buffer_.data(),
+                                                       w, h, kOccupiedOutlineRgb);
+        }
+        if (const auto lines = ghost_lines(*gen, pf)) {
+            ghost_pixels_ = draw_outline_xrgb(lines->edges, lines->projection, buffer_.data(), w, h,
+                                              kGhostOutlineRgb);
         }
     }
     double construction_ui_ms = 0.0;
@@ -4094,8 +4898,10 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         // see its own comment). Timed on its own (not folded into "render other") so the cache's
         // effect is measurable per CLAUDE.md's "measure every performance change".
         const auto ui_start = Clock::now();
+        update_status_bar();
         const auto in = construction_hud_inputs();
-        hud_counters_shown_ = in.counters.tools.has_value() || in.counters.residents.has_value();
+        hud_counters_ = in.counters_groups;
+        hud_gold_ = in.counters.gold;
         hud_counters_city_ = in.counters_city;
         hud_rows_ = in.counters.rows;
         hud_counters_drawn_ = true;

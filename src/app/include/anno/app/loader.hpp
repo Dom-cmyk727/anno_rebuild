@@ -65,11 +65,17 @@ struct LinkTemplate {
     std::filesystem::path file;
 };
 
-/// The Anlagen ids the picture can draw: 0 .. kPictureAnlageIds - 1. A PROD2 item holds the id in
-/// 12 bits (formats::insel::PlacedObject::parse masks 0x0FFF), and the picture draws buildings as
-/// PROD2 items; a wider id (a mod's type: TypeId is 32 bit in the sim and on the wire) is built by
-/// the sim but not drawn (a note, round ee D3). Path to lift it: an object source for the scene
-/// that is not a PROD2 item.
+/// The Anlagen ids the picture can draw: 0 .. kPictureAnlageIds - 1. Reason: a PROD2 item holds
+/// the id in 12 bits (the original's own field width, formats::insel::PlacedObject::parse masks
+/// 0x0FFF - a real file layout, not an arbitrary limit, CLAUDE.md "formats may mirror fixed file
+/// layouts exactly"), and the picture draws buildings as PROD2 items; a wider id (a mod's type:
+/// TypeId is 32 bit in the sim and on the wire) is built by the sim but not drawn (a note, round
+/// ee D3). No original or shipped type needs more: the measured real max Anlagen entry id is
+/// 3998, below this constant, in every dataset checked (GOG and the History Edition's
+/// Anlagen.dat/.classic/.addon, PICTURE-IDS-1, OQ-776). Path to lift it for a mod:
+/// RENDER-DIRECT-3's per-chunk instance lists carry the type id as u32 already, with no PROD2
+/// encoding at all - drawing straight from them, once that path exists, needs no PROD2-sized id
+/// anywhere.
 inline constexpr std::uint32_t kPictureAnlageIds = 0x1000;
 
 /// A building the sim placed, in island-local tiles. `island` is the island
@@ -86,27 +92,71 @@ struct SceneBuilding {
     friend bool operator==(const SceneBuilding&, const SceneBuilding&) = default;
 };
 
-/// How --play replaces building sprites. Null for --view, which is unchanged.
-/// `is_building` is the scenario loader's classification (a type the layout
-/// names). `buildings` is the set the scene draws.
+/// A runtime or cleared non-building tile object in island-local tiles.
+/// `type != 0` places or retains a tracked object (roads first; designed so crops and trees fit
+/// via `phase`). `type == 0` marks a tile whose tick-0 file non-building item (trees, fields,
+/// stones; §10.2) was overwritten or demolished so the picture leaves bare ground across
+/// incremental updates, demolishes and collapsed resyncs.
+struct SceneTileObject {
+    std::uint32_t island = 0;
+    std::uint32_t type = 0;
+    std::uint16_t x = 0, y = 0;
+    std::uint8_t rotation = 0;
+    std::uint8_t height = 0;
+    std::uint8_t phase = 0;
+    friend bool operator==(const SceneTileObject&, const SceneTileObject&) = default;
+};
+
+/// How --play replaces building and tracked tile-object sprites. Null for --view, which is
+/// unchanged. `is_building` is the scenario loader's classification (a type the layout names).
+/// `buildings` is the building set the scene draws. `is_tile_object` and `tile_objects` are
+/// optional tracked tile-object overrides/cleared-tile markers (roads first; later crops/trees).
 struct SceneObjects {
     std::function<bool(std::uint16_t anlage)> is_building;
     std::span<const SceneBuilding> buildings;
+    std::function<bool(std::uint16_t anlage)> is_tile_object;
+    std::span<const SceneTileObject> tile_objects;
 };
 
-/// One island's buildings written into its records (play mode): the per-island form of
-/// apply_world_buildings, used by ScenePicture (docs/app/game-shell.md). `buildings` are the
-/// sim's buildings of this island; the payloads it writes go to `owned_out`, whose buffers keep
-/// their addresses when moved; notes and omitted objects go to `notes` and `omitted`. With
-/// `anlagen` (the scene's Anlagen.dat), a scenery item whose anchor tile lies under a building is
-/// dropped, as the sim's tile layer overwrites it (scenery_under_building); without, scenery is
-/// copied unchanged.
+/// One island's buildings and tile objects written into its records (play mode): the per-island
+/// form of apply_world_buildings, used by ScenePicture (docs/app/game-shell.md). `buildings` and
+/// `tile_objects` are the sim's buildings and tracked/cleared tile objects of this island; the
+/// payloads it writes go to `owned_out`, whose buffers keep their addresses when moved; notes and
+/// omitted objects go to `notes` and `omitted`. With `anlagen` (the scene's Anlagen.dat), a
+/// scenery item whose anchor tile lies under a building or live tile object is dropped, as the
+/// sim's tile layer overwrites it (scenery_under_building); without, scenery is copied unchanged
+/// unless suppressed by an explicit cleared-tile marker (`SceneTileObject::type == 0`).
 void apply_island_buildings(formats::insel::Island& island,
                             const std::vector<SceneBuilding>& buildings,
                             const SceneObjects& objects,
                             std::vector<std::vector<std::uint8_t>>& owned_out,
                             std::vector<std::string>& notes, std::vector<OmittedObject>& omitted,
-                            const formats::anlagen::AnlagenFile* anlagen = nullptr);
+                            const formats::anlagen::AnlagenFile* anlagen = nullptr,
+                            std::span<const SceneTileObject> tile_objects = {});
+
+/// HEAD's flag word (bytes 0x1c-0x1d, as sim/types.cpp reads it), or nullopt without an entry or
+/// a HEAD of that length.
+[[nodiscard]] std::optional<std::uint16_t>
+anlage_head_flags(const formats::anlagen::AnlagenFile& anlagen, std::uint32_t id);
+
+/// A footprint in island tiles (half-open) and whether its type carries flag 0x10.
+struct Cover {
+    std::int64_t x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    bool overlay = false;
+    [[nodiscard]] bool holds(std::int64_t x, std::int64_t y) const {
+        return x >= x0 && y >= y0 && x < x1 && y < y1;
+    }
+};
+
+/// The cover of a type at (`bx`, `by`, `rotation`) in island-local tiles: Anlagen HEAD bytes 0 and
+/// 1, swapped for an odd rotation (sim::footprint); nullopt without a footprint or flag word.
+[[nodiscard]] std::optional<Cover> cover_of(const formats::anlagen::AnlagenFile& anlagen,
+                                            std::uint32_t type, std::int64_t bx, std::int64_t by,
+                                            std::uint8_t rotation);
+
+/// Whether `c` overwrites an object whose flag word is `existing`: a type with flag 0x10 keeps an
+/// anchored flag-0x10 object (AnnoWelt.dll 0x1008218f).
+[[nodiscard]] bool overwrites(const Cover& c, std::uint16_t existing);
 
 /// Whether a scenery item of type `item` at island tile (`x`, `y`) (its anchor, the footprint's
 /// top-left tile) is overwritten by building `b`: the tile lies in b's footprint (Anlagen HEAD

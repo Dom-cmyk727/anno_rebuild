@@ -146,6 +146,9 @@ struct ScenarioSpec {
         std::uint32_t kontor_counter = 1;
         /// Island property 0xe (stream 120): ascending unique players; empty by default.
         std::vector<PlayerId> players_present;
+        /// Island property 11 (islands section base 2), ascending unique goods ids; nullopt = the
+        /// constructor value (every id of SimConfig::crops' mask, AnnoWelt 0x1008cbdf).
+        std::optional<std::vector<GoodsId>> crops;
         /// The ore objects (stream 120; the OCCUR record), copied to Island::ore_objects.
         std::vector<OreObject> ore_objects;
         std::shared_ptr<const Terrain> terrain;

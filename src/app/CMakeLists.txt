@@ -8,12 +8,16 @@ add_library(anno_app_core
   src/commands_file.cpp
   src/construction_menu.cpp
   src/selection.cpp
+  src/status_bar.cpp
+  src/range_view.cpp
   src/dev_feedback.cpp
   src/dev_session.cpp
   src/dev_input.cpp
   src/dev_tool.cpp
+  src/fertility_indicator.cpp
   src/frame_projection.cpp
   src/hud_tabs.cpp
+  src/info_preview.cpp
   src/legal_workload.cpp
   src/minimap.cpp
   src/cli.cpp
@@ -24,6 +28,8 @@ add_library(anno_app_core
   src/opening_view.cpp
   src/picture_check.cpp
   src/picture_trace.cpp
+  src/placement_ghost.cpp
+  src/road_drag_ui.cpp
   src/play.cpp
   src/play_follow.cpp
   src/png.cpp
@@ -31,6 +37,7 @@ add_library(anno_app_core
   src/scene_picture.cpp
   src/ship_layer.cpp
   src/ship_motion.cpp
+  src/status_icons.cpp
   src/still.cpp
   src/ui_layout.cpp
   src/ui_mock.cpp
@@ -91,7 +98,11 @@ if(ANNO_BUILD_TESTS)
     tests/opening_ui_test.cpp tests/opening_test.cpp tests/ship_motion_test.cpp
     tests/ui_layout_test.cpp tests/ui_transform_test.cpp tests/ui_construction_eligibility_test.cpp
     tests/construction_menu_test.cpp tests/inspect_building_test.cpp tests/selection_test.cpp
-    tests/minimap_test.cpp tests/hud_tabs_test.cpp tests/balance_rows_test.cpp)
+    tests/minimap_test.cpp tests/hud_tabs_test.cpp tests/status_bar_test.cpp
+    tests/balance_rows_test.cpp tests/atlas_pages_lan5_test.cpp tests/info_preview_test.cpp
+    tests/range_view_test.cpp tests/fertility_indicator_test.cpp tests/status_icons_test.cpp
+    tests/tile_object_picture_test.cpp tests/chunk_instances_lan5_test.cpp
+    tests/placement_ghost_test.cpp tests/road_drag_ui_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   target_compile_definitions(anno_app_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic"
@@ -151,7 +162,7 @@ if(ANNO_BUILD_TESTS)
     # publication and R4's occupancy wiring. They need the original game files and skip (77)
     # without them. Reverting the window's call sites fails them (docs/app/game-shell.md).
     if(Python3_FOUND)
-      foreach(case r1_held_publication r4_occupancy)
+      foreach(case r1_held_publication r4_occupancy roads_picture_objects)
         add_test(NAME viewer_wiring_${case}
           COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
                   $<TARGET_FILE:anno1503> ${case})
@@ -230,6 +241,24 @@ if(ANNO_BUILD_TESTS)
         set_tests_properties(viewer_wiring_fisher_view_${case} PROPERTIES
           SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       endforeach()
+      # UI-HARVEST-ICON-1 B: the status icon over a forester with nothing to harvest (lan5).
+      add_test(NAME viewer_wiring_status_icon_forester
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> status_icon_forester
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --speed --app-arg 200)
+      set_tests_properties(viewer_wiring_status_icon_forester PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-HARVEST-ICON-1 R1: the forester's icon kept through zooming out and in while the game is
+      # paused with no wood, then cleared once wood arrives. GPU window with enhanced water (the owner's
+      # renderer) only: a paused CPU window draws no frame, so the script cannot advance there.
+      add_test(NAME viewer_wiring_status_icon_zoom_gpu
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> status_icon_zoom --gpu
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --speed --app-arg 200 --app-arg --water --app-arg enhanced)
+      set_tests_properties(viewer_wiring_status_icon_zoom_gpu PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4 RESOURCE_LOCK gpu)
       # UI-PLACE-1: the pickaxe with nothing armed, a cell chosen while demolishing, the cancel-X.
       # UI-PLACE-2: ESC and the right click one step back, a right drag still pans.
       # UI-PAN-1: a click (under the 4 px slop) moves the map not at all, either button.
@@ -255,6 +284,26 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_ui_minimap_player PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-MINIMAP-2: the magnifier's - reaches the wheel's furthest zoom-out in the continuous
+      # zoom (ui_magnifier_range) and keeps the original's clamp at level 2 in the stepped one
+      # (ui_magnifier_range_stepped). Both in the GPU window (--gpu): the continuous zoom needs the
+      # GPU renderer, and on it --zoom-mode stepped itself must pick the stepped zoom.
+      if(ANNO_HAVE_WGPU)
+        foreach(case ui_magnifier_range ui_magnifier_range_stepped)
+          set(zoom_mode_args)
+          if(case STREQUAL "ui_magnifier_range_stepped")
+            set(zoom_mode_args --app-arg --zoom-mode --app-arg stepped)
+          endif()
+          add_test(NAME viewer_wiring_${case}
+            COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                    $<TARGET_FILE:anno1503> ${case} --gpu
+                    --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                    --app-arg --construction-menu --app-arg on
+                    --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui ${zoom_mode_args})
+          set_tests_properties(viewer_wiring_${case} PROPERTIES
+            SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4 LABELS gpu RESOURCE_LOCK gpu)
+        endforeach()
+      endif()
       # UI-WINDOW-1 fix round R1 (F6, F7): a chrome drag starts no pan; a lost UI press is dropped.
       add_test(NAME viewer_wiring_ui_chrome_press
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
@@ -272,6 +321,26 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --construction-menu --app-arg on
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_ui_tabs PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-BUILDCAT-1: the construction menu's eight category tabs, each selected by a press on
+      # its own gadget (also left of the column), and the column/grid boundary (OQ-714).
+      add_test(NAME viewer_wiring_ui_buildcat
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_buildcat
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_buildcat PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-CATNAV-1: a category tab click with a building armed shows that category's grid and
+      # keeps the building armed (ui.panel, tool.armed).
+      add_test(NAME viewer_wiring_ui_catnav
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_catnav
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_catnav PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # UI-TABS-1: every sub-tab of the three views, the keys S, C, D, O, each view keeping its own.
       add_test(NAME viewer_wiring_ui_subtabs
@@ -311,16 +380,17 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_ui_balance_rows_no_city PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
-      # UI-WINDOW-1 fix round R2/R4: the status bar counters (centred city, else the first).
-      add_test(NAME viewer_wiring_ui_counters_centred
+      # UI-STATUS-1 B: the status bar shows the island under the cursor (docs/re/ui.md 5.6;
+      # replaces UI-WINDOW-1 R2/R4's ui_counters_centred, the view-centre rule).
+      add_test(NAME viewer_wiring_ui_status_island
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
-                $<TARGET_FILE:anno1503> ui_counters_centred
+                $<TARGET_FILE:anno1503> ui_status_island
                 --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
                 --app-arg --construction-menu --app-arg on
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
-      set_tests_properties(viewer_wiring_ui_counters_centred PROPERTIES
+      set_tests_properties(viewer_wiring_ui_status_island PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
-      # UI-WINDOW-1 fix round R4: no city yet (the ship-start opening): the counters are hidden.
+      # UI-WINDOW-1 fix round R4, UI-STATUS-1 B: no city yet (the ship-start opening): gold only.
       add_test(NAME viewer_wiring_ui_counters_before_founding
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
                 $<TARGET_FILE:anno1503> ui_counters_before_founding
@@ -354,6 +424,119 @@ if(ANNO_BUILD_TESTS)
       set_tests_properties(viewer_wiring_construction_unaffordable PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4
         ENVIRONMENT "ANNO_DEV_GOODS_TONS=0")
+      # UI-GHOST-1: the placement ghost's states from the sim's verdict through the real window
+      # (tool.ghost: valid over free land, refused over the inlet, hidden over the panel's chrome,
+      # unaffordable with the stock spent, its blink phase flipping both ways). ANNO_DEV_GOODS_TONS=3
+      # pays for exactly one pioneer house (ui_ghost.script's own comment).
+      add_test(NAME viewer_wiring_ui_ghost
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_ghost
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_ghost PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4
+        ENVIRONMENT "ANNO_DEV_GOODS_TONS=3")
+      # UI-GHOST-1 R1: the ghost and the click anywhere on the map, from the default start view (no
+      # `look`): refused on another island and over open sea, the click refused by the sim with the
+      # same reason (OutOfIsland), valid on the city's island.
+      add_test(NAME viewer_wiring_ui_ghost_world
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_ghost_world
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_ghost_world PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4
+        ENVIRONMENT "ANNO_DEV_GOODS_TONS=3")
+      # UI-GHOST-1 R2: the play window opens on the developer city (the owner's decision of
+      # 2026-11-17): the start camera's tile lies on the city's island, near its Kontor.
+      add_test(NAME viewer_wiring_ui_start_view
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_start_view
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_start_view PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-RANGE-1 B1: the lit city and the dark-tile count for a selected Kontor and an armed road,
+      # from the default start view (range_view.hpp, docs/re/ui.md 12).
+      add_test(NAME viewer_wiring_ui_range
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_range
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_range PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-GHOST-1: the same session's screenshots, the outline's exact 0xffff00 pixels counted
+      # (ghost_pixel_check.py; the hidden shot is the negative control).
+      add_test(NAME viewer_wiring_ui_ghost_pixel_check
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/ghost_pixel_check.py
+                $<TARGET_FILE:anno1503>)
+      set_tests_properties(viewer_wiring_ui_ghost_pixel_check PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 300 PROCESSORS 4)
+      # ROADS-3 / UI-ROADS-1: press-hold L-drag road building from the construction menu,
+      # live ghost path, unaffordable tail blink, yellow 1x1 refusal rectangle, 40-tile cap,
+      # stay armed on release, right-click disarm (ANNO_DEV_GOLD=20 -> 4 affordable tiles of 7).
+      add_test(NAME viewer_wiring_ui_roads
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_roads
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_roads PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4
+        ENVIRONMENT "ANNO_DEV_GOLD=20")
+      # ROADS-3: pixel check on ui_roads screenshots (refusal diamond, live L-drag ghost path,
+      # unaffordable tail blink diff between phase 0 and phase 1, chrome stays on top).
+      add_test(NAME viewer_wiring_ui_roads_pixel_check
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/roads_ghost_pixel_check.py
+                $<TARGET_FILE:anno1503>)
+      set_tests_properties(viewer_wiring_ui_roads_pixel_check PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 300 PROCESSORS 4)
+      # ROADS-2b: the owner's L, T and cross with the road reshaper from the default start view
+      # (tool.road.shaped: the sim's shaped pieces), and the ghost-vs-commit pixel check.
+      add_test(NAME viewer_wiring_ui_roads_shape
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_roads_shape
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_roads_shape PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      add_test(NAME viewer_wiring_ui_roads_shape_pixel_check
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/roads_shape_pixel_check.py
+                $<TARGET_FILE:anno1503>)
+      set_tests_properties(viewer_wiring_ui_roads_shape_pixel_check PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 300 PROCESSORS 4)
+      # UI-GHOST-2: ghost hides overlappable flag-0x20 objects under footprint without mutating Scene,
+      # restores on move/cancel/phase-1, draws only yellow refusal box when default-off, and draws
+      # blocking footprint outline only under --occupied-outline on (ADAPTATION, default off).
+      add_test(NAME viewer_wiring_ui_ghost2
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_ghost2
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_ghost2 PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4
+        ENVIRONMENT "ANNO_DEV_GOODS_TONS=6")
+      add_test(NAME viewer_wiring_ui_ghost2_occupied
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_ghost2_occupied
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui
+                --app-arg --occupied-outline --app-arg on)
+      set_tests_properties(viewer_wiring_ui_ghost2_occupied PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4
+        ENVIRONMENT "ANNO_DEV_GOODS_TONS=3")
+      add_test(NAME viewer_wiring_ui_ghost2_pixel_check
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/ghost2_pixel_check.py
+                $<TARGET_FILE:anno1503>)
+      set_tests_properties(viewer_wiring_ui_ghost2_pixel_check PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 300 PROCESSORS 4)
       # W4-UI-2 V2: construction_full_proof's own recording (commands.txt/hashes.txt), replayed
       # headlessly in a fresh process (main.cpp's --commands/--replay-hashes, no window, no SDL -
       # opening_session.py's own mechanism, applied to the fixed-map/construction-menu session).

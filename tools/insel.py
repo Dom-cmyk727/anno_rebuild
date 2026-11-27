@@ -75,6 +75,25 @@ def grid(isl, name, cell):
     if any(v is None for v in out): raise Bad('tile not covered')
     return out
 
+def crops(isl):
+    """ANBAU -> [raw byte name] in record order (each name NUL-terminated in the
+    file; empty payload = empty list), None without the record.
+    Raises Bad('twice' | 'name not terminated' | 'empty name')."""
+    recs = [p for n, p in isl['records'] if n == 'ANBAU']
+    if not recs: return None
+    if len(recs) > 1: raise Bad('twice')
+    names, start = [], 0
+    for k, c in enumerate(recs[0]):
+        if c != 0: continue
+        if k == start: raise Bad('empty name')
+        names.append(bytes(recs[0][start:k])); start = k + 1
+    if start != len(recs[0]): raise Bad('name not terminated')
+    return names
+
+def crop_name(n):
+    """Bytes 0x21-0x7e other than ',' and backslash as they are, every other byte as \\xHH."""
+    return ''.join(chr(c) if 0x21 <= c <= 0x7e and c not in (0x2c, 0x5c) else f'\\x{c:02x}' for c in n)
+
 def dump(path, full):
     print(f'# {path}')
     try:
@@ -116,6 +135,13 @@ def dump(path, full):
             items = sum(len(d) // 6 for *_, d in bs)
             raw = b''.join(struct.pack('<HHBB', x, y, bw, bh) + d for x, y, bw, bh, d in bs)
             print(f'  BLOCKS {name} count={len(bs)} items={items} hash={fnv64(raw)}')
+        try:
+            cs = crops(i)
+        except Bad as e:
+            print(f'  ANBAU BAD {e}'); ok = False
+        else:
+            if cs is not None:
+                print(f"  ANBAU count={len(cs)} names={','.join(crop_name(n) for n in cs)}")
     return ok
 
 if __name__ == '__main__':

@@ -82,9 +82,15 @@ original's plane, since 2026-11-04; 16.5 before). Where the scene's depth at a p
 over it. Over terrain this is exactly the existing shore rule (at a fixed pixel, depth falls with height), so the
 ground does not change. Over objects it is new: the chunk build marks each object pixel whose final depth lies behind
 the plane in a `submerged` plane (one byte per pixel), and the compositor draws the sea a second time, after the
-objects, on those pixels only: the sea sprite's checkerboard over the object, without the open-water fade (our
-stand-in for the floor of texture-0 water, not the original's). Original water only; Enhanced water keeps its own
-`object_in_water`. The original's plane
+objects, on those pixels only: in Original water, the sea sprite's checkerboard over the object, without the
+open-water fade (our stand-in for the floor of texture-0 water, not the original's); in Enhanced water (since
+WATER-SUBMERGED-1), the same per-pixel pass draws Enhanced's own sea shading instead, with a capped alpha (soft, not
+a hard sprite cutout, so the same pixel is not faded twice against `object_in_water`'s foam line at the contact).
+Before WATER-SUBMERGED-1 this pass ran in Original water only; `object_in_water` (§ below "Water against objects"
+in `iso.md`) is a per-column heuristic sampled once at an object's foot, which misses tall thin objects (pier poles)
+entirely - this per-pixel pass now covers those the same way Original always did, in both styles.
+`GpuLimits::submerged_over_objects` (default on) is a test/diagnostic switch for this pass; off reproduces the
+pre-fix picture in Enhanced water without reverting any product code. The original's plane
 is ≈ 26.5 (`annodisplay.md` §9.3); the owner chose it as the default to try (2026-11-04, `kShoreHeight`), and
 `--shore 16.5` gives the default before it. Rivers, surf and
 waterfalls keep their height + 10 test (`kRiverTolerance`) in this package: their frames' `z` (≈ −22 at the anchor,

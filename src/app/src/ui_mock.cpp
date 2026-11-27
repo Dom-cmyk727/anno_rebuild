@@ -1,10 +1,15 @@
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <fstream>
 #include <map>
+#include <memory>
+#include <tuple>
 
 #include <anno/app/balance_rows.hpp>
 #include <anno/app/hud_tabs.hpp>
+#include <anno/app/info_preview.hpp>
+#include <anno/app/loader.hpp>
 #include <anno/app/ui_mock.hpp>
 #include <anno/assets/building.hpp>
 #include <anno/assets/text.hpp>
@@ -132,16 +137,20 @@ class TexCache {
     /// cannot disagree; rotation 0 is frame 0, as before. Evidence: the GOG preview shows block
     /// (cursor turn) (View.dll 0x100302c0 passes (view turn + cursor property 5) & 3 to the
     /// object draw 0x1001d760; Wine runner shots u2_2520_R1..R4 exact, docs/re/ui.md 2.5). The
-    /// cache assumes one `anlagen` file per session (the scene's).
-    const assets::Rgba* preview_sprite(std::uint32_t id, std::uint8_t rotation,
-                                       const formats::anlagen::AnlagenFile& anlagen) {
-        const auto key = std::pair{id, rotation};
+    /// cache assumes one `anlagen` file per session (the scene's). UI-INFO-2b: with the frame's
+    /// anchor, which places it in the composed picture.
+    /// UI-INFO-2d: `set` picks the entry's sprite set (0 = the building, as before).
+    const info_preview::Sprite* preview_sprite(std::uint32_t id, std::uint8_t rotation,
+                                               const formats::anlagen::AnlagenFile& anlagen,
+                                               std::size_t set_index = 0) {
+        const auto key = std::tuple{id, rotation, set_index};
         const auto it = previews_.find(key);
         if (it != previews_.end())
-            return it->second ? &*it->second : nullptr;
-        std::optional<assets::Rgba> decoded;
-        if (const auto* entry = anlagen.entry(id); entry != nullptr && !entry->gfx.empty()) {
-            const auto& gfx = entry->gfx.front();
+            return it->second ? &it->second->sprite : nullptr;
+        std::optional<DecodedSprite> decoded;
+        if (const auto* entry = anlagen.entry(id);
+            entry != nullptr && set_index < entry->gfx.size()) {
+            const auto& gfx = entry->gfx[set_index];
             for (const auto& set : gfx.frame_sets) {
                 if (set.group != 0)
                     continue;
@@ -150,18 +159,140 @@ class TexCache {
                         set.frames.size(), render::animation(gfx), rotation, 0, 0);
                     if (k < set.frames.size()) {
                         auto r = assets::building::to_rgba(anlagen, *entry, 0, set.frames[k]);
-                        if (r.ok())
-                            decoded = std::move(r).value();
+                        if (r.ok()) {
+                            decoded.emplace();
+                            decoded->image = std::make_unique<assets::Rgba>(std::move(r).value());
+                            decoded->sprite = {decoded->image.get(), set.frames[k].anchor_x,
+                                               set.frames[k].anchor_y};
+                        }
                     }
                 }
                 break;
             }
         }
         const auto emplaced = previews_.emplace(key, std::move(decoded)).first;
+        return emplaced->second ? &emplaced->second->sprite : nullptr;
+    }
+
+    /// UI-INFO-2b: FigurenHeader entry `figure`'s sprite set 0, zoom group 0, one sprite per frame
+    /// (the entrance arrows' figure, data/ui/hud.txt `info_preview_arrows figure`), read once;
+    /// empty when the entry or its frames are missing.
+    const std::vector<info_preview::Sprite>& figure_frames(std::uint16_t figure) {
+        const auto it = figures_.find(figure);
+        if (it != figures_.end())
+            return it->second->sprites;
+        auto loaded = std::make_unique<LoadedFigure>();
+        // 16: the most view directions the original's figure frame rule has (dir16 with shift 0,
+        // info_preview::arrow_frame), so a figure of up to 16 frames is read whole.
+        constexpr std::uint32_t kMostDirections = 16;
+        auto facings = load_figure_facings(game_dir_, figure, kMostDirections, std::nullopt);
+        if (facings.ok()) {
+            loaded->facings = std::move(facings).value();
+            for (const auto& f : loaded->facings.facings) {
+                if (f.frames.empty() || !f.frames.front() || !f.frames.front()->image)
+                    break;
+                const auto& d = *f.frames.front();
+                // facings[k] is frame k mod n: stop where the frames repeat.
+                if (d.index != loaded->sprites.size())
+                    break;
+                loaded->sprites.push_back({d.image.get(), d.frame.anchor_x, d.frame.anchor_y});
+            }
+        }
+        return figures_.emplace(figure, std::move(loaded)).first->second->sprites;
+    }
+
+    /// UI-INFO-2b: the composed picture of Anlagen id `id` at `rotation` (info_preview::compose:
+    /// the building and, with `arrow_figure`, its CONPO2 entrance arrows), cached per (id,
+    /// rotation); nullptr without a building frame at every turn.
+    const assets::Rgba* preview_canvas(std::uint32_t id, std::uint8_t rotation,
+                                       const formats::anlagen::AnlagenFile& anlagen,
+                                       std::optional<std::uint16_t> arrow_figure) {
+        const auto key = std::pair{id, rotation};
+        const auto it = canvases_.find(key);
+        if (it != canvases_.end())
+            return it->second ? &*it->second : nullptr;
+        info_preview::Input in;
+        const auto* entry = anlagen.entry(id);
+        if (const auto fp = anlagen.footprint(id)) {
+            in.w = fp->first;
+            in.h = fp->second;
+        }
+        bool complete = entry != nullptr;
+        for (std::uint8_t r = 0; r < 4 && complete; ++r) {
+            const info_preview::Sprite* s = preview_sprite(id, r, anlagen);
+            if (s == nullptr)
+                complete = false;
+            else
+                in.building.push_back(*s);
+        }
+        // UI-INFO-2d (OQ-712): the further sprite sets, up to the type's set slots.
+        if (complete) {
+            in.building_animated = set_animated(entry->gfx.front());
+            in.sets.resize(4);
+            const std::size_t n = std::min(entry->gfx.size(), kSetSlots);
+            for (std::size_t i = 1; i < n; ++i) {
+                const auto& gfx = entry->gfx[i];
+                const auto offset = set_offset(gfx);
+                for (std::uint8_t r = 0; r < 4; ++r) {
+                    if (const info_preview::Sprite* s = preview_sprite(id, r, anlagen, i)) {
+                        in.sets[r].push_back(info_preview::SetPart{*s, offset[0], offset[1],
+                                                                   offset[2], set_animated(gfx)});
+                    }
+                }
+            }
+        }
+        if (complete && arrow_figure) {
+            if (const auto record = entry->record("OBJECTPOS")) {
+                // A malformed record draws no arrows (none in the GOG file: objectpos corpus).
+                if (const auto objectpos = formats::objectpos::ObjectPos::parse(*record);
+                    objectpos.ok())
+                    in.arrows = info_preview::entrance_arrows(objectpos.value());
+            }
+            if (!in.arrows.empty())
+                in.arrow_frames = figure_frames(*arrow_figure);
+        }
+        std::optional<assets::Rgba> canvas;
+        if (complete)
+            canvas = info_preview::compose(in, rotation);
+        const auto emplaced = canvases_.emplace(key, std::move(canvas)).first;
         return emplaced->second ? &*emplaced->second : nullptr;
     }
 
   private:
+    /// The type's sprite-set slots (+0x244, 4 of 16 bytes; AnnoGame.dll 0x1000bf4c..0x1000bf5e):
+    /// the original's own count, kept here because it bounds what the picture composes.
+    static constexpr std::size_t kSetSlots = 4;
+
+    /// A sprite set's offset from the footprint centre: the set prefix's f32 at bytes 4, 8, 12
+    /// (x, height, y in tiles); zero for a shorter prefix. Measured, not read from the loader
+    /// (OQ-750): it beats every other order on the GOG shots (docs/re/ui.md 2.5).
+    static std::array<double, 3> set_offset(const formats::figuren::GfxSet& gfx) {
+        std::array<double, 3> out{};
+        if (gfx.prefix.size() >= 16) {
+            for (std::size_t k = 0; k < 3; ++k)
+                out[k] = static_cast<double>(
+                    std::bit_cast<float>(formats::u32_le(gfx.prefix, 4 + 4 * k)));
+        }
+        return out;
+    }
+
+    /// Whether a sprite set is drawn in the animated list (type slot 0xa4): its display object is
+    /// a tHausAnim (prefix byte 2 = 9, or 10 for water; AnnoDisplay.dll factory 0x10025d30)
+    /// whose slot 0x60 (0x100046f0) returns a non-zero frame time (ANIM bytes 4..5).
+    static bool set_animated(const formats::figuren::GfxSet& gfx) {
+        const bool anim_kind = gfx.prefix.size() > 2 && (gfx.prefix[2] == 9 || gfx.prefix[2] == 10);
+        return anim_kind && render::animation(gfx).second != 0;
+    }
+
+    struct DecodedSprite {
+        std::unique_ptr<assets::Rgba> image;
+        info_preview::Sprite sprite;
+    };
+    struct LoadedFigure {
+        assets::unit::FacingSprites facings;
+        std::vector<info_preview::Sprite> sprites;
+    };
+
     const formats::tex::TexFile* file_of(const std::string& rel_path) {
         const auto it = files_.find(rel_path);
         if (it != files_.end())
@@ -188,7 +319,10 @@ class TexCache {
     std::map<std::string, std::optional<LoadedFont>> fonts_;
     bool names_loaded_ = false;
     std::map<std::uint32_t, std::string> names_;
-    std::map<std::pair<std::uint32_t, std::uint8_t>, std::optional<assets::Rgba>> previews_;
+    std::map<std::tuple<std::uint32_t, std::uint8_t, std::size_t>, std::optional<DecodedSprite>>
+        previews_;
+    std::map<std::uint16_t, std::unique_ptr<LoadedFigure>> figures_;
+    std::map<std::pair<std::uint32_t, std::uint8_t>, std::optional<assets::Rgba>> canvases_;
     std::map<std::pair<std::string, int>, std::optional<assets::Rgba>> decoded_;
 };
 
@@ -417,23 +551,19 @@ assets::Rgba render_info_text(const formats::zei::CharSet& font, const std::stri
 /// own silhouette, drawn first at the `info_preview_shadow` offset (docs/re/ui.md section 2.5).
 constexpr std::array<std::uint8_t, 3> kPreviewShadow = {66, 65, 66};
 
-/// UI-INFO-1, the PLACEHOLDER (not evidence): a preview sprite larger than the `bw` x `bh` box,
-/// scaled to the largest size that fits (integer arithmetic, aspect kept) by nearest neighbour.
-/// The original's scaler is unknown - no tested filter reproduces the scaled GOG previews
-/// (OQ-612). Every unproven step of the preview lives here and only here, so it can be kept,
-/// gated or replaced on its own. Precondition: the sprite does not fit the box.
+/// A preview canvas larger than the `bw` x `bh` box, drawn at the original's size
+/// (info_preview::scaled_size, View.dll 0x1001db7f..0x1001dbfc; UI-INFO-2b) by nearest neighbour.
+/// The sampling is the PLACEHOLDER (not evidence): the original's scaler is unknown - no tested
+/// filter reproduces the scaled GOG previews (OQ-612). Every unproven step of the preview lives
+/// here and only here, so it can be kept, gated or replaced on its own. Precondition: the canvas
+/// does not fit the box.
 assets::Rgba preview_placeholder_fit(const assets::Rgba& sprite, unsigned bw, unsigned bh) {
     const unsigned w = sprite.width, h = sprite.height;
     if (w == 0 || h == 0)
         return sprite;
-    unsigned nw = 0, nh = 0;
-    if (static_cast<std::uint64_t>(w) * bh >= static_cast<std::uint64_t>(h) * bw) {
-        nw = bw;
-        nh = std::max(1U, static_cast<unsigned>(static_cast<std::uint64_t>(h) * bw / w));
-    } else {
-        nh = bh;
-        nw = std::max(1U, static_cast<unsigned>(static_cast<std::uint64_t>(w) * bh / h));
-    }
+    auto [nw, nh] = info_preview::scaled_size(w, h, bw, bh);
+    nw = std::max(1U, nw);
+    nh = std::max(1U, nh);
     assets::Rgba out;
     out.width = static_cast<std::uint16_t>(nw);
     out.height = static_cast<std::uint16_t>(nh);
@@ -499,12 +629,20 @@ void draw_info_content(TexCache& cache, const HudLayout& hud, const UiPlacement&
     const UiElement* box = hud.element("info_preview");
     if (anlagen == nullptr || box == nullptr || !box->has_pos || !box->has_size)
         return;
-    const assets::Rgba* sprite = cache.preview_sprite(info.type.v, info.rotation, *anlagen);
+    // UI-INFO-2b: the building and its entrance arrows in one canvas sized over all four turns
+    // (info_preview::compose, docs/re/ui.md 2.5); the arrows' figure is layout data.
+    std::optional<std::uint16_t> arrow_figure;
+    if (const UiElement* arrows = hud.element("info_preview_arrows");
+        arrows != nullptr && arrows->figure)
+        arrow_figure = static_cast<std::uint16_t>(*arrows->figure);
+    const assets::Rgba* sprite =
+        cache.preview_canvas(info.type.v, info.rotation, *anlagen, arrow_figure);
     if (sprite == nullptr)
         return;
-    // Evidence-backed path: a sprite that fits the box is drawn unscaled and centred (the whole
-    // box exact on r2_info_dirt_road, f12_info_field_104, f12_info_field_708; docs/re/ui.md 2.5).
-    // A larger one goes through the one placeholder (preview_placeholder_fit, OQ-612).
+    // Evidence-backed path: a canvas that fits the box is drawn unscaled and centred (the whole
+    // box exact on r2_info_dirt_road, f12_info_field_104, f12_info_field_708 and, with arrows,
+    // f12_info_stall_1310 and f12_info_stall_1314; docs/re/ui.md 2.5). A larger one is drawn at
+    // the original's size through the one placeholder sampler (preview_placeholder_fit, OQ-612).
     const bool fits = sprite->width <= box->size_w && sprite->height <= box->size_h;
     assets::Rgba fitted =
         fits ? *sprite : preview_placeholder_fit(*sprite, box->size_w, box->size_h);
@@ -741,6 +879,24 @@ void draw_panel(const HudLayout& hud, const UiMockSpec& screen, BlitEl&& blit_el
     }
 }
 
+/// UI-BUILDCAT-1: the construction menu's category column, one tab per construction.txt category
+/// (hud.txt `viewbautab_<index - 1>`, construction_category_tab), the open category's in its
+/// `frame_selected` and the others in `frame_idle` (View.dll 0x1002bb4f: VIEWBAUTAB + 2k idle, +1
+/// selected; docs/re/ui.md section 2.4). Shown with the grid and with the info/placement panel
+/// (r2_place_* shots). A category without a tab element draws nothing for it.
+template <typename BlitEl>
+void draw_category_tabs(const HudLayout& hud, const ConstructionLayout& construction,
+                        const std::string& open_category, BlitEl&& blit_el) {
+    for (const ConstructionCategory& cat : construction.categories) {
+        const UiElement* el = construction_category_tab(hud, cat);
+        if (el == nullptr)
+            continue;
+        const std::optional<int> frame =
+            cat.name == open_category ? el->frame_selected : el->frame_idle;
+        blit_el(el->name, frame ? frame : el->tex_id);
+    }
+}
+
 } // namespace
 
 std::string ui_panel_group(const HudLayout& hud, const UiMockSpec& screen) {
@@ -851,9 +1007,13 @@ formats::Result<assets::Rgba, std::string> compose_screen(const HudLayout& hud,
         blit_el("baumat_marble");
     }
     blit_el("fragezeichen");
-    blit_el("rosh_46");
-    blit_el("rosh_48");
-    blit_el("rosh_51");
+    // UI-STATUS-1 B: the oracle shots' fertility row - each slot's own `segment` (hud.txt: the
+    // NORD row 6, 8, 11 every GOG shot shows); a slot without one is on no shot.
+    for (std::size_t k = 0; k < fertility_slot_count(hud); ++k) {
+        const UiElement* el = hud.element(fertility_slot_name(k));
+        if (el != nullptr && el->segment)
+            blit_el(el->name, el->tex_id.value_or(0) + *el->segment);
+    }
     if (is_construction)
         blit_el("einwohner");
     blit_el("zoom_plus");
@@ -870,6 +1030,9 @@ formats::Result<assets::Rgba, std::string> compose_screen(const HudLayout& hud,
 
     if (is_construction) {
         blit_el("plankegross");
+        draw_category_tabs(
+            hud, construction, screen.category,
+            [&](const std::string& name, std::optional<int> tid) { blit_el(name, tid); });
         blit_el("abrissicon", 659);
 
         const int ox = construction.grid.origin_x;
@@ -903,6 +1066,17 @@ formats::Result<assets::Rgba, std::string> compose_screen(const HudLayout& hud,
     return canvas;
 }
 
+std::string fertility_slot_name(std::size_t k) {
+    return "rosh_" + std::to_string(k);
+}
+
+std::size_t fertility_slot_count(const HudLayout& hud) {
+    std::size_t k = 0;
+    while (hud.element(fertility_slot_name(k)) != nullptr)
+        ++k;
+    return k;
+}
+
 std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, const HudLayout& hud,
                                   const ConstructionLayout& construction, const MaskLayout& masks,
                                   const UiMockSpec& screen, UiTexCache& cache_wrapper,
@@ -925,10 +1099,14 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
     // pixel; MainSmall is picked only because its name best fits a compact status-bar readout.
     // Null (missing/unparseable file) silently draws nothing - `draw_text_xrgb`'s own contract.
     const formats::zei::CharSet* digit_font = cache.font("toolgfx/mainsmall.zei");
-    // UI-WINDOW-1 fix round R2: the materials and residents (icons and digits) show whenever the
-    // caller has a city's figures for them, on every screen (docs/re/ui.md 5.2).
-    const bool city_shown =
-        counters.tools || counters.wood || counters.bricks || counters.marble || counters.residents;
+    // UI-WINDOW-1 fix round R2, UI-STATUS-1 B: the materials (icons and digits) show whenever the
+    // caller has a city's figures for them, and the residents (icon and digits) on their own: a
+    // city of the local player shows both, another player's city that knows the local player only
+    // the residents (AnnoFrame 0x10063aa0: flag 1 the residents, flag 4 the materials;
+    // docs/re/ui.md 5.6), on every screen.
+    const bool materials_shown =
+        counters.tools || counters.wood || counters.bricks || counters.marble;
+    const bool residents_shown = counters.residents.has_value();
 
     // Mirrors compose_screen's own blit_el exactly (ADR 0004 R1: a divergence here is a bug, not
     // a second design); the only difference from compose_screen below is the lock source.
@@ -1005,7 +1183,7 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
                            pos->first, pos->second);
         }
     }
-    if (city_shown) {
+    if (materials_shown) {
         blit_el("baumat_tools");
         blit_el("baumat_wood");
         blit_el("baumat_bricks");
@@ -1042,10 +1220,14 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
         }
     }
     blit_el("fragezeichen");
-    blit_el("rosh_46");
-    blit_el("rosh_48");
-    blit_el("rosh_51");
-    if (city_shown) {
+    // UI-STATUS-1 B: the fertility row, slot k the k-th segment the caller gives (tex_id + segment,
+    // hud.txt rosh_<k>); the green bars are not drawn (OQ-702).
+    for (std::size_t k = 0; k < counters.fertility.size() && k < fertility_slot_count(hud); ++k) {
+        const UiElement* el = hud.element(fertility_slot_name(k));
+        if (el != nullptr)
+            blit_el(el->name, el->tex_id.value_or(0) + static_cast<int>(counters.fertility[k]));
+    }
+    if (residents_shown) {
         blit_el("einwohner");
         // H2: the residents counter - construction-screen only, same as the icon itself
         // (docs/re/ui.md 2.1: `STATUSBAR_EINWOHNER` is "absent from pass-2 idle"). masks.txt
@@ -1076,6 +1258,9 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
 
     if (is_construction) {
         blit_el("plankegross");
+        draw_category_tabs(
+            hud, construction, screen.category,
+            [&](const std::string& name, std::optional<int> tid) { blit_el(name, tid); });
         if (placement_open) {
             // C1/C6: the building info/placement panel, drawn instead of the grid - the two
             // occupy the same screen region (this function's own doc comment) and
@@ -1180,10 +1365,14 @@ std::string draw_live_screen_rgba_into(
     UiTexCache::Impl& cache = cache_wrapper.impl();
     const bool is_construction = screen.kind == UiMockScreen::Construction;
     const formats::zei::CharSet* digit_font = cache.font("toolgfx/mainsmall.zei");
-    // UI-WINDOW-1 fix round R2: the materials and residents (icons and digits) show whenever the
-    // caller has a city's figures for them, on every screen (docs/re/ui.md 5.2).
-    const bool city_shown =
-        counters.tools || counters.wood || counters.bricks || counters.marble || counters.residents;
+    // UI-WINDOW-1 fix round R2, UI-STATUS-1 B: the materials (icons and digits) show whenever the
+    // caller has a city's figures for them, and the residents (icon and digits) on their own: a
+    // city of the local player shows both, another player's city that knows the local player only
+    // the residents (AnnoFrame 0x10063aa0: flag 1 the residents, flag 4 the materials;
+    // docs/re/ui.md 5.6), on every screen.
+    const bool materials_shown =
+        counters.tools || counters.wood || counters.bricks || counters.marble;
+    const bool residents_shown = counters.residents.has_value();
 
     canvas.width = static_cast<std::uint16_t>(w);
     canvas.height = static_cast<std::uint16_t>(h);
@@ -1264,7 +1453,7 @@ std::string draw_live_screen_rgba_into(
                            pos->second);
         }
     }
-    if (city_shown) {
+    if (materials_shown) {
         blit_el("baumat_tools");
         blit_el("baumat_wood");
         blit_el("baumat_bricks");
@@ -1295,10 +1484,14 @@ std::string draw_live_screen_rgba_into(
         }
     }
     blit_el("fragezeichen");
-    blit_el("rosh_46");
-    blit_el("rosh_48");
-    blit_el("rosh_51");
-    if (city_shown) {
+    // UI-STATUS-1 B: the fertility row, slot k the k-th segment the caller gives (tex_id + segment,
+    // hud.txt rosh_<k>); the green bars are not drawn (OQ-702).
+    for (std::size_t k = 0; k < counters.fertility.size() && k < fertility_slot_count(hud); ++k) {
+        const UiElement* el = hud.element(fertility_slot_name(k));
+        if (el != nullptr)
+            blit_el(el->name, el->tex_id.value_or(0) + static_cast<int>(counters.fertility[k]));
+    }
+    if (residents_shown) {
         blit_el("einwohner");
         if (counters.residents) {
             if (const auto pos = digit_origin("einwohner_digits")) {
@@ -1323,6 +1516,9 @@ std::string draw_live_screen_rgba_into(
 
     if (is_construction) {
         blit_el("plankegross");
+        draw_category_tabs(
+            hud, construction, screen.category,
+            [&](const std::string& name, std::optional<int> tid) { blit_el(name, tid); });
         if (placement_open) {
             blit_el("info_panel");
             blit_el("infoexit");

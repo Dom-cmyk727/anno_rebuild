@@ -230,6 +230,23 @@ if(ANNO_BUILD_TESTS)
                      --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/mine_coverage_vectors.txt --min-vectors 30)
     add_test(NAME placement_reference_selftest
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/placement_ref.py selftest)
+    # FERTILITY-1 1a: the oracle's tile-object digest over every shipped island against the file the
+    # C++ case "tile object: placement_rule agrees with the oracle ..." reads (exit 77 = skipped
+    # without ANNO1503_GAME_DIR; about 3 minutes single-threaded).
+    add_test(NAME placement_tile_corpus_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/placement_ref.py tilecorpus
+                     --check ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/tile_object_corpus.txt)
+    set_tests_properties(placement_tile_corpus_reference_agrees PROPERTIES SKIP_RETURN_CODE 77
+                         TIMEOUT 1200)
+    # ROADS-2a: the road shape oracle's self-test and its corpus digest over the shipped .sze, the
+    # file the C++ case "road shape: agrees with the oracle ..." reads (exit 77 without game files).
+    add_test(NAME road_shape_reference_selftest
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/road_shape.py selftest)
+    add_test(NAME road_shape_corpus_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/road_shape.py corpus
+                     --check ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/road_shape_corpus.txt)
+    set_tests_properties(road_shape_corpus_reference_agrees PROPERTIES SKIP_RETURN_CODE 77
+                         TIMEOUT 1200)
     add_test(NAME cargo_reference_agrees
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/cargo_ref.py check
                      # no path: both fixtures, the unload cargo_vectors.txt and (MAP-CARGO-2) the

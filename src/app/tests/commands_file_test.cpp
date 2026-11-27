@@ -332,3 +332,66 @@ TEST_CASE("developer resources: a Build too expensive for the start is refused w
     CHECK_MESSAGE(denied.status == anno::sim::Reject::ConstructionDenied,
                   "a stage-locked build is refused before any cost check, even with resources");
 }
+
+TEST_CASE("commands file: multi-variant road builds round-trip through buildv and buildcv") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto world = lan5_world(*dir);
+    REQUIRE(world.has_value());
+    const auto origin = developer_origin(*world);
+    REQUIRE(origin.has_value());
+    anno::sim::CityRef city;
+    bool found_city = false;
+    for (const auto& is : world->islands()) {
+        if (!is || found_city) {
+            continue;
+        }
+        for (const auto& c : is->cities) {
+            if (c && c->owner == anno::app::developer_player()) {
+                city = anno::sim::CityRef{is->index, c->number};
+                found_city = true;
+                break;
+            }
+        }
+    }
+    REQUIRE(found_city);
+
+    anno::sim::BuildCmd mixed;
+    mixed.city = city;
+    mixed.placements.push_back({anno::sim::TypeId{2520}, origin->x + 1, origin->y + 1, 0, 0, 0});
+    mixed.placements.push_back({anno::sim::TypeId{2522}, origin->x + 2, origin->y + 1, 0, 0, 0});
+    mixed.placements.push_back({anno::sim::TypeId{2524}, origin->x + 3, origin->y + 1, 1, 0, 0});
+    const std::vector<anno::app::ScriptedCommand> cmds{
+        {2, anno::sim::Command{anno::app::developer_player(), mixed}}};
+
+    // Fixed-map form uses buildv; ship-start form uses buildcv.
+    const auto fixed_text = anno::app::format_commands(cmds, false);
+    REQUIRE(fixed_text.ok());
+    CHECK(fixed_text.value().find("turn 2 buildv 2520 ") == 0);
+    const auto parsed_fixed =
+        anno::app::parse_commands(fixed_text.value(), *world, anno::app::developer_player());
+    REQUIRE(parsed_fixed.ok());
+    REQUIRE(parsed_fixed.value().size() == 1);
+    CHECK(parsed_fixed.value()[0].turn == 2);
+    CHECK(parsed_fixed.value()[0].command == cmds[0].command);
+
+    const auto ship_text = anno::app::format_commands(cmds, true);
+    REQUIRE(ship_text.ok());
+    CHECK(ship_text.value().find("turn 2 buildcv ") == 0);
+    const auto parsed_ship =
+        anno::app::parse_commands(ship_text.value(), *world, anno::app::developer_player());
+    REQUIRE(parsed_ship.ok());
+    REQUIRE(parsed_ship.value().size() == 1);
+    CHECK(parsed_ship.value()[0].command == cmds[0].command);
+
+    // Malformed buildv / buildcv names the failing line.
+    CHECK_FALSE(
+        anno::app::parse_commands("turn 1 buildv 2520 1 2\n", *world, anno::app::developer_player())
+            .ok());
+    CHECK_FALSE(anno::app::parse_commands("turn 1 buildcv 1 0 0 2520 1 2\n", *world,
+                                          anno::app::developer_player())
+                    .ok());
+}

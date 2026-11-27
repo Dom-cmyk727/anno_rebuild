@@ -392,6 +392,33 @@ TEST_CASE("command line") {
     CHECK_FALSE(parse_args({"--ship-start", "m.json", "--seat", "0", "--fisher-rules", "on"}));
     CHECK_FALSE(parse_args({"--ship-start", "m.json", "--seat", "0", "--player", "1"}));
 
+    // --road-rules on|off (ROADS-3): --play developer switch only (nullopt -> main.cpp defaults
+    // to on for --play while faithful sim defaults stay off).
+    CHECK_FALSE(rules_default->road_rules.has_value());
+    const auto road_on = parse_args({"--play", "x.sze", "--road-rules", "on"});
+    REQUIRE(road_on.has_value());
+    REQUIRE(road_on->road_rules.has_value());
+    CHECK(*road_on->road_rules);
+    const auto road_off = parse_args({"--play", "x.sze", "--road-rules", "off"});
+    REQUIRE(road_off.has_value());
+    REQUIRE(road_off->road_rules.has_value());
+    CHECK_FALSE(*road_off->road_rules);
+    CHECK_FALSE(parse_args({"--play", "x.sze", "--road-rules", "yes"}));
+    CHECK_FALSE(parse_args({"--view", "x.sze", "--road-rules", "on"}));
+    CHECK_FALSE(parse_args({"--ship-start", "m.json", "--seat", "0", "--road-rules", "on"}));
+
+    // --occupied-outline on|off (UI-GHOST-2 ADAPTATION): default off, --play developer switch only.
+    CHECK_FALSE(rules_default->occupied_outline);
+    const auto occ_on = parse_args({"--play", "x.sze", "--occupied-outline", "on"});
+    REQUIRE(occ_on.has_value());
+    CHECK(occ_on->occupied_outline);
+    const auto occ_off = parse_args({"--play", "x.sze", "--occupied-outline", "off"});
+    REQUIRE(occ_off.has_value());
+    CHECK_FALSE(occ_off->occupied_outline);
+    CHECK_FALSE(parse_args({"--play", "x.sze", "--occupied-outline", "yes"}));
+    CHECK_FALSE(parse_args({"--view", "x.sze", "--occupied-outline", "on"}));
+    CHECK_FALSE(parse_args({"--ship-start", "m.json", "--seat", "0", "--occupied-outline", "on"}));
+
     // --ui classic|dev (ADR 0004 R2, W4-NEXT-1 part U's key-collision QUESTION): default
     // Classic, parsed independently of --play (unlike --construction-menu). Parsing it on
     // --view is accepted, not an error, but it has no live effect there - a --view window
@@ -434,6 +461,13 @@ TEST_CASE("zoom over derived levels: the range follows the last level and the mi
     CHECK(zoom_target_after(20.0, 0.0001, levels, 6.0) == 6.0);
     CHECK(zoom_target_after(20.0, 0.0001, levels, 1.0) == doctest::Approx(2.5 / kZoomEndFactor));
     CHECK(zoom_target_after(42.0, 1000.0, levels, 6.0) == doctest::Approx(84.0 * kZoomEndFactor));
+    // UI-MINIMAP-2: zoom_floor is that far end (the magnifier's last stage).
+    CHECK(zoom_floor(levels, 6.0) == 6.0);
+    CHECK(zoom_floor(levels, 1.0) == doctest::Approx(2.5 / kZoomEndFactor));
+    CHECK(zoom_floor(levels) == zoom_target_after(20.0, 0.0001, levels));
+    // Fix round R2: zoom_ceiling is the near end (the magnifier's first stage).
+    CHECK(zoom_ceiling(levels) == zoom_target_after(42.0, 1000.0, levels, 6.0));
+    CHECK(zoom_ceiling(levels) == doctest::Approx(84.0 * kZoomEndFactor));
     // The level shown follows the zoom through the derived levels: the coarsest level
     // whose tile width is at least the zoom, so the scale stays in [0.95 / 2.1, 1] at
     // every width below group 0 (the widest ratio between two levels is 2.1, the coarser
@@ -1177,4 +1211,46 @@ TEST_CASE("overlap_ms: a section entirely inside, one that starts during the cal
     }
     // An unused slot (begin_ns == 0) is never an overlap, whatever end_ns/read_time_ns are.
     CHECK_FALSE(overlap_ms(call_begin, call_ms, 0, 0, call_begin + 5000 * ms).has_value());
+}
+
+TEST_CASE("apply_island_buildings: a SceneBuilding above kPictureAnlageIds gets its own note and "
+          "does not wrap into another type (PICTURE-IDS-1)") {
+    // No game files: ScenePicture (another caller of this function) is not guaranteed to have
+    // gone through apply_world_buildings' own filter first, so this function must not rely on a
+    // caller to keep its cast in range (synthetic, not just the existing play_test.cpp coverage
+    // of the apply_world_buildings path).
+    anno::formats::insel::Island island;
+    anno::app::SceneBuilding wide;
+    wide.island = 0;
+    wide.type = 0x10000 + 5; // wraps to 5 under a plain uint16_t cast, a real, drawable id
+    wide.x = 1;
+    wide.y = 1;
+    anno::app::SceneObjects objects;
+    objects.is_building = [](std::uint16_t) { return true; };
+    std::vector<std::vector<std::uint8_t>> storage;
+    std::vector<std::string> notes;
+    std::vector<anno::app::OmittedObject> omitted;
+    anno::app::apply_island_buildings(island, {wide}, objects, storage, notes, omitted);
+    const auto noted = std::any_of(notes.begin(), notes.end(), [](const std::string& note) {
+        return note.find("Anlagen id 65541") != std::string::npos &&
+               note.find("does not fit a PROD2 item") != std::string::npos;
+    });
+    CHECK(noted);
+    bool found_gelaende = false;
+    for (const auto& rec : island.records) {
+        if (rec.name() != "GELAENDE") {
+            continue;
+        }
+        found_gelaende = true;
+        const auto block = anno::formats::insel::Block::parse(rec.payload);
+        REQUIRE(block);
+        const auto& data = block.value().data;
+        for (std::size_t o = 0; o + anno::formats::insel::kItemLen <= data.size();
+             o += anno::formats::insel::kItemLen) {
+            const auto p = anno::formats::insel::PlacedObject::parse(
+                data.subspan(o, anno::formats::insel::kItemLen), block.value());
+            CHECK_MESSAGE(p.anlage != 5, "the refused building must not appear drawn as id 5");
+        }
+    }
+    CHECK_FALSE(found_gelaende); // nothing else was placed either - the only record is refused
 }

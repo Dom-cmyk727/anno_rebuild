@@ -222,7 +222,18 @@ template <class A, Same<EconomyConfig> S> void fields(A& a, S& s) {
     a.u32(s.period);
 }
 
-static_assert(field_count<SimConfig>() == 61,
+static_assert(field_count<CropTables>() == 6,
+              "a CropTables member needs a line in fields(CropTables)");
+template <class A, Same<CropTables> S> void fields(A& a, S& s) {
+    a.u32(s.mask_first_goods);
+    a.u32(s.mask_bits);
+    u32_list(a, s.base_goods);
+    a.u32(s.anbau_first_goods);
+    a.u32(s.anbau_last_goods);
+    a.u32(s.anbau_name_cap);
+}
+
+static_assert(field_count<SimConfig>() == 62,
               "a SimConfig member needs a line in fields(SimConfig)");
 
 template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
@@ -287,6 +298,7 @@ template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
     a.u32(s.resident_cargo_slots);          // stream 128
     a.u32(s.house_type_stride);             // stream 128 (L3)
     fields(a, s.economy);                   // stream133
+    fields(a, s.crops);                     // header section base 2 (ISLAND-CROPS-1)
 }
 
 static_assert(field_count<NavClassCost>() == 4, "a NavClassCost member needs a line in fields");
@@ -1024,7 +1036,7 @@ template <class A, Same<OreObject> S> void fields(A& a, S& s) {
     ar::seq(a, s.discovered, 4, [&](auto& p) { a.u32(p.v); });
 }
 
-static_assert(field_count<Island>() == 20,
+static_assert(field_count<Island>() == 21,
               "an Island member needs a line in fields(Island) or a derived note");
 
 /// One island (docs/sim/state.md §9.3): `u32 index`, the rectangle `i32 x0, i32 y0,
@@ -1049,6 +1061,9 @@ template <class A, Same<Island> S> void fields(A& a, S& s, const CityStream& ctx
     a.i32(s.city_cursor);    // stream 119: the ring's allocation cursor
     a.u32(s.kontor_counter); // stream 119: island +0xc6
     ar::seq(a, s.players_present, 4, [&](auto& p) { a.u32(p.v); }); // stream 120: island +0xa6
+    // islands section base 2 (ISLAND-CROPS-1): island property 11 (+0xac), the crop list as
+    // ascending unique goods ids (bit b of the original's mask = goods crops.mask_first_goods + b).
+    ar::seq(a, s.crops, 4, [&](auto& g) { a.u32(g); });
     a.u32(s.next_serial);
     std::uint64_t terrain = s.terrain ? s.terrain->digest : 0;
     a.u64(terrain);

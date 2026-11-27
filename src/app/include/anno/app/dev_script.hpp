@@ -11,7 +11,12 @@
 //                         the cheapest of the tool's types that costs gold (not a road)
 //   rotate R              press T until the rotation is R
 //   click X Y             move to, press and release over the drawn centre of tile (X, Y)
-//   click_px X Y          move to, press and release at the raw drawable pixel (X, Y) (UI.2 C4:
+//   click-land X Y        move to, press and release over terrain ground height of tile (X, Y)
+//   ldown-land X Y        move to, press left button over terrain ground height of tile (X, Y)
+//   lmove-land X Y        drag pointer with left button held to terrain ground height of tile (X,
+//   Y) lup-land X Y          drag pointer with left button held and release at ground height of (X,
+//   Y) hover-land X Y        move pointer over terrain ground height of tile (X, Y) click_px X Y
+//   move to, press and release at the raw drawable pixel (X, Y) (UI.2 C4:
 //                         construction_handle's own coordinate space, data/ui/'s 1024 x 768
 //                         reference - not a world tile; `click`'s window_point projection does
 //                         not apply)
@@ -71,7 +76,11 @@
 //   rdown X Y | rup X Y   the right button pressed / released over the sea tile (a gesture in two
 //                         steps: a focus loss or Esc between them cancels it)
 //   click-land X Y        left click on the ground of tile (X, Y); hover-land X Y moves the pointer
-//                         there without a button
+//                         there without a button; hover-sea X Y moves it over the sea surface of
+//                         tile (X, Y) without a button (UI-STATUS-1 B)
+//   hover_px X Y          the pointer moves to drawable pixel (X, Y) without a button (UI-STATUS-1
+//                         B: onto chrome, where the status bar keeps the last map tile and
+//                         the placement ghost hides, UI-GHOST-1)
 //   lpan DX DY            a left-button drag by (DX, DY) window points from the window centre
 //   ldown_px X Y          a left press at drawable pixel (X, Y) with no release (a release lost
 //                         outside the window); ldrag_px X0 Y0 X1 Y1: press at (X0, Y0), move to
@@ -144,6 +153,17 @@ inline constexpr std::uint32_t kScriptDevice = 0x7E5C1Du;
 
 /// Whether `e` is keyboard, mouse or wheel input that did not come from the script.
 [[nodiscard]] bool foreign_input(const SDL_Event& e);
+
+/// Converts a requested drawable pixel size (`drawable_w` x `drawable_h`) into SDL window
+/// points for `density` (clamped to >= 1 in each axis). Matches `ANNO_VIEW_SIZE` and
+/// `resize_at_`.
+[[nodiscard]] std::pair<int, int> window_points_for_drawable(int drawable_w, int drawable_h,
+                                                             float density);
+
+/// Formats the diagnostic suffix appended to a `no frame was drawn` script abort so a
+/// recurrence attributes `hidden_`, `retry_at_` backoff, and `drawn_frames_` directly.
+[[nodiscard]] std::string format_no_frame_diagnostic(bool hidden, bool retry_active,
+                                                     std::uint64_t drawn_frames);
 
 /// What the window shows at a loop iteration, for the script.
 struct DevScriptState {

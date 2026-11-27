@@ -26,6 +26,7 @@
 #include <anno/sim/placement.hpp>
 #include <anno/sim/reject.hpp>
 #include <anno/sim/replay.hpp>
+#include <anno/sim/terrain_view.hpp>
 #include <anno/sim/types.hpp>
 #include <anno/sim_load/fixed_map.hpp>
 #include <anno/sim_load/original_registry.hpp>
@@ -267,6 +268,7 @@ DevToolSetup dev_tool_setup(const PlayLoad& load, sim::PlayerId player) {
     s.registry = load.registry;
     s.issuer = player;
     const sim::World& world = load.world;
+    s.road_rules = world.road_rules();
     for (const auto& island : world.islands()) {
         if (!island || s.city) {
             continue;
@@ -277,6 +279,35 @@ DevToolSetup dev_tool_setup(const PlayLoad& load, sim::PlayerId player) {
                 s.island = TileRect{island->tiles.x0(), island->tiles.y0(), island->tiles.width(),
                                     island->tiles.height()};
             }
+        }
+    }
+    if (s.city) {
+        // UI-GHOST-1 R2: the camera's start (DevToolSetup::home). Read-only queries of the loaded
+        // world, before the runner owns it.
+        std::vector<sim::BuildingId> ids;
+        world.rect_query(*s.city, sim::TileRect{s.island.x0, s.island.y0, s.island.w, s.island.h},
+                         ~0U, ids);
+        const auto& warehouses = world.rules().cargo.warehouse_prodtypes;
+        for (const sim::BuildingId id : ids) {
+            const sim::Building* b = world.find_building(id);
+            const sim::BuildingType* type =
+                b != nullptr && s.registry ? s.registry->find(b->type) : nullptr;
+            if (b == nullptr) {
+                continue;
+            }
+            const bool warehouse =
+                type != nullptr &&
+                std::find(warehouses.begin(), warehouses.end(), type->prodtype) != warehouses.end();
+            if (!s.home || warehouse) {
+                s.home = sim::TileXY{b->x, b->y};
+            }
+            if (warehouse) {
+                break;
+            }
+        }
+        if (!s.home) {
+            s.home = sim::TileXY{s.island.x0 + static_cast<std::int32_t>(s.island.w / 2),
+                                 s.island.y0 + static_cast<std::int32_t>(s.island.h / 2)};
         }
     }
     if (s.registry) {
@@ -381,6 +412,49 @@ bool anlage_is_building(const sim::World& world, std::uint16_t anlage) {
     return world.config().layout.list_for(type->prodtype).has_value();
 }
 
+bool anlage_is_tracked_tile_object(const sim::World& world, std::uint32_t anlage) {
+    const sim::BuildingType* type = world.types().find(sim::TypeId{anlage});
+    if (type == nullptr || world.config().layout.list_for(type->prodtype).has_value()) {
+        return false;
+    }
+    // ROADS-2b: the reshaper's corner, T, cross and end pieces are land roads of the slope class
+    // (0x1186, no kRoadFlag), and a road drag now places them, so the picture tracks them too.
+    return (type->flags_word & sim::kRoadFlag) != 0 || sim::is_land_road(*type);
+}
+
+std::vector<SceneTileObject> play_tile_objects(const sim::World& world) {
+    std::vector<SceneTileObject> out;
+    const auto& islands = world.islands();
+    for (std::size_t i = 0; i < islands.size(); ++i) {
+        if (!islands[i]) {
+            continue;
+        }
+        const sim::TileLayer& tiles = islands[i]->tiles;
+        const std::uint32_t w = tiles.width();
+        if (w == 0) {
+            continue;
+        }
+        const std::uint32_t slot = static_cast<std::uint32_t>(i);
+        const std::uint64_t n = tiles.tile_count();
+        for (std::uint64_t idx = 0; idx < n; ++idx) {
+            const std::uint32_t obj = tiles.object(idx);
+            if (obj == 0 || tiles.foot_dx(idx) != 0 || tiles.foot_dy(idx) != 0 ||
+                !anlage_is_tracked_tile_object(world, obj)) {
+                continue;
+            }
+            const std::uint64_t lx = idx % w;
+            const std::uint64_t ly = idx / w;
+            if (lx > 65535 || ly > 65535) {
+                continue;
+            }
+            out.push_back(SceneTileObject{slot, obj, static_cast<std::uint16_t>(lx),
+                                          static_cast<std::uint16_t>(ly), tiles.foot_rotation(idx),
+                                          tiles.item_height(idx), tiles.phase(idx)});
+        }
+    }
+    return out;
+}
+
 PlayRunner::PlayRunner(sim::World world, unsigned speed_percent, PlaySchedule* schedule)
     : world_(std::move(world)), schedule_(schedule) {
     if (schedule_ == nullptr) {
@@ -398,11 +472,46 @@ PlayRunner::PlayRunner(sim::World world, unsigned speed_percent, PlaySchedule* s
         first->territory = territory_;
         first->map_figures =
             std::make_shared<const std::vector<MapFigure>>(collect_map_figures(world_));
+        refresh_status_icons();
+        first->status_icons = status_icons_;
         snap_ = std::move(first);
     }
-    // The picture was built from these buildings at load, so the first diff starts here.
+    // The picture was built from these buildings and tracked tile objects at load, so the first
+    // diff starts here.
     buildings_ = play_buildings(world_);
     sort_buildings(buildings_);
+    building_type_mask_.assign(kPictureAnlageIds, 0);
+    tracked_type_mask_.assign(kPictureAnlageIds, 0);
+    for (const sim::BuildingType& type : world_.types().types()) {
+        if (type.id.v >= kPictureAnlageIds) {
+            continue;
+        }
+        if (world_.config().layout.list_for(type.prodtype).has_value()) {
+            building_type_mask_[type.id.v] = 1;
+        } else if ((type.flags_word & sim::kRoadFlag) != 0 || sim::is_land_road(type)) {
+            tracked_type_mask_[type.id.v] = 1; // the same classes as anlage_is_tracked_tile_object
+        }
+    }
+    const auto& islands = world_.islands();
+    initial_scenery_.resize(islands.size());
+    for (std::size_t i = 0; i < islands.size(); ++i) {
+        if (!islands[i]) {
+            continue;
+        }
+        const sim::TileLayer& tiles = islands[i]->tiles;
+        const std::uint64_t n = tiles.tile_count();
+        auto& mask = initial_scenery_[i];
+        mask.assign(static_cast<std::size_t>(n), 0);
+        for (std::uint64_t idx = 0; idx < n; ++idx) {
+            const std::uint32_t obj = tiles.object(idx);
+            if (obj != 0 && !is_building_id(obj) && !is_tracked_id(obj) &&
+                tiles.foot_dx(idx) == 0 && tiles.foot_dy(idx) == 0) {
+                mask[static_cast<std::size_t>(idx)] = 1;
+            }
+        }
+    }
+    tile_objects_ = collect_tile_objects();
+    sort_tile_objects(tile_objects_);
     // The developer player's first city (the one the developer input builds in).
     for (std::size_t i = 0; i < world_.islands().size() && !developer_city_; ++i) {
         const auto& island = world_.islands()[i];
@@ -884,17 +993,95 @@ const BuildingInspection* live_inspection(const PlaySnapshot& snapshot, bool dev
     return snapshot.inspection.get();
 }
 
+bool PlayRunner::is_building_id(std::uint32_t id) const {
+    if (id < building_type_mask_.size()) {
+        return building_type_mask_[id] != 0;
+    }
+    const sim::BuildingType* type = world_.types().find(sim::TypeId{id});
+    return type != nullptr && world_.config().layout.list_for(type->prodtype).has_value();
+}
+
+bool PlayRunner::is_tracked_id(std::uint32_t id) const {
+    if (id < tracked_type_mask_.size()) {
+        return tracked_type_mask_[id] != 0;
+    }
+    return anlage_is_tracked_tile_object(world_, id);
+}
+
+std::vector<SceneTileObject> PlayRunner::collect_tile_objects() const {
+    std::vector<SceneTileObject> out;
+    const auto& islands = world_.islands();
+    for (std::size_t i = 0; i < islands.size(); ++i) {
+        if (!islands[i]) {
+            continue;
+        }
+        const sim::TileLayer& tiles = islands[i]->tiles;
+        const std::uint32_t w = tiles.width();
+        if (w == 0) {
+            continue;
+        }
+        const std::uint32_t slot = static_cast<std::uint32_t>(i);
+        const std::uint64_t n = tiles.tile_count();
+        const auto& init_mask = initial_scenery_[i];
+        for (std::uint64_t idx = 0; idx < n; ++idx) {
+            const std::uint32_t obj = tiles.object(idx);
+            const bool init_scenery = init_mask[static_cast<std::size_t>(idx)] != 0;
+            if (obj == 0) {
+                if (!init_scenery) {
+                    continue;
+                }
+                const std::uint64_t lx = idx % w;
+                const std::uint64_t ly = idx / w;
+                if (lx <= 65535 && ly <= 65535) {
+                    out.push_back(SceneTileObject{slot, 0, static_cast<std::uint16_t>(lx),
+                                                  static_cast<std::uint16_t>(ly), 0, 0, 0});
+                }
+                continue;
+            }
+            if (is_tracked_id(obj)) {
+                if (tiles.foot_dx(idx) == 0 && tiles.foot_dy(idx) == 0) {
+                    const std::uint64_t lx = idx % w;
+                    const std::uint64_t ly = idx / w;
+                    if (lx <= 65535 && ly <= 65535) {
+                        out.push_back(SceneTileObject{slot, obj, static_cast<std::uint16_t>(lx),
+                                                      static_cast<std::uint16_t>(ly),
+                                                      tiles.foot_rotation(idx),
+                                                      tiles.item_height(idx), tiles.phase(idx)});
+                    }
+                }
+                continue;
+            }
+            if (init_scenery && is_building_id(obj)) {
+                const std::uint64_t lx = idx % w;
+                const std::uint64_t ly = idx / w;
+                if (lx <= 65535 && ly <= 65535) {
+                    out.push_back(SceneTileObject{slot, 0, static_cast<std::uint16_t>(lx),
+                                                  static_cast<std::uint16_t>(ly), 0, 0, 0});
+                }
+            }
+        }
+    }
+    return out;
+}
+
 std::shared_ptr<const BuildingBatch> PlayRunner::building_batch(std::uint64_t turn) {
     std::vector<SceneBuilding> cur = play_buildings(world_);
     sort_buildings(cur);
     std::vector<BuildingDelta> deltas = diff_sorted_buildings(buildings_, cur);
     buildings_ = std::move(cur);
-    if (deltas.empty()) {
+
+    std::vector<SceneTileObject> cur_tiles = collect_tile_objects();
+    sort_tile_objects(cur_tiles);
+    std::vector<TileObjectDelta> tile_deltas = diff_sorted_tile_objects(tile_objects_, cur_tiles);
+    tile_objects_ = std::move(cur_tiles);
+
+    if (deltas.empty() && tile_deltas.empty()) {
         return nullptr;
     }
     auto batch = std::make_shared<BuildingBatch>();
     batch->turn = turn;
     batch->deltas = std::move(deltas);
+    batch->tile_deltas = std::move(tile_deltas);
     return batch;
 }
 
@@ -943,31 +1130,42 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
         find_local_city();
     }
     fill_inspection(*next); // also without a city: the requested tile is answered as empty
+    fill_build_probe(*next);
+    fill_road_probe(*next);
     // UI-MINIMAP-1 B2: the minimap's owners (republished unchanged while equal) and its figures.
     refresh_territory();
     next->territory = territory_;
     next->map_figures = std::make_shared<const std::vector<MapFigure>>(collect_map_figures(world_));
-    // UI-WINDOW-1 fix round R2/R4: the local player's cities, in (island, city) order, for the
-    // status bar: it shows the city on the island the view is centred on, else the first of these
-    // (the owner's "Always show my city", 2026-11-14). Read-only accessors only (CityCounters's own
-    // comment); the cost is measured with ANNO_PUBLISH_STATS.
-    if (developer_city_) {
+    // UI-HARVEST-ICON-1 B: the status icons (republished unchanged while equal).
+    refresh_status_icons();
+    next->status_icons = status_icons_;
+    // UI-WINDOW-1 fix round R2, UI-STATUS-1 B: the cities whose figures the status bar can show,
+    // in (island, city) order: the local player's (materials and residents) and every other
+    // player's city that knows the local player (residents only; docs/re/ui.md 5.6). Which one
+    // shows is the window's choice for the tile under its cursor (status_bar.hpp). Read-only
+    // accessors only (CityCounters's own comment); the cost is measured with ANNO_PUBLISH_STATS.
+    next->local_player = local_player_.v;
+    {
         auto cities = std::make_shared<std::vector<CityCounters>>();
         for (const auto& island : world_.islands()) {
             if (!island) {
                 continue;
             }
             for (const std::optional<sim::City>& city : island->cities) {
-                if (!city || city->owner != local_player_) {
+                if (!city) {
+                    continue;
+                }
+                const bool own = city->owner == local_player_;
+                if (!own && !std::binary_search(city->player_mask.begin(), city->player_mask.end(),
+                                                local_player_)) {
                     continue;
                 }
                 CityCounters c;
                 c.city = sim::CityRef{island->index, city->number};
-                c.island_x0 = island->tiles.x0();
-                c.island_y0 = island->tiles.y0();
-                c.island_w = island->tiles.width();
-                c.island_h = island->tiles.height();
-                c.goods = city->stock.stock;
+                c.own = own;
+                if (own) {
+                    c.goods = city->stock.stock;
+                }
                 c.population = world_.city_population(c.city);
                 c.accounts = city->accounts; // UI-TABS-1 B: a read-only copy
                 cities->push_back(std::move(c));
@@ -981,11 +1179,15 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
     next->accounts_live = world_.rules().city_booking;
     next->stat_shown_num = world_.config().upkeep_slices;
     next->stat_shown_den = world_.config().stat_decay_den;
+    // UI-STATUS-1 B: the local player's money with or without a city: the status bar's gold shows
+    // in every mode (AnnoFrame 0x10009b2b, docs/re/ui.md 5.6; GOG hud_idle_running shows 500000
+    // before the first founding).
+    if (const sim::Player* player = world_.players().find(local_player_)) {
+        next->has_local_player = true;
+        next->money = player->money;
+        next->costs_waived = player->free_build || world_.rules().free_build_cheat;
+    }
     if (developer_city_) {
-        if (const sim::Player* player = world_.players().find(local_player_)) {
-            next->money = player->money;
-            next->costs_waived = player->free_build || world_.rules().free_build_cheat;
-        }
         const auto& island = world_.islands()[developer_city_->island.v];
         if (island && developer_city_->city.v < island->cities.size() &&
             island->cities[developer_city_->city.v]) {
@@ -1035,6 +1237,7 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
     // the island count, and the test "a prepared copy made when full is unused" covers the
     // interleaving (round du, step 6).
     std::vector<SceneBuilding> full_list;
+    std::vector<SceneTileObject> full_tiles;
     bool may_collapse = false;
     {
         std::lock_guard lock(snap_mu_);
@@ -1042,6 +1245,7 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
     }
     if (may_collapse) {
         full_list = buildings_;
+        full_tiles = tile_objects_;
     }
     const bool pushed = batch != nullptr;
     // The outcomes are recorded before the snapshot that follows them is published, so a reader
@@ -1075,13 +1279,13 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
             }
         }
         observed->batch = pushed;
-        observed->deltas = batch ? batch->deltas.size() : 0;
+        observed->deltas = batch ? (batch->deltas.size() + batch->tile_deltas.size()) : 0;
         observed->published = std::chrono::steady_clock::now();
     }
     {
         std::lock_guard lock(snap_mu_);
         if (batch) {
-            mailbox_.push_prepared(std::move(batch), std::move(full_list));
+            mailbox_.push_prepared(std::move(batch), std::move(full_list), std::move(full_tiles));
             batches_waiting_.store(true);
         }
         snap_ = std::move(next);
@@ -1199,8 +1403,43 @@ void PlayRunner::fill_inspection(PlaySnapshot& next) {
     }
 }
 
+void PlayRunner::fill_build_probe(PlaySnapshot& next) {
+    std::optional<BuildProbe> probe;
+    {
+        const std::lock_guard lock(inspect_mu_);
+        probe = build_probe_;
+    }
+    next.build_probe.reset();
+    if (probe) {
+        next.build_probe =
+            BuildProbeAnswer{*probe, world_.check_build_record(probe->city, probe->record)};
+    }
+}
+
+void PlayRunner::fill_road_probe(PlaySnapshot& next) {
+    std::optional<RoadPathProbe> probe;
+    {
+        const std::lock_guard lock(inspect_mu_);
+        probe = road_probe_;
+    }
+    next.road_probe.reset();
+    if (probe) {
+        next.road_probe =
+            RoadPathProbeAnswer{*probe, world_.check_build_path(probe->city, probe->records),
+                                world_.shape_road_path(probe->city, probe->records)};
+    }
+}
+
+void PlayRunner::refresh_status_icons() {
+    std::vector<StatusIconView> now = collect_status_icons(world_, local_player_);
+    if (status_icons_ && *status_icons_ == now) {
+        return;
+    }
+    status_icons_ = std::make_shared<const std::vector<StatusIconView>>(std::move(now));
+}
+
 void PlayRunner::refresh_territory() {
-    TerritoryView now = collect_territory_view(world_);
+    TerritoryView now = collect_territory_view(world_, territory_.get());
     if (territory_ && territory_->same_content(now)) {
         return;
     }
@@ -1256,15 +1495,17 @@ MinimapOwnerRule minimap_owner_rule(const PlayLoad& load, const fs::path& file,
     return rule;
 }
 
-TerritoryView collect_territory_view(const sim::World& world) {
+TerritoryView collect_territory_view(const sim::World& world, const TerritoryView* previous) {
     TerritoryView out;
     out.neutral_owner = world.config().neutral_owner;
+    out.climate_mask = world.config().links.raw_climate_mask;
     for (const auto& island : world.islands()) {
         if (!island) {
             continue;
         }
         const sim::TileLayer& tiles = island->tiles;
         TerritoryIsland t;
+        t.index = island->index.v;
         t.x0 = tiles.x0();
         t.y0 = tiles.y0();
         t.w = tiles.width();
@@ -1286,6 +1527,44 @@ TerritoryView collect_territory_view(const sim::World& world) {
                 c.known_by.push_back(p.v);
             }
             t.cities.push_back(std::move(c));
+        }
+        // UI-STATUS-1 B: the status bar's fertility row (TerritoryIsland's comments).
+        t.climate = island->climate;
+        for (const sim::PlayerId p : island->players_present) {
+            t.discovered_by.push_back(p.v);
+        }
+        for (const TerritoryCity& c : t.cities) {
+            t.discovered_by.push_back(c.owner);
+        }
+        std::sort(t.discovered_by.begin(), t.discovered_by.end());
+        t.discovered_by.erase(std::unique(t.discovered_by.begin(), t.discovered_by.end()),
+                              t.discovered_by.end());
+        t.terrain_digest = island->terrain ? island->terrain->digest : 0;
+        if (previous != nullptr) {
+            for (const TerritoryIsland& p : previous->islands) {
+                if (p.index == t.index && p.x0 == t.x0 && p.y0 == t.y0 && p.w == t.w &&
+                    p.h == t.h && p.terrain_digest == t.terrain_digest) {
+                    t.land = p.land;
+                    break;
+                }
+            }
+        }
+        const bool reused = previous != nullptr && t.land != nullptr;
+        if (!reused) {
+            const sim::VertexGrid grid = sim::VertexGrid::of(*island);
+            if (grid.ok()) {
+                auto land =
+                    std::make_shared<std::vector<std::uint8_t>>(static_cast<std::size_t>(n));
+                for (std::uint32_t y = 0; y < t.h; ++y) {
+                    for (std::uint32_t x = 0; x < t.w; ++x) {
+                        // The vertex (x, y) of the tile, its north-west corner (island slot
+                        // +0x98, AnnoWelt 0x10084c20: row stride W + 1).
+                        const auto h = grid.at(std::int64_t{t.x0} + x, std::int64_t{t.y0} + y);
+                        (*land)[std::size_t{y} * t.w + x] = h && *h > 0 ? 1 : 0;
+                    }
+                }
+                t.land = std::move(land);
+            }
         }
         out.islands.push_back(std::move(t));
     }
@@ -1330,16 +1609,29 @@ void PlayRunner::answer_inspection_while_paused() {
         find_local_city(); // set_local_player before the first turn: the turn would look it up
     }
     std::optional<sim::TileXY> requested;
+    std::optional<BuildProbe> probe;
+    std::optional<RoadPathProbe> road_probe;
     {
         const std::lock_guard lock(inspect_mu_);
         requested = inspect_tile_;
+        probe = build_probe_;
+        road_probe = road_probe_;
     }
     const auto current = snapshot();
-    if (!current || current->inspected == requested) {
+    const auto answered = current && current->build_probe
+                              ? std::optional<BuildProbe>(current->build_probe->probe)
+                              : std::nullopt;
+    const auto road_answered = current && current->road_probe
+                                   ? std::optional<RoadPathProbe>(current->road_probe->probe)
+                                   : std::nullopt;
+    if (!current ||
+        (current->inspected == requested && answered == probe && road_answered == road_probe)) {
         return;
     }
     auto next = std::make_shared<PlaySnapshot>(*current);
     fill_inspection(*next);
+    fill_build_probe(*next); // UI-GHOST-1: the ghost's verdict while paused, too
+    fill_road_probe(*next);  // ROADS-3: road path probe while paused, too
     publish_snapshot(std::move(next));
 }
 

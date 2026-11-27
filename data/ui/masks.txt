@@ -14,7 +14,13 @@ mask baumat_wood_d pos 222 733 size 28 35 reason live-digits anchor bottom
 mask baumat_bricks_d pos 282 733 size 28 35 reason live-digits anchor bottom
 mask baumat_marble_d pos 342 733 size 28 35 reason live-digits anchor bottom
 mask einwohner_digits pos 439 733 size 108 35 reason live-digits anchor bottom
-mask category_column pos 779 300 size 29 400 reason viewbautab-clip anchor right
+# UI-STATUS-1 B: the fertility row's green bars (STATUSBAR_BALKEN, 5 x 29 at each slot's x + 25,
+# y + 0, AnnoFrame 0x100656b0 / 0x1006576c): the original draws them, the rebuild does not until
+# island property 11 has a source (OQ-702; data/ui/hud.txt rosh_<k>). Absent by design.
+mask balken_0 pos 572 735 size 5 29 reason fertility-bar-not-drawn anchor bottom
+mask balken_1 pos 612 735 size 5 29 reason fertility-bar-not-drawn anchor bottom
+mask balken_2 pos 652 735 size 5 29 reason fertility-bar-not-drawn anchor bottom
+mask balken_3 pos 692 735 size 5 29 reason fertility-bar-not-drawn anchor bottom
 mask nameplate pos 800 258 size 200 22 reason live-banner-text anchor right
 # UI-TABS-1 stage B: the balance pages' live figures (hud.txt player_row_* / city_row_*, the text
 # gadgets 195 x 15; docs/re/ui.md 5.5). The two pages share rows 0..6.

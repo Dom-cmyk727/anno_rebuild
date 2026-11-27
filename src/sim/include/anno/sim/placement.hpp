@@ -41,6 +41,12 @@ namespace anno::sim {
                                           const BuildingType& type, const PlacementRecord& rec,
                                           CityNo city);
 
+/// Per-tile territory rule for road drags (AnnoFrame 0x1004af90): every tile of the
+/// footprint must lie on `island`, have owner != `cfg.neutral_owner`, and belong to `city`.
+[[nodiscard]] Reject footprint_all_owned_rule(const Island& island, const SimConfig& cfg,
+                                              const BuildingType& type, const PlacementRecord& rec,
+                                              CityNo city);
+
 /// The decision and the authoritative item height of one record (docs/sim/ship-placement.md
 /// section 3). Read-only, total, O(footprint + vertex window).
 struct PlacementResult {
@@ -58,9 +64,16 @@ struct PlacementResult {
 /// now so that no hashed state moves with it (docs/sim/ship-placement.md section 3, "Registry
 /// facts").
 struct PlacementParams {
-    /// The smallest accepted terrain level of an ordinary land type: trunc(2 * 0.64f / 0.04f) = 32
-    /// (AnnoWelt 0x1007cbeb-0x1007cc03).
+    /// The smallest accepted terrain level of an ordinary land type and of a single-quad tile
+    /// object: ftol(1.28f / 0.04f) = 32 (AnnoWelt 0x1007cbeb-0x1007cc03; the 1.28f is the runtime
+    /// global 0x100e339c that the module initialisers 0x1007b340 (0.04f * 16.0f = 0.64f at
+    /// 0x100e2d88) and 0x1007b3a0 (0.64f + 0.64f) store; 0.04f is the constant 0x100c9c20).
     std::uint32_t min_level = 32;
+    /// The class bits (flag word & 0x7000) the island function's level test skips (AnnoWelt
+    /// 0x1007cbc2-0x1007cbd6: 0x4000 and 0x2000 accept at once, before the group test of
+    /// exempt_group). Read by the single-quad tile-object class (FERTILITY-1 1a); the ordinary
+    /// class has class bits 0, and the coast and road classes keep their own documented paths.
+    std::vector<std::uint32_t> level_exempt_classes = {0x4000, 0x2000};
     /// The vertex values of a flat window are multiples of this (the 0xf0 quantisation of
     /// AnnoGame 0x10008f90: `v & 0xf0`, whose equality with the maximum needs a multiple of 16).
     std::uint32_t level_quantum = 16;
@@ -112,6 +125,13 @@ struct PlacementParams {
 struct RoadParams {
     /// PRODTYPE of the land roads (STRASSE; types.cpp name table, Named{193}).
     std::uint32_t prodtype = 193;
+    /// PRODTYPE group of roads/ramps/piers (0xc1 = 193..224).
+    std::uint32_t road_group = 0xc1;
+    /// PRODTYPE of bridges (BRUECKE; types.cpp name table, Named{198}); bridges are in neither
+    /// surface family and always pay.
+    std::uint32_t bridge_prodtype = 198;
+    /// Flag word bit identifying road/ramp/bridge family pieces (0x100, AnnoFrame 0x1004b11b).
+    std::uint32_t road_family_flag = 0x100;
     /// The class bits (flag word & 0x7000) of a land road: the road class (accepted at once by the
     /// original) and the slope class (mx - lo > 0x10 refused; AnnoGame 0x10008f90).
     std::uint32_t road_class = 0x4000;
@@ -125,10 +145,26 @@ struct RoadParams {
 /// average (flag word & 3 != 1) and a non-empty footprint. Facts of the parsed type only.
 [[nodiscard]] bool is_land_road(const BuildingType& t, const RoadParams& params = {});
 
+/// Whether `t` belongs to a non-bridge road surface family (group `params.road_group`, not
+/// `params.bridge_prodtype`, and `params.road_family_flag` set).
+[[nodiscard]] bool is_road_family(const BuildingType& t, const RoadParams& params = {});
+
+/// Whether `a` and `b` are in the same non-bridge road surface family (free re-lay, AnnoFrame
+/// 0x1004b1ac-0x1004b278). Bridges are in neither family and always return false.
+[[nodiscard]] bool same_road_family(const BuildingType& a, const BuildingType& b,
+                                    const RoadParams& params = {});
+
+/// Whether placing `placed` over `existing` is a downgrade (e.g. dirt over cobblestone, AnnoFrame
+/// 0x1004b11b-0x1004b141): both are non-bridge road-family types and `placed` has strictly lower
+/// gold cost than `existing`.
+[[nodiscard]] bool is_road_downgrade(const BuildingType& existing, const BuildingType& placed,
+                                     const RoadParams& params = {});
+
 /// The placement rule of a normal Build record for the EFFECTIVE type (after any upgrade
 /// rewrite), docs/sim/ship-placement.md section 2 (R1-R6); oracle tools/placement_ref.py
 /// (engine_place). Order: the class gate (R3: ordinary land `(F & ~0x80) == 0x4`, coast
-/// `(F & 0x7017) == 0x2007`, anything else, bit 0x10 or a zero footprint is Unsupported, as is a
+/// `(F & 0x7017) == 0x2007`, the single-quad tile object `F & 3 == 1`, the land road and the
+/// mountain class; anything else, bit 0x10 or a zero footprint is Unsupported, as is a
 /// flag word above 16 bits and a rotation above 3), bounds in 64 bits (R1, OutOfIsland), the
 /// objects under the footprint through site::overlap_with_existing (R2: Occupied; an object id the
 /// registry does not know is Unsupported), then the vertex window of VertexGrid (R4 ordinary:
@@ -138,10 +174,19 @@ struct RoadParams {
 /// never an accept and never a height of 0. Building tiles carry the building's type id, so a
 /// building under the footprint is answered by R2 (or, when the types are replaceable, by the
 /// F32 check of create_building).
-/// A land road (is_land_road) is a tile object and goes the road way of docs/sim/road-placement.md
-/// section 3: occupancy with the extra refusal of an existing group-0xc1 piece that is no land road
-/// (R-A3), then the window result by the flag word's mode (0 max, 2 min, 3 window max of the cell
-/// minima), the slope test of the slope class, and the level floor `params.min_level` (R-A2).
+/// A single-quad tile object (flag word & 3 == 1 without bit 0x10: the 0x29 fields, trees and
+/// scenery; FERTILITY-1 1a, docs/sim/ship-placement.md section 2a) has its own branch: bounds and
+/// occupancy as above (the overlap row of type slot +0x6c: an existing object whose flag word has
+/// bit 0x20 shares the tile, every other existing object refuses for the shipped placed group
+/// 0xe1), then the height byte floor((V00 + V10 + V01 + V11) / 4) of the four vertices of the
+/// record's tile (AnnoGame 0x10008fa1-0x10008fd9; rotation turns the footprint, never the quad),
+/// accepted when its class bits are in params.level_exempt_classes or its group is
+/// params.exempt_group, else when the byte is at least params.min_level (AnnoWelt
+/// 0x1007cbc2-0x1007cc06). A land road (is_land_road) is a tile object and goes the road way of
+/// docs/sim/road-placement.md section 3: occupancy with the extra refusal of an existing group-0xc1
+/// piece that is no land road (R-A3), then the window result by the flag word's mode (0 max, 2 min,
+/// 3 window max of the cell minima), the slope test of the slope class, and the level floor
+/// `params.min_level` (R-A2).
 [[nodiscard]] PlacementResult placement_rule(const Island& island, const TypeRegistry& types,
                                              const BuildingType& effective,
                                              const PlacementRecord& rec,

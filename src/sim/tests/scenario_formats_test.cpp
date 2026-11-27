@@ -1268,6 +1268,7 @@ TEST_CASE("scenario warning kinds") {
         append(island_extra, block_record("FLUESSE", items, 8, 8));
         append(island_extra, chunk("BERGWERK2", Buf(8, 1))); // UndecodedDeposits
         append(island_extra, chunk("FUTURE", Buf(4, 0)));    // UnknownRecord
+        append(island_extra, chunk("ANBAU", Buf{'X', 0}));   // UnknownCropName
         Buf more;
         item(more, kHouse, 0, 0, 0, 14, 0); // BuildingItemWithoutEntry
         item(more, kMine, 0, 0, 0, 6, 6);   // a mine whose record overruns the buffer
@@ -2328,4 +2329,190 @@ TEST_CASE("SCRIPT1 normal scenario ANLTRG merges and research projection swaps s
     auto saved = sim::World::load(made.value().save(), types);
     REQUIRE(saved);
     CHECK(saved.value().state_hash() == hash);
+}
+
+namespace {
+
+/// The 13 crop names in the shipped order (docs/formats/insel.md "ANBAU"; KR\xC4UTER is the
+/// Windows-1252 byte the files hold).
+const std::vector<std::string> kCropNames = {
+    "GETREIDE",  "TABAKBAUM",   "GEWUERZBAUM", "FLACHSBAUM", "ZUCKERROHR",
+    "BAUMWOLLE", "WEINTRAUBEN", "KAKAOBAUM",   "HOPFENBAUM", "SEIDENRAUPE",
+    "FARBBAUM",  "KR\xC4UTER",  "KARTOFFEL"};
+
+/// An ANBAU payload: each name followed by one NUL.
+Buf anbau(const std::vector<std::string>& names) {
+    Buf b;
+    for (const std::string& n : names) {
+        b.insert(b.end(), n.begin(), n.end());
+        b.push_back(0);
+    }
+    return b;
+}
+
+/// What the original's loader stores in island property 11 for these ANBAU bytes, transcribed
+/// from AnnoWelt 0x10089871-0x10089965 independently of the sim: 0xF009 (0 at climate 0), then
+/// per name, at most 13, the bit of its index in kCropNames (wares 0x38..0x44); an unknown name
+/// sets nothing but counts.
+std::uint32_t original_word(const Buf& payload, std::uint8_t climate) {
+    std::uint32_t word = climate == 0 ? 0 : 0xF009;
+    std::size_t at = 0;
+    for (int count = 0; at < payload.size() && count <= 12; ++count) {
+        std::size_t end = at;
+        while (payload[end] != 0) {
+            ++end;
+        }
+        const std::string name(payload.begin() + static_cast<std::ptrdiff_t>(at),
+                               payload.begin() + static_cast<std::ptrdiff_t>(end));
+        for (std::size_t k = 0; k < kCropNames.size(); ++k) {
+            if (kCropNames[k] == name) {
+                word |= 1U << k;
+            }
+        }
+        at = end + 1;
+    }
+    return word;
+}
+
+/// The original's word rebuilt from the sim's set (bit b = goods 0x38 + b).
+std::uint32_t word_of(const std::vector<sim::GoodsId>& crops) {
+    std::uint32_t word = 0;
+    for (const sim::GoodsId g : crops) {
+        REQUIRE(g >= 0x38);
+        REQUIRE(g - 0x38 < 32);
+        word |= 1U << (g - 0x38);
+    }
+    return word;
+}
+
+/// A scenario whose one island (slot 7) has this climate and these extra records.
+Buf crop_scene(std::uint8_t climate, const Buf& extra) {
+    Buf kids = chunk("HEAD", head_bytes());
+    append(kids, insel5(40, 60, 8, 8, 7, climate, extra));
+    return scene("ANNO", kids);
+}
+
+/// The crops of that island in the loaded spec.
+std::optional<std::vector<sim::GoodsId>> crops_of(std::uint8_t climate, const Buf& extra) {
+    const sim::LoadedScenario s = load(crop_scene(climate, extra));
+    REQUIRE(s.spec.islands.size() == 1);
+    return s.spec.islands[0].crops;
+}
+
+std::vector<sim::GoodsId> ids(std::uint32_t first, std::uint32_t last) {
+    std::vector<sim::GoodsId> out;
+    for (std::uint32_t g = first; g <= last; ++g) {
+        out.push_back(g);
+    }
+    return out;
+}
+
+std::vector<sim::GoodsId> without(std::vector<sim::GoodsId> v, sim::GoodsId g) {
+    v.erase(std::find(v.begin(), v.end(), g));
+    return v;
+}
+
+} // namespace
+
+TEST_CASE("scenario island ANBAU: crop lists, the climate-0 base, no record, unknown names, cap") {
+    // A template island with every crop (847 of the 1,133 shipped islands): the base set
+    // (0x38, 0x3B, 0x44..0x47) and the 13 names (0x38..0x44): 0x38..0x47, word 0xFFFF.
+    const Buf all = anbau(kCropNames);
+    CHECK(crops_of(2, chunk("ANBAU", all)) == ids(0x38, 0x47));
+    CHECK(word_of(*crops_of(2, chunk("ANBAU", all))) == original_word(all, 2));
+    CHECK(original_word(all, 2) == 0xFFFFU);
+    // One of the six templates without KRAEUTER (0x43): bit 11 clear.
+    std::vector<std::string> no_herbs = kCropNames;
+    no_herbs.erase(no_herbs.begin() + 11);
+    const Buf herbs = anbau(no_herbs);
+    CHECK(crops_of(2, chunk("ANBAU", herbs)) == without(ids(0x38, 0x47), 0x43));
+    CHECK(word_of(*crops_of(2, chunk("ANBAU", herbs))) == original_word(herbs, 2));
+    CHECK(original_word(herbs, 2) == 0xF7FFU);
+    // Climate 0 (the 29 polar templates, all without KARTOFFEL): no base, only the names.
+    const Buf polar = anbau({"GETREIDE", "FLACHSBAUM"});
+    CHECK(crops_of(0, chunk("ANBAU", polar)) == std::vector<sim::GoodsId>{0x38, 0x3b});
+    CHECK(word_of(*crops_of(0, chunk("ANBAU", polar))) == original_word(polar, 0));
+    CHECK(crops_of(0, chunk("ANBAU", Buf{})) == std::vector<sim::GoodsId>{});
+    CHECK(crops_of(3, chunk("ANBAU", Buf{})) ==
+          std::vector<sim::GoodsId>{0x38, 0x3b, 0x44, 0x45, 0x46, 0x47});
+    // No ANBAU record: nullopt, the constructor value 0xFFFFFFFF (AnnoWelt 0x1008cbdf), which
+    // the world turns into every id of the mask, 0x38..0x57.
+    CHECK_FALSE(crops_of(2, {}).has_value());
+    {
+        auto w = sim::World::create(load(crop_scene(2, {})).spec, registry(), sim::SimConfig{});
+        REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+        CHECK(w.value().islands()[7]->crops == ids(0x38, 0x57));
+        CHECK(word_of(w.value().islands()[7]->crops) == 0xFFFFFFFFU);
+    }
+    // An unknown name and a goods name outside the ANBAU range (FISCH 0x47 is not among
+    // 0x38..0x44) set nothing, warn, and count toward the 13 (0x10089931 -> 0x10089943).
+    std::vector<std::string> odd = {"MAIS", "FISCH"};
+    odd.insert(odd.end(), kCropNames.begin(), kCropNames.end());
+    const Buf odd_bytes = anbau(odd);
+    const Buf file = crop_scene(2, chunk("ANBAU", odd_bytes));
+    const sim::LoadedScenario s = load(file);
+    CHECK(warnings_of(s, Kind::UnknownCropName) == 2);
+    CHECK(warnings_of(s, Kind::UnknownRecord) == 0); // ANBAU is a known record now
+    // 15 names, cap 13: KRAEUTER and KARTOFFEL are not read; KARTOFFEL (0x44) is in the base.
+    REQUIRE(s.spec.islands[0].crops.has_value());
+    CHECK(*s.spec.islands[0].crops == without(ids(0x38, 0x47), 0x43));
+    CHECK(word_of(*s.spec.islands[0].crops) == original_word(odd_bytes, 2));
+    // The cap is configuration.
+    sim::SimConfig wide;
+    wide.crops.anbau_name_cap = 15;
+    auto s15 = sim::load_scenario(file, *registry(), wide);
+    REQUIRE(s15.ok());
+    CHECK(*s15.value().spec.islands[0].crops == ids(0x38, 0x47));
+}
+
+TEST_CASE("scenario island ANBAU: malformed records are refused with the path (ADAPTATION)") {
+    // A second record: the original keeps the last one (it re-stores the base at
+    // 0x1008988f/0x10089897); refused here, as formats::insel::Island::crops does (OQ-708).
+    Buf twice = chunk("ANBAU", anbau({"GETREIDE"}));
+    append(twice, chunk("ANBAU", anbau({"FLACHSBAUM"})));
+    CHECK(refusal(crop_scene(2, twice))
+              .find(".ANBAU: twice (ADAPTATION: the original keeps the last record)") !=
+          std::string::npos);
+    const Buf open{'G', 'E', 'T'};
+    CHECK(refusal(crop_scene(2, chunk("ANBAU", open))).find(".ANBAU: name not terminated") !=
+          std::string::npos);
+    CHECK(refusal(crop_scene(2, chunk("ANBAU", Buf{0}))).find(".ANBAU: empty name") !=
+          std::string::npos);
+}
+
+TEST_CASE("scenario island ANBAU: world state, only the islands scope moves, save and load") {
+    const auto make = [&](const Buf& extra) {
+        auto w = sim::World::create(load(crop_scene(2, extra)).spec, registry(), sim::SimConfig{});
+        REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+        return std::move(w).value();
+    };
+    std::vector<std::string> no_herbs = kCropNames;
+    no_herbs.erase(no_herbs.begin() + 11);
+    sim::World all = make(chunk("ANBAU", anbau(kCropNames)));
+    sim::World herbs = make(chunk("ANBAU", anbau(no_herbs)));
+    sim::World none = make({});
+    CHECK(all.islands()[7]->crops == ids(0x38, 0x47));
+    CHECK(all.state_hash() != herbs.state_hash());
+    CHECK(all.state_hash() != none.state_hash());
+    sim::HashTree t_all, t_herbs;
+    static_cast<void>(all.state_hash(t_all, 0));
+    static_cast<void>(herbs.state_hash(t_herbs, 0));
+    for (std::size_t i = 0; i < t_all.root.children.size(); ++i) {
+        CHECK((t_all.root.children[i].hash != t_herbs.root.children[i].hash) ==
+              (t_all.root.children[i].name == "islands"));
+    }
+    for (sim::World* w : {&all, &herbs, &none}) {
+        const std::vector<std::uint8_t> bytes = w->save();
+        auto loaded = sim::World::load(bytes, registry());
+        REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+        CHECK(loaded.value().islands()[7]->crops == w->islands()[7]->crops);
+        CHECK(loaded.value().state_hash() == w->state_hash());
+        CHECK(loaded.value().save() == bytes);
+    }
+    // A set the config cannot hold is refused by the island validation.
+    sim::ScenarioSpec spec = load(crop_scene(2, {})).spec;
+    spec.islands[0].crops = std::vector<sim::GoodsId>{0x3b, 0x38};
+    CHECK_FALSE(sim::World::create(spec, registry(), sim::SimConfig{}).ok());
+    spec.islands[0].crops = std::vector<sim::GoodsId>{0x37};
+    CHECK_FALSE(sim::World::create(spec, registry(), sim::SimConfig{}).ok());
 }

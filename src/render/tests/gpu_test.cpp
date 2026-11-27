@@ -44,6 +44,32 @@ namespace gpu = anno::render::gpu;
 namespace render = anno::render;
 namespace fig = anno::formats::figuren;
 
+TEST_CASE("atlas_budget_bytes_before_sprite: the default, the override and the layer clamp "
+          "(RENDER-DIRECT-1b step 1, no adapter needed)") {
+    constexpr std::uint64_t kMiB = 1024ULL * 1024;
+    // 0 (unset) picks the adapter default: discrete 512 MiB, anything else 384 MiB
+    // (owner decision 2026-11-17, OQ-096/OQ-096b).
+    CHECK(gpu::atlas_budget_bytes_before_sprite(0, WGPUAdapterType_DiscreteGPU, 1000, kMiB) ==
+          512 * kMiB);
+    CHECK(gpu::atlas_budget_bytes_before_sprite(0, WGPUAdapterType_IntegratedGPU, 1000, kMiB) ==
+          384 * kMiB);
+    CHECK(gpu::atlas_budget_bytes_before_sprite(0, WGPUAdapterType_CPU, 1000, kMiB) == 384 * kMiB);
+    CHECK(gpu::atlas_budget_bytes_before_sprite(0, WGPUAdapterType_Unknown, 1000, kMiB) ==
+          384 * kMiB);
+    // An explicit, non-zero atlas_budget_mb wins over the adapter default either way.
+    CHECK(gpu::atlas_budget_bytes_before_sprite(7, WGPUAdapterType_DiscreteGPU, 1000, kMiB) ==
+          7 * kMiB);
+    CHECK(gpu::atlas_budget_bytes_before_sprite(7, WGPUAdapterType_IntegratedGPU, 1000, kMiB) ==
+          7 * kMiB);
+    // The result never exceeds what max_layers whole layers of layer_bytes each hold, whichever
+    // MiB value (default or explicit) was chosen.
+    CHECK(gpu::atlas_budget_bytes_before_sprite(0, WGPUAdapterType_DiscreteGPU, 10, kMiB) ==
+          10 * kMiB);
+    CHECK(gpu::atlas_budget_bytes_before_sprite(9999, WGPUAdapterType_DiscreteGPU, 3, kMiB) ==
+          3 * kMiB);
+    CHECK(gpu::atlas_budget_bytes_before_sprite(0, WGPUAdapterType_DiscreteGPU, 0, kMiB) == 0);
+}
+
 TEST_CASE("the shared WGSL shaders compile on the device") {
     auto c = gpu::headless_context();
     if (!c) {
@@ -222,8 +248,10 @@ TEST_CASE("the frame uniform matches struct Frame in gpu.wgsl") {
     f.river_flow = true;
     f.river_lambda = 2.059F;
     f.fluid_fade = 0.375F;
+    f.patch_origin = {12, -4};
+    f.patch_size = {64, 48};
     const auto b = gpu::frame_uniform_bytes(f);
-    REQUIRE(b.size() == 96);
+    REQUIRE(b.size() == 112);
     auto u32_at = [&](std::size_t o) {
         return std::uint32_t{b[o]} | std::uint32_t{b[o + 1]} << 8 | std::uint32_t{b[o + 2]} << 16 |
                std::uint32_t{b[o + 3]} << 24;
@@ -259,6 +287,10 @@ TEST_CASE("the frame uniform matches struct Frame in gpu.wgsl") {
     CHECK(f32_at(84) == 1.0F);
     CHECK(f32_at(88) == 2.059F);
     CHECK(f32_at(92) == 0.375F); // fluid_fade
+    CHECK(i32_at(96) == 12);     // patch_origin.x
+    CHECK(i32_at(100) == -4);    // patch_origin.y
+    CHECK(i32_at(104) == 64);    // patch_size.x
+    CHECK(i32_at(108) == 48);    // patch_size.y
     f.river_flow = false;
     CHECK(gpu::frame_uniform_bytes(f)[84 + 3] == 0);
     // A zero-sized view is sent as 1 × 1 (the shader divides by it).
@@ -1443,6 +1475,92 @@ TEST_CASE("the sea over submerged objects: GPU = CPU on a Kontor in the water (g
         }
         CHECK(g.errors() == 0);
     }
+}
+
+TEST_CASE("the sea over submerged objects, enhanced water: pier poles sink in too "
+          "(WATER-SUBMERGED-1, game files)") {
+    const auto dir = anno::test::game_dir();
+    auto ctx = device_or_skip();
+    if (!dir || !ctx) {
+        return;
+    }
+    // Same Kontor as the Original-water test above (S01_02_01, tile 421, 605, rotation 1, its
+    // piles towards the sea): Chunk::submerged does not depend on WaterStyle (it is the
+    // per-pixel depth test against the sea plane, depth.md §2.3), so the same pole pixels are
+    // marked submerged under enhanced water too. Before WATER-SUBMERGED-1, sea_submerged_fs
+    // discarded whenever frame.enhanced != 0u, so this pass never ran in enhanced water and the
+    // poles stayed opaque above the sea (object_in_water's column-foot heuristic misses them -
+    // docs/render/water_rca, owner report on ui_10.mp4). GpuLimits::submerged_over_objects
+    // (new) lets this test isolate exactly that pass's effect by disabling it, which reproduces
+    // the pre-fix picture without reverting any product code.
+    const Loaded loaded = load_scene(*dir, "S01_02_01.sze", "0100Kampagne01");
+    auto& scene = *loaded.scene;
+    scene.depth_test = true;
+    gpu::GpuLimits on, off;
+    on.uploads_per_frame = off.uploads_per_frame = SIZE_MAX;
+    off.submerged_over_objects = false;
+    auto a = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, on);
+    auto b = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, off);
+    REQUIRE(a);
+    REQUIRE(b);
+    constexpr int kW = 640, kH = 400;
+    const auto [cx0, cy0] = render::tile_top(421, 605, 0);
+    const render::Rect view{cx0 - kW / 2, cy0 - kH / 2, kW, kH};
+    render::FrameRenderer fa(4, false), fb(4, false);
+    const auto ta = a.value()->offscreen_target(kW, kH);
+    const auto tb = b.value()->offscreen_target(kW, kH);
+    a.value()->render(fa, scene, view, 0, 0, render::WaterStyle::Enhanced, ta.second.get());
+    b.value()->render(fb, scene, view, 0, 0, render::WaterStyle::Enhanced, tb.second.get());
+    const auto pa = a.value()->read_back(ta.first.get(), kW, kH);
+    const auto pb = b.value()->read_back(tb.first.get(), kW, kH);
+    REQUIRE(pa.size() == pb.size());
+    // The submerged mask for this view, built the same way the Original-water test above counts
+    // it (Chunk::submerged, row-major per chunk - frame.cpp's own chunk_index formula).
+    std::vector<std::uint8_t> mask(std::size_t{kW} * kH, 0);
+    std::size_t submerged_total = 0;
+    for (const auto& [cx, cy] : render::visible_chunks(view)) {
+        const render::Chunk* c = fa.chunk({0, cx, cy});
+        if (c == nullptr || c->submerged.empty()) {
+            continue;
+        }
+        for (int ly = 0; ly < render::kChunk; ++ly) {
+            for (int lx = 0; lx < render::kChunk; ++lx) {
+                if (c->submerged[std::size_t(ly) * render::kChunk + std::size_t(lx)] == 0) {
+                    continue;
+                }
+                const int x = cx * render::kChunk + lx;
+                const int y = cy * render::kChunk + ly;
+                if (x < view.x || x >= view.x + view.w || y < view.y || y >= view.y + view.h) {
+                    continue;
+                }
+                mask[std::size_t(y - view.y) * kW + std::size_t(x - view.x)] = 1;
+                ++submerged_total;
+            }
+        }
+    }
+    REQUIRE(submerged_total > 0);
+    std::size_t changed_in_mask = 0, changed_out_of_mask = 0;
+    for (std::size_t i = 0; i < mask.size(); ++i) {
+        const std::size_t p = i * 4;
+        const bool differs = pa[p] != pb[p] || pa[p + 1] != pb[p + 1] || pa[p + 2] != pb[p + 2];
+        if (mask[i] != 0) {
+            changed_in_mask += differs ? 1U : 0U;
+        } else {
+            changed_out_of_mask += differs ? 1U : 0U;
+        }
+    }
+    const double coverage = double(changed_in_mask) / double(submerged_total);
+    INFO("submerged " << submerged_total << ", changed-in-mask " << changed_in_mask
+                      << ", changed-out-of-mask " << changed_out_of_mask);
+    // The pier rectangle: at least 95% of the submerged pixels actually changed colour with the
+    // pass on vs off (not every one needs to, e.g. where the sea colour happens to coincide).
+    CHECK(coverage >= 0.95);
+    // Deck and upper poles unchanged: sea_submerged_fs discards on submerged_tex == 0, so a
+    // pixel outside the mask can never be touched by this pass, by construction - not just
+    // measured here.
+    CHECK(changed_out_of_mask == 0);
+    CHECK(a.value()->errors() == 0);
+    CHECK(b.value()->errors() == 0);
 }
 
 TEST_CASE("enhanced water meets objects standing in it (game files)") {
@@ -6394,4 +6512,88 @@ TEST_CASE("the GPU wave carry over a window switch matches the CPU reference") {
         CHECK(worst < 1e-5F); // measured: 7e-7 and 3e-8 (MSVC, RTX 4090)
     }
     CHECK(ctx->errors->load() == 0);
+}
+
+TEST_CASE("GPU ObjectsPatch suppression matches the CPU path (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const Loaded loaded = load_scene(*dir, "Single_24.sze");
+    const auto& scene = loaded.scene;
+    constexpr std::size_t kGroup = 1;
+    constexpr int kW = 1024, kH = 768;
+    const render::Rect view = digest_view(*scene, "Single_24.sze", kGroup, kW, kH);
+
+    // Find an island static object whose screen box lies well inside `view` and renders pixels.
+    std::optional<std::pair<std::size_t, std::size_t>> target;
+    for (std::size_t k = 0; k < scene->islands.size() && !target; ++k) {
+        const auto& list = scene->island_lists(k).other;
+        for (std::size_t idx = 0; idx < list.size(); ++idx) {
+            const auto flags_entry = scene->anlagen.entry(list[idx].first.anlage);
+            if (flags_entry == nullptr || flags_entry->gfx.empty()) {
+                continue;
+            }
+            const auto r = scene->object_bounds(k, list[idx], kGroup);
+            if (!r || r->w < 12 || r->h < 12) {
+                continue;
+            }
+            const auto clipped = r->intersect(view);
+            if (!clipped || clipped->w != r->w || clipped->h != r->h) {
+                continue;
+            }
+            target = std::pair{k, idx};
+            break;
+        }
+    }
+    REQUIRE(target.has_value());
+    render::ObjectsExclusion excl{target->first, {target->second}};
+    auto patch_val = render::build_objects_patch(*scene, kGroup, excl, false, true);
+    REQUIRE(patch_val.has_value());
+    patch_val->serial = 1;
+    const auto patch = std::make_shared<const render::ObjectsPatch>(std::move(*patch_val));
+
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = SIZE_MAX;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    const auto rt = g.offscreen_target(kW, kH);
+
+    render::FrameRenderer cpu(4), on_gpu(4, false);
+    std::vector<std::uint32_t> cpu_base(std::size_t{kW} * kH);
+    cpu.render(*scene, view, kGroup, 0, render::WaterStyle::Original, cpu_base.data());
+    static_cast<void>(
+        g.render(on_gpu, *scene, view, kGroup, 0, render::WaterStyle::Original, rt.second.get()));
+    const auto gpu_base = g.read_back(rt.first.get(), kW, kH);
+    CHECK(difference(cpu_base, gpu_base).first <= 1);
+
+    // Activate ephemeral suppression patch: both CPU and GPU must hide the object identically.
+    cpu.set_objects_patch(patch);
+    on_gpu.set_objects_patch(patch);
+    std::vector<std::uint32_t> cpu_sup(std::size_t{kW} * kH);
+    cpu.render(*scene, view, kGroup, 0, render::WaterStyle::Original, cpu_sup.data());
+    static_cast<void>(
+        g.render(on_gpu, *scene, view, kGroup, 0, render::WaterStyle::Original, rt.second.get()));
+    const auto gpu_sup = g.read_back(rt.first.get(), kW, kH);
+    CHECK(difference(cpu_sup, gpu_sup).first <= 1);
+    CHECK(cpu_sup != cpu_base);
+    CHECK(gpu_sup != gpu_base);
+
+    // Clear suppression patch: both CPU and GPU must restore exact baseline pixels.
+    cpu.set_objects_patch({});
+    on_gpu.set_objects_patch({});
+    std::vector<std::uint32_t> cpu_restored(std::size_t{kW} * kH);
+    cpu.render(*scene, view, kGroup, 0, render::WaterStyle::Original, cpu_restored.data());
+    static_cast<void>(
+        g.render(on_gpu, *scene, view, kGroup, 0, render::WaterStyle::Original, rt.second.get()));
+    const auto gpu_restored = g.read_back(rt.first.get(), kW, kH);
+    CHECK(cpu_restored == cpu_base);
+    CHECK(gpu_restored == gpu_base);
+    CHECK(g.errors() == 0);
 }

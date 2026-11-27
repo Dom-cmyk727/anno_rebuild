@@ -2421,3 +2421,55 @@ viewer's chunks do not need, and the per-pixel test was not measured).
 NOT measured (the owner was using the PC for a game, 2026-11-04): the chunk build per stage (`bench_frame
 --chunk-profile ... --depth on|off`), the GPU frame time of the extra pass (`bench_frame --renderer gpu --depth
 on|off`), the atlas growth. To be measured on an idle host before the package is accepted for performance.
+
+## RENDER-DIRECT-1c — uploading the resident atlas pages (2026-11-17)
+
+Step 4 of the packet: VRAM allocated and upload/readback wall time for `upload_atlas_pages`
+(`atlas_upload_test.cpp`, `measure_adapter`), `msvc` Release, this PC idle (no WSL compiler, no other
+Windows build/test process), both of this PC's real adapters by name. Upload time is fenced (a queue
+`wait_idle` before the clock stops), so it is the device's own completion, not the CPU call returning;
+readback times every layer/level back and compares it (the correctness proof, timed here rather than only
+proven exact - see `docs/render/atlas.md` §11).
+
+`lan5.txt` (static+water; `resident_atlas_groups` decides how many of the scene's 3 zoom groups are resident):
+
+| Adapter | Groups resident | Total layers | VRAM | Upload (fenced) | Readback |
+|---|---|---|---|---|---|
+| RTX 4090 (discrete, every group) | 0, 1, 2 | 10 | 200.0 MiB | 22.74 ms | 117.02 ms |
+| Radeon iGPU (the adjacent pair) | 0, 1 | 9 | 180.0 MiB | 78.18 ms | 70.12 ms |
+
+`02_1024_easy_128.sze`'s worst adjacent pair (groups 0+1, each group's own smaller page set measured
+separately - not the larger combined 340 MiB set §11's readback proof uses):
+
+| Adapter | Total layers | VRAM | Upload (fenced) | Readback |
+|---|---|---|---|---|
+| RTX 4090 | 2 | 40.0 MiB | 4.62 ms | 11.65 ms |
+| Radeon iGPU | 2 | 40.0 MiB | 2.76 ms | 16.75 ms |
+
+Per-layer VRAM (20,971,520 B at `page_size = 2048`) matches `atlas_pages_bytes`'s own formula exactly, so
+no separate device-vs-formula discrepancy exists to track. The Radeon's upload is slower than the 4090's on
+the largest group (74.77 ms vs. 16.63 ms for 7 layers) - expected for an integrated part without the 4090's
+discrete memory bandwidth; its readback is faster on that same group (56.52 ms vs. 98.96 ms), plausibly
+because `mapAsync` over its unified-memory heap skips the 4090's discrete-VRAM copy-back. Neither adapter's
+`maxTextureArrayLayers`/`maxTextureDimension2D` binds at these layer counts.
+### 2026-11-19 — WATER-SUBMERGED-1: sea_submerged_fs in Enhanced water too, Windows 11, Ryzen 9 9800X3D, RTX 4090 (Vulkan), MSVC Release
+
+Change: the per-pixel submerged-object pass (`sea_submerged_fs`, docs/render/depth.md §2.3) now also runs in
+Enhanced water, not just Original - one extra full-chunk draw call (`sea_over_pipe`) per frame when the chunk has
+a submerged mask, same as Original already pays.
+
+**Memory: no increase.** `Chunk::submerged` is built whenever a chunk has depth-tested objects
+(`ChunkDraws::depth_test`, `Scene::depth_test`, default on), independent of `WaterStyle` -
+confirmed in code (`src/app/src/main.cpp:417`, `src/render/src/scene.cpp`, `src/render/src/gpu.cpp:1364`): the mask
+this pass reads was already being built and uploaded in Enhanced water before this change, only never drawn with.
+
+**GPU time: not reliably measured on this host.** `GpuFrame::pass_gpu_ms()`'s GPU-timestamp path returned no
+reading in the `gpu_test.cpp` harness (headless context, no window surface) even with `GpuLimits::gpu_timing` on -
+not chased further (NOT_RUN: a `bench_frame --renderer gpu` run with `--check`/timestamps on an idle host, as the
+2026-11-04 depth-test entry above already asks for and has not had either). A CPU-side wall-clock measurement
+around `GpuFrame::render()` (30 frames, Kontor view, `GpuLimits::submerged_over_objects` on vs off) gave 0.16 ms
+vs 0.75 ms - backwards and within GPU-submission noise (this call does not block on the GPU), so not reported as
+a real number. Cost class: one more full-screen chunk draw with a simple fragment shader (same pipeline Original
+water already runs every frame for this pass), not a new texture or a new compute pass - expect it to cost about
+what Original's existing `sea_over_pipe` draw already costs there, not measured as a separate line before this
+change either.

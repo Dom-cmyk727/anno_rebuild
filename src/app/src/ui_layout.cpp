@@ -259,6 +259,14 @@ const ConstructionCategory* ConstructionLayout::category(const std::string& name
     return nullptr;
 }
 
+const UiElement* construction_category_tab(const HudLayout& hud,
+                                           const ConstructionCategory& category) {
+    if (category.index < 1)
+        return nullptr;
+    const UiElement* e = hud.element("viewbautab_" + std::to_string(category.index - 1));
+    return e != nullptr && e->has_pos && e->has_size ? e : nullptr;
+}
+
 const UiMask* MaskLayout::mask(const std::string& name) const {
     for (const auto& m : masks) {
         if (m.name == name)
@@ -420,6 +428,13 @@ formats::Result<HudLayout, std::string> parse_hud_layout(const std::string& text
                     if (!v || *v == 0)
                         return fail(line_no, "turn: not a non-zero integer");
                     e.turn = v;
+                } else if (key == "figure") {
+                    if (!tok.more())
+                        return fail(line_no, "figure: missing value");
+                    const auto v = to_int(tok.take());
+                    if (!v || *v < 0 || *v > 0xFFFF)
+                        return fail(line_no, "figure: not a FigurenHeader id (0..65535)");
+                    e.figure = v;
                 } else if (key == "view" || key == "body") {
                     if (!tok.more())
                         return fail(line_no, key + ": missing value");

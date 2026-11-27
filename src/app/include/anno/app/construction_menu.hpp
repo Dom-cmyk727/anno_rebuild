@@ -74,6 +74,27 @@ struct ConstructionCellInfo {
     std::optional<std::uint32_t> upkeep;
 };
 
+/// UI-CATNAV-1: which panel the construction menu shows. `category` is the open category ("" with
+/// the menu closed); `placement_open` is the info/placement panel (picture, costs, rotate arrows)
+/// showing instead of the category's grid. Whether a type is armed is the developer tool's, not
+/// this state's: the panel and the armed type are two things (docs/BUILDINGSOBJECTS.md B 6
+/// "Cancel-X").
+struct ConstructionPanelState {
+    std::string category;
+    bool placement_open = false;
+};
+
+/// UI-CATNAV-1: the panel state after a click on a category tab (SwitchCategory). The tab shows
+/// that category's grid, the info panel goes away, and the armed type is **kept** (the caller
+/// disarms nothing and sends no Cancel): View.dll 0x1002bf90, the handler of the tab strip, only
+/// swaps which gadget group the panel shows and stores the index at +0x5f0; it calls no cursor
+/// (AnnoFrame) code and no cancel message (read, GOG). The HE frames ui_10 10:03-10:13 show the
+/// building still armed with the road grid shown (HE-observed). A click on the tab already open
+/// takes the same path (the handler compares nothing with +0x5f0, read); HE was not captured
+/// doing it (OQ-774), so the rebuild shows that grid too.
+[[nodiscard]] ConstructionPanelState after_category_click(const ConstructionPanelState& state,
+                                                          const std::string& category);
+
 /// UI-INFO-2: what a Turn click sends to the developer tool: `turn` quarter turns as that many
 /// Rotate (+1, a positive step) or RotateBack (-1) inputs - the inputs the keys `,`/T and `.`
 /// send, so an arrow and a key turn the one rotation DevInput keeps. Empty for 0.
@@ -92,9 +113,9 @@ class ConstructionMenu {
     [[nodiscard]] const HudLayout& hud() const { return *hud_; }
     [[nodiscard]] const ConstructionLayout& construction() const { return *construction_; }
 
-    /// The category-column tab at (`px`,`py`), or nullopt outside every tab's band. A tab's band
-    /// is its `y` field +/- half the column gadget's 46 px height (docs/re/ui.md section 2.4:
-    /// "category_column (779, click_y-23) 42 x 46" - `y` is that rectangle's vertical centre).
+    /// The category-column tab at (`px`,`py`), or nullopt outside every tab. A tab is its
+    /// category's own gadget rectangle, hud.txt `viewbautab_<index - 1>` (UI-BUILDCAT-1,
+    /// construction_category_tab; docs/re/ui.md section 2.4: x 762, y 303 + 46k, 42 x 46).
     [[nodiscard]] std::optional<std::string> category_at(double px, double py) const;
 
     /// The grid cell at (`px`,`py`) of the construction grid (construction.txt's own `grid`

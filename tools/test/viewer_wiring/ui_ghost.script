@@ -1,0 +1,49 @@
+# UI-GHOST-1: the placement ghost's four states through the real window, from the sim's own verdict
+# (World::check_build_record through PlayRunner::request_build_probe), on the lan5 developer island.
+# Run with ANNO_DEV_GOODS_TONS=3: the pioneer house 501 (cost wood 3 t, data/ui/construction.txt
+# public (0,0)) is affordable exactly once. Tiles: (1140, 516) and (1156, 516) are the free land the
+# other construction scripts build on; (1148, 536) is the inlet south of them (island heights
+# below 16 under the whole 4 x 4 footprint 1146..1149 x 534..537, N_256X256_0002_2B.SCP).
+# (950, 600) is the build panel's chrome at 1024 x 768. The screenshots feed ghost_pixel_check.py.
+resize 1024 768
+wait frames 5
+look 1148 522
+key b
+wait frames 5
+click_px 833 330
+wait frames 5
+expect title build 501
+# valid: free own land, the stock pays: the building and the yellow radius outline
+hover-land 1140 516
+wait fact tool.ghost == valid
+wait frames 3
+expect fact tool.ghost.pixels > 0
+screenshot ghost_valid
+# refused: the inlet; the yellow footprint outline only
+hover-land 1148 536
+wait fact tool.ghost == refused
+wait frames 3
+expect fact tool.ghost.pixels > 0
+screenshot ghost_refused
+# hidden: the pointer on the panel's chrome hides the ghost and its outline (HE-observed, OQ-757)
+hover_px 950 600
+wait fact tool.ghost == hidden
+wait frames 3
+expect fact tool.ghost.pixels == 0
+screenshot ghost_hidden
+# the one affordable house is built: the stock is empty afterwards (wood 0)
+click 1156 516
+wait outcome
+expect outcome Applied
+# unaffordable: the same free tile as before now blinks; the phase flips both ways
+hover-land 1140 516
+wait fact tool.ghost == unaffordable
+wait fact tool.ghost.phase == 1
+expect fact tool.ghost == unaffordable
+wait fact tool.ghost.phase == 0
+expect fact tool.ghost == unaffordable
+expect fact tool.ghost.pixels > 0
+# the refused site stays refused with an empty stock (the site test comes first)
+hover-land 1148 536
+wait fact tool.ghost == refused
+quit

@@ -684,6 +684,7 @@ TEST_CASE("tiles scope byte layout and raw hash") {
     is.lock = 3;
     is.city_cursor = 5;
     is.kontor_counter = 0x01020304U;
+    is.crops = {0x38, 0x3b, 0x44};
     is.next_serial = 9;
     is.sweep = {0x1111, 1, 2, 3, 4};
     is.event300_stamp = 0x2222;
@@ -702,6 +703,10 @@ TEST_CASE("tiles scope byte layout and raw hash") {
     want.i32(5);           // city_cursor (stream 119)
     want.u32(0x01020304U); // kontor_counter (stream 119)
     want.u64(0);           // players_present (stream 120)
+    want.u64(3);           // crops (islands base 2): count + u32 goods ids
+    want.u32(0x38);
+    want.u32(0x3b);
+    want.u32(0x44);
     want.u32(9);
     want.u64(0); // no terrain
     want.u16(0x1111);

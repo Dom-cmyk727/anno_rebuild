@@ -1,0 +1,27 @@
+# UI-HARVEST-ICON-1 B: the status icon over a forester with nothing to harvest (docs/re/ui.md 11).
+# A forester (801, a PLANTAGE farm whose input BAUM is a crop) built on the lan5 developer island
+# where no mature tree stands in its 11 x 11 work square: its workers bring nothing back, the raw
+# stock stays 0, and after the farm's 60 000-tick "missing input" interval (120 game seconds) the
+# sim sets icon bit 1. The window must then carry and draw icon 1 (KeinRohstoff, figure 1570) over
+# it. Launch: --play data/maps/lan5.txt --speed 200 (the CMake case adds it).
+resize 1024 768
+wait frames 5
+look 1140 516
+wait frames 5
+key b
+wait frames 3
+select 801
+rotate 0
+expect title build 801
+click 1156 516
+wait outcome
+expect outcome Applied
+expect fact inspection.type == 801
+expect fact inspection.kind == Farm
+# Before the interval has passed: no icon.
+expect fact inspection.status_icon == none
+wait fact inspection.status_icon == 1 within 200000
+expect fact inspection.raw_88 == 0
+expect fact status_icons.count >= 1
+wait fact status_icons.drawn >= 1 within 10000
+quit

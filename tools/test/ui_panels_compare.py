@@ -17,6 +17,14 @@ Masked out: the live names and figures this round does not draw
 measured on its shot as the area where the original prints a name or a number. A negative
 control compares the player panel's elements against the main menu's shot and must fail.
 
+UI-BUILDCAT-1: the construction menu's category column too. For each of the eight categories,
+`anno_ui_mock --live 1024x768 --screen construction_<category>` is compared with the GOG shot
+`r2_construction_<category>` over every category tab's rectangle (hud.txt `viewbautab_<k>`, the
+open category's tab in its selected frame), each tab within ELEMENT_DEFAULT. Masked out: the
+hover tooltip the original prints over the clicked tab (the 17 rows above construction.txt's
+click y, measured on all eight shots: rows y-23..y-8). The column's own control compares the
+public menu's tabs with the farms shot (two tabs in the other frame) and must fail.
+
 Reads ANNO1503_GAME_DIR and ANNO_UI_ORACLE_SHOTS (the GOG shots, never in git); skips (77)
 without them or without Pillow. Exit: 0 pass, 1 fail, 2 bad arguments, 77 skipped.
 """
@@ -152,6 +160,71 @@ def main() -> int:
             print(f"control: player panel vs r2_options: {frac:.4f} bad (must exceed {BAD_FRACTION})")
             if frac <= BAD_FRACTION:
                 failures.append("the control did not fail")
+        # UI-BUILDCAT-1: the category column on the eight construction shots.
+        con = ui_layout.parse_construction(str(HERE / "data" / "ui" / "construction.txt"))
+        tabs = [el for el in hud["elements"]
+                if el["name"].startswith("viewbautab_") and el.get("pos") and el.get("size")]
+        if len(tabs) != len(con["categories"]):
+            failures.append(f"column: {len(tabs)} viewbautab elements for "
+                            f"{len(con['categories'])} categories")
+
+        def column(ours, shot, tooltip_y):
+            o, s = ours.load(), shot.load()
+            per = {}
+            for el in tabs:
+                (x0, y0), (w, h) = el["pos"], el["size"]
+                checked = bad = 0
+                for y in range(y0, y0 + h):
+                    if tooltip_y - 24 <= y < tooltip_y - 7:
+                        continue  # the hover tooltip over the clicked tab
+                    for x in range(x0, x0 + w):
+                        if o[x, y] == (0, 0, 0):
+                            continue
+                        a = ui_layout.rgb565_shown(o[x, y])
+                        b = s[x, y]
+                        checked += 1
+                        if max(abs(a[c] - b[c]) for c in range(3)) > CHANNEL:
+                            bad += 1
+                per[el["name"]] = (checked, bad)
+            return per
+
+        column_frames = {}
+        for cname, crec in con["categories"].items():
+            out = Path(td) / f"construction_{cname}.png"
+            cmd = [str(mock), "--layout", str(HERE / "data" / "ui"), "--game-dir", game,
+                   "--screen", f"construction_{cname}", "--out", str(out), "--live", "1024x768"]
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            if r.returncode != 0:
+                failures.append(f"column {cname}: anno_ui_mock exit {r.returncode}: "
+                                f"{r.stderr.strip()}")
+                continue
+            shot_path = Path(shots) / f"r2_construction_{cname}.png"
+            if not shot_path.is_file():
+                failures.append(f"column {cname}: {shot_path} is missing")
+                continue
+            ours = Image.open(out).convert("RGB")
+            column_frames[cname] = ours
+            shot = Image.open(shot_path).convert("RGB")
+            per = column(ours, shot, int(crec["y"]))
+            checked = sum(c for c, _ in per.values())
+            bad = sum(b for _, b in per.values())
+            worst = max((b / c if c else 1.0) for c, b in per.values()) if per else 1.0
+            ok = bool(per) and worst <= ELEMENT_DEFAULT
+            print(f"column {cname} vs r2_construction_{cname}: {len(per)} tabs, {checked} px, "
+                  f"{bad} bad, worst tab {worst:.4f} (bound {ELEMENT_DEFAULT}) -> "
+                  f"{'PASS' if ok else 'FAIL'}")
+            if not ok:
+                for name, (c, b) in per.items():
+                    if c == 0 or b / c > ELEMENT_DEFAULT:
+                        failures.append(f"column {cname}/{name}: {b} of {c} bad")
+        if "public" in column_frames and "farms" in con["categories"]:
+            shot = Image.open(Path(shots) / "r2_construction_farms.png").convert("RGB")
+            per = column(column_frames["public"], shot, int(con["categories"]["farms"]["y"]))
+            worst = max((b / c if c else 1.0) for c, b in per.values()) if per else 0.0
+            print(f"control: public column vs r2_construction_farms: worst tab {worst:.4f} "
+                  f"(must exceed {ELEMENT_DEFAULT})")
+            if worst <= ELEMENT_DEFAULT:
+                failures.append("the column control did not fail")
     for f in failures:
         print("FAIL:", f)
     return 1 if failures else 0

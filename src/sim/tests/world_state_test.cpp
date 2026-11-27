@@ -642,12 +642,19 @@ TEST_CASE("section versions: all ten native sections refuse another base version
     CHECK(loaded.value().state_hash() == world.state_hash());
     const auto ranges = section_ranges(good);
     REQUIRE(sim::kSectionVersions.size() == section_names.size());
+    // Base versions: header 2 and islands 2 since ISLAND-CROPS-1 1b (SimConfig::crops,
+    // Island::crops), every other section 1 (docs/sim/state.md §9.7). Literal on purpose.
+    constexpr std::array<std::uint32_t, 10> expected{2, 1, 1, 1, 1, 2, 1, 1, 1, 1};
     for (std::size_t i = 0; i < section_names.size(); ++i) {
         INFO(section_names[i]);
         CHECK(sim::kSectionVersions[i].name == section_names[i]);
-        CHECK(sim::kSectionVersions[i].version == 1);
-        REQUIRE(island_test::get32(good, ranges[i].begin) == 1);
-        for (const std::uint32_t version : {0u, 2u}) {
+        CHECK(sim::kSectionVersions[i].version == expected[i]);
+        REQUIRE(island_test::get32(good, ranges[i].begin) == expected[i]);
+        std::vector<std::uint32_t> others{0u, expected[i] + 1};
+        if (expected[i] > 1) {
+            others.push_back(expected[i] - 1); // the previous base is refused, never read
+        }
+        for (const std::uint32_t version : others) {
             auto bad = good;
             island_test::put32(bad, ranges[i].begin, version);
             island_test::reseal(bad);
@@ -655,7 +662,8 @@ TEST_CASE("section versions: all ten native sections refuse another base version
             REQUIRE_FALSE(result.ok());
             CHECK(contains(result.error(), "section " + std::string(section_names[i]) +
                                                ": base version " + std::to_string(version) +
-                                               " is not supported (this build reads 1)"));
+                                               " is not supported (this build reads " +
+                                               std::to_string(expected[i]) + ")"));
             CHECK_FALSE(contains(result.error(), "checksum"));
         }
     }
@@ -671,8 +679,9 @@ TEST_CASE("section extensions: all ten native sections refuse one unknown tag") 
         const auto range = ranges[i];
         for (std::size_t k = range.end - 8; k < range.end; ++k)
             REQUIRE(good[k] == 0); // the actual empty extension count
-        // Header tag 1 is registered as fisher_rules; tag 2 remains unknown in every section.
-        for (const std::uint16_t tag : {std::uint16_t{0}, std::uint16_t{2}, std::uint16_t{65535}}) {
+        // Header tags 1 (fisher_rules) and 2 (road_rules) are registered; tag 3 remains unknown in
+        // every section.
+        for (const std::uint16_t tag : {std::uint16_t{0}, std::uint16_t{3}, std::uint16_t{65535}}) {
             auto bad = good;
             bad[range.end - 8] = 1; // count one
             const std::array<std::uint8_t, 9> entry{static_cast<std::uint8_t>(tag),

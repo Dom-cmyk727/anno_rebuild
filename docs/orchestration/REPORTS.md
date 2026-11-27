@@ -17576,8 +17576,9 @@ UI lane, 2026-11-27. Branch `task/ROADS-2` on cand12 `c5af390c`; draft `docs/orc
   laying beside an existing road; cobblestone beside a ramp) and the heavy corpus case (C++ = digest = oracle), plus the
   ctests `road_shape_reference_selftest` and `road_shape_corpus_reference_agrees`.
 - **Gates (this PC):** msvc build clean; `run_selected` over road_shape, road and placement: 98 selected, 98 executed,
-  0 failed, 0 skipped (the corpus case among them: "38635 of 40939 shaped tiles agree"). WSL: see the push note. The gate's
-  name check refused one test name with a semicolon first; renamed.
+  0 failed, 0 skipped (the corpus case among them: "38635 of 40939 shaped tiles agree"), rerun on the final head.
+  WSL GCC 13 / Clang 18 clean (444 + 97 files) after one fix (an `int` added to a `uint64_t` counter in the test,
+  `-Wsign-conversion`). The gate's name check refused one test name with a semicolon first; renamed.
 - **NOT_RUN:** a GOG capture of a freshly laid road end (pre-authorized; it would confirm the end cap visually); macOS.
 - **Decisions:** the table comes from the binary, not tuned to the corpus (ORCH III's rule); the neighbour order and the
   straight variant are named as OQ-900/901 rather than guessed silently.

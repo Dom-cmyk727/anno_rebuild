@@ -22,7 +22,14 @@ numbers 904-906.
   exists: `ui_mock.cpp` `text_box`, `hud.txt` elements with `align centre` and method `glyph-match`
   (`tools/ui_layout.py info-compare`).
 
-## Stage A — read (RE, about 1-1.5 h, docs only)
+## Stage A — read (RE, docs only) — DONE 2026-11-27
+
+Result (`docs/re/ui.md` 2.4, row "Banner text"): the text is entry *tab index* of `TOOLTIP:BAUMENU_EX`, set only by
+the tab handler `0x1002bf90` (on a tab click and from one panel message, OQ-904); arming a building or the road leaves
+it. GOG lines: Public buildings, Squares, Streets, Farms, Plantations, Workshops, Coastal buildings, Pits, Mines,
+Military installations, Ornamentals. Font and baseline: OQ-905 (B measures them). OQ-906 stays free.
+
+The plan as approved:
 
 1. Who writes property `0x1c4` of this gadget, and from which string list:
    - the tab handler `0x1002bf90` stores the index at `[this+0x5f0]`;
@@ -49,8 +56,9 @@ capture of the public grid if the existing `r2_*` shots do not settle the string
   - drawn through the existing `text_box` path, so the CPU and GPU-overlay paths share it.
 - **Tests:**
   - a unit case on the string choice per panel state;
-  - `tools/ui_layout.py` compare on `r2_construction_public` with the plank mask removed: glyph-match 0 differing
-    pixels, as UI-INFO-1;
+  - glyph compare against the **GOG** shot `r2_construction_public` (the oracle's shot set; plank mask removed):
+    0 differing pixels, as UI-INFO-1. HE `c7` is evidence for the behaviour only (German text, scaled window). If the
+    GOG shot is not at hand, one GOG Wine capture of the public grid after "PC free";
   - a wiring script from the default start view (B, each of the eight tabs, a fact `ui.plank_text`);
   - a failure proof (wrong category index → the compare fails).
 - **Owner test:**

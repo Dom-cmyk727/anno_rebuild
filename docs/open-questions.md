@@ -4043,3 +4043,18 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **What we know:** Nothing read. ROADS-2b counts only the drag's own records (`apply.cpp`, kind-9 loop), an inference (L): the cap limits dragged tiles, and the neighbours are not dragged.
 - **How to resolve:** Read where the kind-9 apply (`0x100589a0`) or the road cursor (`0x1004b290`) enforces the 40-tile limit, relative to the reshaper call `0x1007cc40`; or drag a 40-tile road beside an existing one in the original and look at the neighbour.
 
+## OQ-904: Which panel message re-sets the banner text from the selected tab? (UI-PLANK-1 A, 2026-11-27; OPEN)
+- **Question:** `View.dll` `0x1002ad8e` (a case of the construction panel's message switch, table `0x1002af14`/`0x1002af2c`) calls `0x1001cbe0`, `0x1002b0a0` and the tab handler `0x1002bf90`, which re-sets the plank text from the selected tab. Which message is it (the panel opening, a refresh), and which tab is selected when the panel first opens?
+- **What we know:** the handler reads the tab group's property `0x1b3`; `[this+0x5f0]` is set to -1 at `0x1002bf71`'s neighbourhood (a reset). The text never shows the initial `"00"` in any capture (L).
+- **How to resolve:** map the switch index at `0x1002ad72` (`cmp ebp, 0xf`) to its message numbers, or open the construction panel in the GOG Wine runner and read the plank before any tab click.
+
+## OQ-905: Which font draws the banner text? (UI-PLANK-1 A, 2026-11-27; OPEN)
+- **Question:** the text gadget sets property `0x1c6` = 2 like the info panel's centred names, which glyph-match `MainSmall.zei` (GOG `MainSmall`, `MainMedium` and `HelpNormal.zei` are byte-identical). Is the plank's font the same, and where is the text's baseline inside the 39-px gadget on the 48-px plank?
+- **What we know:** HE `he_01` `c7` shows the plank text at about the size of the name box below it (not measured; HE is scaled).
+- **How to resolve:** glyph-match the GOG `r2_construction_public` shot (the oracle's mask (800, 258) 200 × 22) with `MainSmall.zei` by the `render_text` rule, as UI-INFO-1 did (stage B).
+
+## OQ-907: Is the range darkening per pixel or per object anchor? (UI-RANGE-1 B2 note, 2026-11-27; OPEN)
+- **Question:** a building whose footprint straddles the edge of the lit city's range: is it darkened as a whole by its anchor tile, per tile of its footprint, or per pixel by the tile under each pixel?
+- **What we know:** B1's rule darkens objects "anchored" on a dark tile (L). RENDER-DIRECT-3 stage 3d (ORCH III, 2026-11-27) applies the multiply per instance by its world tile; per pixel is possible there too.
+- **How to resolve:** one GOG Wine capture at the farthest zoom of a large building straddling the range edge (with OQ-796's), after "PC free".
+

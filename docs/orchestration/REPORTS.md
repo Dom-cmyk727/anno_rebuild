@@ -17621,7 +17621,9 @@ UI lane, 2026-11-27. Branch `task/ROADS-2` (on ROADS-2a `b5d42107`).
   - ROADS-3's `ui_roads` and `roads_ghost_pixel_check` green;
   - an earlier run with the wrong `--config` (RelWithDebInfo) is void;
   - WSL GCC 13 / Clang 18 clean (445 + 97 files);
-  - clang-format 23.1.3 clean.
+  - clang-format 23.1.3 clean;
+  - re-run on the final head (picture count asserts added): road, `viewer_wiring_ui_roads*`, `pins_contract`: 68 selected,
+    68 executed, 0 failed, 0 skipped, `VERDICT: PASS` (`cache/roads2b-final-02.log`); WSL re-run clean.
 - **Owner test** (`road_rules` on by default in `--play`):
 
   ```

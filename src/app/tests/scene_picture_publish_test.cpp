@@ -36,6 +36,7 @@ namespace render = anno::render;
 using anno::test::Destructions;
 using anno::test::Held;
 using anno::test::hold;
+using anno::test::settle_reclaimer;
 
 namespace {
 
@@ -631,23 +632,21 @@ TEST_CASE("publish: a stalled reaper holds an intermediate result back, which is
     // deferred, not replaced. After the release, version 2 is published (newer than the committed
     // version 1, not newer than the desired 3), then version 3. Nothing older than the committed
     // version is ever published.
+    REQUIRE(settle_reclaimer());
     auto scene = islands_scene(2);
-    std::atomic<bool> open{false};
+    Gate reaper_gate;
     std::vector<app::SceneBuilding> none;
     Recorder rec;
     app::ScenePicture::Limits limits;
     limits.max_reclaim_backlog = 0;
-    limits.reclaim_gate = [&open] {
-        while (!open.load()) {
-            std::this_thread::yield();
-        }
-    };
+    limits.reclaim_gate = [&reaper_gate] { reaper_gate.pass(); };
     limits.trace = rec.seam();
     app::ScenePicture picture(scene, none, [](std::uint16_t) { return true; }, 1, limits);
+    const Opener opener(reaper_gate);
     render::FrameRenderer frames(1);
     picture.apply({added(1, 0, 1)});
     picture.wait_idle();
-    CHECK(picture.commit(frames) == 1);
+    REQUIRE(picture.commit(frames) == 1);
     picture.apply({added(2, 0, 2)});
     picture.wait_idle();
     CHECK(picture.commit(frames) == 0); // skipped: the reaper is behind
@@ -657,7 +656,7 @@ TEST_CASE("publish: a stalled reaper holds an intermediate result back, which is
     CHECK(picture.commit(frames) == 0);
     CHECK(picture.stats().commit_skipped > skipped);
     CHECK(shown(picture, 0) == 1); // the last valid state stays
-    open.store(true);
+    reaper_gate.open.store(true);
     REQUIRE(eventually(
         [&] { return picture.stats().reclaim_completed == picture.stats().reclaim_queued; }));
     REQUIRE(settled(picture));
@@ -739,8 +738,8 @@ TEST_CASE("publish: a frame-held intermediate generation and shutdown with work 
     auto scene = islands_scene(2, "publish-frame-held");
     std::vector<app::SceneBuilding> none;
     auto& reclaimer = render::SceneReclaimer::shared();
+    REQUIRE(settle_reclaimer());
     const Destructions destroyed;
-    const ObserverReset reset;
     const auto before = render::payload_counts();
     Turnstile turnstile;
     std::shared_ptr<const render::Scene> held;
@@ -773,13 +772,10 @@ TEST_CASE("publish: a frame-held intermediate generation and shutdown with work 
     held.reset(); // the last owner
     REQUIRE(eventually([&] { return destroyed.of(*held_id); }));
     CHECK(destroyed.thread_of(*held_id) != std::this_thread::get_id());
-    REQUIRE(eventually([&] {
-        const auto now = render::payload_counts();
-        return now.of(render::PayloadKind::Incremental) ==
-                   before.of(render::PayloadKind::Incremental) &&
-               now.of(render::PayloadKind::Generation) ==
-                   before.of(render::PayloadKind::Generation) &&
-               reclaimer.stats().in_flight == 0;
-    }));
+    REQUIRE(settle_reclaimer());
+    const auto after = render::payload_counts();
+    CHECK(after.of(render::PayloadKind::Incremental) ==
+          before.of(render::PayloadKind::Incremental));
+    CHECK(after.of(render::PayloadKind::Generation) == before.of(render::PayloadKind::Generation));
     CHECK(reclaimer.stats().bytes_in_flight == 0);
 }

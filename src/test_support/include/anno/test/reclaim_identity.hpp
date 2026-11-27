@@ -7,7 +7,9 @@
 #pragma once
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -19,6 +21,28 @@
 #include <anno/render/scene.hpp>
 
 namespace anno::test {
+
+/// Waits (bounded) until the process reclaimer has nothing waiting and nothing in flight. The
+/// reclaimer is shared by the whole test process, so generations an earlier case released can
+/// still be on their way to it when the next case starts (W4-WIN-CLOSE C3). Take process-wide
+/// counter baselines and start zero-backlog commits only after those releases finish.
+inline bool settle_reclaimer(const std::function<void()>& on_poll = {}) {
+    auto& reclaimer = render::SceneReclaimer::shared();
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    for (;;) {
+        const auto s = reclaimer.stats();
+        if (s.waiting == 0 && s.in_flight == 0) {
+            return true;
+        }
+        if (on_poll) {
+            on_poll(); // still busy: a test's handshake (F3), nothing in production
+        }
+        if (std::chrono::steady_clock::now() > until) {
+            return false;
+        }
+        std::this_thread::yield();
+    }
+}
 
 /// A scene by identity, without owning it: its lineage (Scene::name), its generation, and a weak
 /// handle that expires when its last owner lets go (round ed, package 3).

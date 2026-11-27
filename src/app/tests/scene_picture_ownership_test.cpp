@@ -32,6 +32,7 @@ namespace render = anno::render;
 using anno::test::Destructions;
 using anno::test::Held;
 using anno::test::hold;
+using anno::test::settle_reclaimer;
 
 namespace {
 
@@ -173,14 +174,6 @@ struct ObserverReset {
     ~ObserverReset() { render::SceneReclaimer::shared().set_test_observer({}); }
 };
 
-/// Waits (bounded) until the process reclaimer has nothing waiting and nothing in flight.
-bool reclaimer_settled() {
-    return eventually([] {
-        const auto s = render::SceneReclaimer::shared().stats();
-        return s.waiting == 0 && s.in_flight == 0;
-    });
-}
-
 } // namespace
 
 TEST_CASE("ownership: a dropped result's credit is held while its payload is destroyed" *
@@ -313,6 +306,7 @@ TEST_CASE(
                sizeof(app::SceneBuilding));
     CHECK(reserved >= floor);
     CHECK(reserved > 64 * 100);
+    REQUIRE(settle_reclaimer());
     const auto before = render::payload_counts();
     gate.open.store(true);
     picture.wait_idle();
@@ -323,9 +317,8 @@ TEST_CASE(
     CHECK(st.outstanding_bytes == st.result_bytes_peak); // resized to the measured result
     // The result's storage and lists are counted once, by their own allocations.
     const auto built = render::payload_counts();
-    CHECK(built.of(render::PayloadKind::Incremental) -
-              before.of(render::PayloadKind::Incremental) >=
-          500 * anno::formats::insel::kItemLen);
+    CHECK(built.of(render::PayloadKind::Incremental) >=
+          before.of(render::PayloadKind::Incremental) + 500 * anno::formats::insel::kItemLen);
     CHECK(drain(picture, frames, 10));
     CHECK(picture.stats().outstanding_bytes == 0); // handed to the generation
     CHECK(committed_payloads(*picture.scene(), 0) == fresh_payloads(*scene, 0, picture));
@@ -432,7 +425,7 @@ TEST_CASE("accounting: one, two and four workers each hold a superseded generati
                 const auto s = picture.stats();
                 return s.reclaim_completed == s.reclaim_queued;
             }));
-            REQUIRE(reclaimer_settled());
+            REQUIRE(settle_reclaimer());
             for (std::size_t i = 0; i + 1 < held.size(); ++i) {
                 CAPTURE(held[i].generation);
                 CHECK(held[i].scene.use_count() == 1);
@@ -455,7 +448,7 @@ TEST_CASE("accounting: one, two and four workers each hold a superseded generati
             }));
         }
         // This iteration's generations are all destroyed before the next one starts counting.
-        CHECK(reclaimer_settled());
+        CHECK(settle_reclaimer());
     }
 }
 
@@ -475,8 +468,8 @@ TEST_CASE("ownership: a frame-held generation outlives the bridge and is destroy
     auto scene = islands_scene(2, 8, lineage);
     std::vector<app::SceneBuilding> none;
     auto& reclaimer = render::SceneReclaimer::shared();
+    REQUIRE(settle_reclaimer());
     const Destructions destroyed;
-    const ObserverReset reset;
     const auto before = render::payload_counts();
     std::optional<Held> held_id;
     std::shared_ptr<const render::Scene> held;
@@ -507,14 +500,11 @@ TEST_CASE("ownership: a frame-held generation outlives the bridge and is destroy
     CHECK(held_id->generation == 1);
     CHECK(destroyed.thread_of(*held_id) != std::this_thread::get_id());
     // Destruction finished: the accounted bytes are back where they were.
-    REQUIRE(eventually([&] {
-        const auto now = render::payload_counts();
-        return now.of(render::PayloadKind::Incremental) ==
-                   before.of(render::PayloadKind::Incremental) &&
-               now.of(render::PayloadKind::Generation) ==
-                   before.of(render::PayloadKind::Generation) &&
-               reclaimer.stats().in_flight == 0;
-    }));
+    REQUIRE(settle_reclaimer());
+    const auto after = render::payload_counts();
+    CHECK(after.of(render::PayloadKind::Incremental) ==
+          before.of(render::PayloadKind::Incremental));
+    CHECK(after.of(render::PayloadKind::Generation) == before.of(render::PayloadKind::Generation));
     CHECK(reclaimer.stats().bytes_in_flight == 0);
 }
 

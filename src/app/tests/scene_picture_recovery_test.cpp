@@ -29,6 +29,7 @@
 
 namespace app = anno::app;
 namespace render = anno::render;
+using anno::test::settle_reclaimer;
 
 namespace {
 
@@ -146,28 +147,10 @@ bool drain(app::ScenePicture& picture, render::FrameRenderer& frames, int rounds
     return picture.pending() == 0;
 }
 
-/// Waits (bounded) until the process reclaimer has nothing waiting and nothing in flight. The
-/// reclaimer is shared by the whole test process, so generations an earlier case released can
-/// still be on their way to it when the next case starts (a starved reclaimer thread under host
-/// load): a baseline taken before they are gone is not a baseline (W4-WIN-CLOSE C3).
-bool settle_reclaimer(render::SceneReclaimer& reclaimer,
-                      std::chrono::seconds limit = std::chrono::seconds(30),
-                      const std::function<void()>& on_poll = {}) {
-    const auto until = std::chrono::steady_clock::now() + limit;
-    for (;;) {
-        const auto s = reclaimer.stats();
-        if (s.waiting == 0 && s.in_flight == 0) {
-            return true;
-        }
-        if (on_poll) {
-            on_poll(); // still busy: a test's handshake (F3), nothing in production
-        }
-        if (std::chrono::steady_clock::now() > until) {
-            return false;
-        }
-        std::this_thread::yield();
-    }
-}
+struct OpenOnExit {
+    std::atomic<bool>& open;
+    ~OpenOnExit() { open.store(true); }
+};
 
 /// How many more scenes wait now than at `before`; negative when some of those waiting at
 /// `before` were destroyed meanwhile (an unsigned difference wraps instead).
@@ -220,7 +203,7 @@ void stalled_reclaimer_case(const ReclaimerPrelude& pre) {
     }
     // The call under test: without it a baseline can include foreign work that finishes during the
     // case (W4-WIN-CLOSE C3: the unsigned difference wraps, the final equalities miss).
-    REQUIRE(settle_reclaimer(reclaimer, std::chrono::seconds(30), pre.on_settle_poll));
+    REQUIRE(settle_reclaimer(pre.on_settle_poll));
     reclaimer.set_test_gate([open] {
         const auto give_up = std::chrono::steady_clock::now() + std::chrono::seconds(60);
         while (!open->load() && std::chrono::steady_clock::now() < give_up) {
@@ -380,6 +363,7 @@ TEST_CASE("picture recovery: a result of an older version is never published aft
     // The reaper is stalled, so commits are skipped while it is behind. A build finishes, a newer
     // change arrives while the reaper is still behind, and the reaper is released. The old result
     // must not be published: the commit drops it and the newer change is built.
+    REQUIRE(settle_reclaimer());
     auto scene = islands_scene(2);
     std::atomic<bool> open{false};
     std::vector<app::SceneBuilding> none;
@@ -396,10 +380,11 @@ TEST_CASE("picture recovery: a result of an older version is never published aft
     };
     app::ScenePicture picture(scene, none, [](std::uint16_t) { return true; }, 1, limits);
     render::FrameRenderer frames(1);
+    const OpenOnExit release_reaper{open};
     // Generation 1 (island 0: one building); its replaced generation keeps the reaper busy.
     picture.apply({added(1, 0, 1)});
     picture.wait_idle();
-    CHECK(picture.commit(frames) == 1);
+    REQUIRE(picture.commit(frames) == 1);
     // Island 0 is built again (version 2, one building more) and the build finishes; the commit is
     // skipped while the reaper is behind, so the finished result waits.
     picture.apply({added(3, 0, 2)});
@@ -613,6 +598,7 @@ TEST_CASE("picture failures: an obsolete failure is not evidence about a newer c
     // Reaper overload defers the newer change for island 0 while its older build is still running.
     // The older build then fails. Its failure belongs to a version that is no longer desired: it is
     // not counted, and the newer change is built.
+    REQUIRE(settle_reclaimer());
     auto scene = islands_scene(2);
     std::vector<app::SceneBuilding> none;
     std::atomic<int> island0_calls{0};
@@ -641,10 +627,12 @@ TEST_CASE("picture failures: an obsolete failure is not evidence about a newer c
     };
     app::ScenePicture picture(scene, none, [](std::uint16_t) { return true; }, 2, limits);
     render::FrameRenderer frames(1);
+    const OpenOnExit open_build_on_exit{release_build};
+    const OpenOnExit open_reaper_on_exit{release_reaper};
     // Island 1 commits first: its replaced generation keeps the reaper behind.
     picture.apply({added(1, 1, 1)});
     picture.wait_idle();
-    CHECK(picture.commit(frames) == 1);
+    REQUIRE(picture.commit(frames) == 1);
     // Island 0's older build starts and blocks; the newer change then arrives while the reaper is
     // behind.
     picture.apply({added(2, 0, 1)});
@@ -824,7 +812,7 @@ TEST_CASE("picture reclaim: the stalled-reclaimer case settles foreign generatio
     // mutation record in docs/orchestration/evidence/w4-win-final shows it). No sleep decides the
     // order: the release comes from the case's own polling, or from its baseline.
     auto& reclaimer = render::SceneReclaimer::shared();
-    REQUIRE(settle_reclaimer(reclaimer));
+    REQUIRE(settle_reclaimer());
     auto foreign_open = std::make_shared<std::atomic<bool>>(false);
     std::atomic<int> polls_that_saw_foreign_work{0};
     struct Reset {
@@ -875,7 +863,7 @@ TEST_CASE(
     // The arithmetic of the old failure, ordered by handshakes only: a stale baseline with one
     // waiting foreign generation, then the generations drain.
     auto& reclaimer = render::SceneReclaimer::shared();
-    REQUIRE(settle_reclaimer(reclaimer));
+    REQUIRE(settle_reclaimer());
     auto open = std::make_shared<std::atomic<bool>>(false);
     struct Reset {
         render::SceneReclaimer& r;
@@ -904,7 +892,7 @@ TEST_CASE(
     INFO("stale baseline: " << describe(stale));
     REQUIRE(stale.waiting >= 1);
     open->store(true);
-    REQUIRE(settle_reclaimer(reclaimer));
+    REQUIRE(settle_reclaimer());
     const auto now = reclaimer.stats();
     const std::size_t wrapped = now.waiting - stale.waiting; // the old expression
     CHECK(wrapped > 100);

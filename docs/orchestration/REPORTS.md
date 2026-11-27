@@ -17582,3 +17582,52 @@ UI lane, 2026-11-27. Branch `task/ROADS-2` on cand12 `c5af390c`; draft `docs/orc
 - **NOT_RUN:** a GOG capture of a freshly laid road end (pre-authorized; it would confirm the end cap visually); macOS.
 - **Decisions:** the table comes from the binary, not tuned to the corpus (ORCH III's rule); the neighbour order and the
   straight variant are named as OQ-900/901 rather than guessed silently.
+
+## ROADS-2b — the road reshaper wired into the commit and the ghost — READY FOR REVIEW
+
+UI lane, 2026-11-27. Branch `task/ROADS-2` (on ROADS-2a `b5d42107`).
+
+- **Sim:** `apply.cpp` `shape_road_records` runs `reshape_road_path` (ROADS-2a) over a build's land-road records
+  **only while `road_rules.enabled`** (header tag 2, no new field). The kind-9 commit (`build()`) and
+  `check_build_path` use the same records, so preview == commit; `World::shape_road_path` exposes them for the window.
+  Changed existing neighbours are appended as re-lay records (same family: free, ROADS-1).
+  - **ADAPTATION (OQ-765):** a shaped piece (slope class `0x1186`) on water is refused at that tile by the ordinary
+    placement rule; the prefix commit stops there.
+  - **L, OQ-903:** the appended neighbour re-lays do not count towards the 40-tile drag cap (inferred, not read).
+- **Replays:** this changes what an existing `road_rules` replay builds (corner/T/cross/end ids and rotations instead of
+  straights, plus neighbour re-lays). Acceptable because nothing with `road_rules` is on main yet. With road_rules off
+  (the compiled default) nothing changes: `pins_contract`, every sim/app replay and golden in the gate passed unchanged,
+  **0 pins or goldens moved**.
+- **App:** `RoadPathProbeAnswer::shaped`; the ghost draws the shaped records (neighbours only with the whole path drawn);
+  fact `tool.road.shaped` (`id:rotation`, a straight's cosmetic variant folded to the family's first id).
+  - **Found and fixed in the run:** the picture tracked only `kRoadFlag` (`0x4000`) roads, so the committed corner, T, cross
+    and end pieces were never drawn (`anlage_is_tracked_tile_object` and the runner's mask now also take
+    `sim::is_land_road`).
+- **Proof:**
+  - sim `road_shape_apply_test` (the L with preview == commit, the neighbour rewrite, road_rules off = unchanged);
+  - `viewer_wiring_ui_roads_shape`: the owner's L, T and cross from the default start view, no `look`, exact pieces,
+    picture counts 8/10/12; passes on CPU and on the GPU window;
+  - `viewer_wiring_ui_roads_shape_pixel_check`: ghost vs commit on the interior of the visible committed road, 2.6 %
+    differ (max 10 %; a one-tile shift of the same shot differs on 99.5 %). Trees in front cover parts of the committed
+    road (the ghost is an overlay), so only visible committed pixels count.
+- **Failure proofs:**
+  - reshaper switched off: the L and neighbour sim cases fail (7 checks);
+  - the picture fix reverted: `ui_roads_shape` fails at `picture.tile_objects is '5', expected == 8`;
+  - both restored: green.
+- **Gates (this PC, msvc Release):** `run_selected --select '^anno_sim|^anno_app|pins_contract|road_shape|replay|placement|viewer_wiring_ui_roads|viewer_wiring_roads_picture'`:
+  - `COUNTS: selected=2218 executed=2194 failed=0 refused=0 empty=0 skipped=24 (opt-in=21 other=3)`, `VERDICT: PASS`
+    (`cache/roads2b-lanes-02.log`);
+  - the other skips are the three ship-start path cases, unrelated;
+  - ROADS-3's `ui_roads` and `roads_ghost_pixel_check` green;
+  - an earlier run with the wrong `--config` (RelWithDebInfo) is void;
+  - WSL GCC 13 / Clang 18 clean (445 + 97 files);
+  - clang-format 23.1.3 clean.
+- **Owner test** (`road_rules` on by default in `--play`):
+
+  ```
+  anno1503 --play data\maps\lan5.txt --game-dir E:\anno1503\game\app --construction-menu on --layout data\ui
+  ```
+
+  Arm the dirt road, drag an L, then a T off it, then a cross over it, and lay a road beside an existing one. Check that
+  the tiles turn and join, and that the ghost shows what the release builds.
+- **NOT_RUN:** a GOG capture of a road turning into the sea (OQ-765); macOS/Linux CI until pushed.

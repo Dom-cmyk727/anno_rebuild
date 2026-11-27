@@ -3946,6 +3946,7 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Question:** The corner, T, cross and end pieces are class `0x1186` and need `rec[8] >= 32`, so they cannot stand on water while the flat straight piece can. Does the kind-9 apply re-check the reshaped records, and what does the ghost show?
 - **What we know:** Part B 10.1 items 6-7: the per-tile cursor check has no terrain test; the dry reshaper call only computes the record list.
 - **How to resolve:** Read the kind-9 apply in `0x100589a0` and the ghost write with flag `0x80000000`, or one Wine capture of a road dragged into the sea with a turn in it.
+- **ROADS-2b (2026-11-27):** ADAPTATION until read: the shaped piece goes through the ordinary placement rule, so it is refused at that tile, and the kind-9 prefix commit stops there; the ghost shows the same verdict (`check_build_path` runs the same records).
 
 ## OQ-766: Bridges: the 20-tile scan and which cursor places them (BUILDINGS-REF-2; OPEN)
 - **Question:** Which cursor places 2516, 2517, 2536 and 2537 (the menu arms only the grand bridge 2518), and what does the scan of up to 20 tiles in `0x1007d917`-`0x1007dc52` do?

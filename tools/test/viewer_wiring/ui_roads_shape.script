@@ -41,6 +41,8 @@ wait outcome
 expect outcome Applied
 wait drawn
 expect fact tool.road.commit_matched_preview == 1
+# Every committed piece is in the picture (the shaped pieces are slope class 0x1186, not kRoadFlag).
+expect fact picture.tile_objects == 8
 hover_px 950 600
 wait fact tool.ghost == hidden
 wait frames 3
@@ -57,6 +59,7 @@ lup-land 1255 529
 wait outcome
 expect outcome Applied
 wait drawn
+expect fact picture.tile_objects == 10
 
 # Cross: (1257, 529) -> (1257, 531) across the L's E-W run: two end caps and the cross on the run.
 ldown-land 1257 529
@@ -68,6 +71,7 @@ lup-land 1257 531
 wait outcome
 expect outcome Applied
 wait drawn
+expect fact picture.tile_objects == 12
 hover_px 950 600
 wait fact tool.ghost == hidden
 wait frames 3

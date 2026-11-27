@@ -28,17 +28,41 @@ everything else uses, there is no separate patch pipeline left to have a texture
 ## Staging (each ≤ 4 h)
 
 **3a - the GPU object pass from instance buffers, behind a switch, off by default.**
-- Upload the static instances (2c's per-chunk buckets) as an instance buffer per visible chunk;
-  draw objects directly from the resident atlas (1c/1d's texture arrays), not a baked chunk.
+- Reuses `sprite_vs`/`sprite_fs` and `m.sprite_pipe` unchanged (design:
+  `docs/render/direct-object-pass-3a.md`) - a new `BindGroup` points the existing pipeline at
+  `cb.residency`'s own resident texture instead of the sprite pipe's own never-evicting cache; no
+  new WGSL, no new pipeline. Upload the static instances (2c's per-chunk buckets) as an instance
+  buffer per visible chunk; each chunk's draw call is scissored to its own screen rect (a
+  spanning instance is listed in every chunk its `reach()` touches, 2c's own bucketing - without
+  a scissor its quad would blend once per chunk it is listed under, double-blending at the seam;
+  the baked path avoids this only because each chunk's compute pass already clips to its own
+  pixels).
+- **Scope (ORCH III's decision, 2026-11-27): depth and clip are NOT in 3a.** The measured-tolerance
+  pass covers only objects whose `object_flags::depth_rule(flags).cls == depth::Class::None` (no
+  depth class, no per-pixel clip) - everything else stays on the baked path this frame. 3a2
+  (below) carries depth and clip into the direct pass for every class; 3a does not attempt it.
 - **Done when (precise):** on `Single_01.sze` and `lan5.txt`, with the switch on, the GPU object
   layer matches the CPU reference (today's `objects_draws`/replay path) within a **measured**
-  tolerance (ADR 0007 decision 8) - report the tolerance's actual numbers (max and mean per
-  channel, the pixel count over the threshold), the 4090 and the Radeon both named, and write them
+  tolerance (ADR 0007 decision 8) for `Class::None` objects - report the tolerance's actual numbers
+  (max and mean per channel, the pixel count over the threshold), **which classes are excluded and
+  how many instances that is on each scene**, the 4090 and the Radeon both named, and write them
   into the ADR before this stage is accepted. Do not guess the numbers first.
+- **Seam proof required:** one case with an instance that spans two chunks, drawn once (not
+  blended twice) with the scissor in place; the same case with the scissor removed must show the
+  double blend, proving the scissor is load-bearing, not redundant.
 - A mutation control (one wrong instance in the uploaded buffer) must exceed the tolerance.
 - Switch off: 0 digest change anywhere (`--png`, every recorded digest, every existing test).
 - Units and ships stay on the old path this stage (a later stage names when they move - see
   below).
+
+**3a2 - depth and clip, carried into the direct pass, for every class.**
+- Adds `cb_depth_at`'s per-pixel depth test (against `cb_terrain`/`cb_atlas_z`, as
+  `chunk_build_cs` does today) and the per-record clip rect to 3a's instanced draw, so objects of
+  every `depth_rule.cls` - not just `Class::None` - draw through the direct pass.
+- **Done when:** same contract as 3a (measured tolerance, a mutation control, switch off = 0
+  digest change), on the same two scenes, now covering every class with no exclusion list.
+- Right after 3a, before 3b (ground/per-pixel planes need a real z-plane to test against, which
+  3a2 is what makes available on the direct path).
 
 **3b - the ground pass and the per-pixel planes (`base`, `field`, `terrain`, `submerged`), same
 contract as 3a** (a measured tolerance switch-on, 0 digest change switch-off, a mutation control).

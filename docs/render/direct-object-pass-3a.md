@@ -109,7 +109,7 @@ chunk's draw call sets a scissor rect to that chunk's own screen-space rectangle
 - chunks are a fixed grid) before issuing its instances, reproducing the baked path's per-chunk
 confinement exactly, with no change to painter order or to which instances are listed per chunk.
 
-## Open scope decision, not mine to make: depth-class objects and `clip`
+## Scope decision (ORCH III, 2026-11-27): depth-class objects and `clip` move to a new stage 3a2
 **Correction to this note's first draft**, which wrongly said depth was "already decided
 CPU-side before the record list is built" — advisor caught this against code already read.
 `chunk_build_cs` does a real **per-pixel** depth test: `cb_depth_at` from `cb_terrain` at every
@@ -118,18 +118,14 @@ pixel (`gpu.wgsl:1551-1557`), then per covered pixel compares against `cb_record
 own z-plane. `record.clip` (`gpu.wgsl:1598-1605`) also discards pixels outside a per-record clip
 rect, for the chunk-build's local/global canvas compositing - a second per-pixel behavior this
 note's instance buffer (deliberately dropping `colour`/`depth`/`clip`, above) does not reproduce.
-3a's instanced draw, as scoped above, has **no per-pixel depth test and no clip rect** - it is a
-flat painter-order blend only. Two ways to close this gap, and the choice is ORCH III's/the
-owner's, not this note's:
-(a) **scope 3a's "measured tolerance" pass to objects whose `depth_rule.cls == Class::None`**
-    (no depth class, no clip) on `Single_01.sze`/`lan5.txt` first, and widen to depth-tested/
-    clipped objects only in 3b once a GPU-resident ground/z-plane exists to test against; or
-(b) **3a itself carries `record.depth`/the clip rect into the instance buffer and the fragment
-    shader does the same per-pixel test `chunk_build_cs` does**, against the baked chunk's own
-    existing `cb_atlas_z`-style z-plane - more shader work this stage, but one tolerance
-    measurement instead of two scoped passes.
-Either way, report which objects (by `depth_rule.cls`) the first measured-tolerance number
-actually covers, so "matches within tolerance" is not silently measured on a subset.
+3a's instanced draw, as scoped here, has **no per-pixel depth test and no clip rect** - it is a
+flat painter-order blend only, for objects whose `depth_rule.cls == depth::Class::None` only.
+**Decided: option (a)** of this note's two choices - 3a's measured-tolerance pass is scoped to
+`Class::None` objects (report which classes are excluded and how many instances that is on
+`Single_01.sze`/`lan5.txt`); a new stage **3a2** (`render-direct-3.md`), right after 3a and before
+3b, carries `record.depth`/the clip rect into the instance buffer and does the same per-pixel
+test `chunk_build_cs` does, covering every class under the same tolerance/mutation-control/
+switch-off contract.
 
 ## A shortcut, named as the rules ask
 Building the instance buffer fresh every frame from `direct_object_instances()` conflicts with

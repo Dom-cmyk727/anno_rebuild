@@ -1,0 +1,33 @@
+# UI-KEYS-1: the original's game keys (AnnoFrame.dll 0x100071b0) from the default start view (no
+# look): P pauses and no turn is published while paused (game.ms unchanged), P resumes; F8, F5,
+# F6, F7 set 50 / 100 / 200 / 400 % (SetSpeedCmd, applied at the next turn: each wait below also
+# proves the turns resumed). Runs on the GPU window: a paused CPU window draws no frames.
+resize 1024 768
+wait frames 5
+expect fact game.speed == 100
+expect fact game.paused == 0
+key p
+expect fact game.paused == 1
+# A turn already in flight may still publish: let it land, then nothing more may.
+wait frames 30
+note fact game.ms
+wait frames 120
+expect fact game.ms same
+key p
+expect fact game.paused == 0
+key f8
+wait fact game.speed == 50 within 5000
+key f5
+wait fact game.speed == 100 within 5000
+key f6
+wait fact game.speed == 200 within 5000
+key f7
+wait fact game.speed == 400 within 5000
+key f5
+wait fact game.speed == 100 within 5000
+# Space stays the rebuild's extra pause key.
+key space
+expect fact game.paused == 1
+key space
+expect fact game.paused == 0
+quit

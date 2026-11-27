@@ -98,7 +98,8 @@ decides. The result line shows the actual `transferred_88`, whether it was limit
 
 ## 4. Save and resume
 
-`F5`: the sim thread captures `World::save()` and the state hash after the next turn's publication
+`F10` (UI-KEYS-1, 2026-11-27: the original's quick-save key, AnnoFrame `0x10007309`; it was `F5`, which is now
+the original's 100 % speed): the sim thread captures `World::save()` and the state hash after the next turn's publication
 (`PlayRunner::request_capture`), a writer thread (`OpeningSaver`) writes `saves\quicksave-seat<N>.sav` through a
 temporary name and a rename, and the title shows the result (`saved ... (turn, tick, hash)` or `SAVE FAILED: ...`).
 A failed write leaves the session and the previous save intact. The file is `anno1503-opening-save 1`: text header

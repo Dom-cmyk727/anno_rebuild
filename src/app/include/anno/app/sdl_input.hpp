@@ -26,7 +26,7 @@ namespace anno::app {
 /// The window's whole step for one event: the mapping, then DevTool::handle with the frame that
 /// was drawn. Returns whether the tool took the event and the commands it made (the window posts
 /// them). The live window calls exactly this. A key repeat of the tool's keys (B; with the tool on,
-/// N, P, T, X and Esc) is taken and does nothing, so a held Esc never reaches the window's quit.
+/// N, M, T, X and Esc) is taken and does nothing, so a held Esc never reaches the window's quit.
 struct ToolStep {
     bool taken = false;
     std::vector<sim::Command> commands;
@@ -40,5 +40,10 @@ struct ToolStep {
 /// rotation byte went 0, 3, 2 under `.` and 2, 3, 0, 1 under `,`); T, this window's own key,
 /// turns on like `,`.
 [[nodiscard]] std::optional<OpeningKey> opening_key_from_sdl(SDL_Keycode key);
+
+/// UI-KEYS-1: the game speed a key sets, in percent, as the original binds it (AnnoFrame.dll
+/// 0x100071b0, key-down cases 0x10007252/0x1000726f/0x1000728f/0x100072c1: F5 100, F6 200,
+/// F7 400, F8 50, each posting frame command 0x16); nullopt for any other key.
+[[nodiscard]] std::optional<std::uint32_t> speed_key_percent(SDL_Keycode key);
 
 } // namespace anno::app

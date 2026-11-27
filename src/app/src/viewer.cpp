@@ -1619,7 +1619,7 @@ void Viewer::handle(const SDL_Event& e) {
     }
     if (dev_ != nullptr) {
         // The developer tool first (sdl_input.hpp: B toggles it; with it on, the left button,
-        // N, P, T, X and Esc with something to cancel are its). The frame is the one drawn, so
+        // N, M, T, X and Esc with something to cancel are its). The frame is the one drawn, so
         // the pointer picks what is on screen. Its commands go to the runner's queue; the
         // receipts are kept for the feedback.
         const bool was_on = dev_->enabled();
@@ -1779,7 +1779,22 @@ void Viewer::handle(const SDL_Event& e) {
             }
             break;
         case SDLK_SPACE:
+        case SDLK_P: // UI-KEYS-1: the original's pause key (AnnoFrame 0x10007441, cmd 0x15)
             toggle_pause();
+            break;
+        case SDLK_F5:
+        case SDLK_F6:
+        case SDLK_F7:
+        case SDLK_F8:
+            // UI-KEYS-1: the original's speed keys (AnnoFrame 0x100071b0: F5-F8 post cmd 0x16 with
+            // 100/200/400/50). The sim refuses 400 in multiplayer (is_original_speed).
+            if (play_ != nullptr) {
+                sim::Command c;
+                c.issuer = play_->runner().host_player();
+                c.body = sim::SetSpeedCmd{speed_key_percent(e.key.key).value_or(100)};
+                latest_receipt_ = play_->runner().post_command(std::move(c));
+                update_title();
+            }
             break;
         case SDLK_E:
             water_ = water_ == render::WaterStyle::Original ? render::WaterStyle::Enhanced
@@ -3575,6 +3590,9 @@ void Viewer::script_tick() {
         }
         // FISHER-VIEW-1: the game time the facts above belong to (the snapshot's clock).
         st.facts["game.ms"] = std::to_string(st.snapshot->game_ms);
+        // UI-KEYS-1: the world's speed (F5-F8) and whether the window paused the game (P, Space).
+        st.facts["game.speed"] = std::to_string(st.snapshot->speed_percent);
+        st.facts["game.paused"] = paused_at_ ? "1" : "0"; // the window's (toggle_pause)
         // UI-HARVEST-ICON-1 B: the icons the snapshot carries, and the units this frame drew.
         st.facts["status_icons.count"] =
             std::to_string(st.snapshot->status_icons ? st.snapshot->status_icons->size() : 0);

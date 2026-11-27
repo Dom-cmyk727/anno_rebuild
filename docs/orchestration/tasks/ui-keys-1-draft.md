@@ -55,6 +55,12 @@ are out of scope.
    - `dev_script` gets `m`, and `r1_held_publication` uses it.
 4. **Facts:** `game.speed` (the world's percent), `game.paused`.
 
+**Decision (ORCH III, 2026-11-27): (a).** Single player gets 400 % (F7); the net-client refusal stays the original's.
+`step_ms` is **game** ms per step and the real step is fixed (`sim::Timing::mp_step_real_ms` = 10, 10 steps per
+100-ms turn, D `0x1005fe10`), so 50/100/200/400 % are 5/10/20/40 game-ms per step. The tested invariant is
+**game ms per real ms = percent / 100 exactly, at all four speeds** (runner case over 7 turns each). No other
+constraint caps it: the sim steps any `step_ms`, and real time per turn does not change.
+
 ## Tests
 
 - A unit case per key: event → the command (or the pause call).

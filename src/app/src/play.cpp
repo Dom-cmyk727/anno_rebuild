@@ -455,14 +455,26 @@ std::vector<SceneTileObject> play_tile_objects(const sim::World& world) {
     return out;
 }
 
+std::optional<std::uint32_t> turn_step_ms(std::uint32_t percent) {
+    if (const auto mp = sim::multiplayer_step_ms(percent)) {
+        return mp;
+    }
+    if (percent == 400 && sim::is_original_speed(percent, false)) {
+        return percent / 10; // ADAPTATION: see play.hpp
+    }
+    return std::nullopt;
+}
+
 PlayRunner::PlayRunner(sim::World world, unsigned speed_percent, PlaySchedule* schedule)
     : world_(std::move(world)), schedule_(schedule) {
     if (schedule_ == nullptr) {
         owned_schedule_ = std::make_unique<SteadySchedule>();
         schedule_ = owned_schedule_.get();
     }
-    const auto step = sim::multiplayer_step_ms(speed_percent);
+    const auto step = turn_step_ms(speed_percent);
     step_ms_ = step.value_or(10);
+    seen_speed_percent_ = world_.settings().speed_percent;
+    host_player_ = world_.config().host_player;
     steps_ = sim::Timing{}.mp_steps_per_turn;
     {
         // UI-MINIMAP-1 B2: the first snapshot already carries the territory and the figures, so
@@ -760,6 +772,14 @@ void PlayRunner::one_turn() {
     simulation_error_ = sim::run_turn(world_, nullptr, turn, steps_, &results);
     if (!simulation_error_.empty()) {
         paused_.store(true);
+    }
+    // UI-KEYS-1: an applied SetSpeedCmd (F5-F8) sets the next turn's step; the speed comes from the
+    // command stream, so a replay of the same commands steps the same.
+    if (const std::uint32_t speed = world_.settings().speed_percent; speed != seen_speed_percent_) {
+        seen_speed_percent_ = speed;
+        if (const auto step = turn_step_ms(speed)) {
+            step_ms_ = *step;
+        }
     }
     // A turn that ran commands, and every kHashEvery-th turn: hashing the whole world each turn
     // slowed lan5's turns past their cadence in a debug build (round ee, E3's first run).
@@ -1100,6 +1120,7 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
     auto next = std::make_shared<PlaySnapshot>();
     next->tick = world_.clock().tick();
     next->game_ms = world_.clock().ms;
+    next->speed_percent = world_.settings().speed_percent;
     next->last_turn_us = turn_us;
     next->p95_us = p95_locked();
     next->behind_ms = behind_ms_;

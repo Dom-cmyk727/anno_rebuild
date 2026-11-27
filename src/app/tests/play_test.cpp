@@ -1507,3 +1507,32 @@ TEST_CASE("play: the tutorial's territory and minimap owners (UI-MINIMAP-1 B2)")
     REQUIRE(runner.snapshot()->map_figures);
     CHECK(runner.snapshot()->map_figures->size() == figures.size());
 }
+
+TEST_CASE("play: UI-KEYS-1, the runner follows SetSpeedCmd and game ms per real ms is percent / "
+          "100 at all four speeds") {
+    // The runner's real time per turn is fixed (sim::Timing: mp_turn_real_ms), so the invariant
+    // is game ms per turn = mp_turn_real_ms * percent / 100, exactly.
+    CHECK(anno::app::turn_step_ms(50) == 5U);
+    CHECK(anno::app::turn_step_ms(100) == 10U);
+    CHECK(anno::app::turn_step_ms(200) == 20U);
+    CHECK(anno::app::turn_step_ms(400) == 40U); // ADAPTATION, single player (play.hpp)
+    CHECK_FALSE(anno::app::turn_step_ms(0));
+    CHECK_FALSE(anno::app::turn_step_ms(300));
+    anno::app::PlayRunner runner(empty_world(), 100);
+    const anno::sim::Timing timing{};
+    constexpr std::uint64_t kTurns = 7;
+    for (const std::uint32_t percent : {50U, 200U, 400U, 100U}) {
+        anno::sim::Command c;
+        c.issuer = runner.host_player();
+        c.body = anno::sim::SetSpeedCmd{percent};
+        static_cast<void>(runner.post_command(std::move(c)));
+        runner.run_n(1); // the turn that applies it still steps at the old speed
+        CHECK(runner.step_ms() == anno::app::turn_step_ms(percent));
+        const std::uint64_t before = runner.snapshot()->game_ms;
+        runner.run_n(static_cast<std::uint32_t>(kTurns));
+        const std::uint64_t game = runner.snapshot()->game_ms - before;
+        const std::uint64_t real = kTurns * timing.mp_turn_real_ms;
+        CHECK_MESSAGE(game * 100 == real * percent, "percent " << percent << ": game " << game
+                                                               << " ms in " << real << " real ms");
+    }
+}

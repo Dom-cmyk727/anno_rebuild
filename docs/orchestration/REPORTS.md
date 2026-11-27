@@ -18079,3 +18079,59 @@ Both corrections built and run (advisor-caught, see commit f26201eb):
 - `check_unix_warnings.sh`: clean, all 4 configs, re-run after the fix.
 
 READY FOR REVIEW (accepted pending this addendum and CI on f26201eb).
+## PICTURE-IDS-1 — shrunk packet: widening confirmed unnecessary, narrowings audited — READY FOR REVIEW (task/PICTURE-IDS-1, from refs/candidates/cand12 c5af390c)
+
+**Shrunk scope (ORCH III, 2026-11-27):** stopped pursuing a second, non-PROD2 object source after
+mapping the readers (picking, occupancy, `ObjectsExclusion`, `object_bounds`, preview) showed it past
+2-3 h, and after measuring the real max Anlagen entry id - below `kPictureAnlageIds` in every dataset,
+so no original or shipped type is refused. `PlacedObject`'s 12-bit field is the original file layout
+and stays (not `formats`' lane to change anyway).
+
+**1. Measured.** Max real `Entry::id`: GOG 3998 (921 entries); History Edition (`E:\SteamLibrary\
+steamapps\common\Anno 1503 - History Edition`) `Anlagen.dat` 3998 (909), `.classic` 3998 (894),
+`.addon` 3998 (921). None reach 4096.
+
+**2. Narrowing audit.** Every `static_cast<std::uint16_t>` of an Anlagen/type id in `loader.cpp`,
+`dev_feedback.cpp`, `scene_picture.cpp`, `main.cpp` and `play.cpp` is already preceded by a
+`>= kPictureAnlageIds` refusal-with-note (inline, or via `apply_world_buildings`'s own filter) - no
+live truncation found, no change needed in those three UI-lane/shared files. One real asymmetry found
+in my own `loader.cpp`: `apply_island_buildings`'s building loop cast `b.type` relying solely on its
+one current caller having pre-filtered; `tile_objects` right below it already has its own inline
+guard. Fixed: the same inline guard + note for buildings, so this function (also called directly by
+`ScenePicture`, not only `apply_world_buildings`) is not just caller-discipline-safe.
+
+**3. Array sizing.** Left `kPictureAnlageIds`-sized classification vectors as-is (ORCH III confirmed):
+`main.cpp`'s `building_classes`/`tile_object_classes` and `scene_picture.cpp`'s `table`/`tile_table`
+classify ids from the sim's own type registry (`play->world`), which can hold a mod's type with no
+Anlagen.dat entry - resizing only the purely Anlagen-sourced `road_table` and not these would be an
+inconsistent bound across the same classification job.
+
+**4. Comment + OQ.** `kPictureAnlageIds` (`loader.hpp`) now states the reason (the original's 12-bit
+PROD2 field, a real file layout) and the lift path (RENDER-DIRECT-3's u32 instance lists, no PROD2
+encoding) explicitly, with the measured max id. OQ-776 records the deferral and the array-sizing
+reasoning.
+
+**5. Test.** `play_test.cpp`'s existing `SceneBuilding.type = 0x10000` case (note + unchanged PROD2
+bytes) already proves this for the `apply_world_buildings` path - cited, not duplicated. New synthetic
+test (`app_test.cpp`) for `apply_island_buildings`'s own new guard directly: a building with id
+`0x10000 + 5` (wraps to a real, drawable id 5 under a bare cast) gets the note, and the island's
+GELAENDE records end up empty - not drawing id 5.
+
+**Gates:**
+- Build: `anno_app_tests` (msvc Release) - clean.
+- New test: **2/2 assertions pass.** Existing coverage re-run: `play: an id that does not fit PROD2
+  is refused` (16/16), the two `ScenePicture` sanity tests (both still pass, confirming the new inline
+  guard didn't change `apply_island_buildings`'s behaviour for in-range ids).
+- clang-format 23.1.3: clean on every touched file.
+- `check_unix_warnings.sh` (WSL, GCC13/Clang18): clean, all 4 configs.
+
+**Decisions and reasoning:**
+- Did not touch `dev_feedback.cpp`/`play.cpp`/`main.cpp`: every narrowing there is provably already
+  guarded (traced each cast back to its guard, cited above), and adding a redundant check at a point
+  that can't be reached would be validation at a place that isn't a trust boundary, not a fix.
+- Added the `apply_island_buildings` guard even though it is also unreachable today via its only
+  current caller: the function is itself a public entry point (`ScenePicture` calls it too), so its
+  own correctness should not depend on which caller happens to filter first - a cheap, symmetric,
+  zero-risk hardening, not scope creep.
+
+READY FOR REVIEW.

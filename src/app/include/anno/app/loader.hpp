@@ -65,11 +65,17 @@ struct LinkTemplate {
     std::filesystem::path file;
 };
 
-/// The Anlagen ids the picture can draw: 0 .. kPictureAnlageIds - 1. A PROD2 item holds the id in
-/// 12 bits (formats::insel::PlacedObject::parse masks 0x0FFF), and the picture draws buildings as
-/// PROD2 items; a wider id (a mod's type: TypeId is 32 bit in the sim and on the wire) is built by
-/// the sim but not drawn (a note, round ee D3). Path to lift it: an object source for the scene
-/// that is not a PROD2 item.
+/// The Anlagen ids the picture can draw: 0 .. kPictureAnlageIds - 1. Reason: a PROD2 item holds
+/// the id in 12 bits (the original's own field width, formats::insel::PlacedObject::parse masks
+/// 0x0FFF - a real file layout, not an arbitrary limit, CLAUDE.md "formats may mirror fixed file
+/// layouts exactly"), and the picture draws buildings as PROD2 items; a wider id (a mod's type:
+/// TypeId is 32 bit in the sim and on the wire) is built by the sim but not drawn (a note, round
+/// ee D3). No original or shipped type needs more: the measured real max Anlagen entry id is
+/// 3998, below this constant, in every dataset checked (GOG and the History Edition's
+/// Anlagen.dat/.classic/.addon, PICTURE-IDS-1, OQ-776). Path to lift it for a mod:
+/// RENDER-DIRECT-3's per-chunk instance lists carry the type id as u32 already, with no PROD2
+/// encoding at all - drawing straight from them, once that path exists, needs no PROD2-sized id
+/// anywhere.
 inline constexpr std::uint32_t kPictureAnlageIds = 0x1000;
 
 /// A building the sim placed, in island-local tiles. `island` is the island

@@ -1212,3 +1212,45 @@ TEST_CASE("overlap_ms: a section entirely inside, one that starts during the cal
     // An unused slot (begin_ns == 0) is never an overlap, whatever end_ns/read_time_ns are.
     CHECK_FALSE(overlap_ms(call_begin, call_ms, 0, 0, call_begin + 5000 * ms).has_value());
 }
+
+TEST_CASE("apply_island_buildings: a SceneBuilding above kPictureAnlageIds gets its own note and "
+          "does not wrap into another type (PICTURE-IDS-1)") {
+    // No game files: ScenePicture (another caller of this function) is not guaranteed to have
+    // gone through apply_world_buildings' own filter first, so this function must not rely on a
+    // caller to keep its cast in range (synthetic, not just the existing play_test.cpp coverage
+    // of the apply_world_buildings path).
+    anno::formats::insel::Island island;
+    anno::app::SceneBuilding wide;
+    wide.island = 0;
+    wide.type = 0x10000 + 5; // wraps to 5 under a plain uint16_t cast, a real, drawable id
+    wide.x = 1;
+    wide.y = 1;
+    anno::app::SceneObjects objects;
+    objects.is_building = [](std::uint16_t) { return true; };
+    std::vector<std::vector<std::uint8_t>> storage;
+    std::vector<std::string> notes;
+    std::vector<anno::app::OmittedObject> omitted;
+    anno::app::apply_island_buildings(island, {wide}, objects, storage, notes, omitted);
+    const auto noted = std::any_of(notes.begin(), notes.end(), [](const std::string& note) {
+        return note.find("Anlagen id 65541") != std::string::npos &&
+               note.find("does not fit a PROD2 item") != std::string::npos;
+    });
+    CHECK(noted);
+    bool found_gelaende = false;
+    for (const auto& rec : island.records) {
+        if (rec.name() != "GELAENDE") {
+            continue;
+        }
+        found_gelaende = true;
+        const auto block = anno::formats::insel::Block::parse(rec.payload);
+        REQUIRE(block);
+        const auto& data = block.value().data;
+        for (std::size_t o = 0; o + anno::formats::insel::kItemLen <= data.size();
+             o += anno::formats::insel::kItemLen) {
+            const auto p = anno::formats::insel::PlacedObject::parse(
+                data.subspan(o, anno::formats::insel::kItemLen), block.value());
+            CHECK_MESSAGE(p.anlage != 5, "the refused building must not appear drawn as id 5");
+        }
+    }
+    CHECK_FALSE(found_gelaende); // nothing else was placed either - the only record is refused
+}

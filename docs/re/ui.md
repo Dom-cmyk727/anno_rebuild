@@ -1354,6 +1354,15 @@ box. The frame's vtable is `0x1008664c`.
 Strings (`Texte.dat` `MESSAGEBOX`, 0-based): 27 = "Pause!", 19 = "Continue game". What the button's own press handler
 does (inside the box object) and how P opens the box are OQ-908. **Rebuild (UI-PAUSE-1 A):** while paused, a press on
 `pause_button` resumes as P does, and every other press is swallowed (a modal box; assumption, OQ-908).
+**Rebuild (UI-PAUSE-1 B):** the label is not part of sprite 1513 (none of its pixels is white; the shot has 368 white
+pixels over the button). Both strings are drawn in `MainSmall.zei` (byte-identical to `MainMedium`/`HelpNormal`),
+glyph-exact on `f15_pause` with 0 differing pixels:
+- "Pause!" (MESSAGEBOX 27) at (497, 349), 49 x 25, centre x 521. That is the parchment's centre + 10; the box's own
+  text gadget was not read.
+- "Continue game" (19) at (350, 523), 117 x 25, centred on the button.
+
+`hud.txt` `pause_text` / `pause_label` (`text_section MESSAGEBOX`, `text_index`), drawn by `draw_centred_text` on
+the CPU and GPU-overlay paths.
 
 ### 9.5 Rating
 

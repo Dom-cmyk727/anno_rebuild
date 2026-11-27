@@ -4072,6 +4072,8 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
     shows no box and calls no SetSpeed (D). Either case `0x10007441` is not P, or P's pause runs elsewhere.
     UI-KEYS-1's behaviour (P pauses, the box shows) still matches the GOG shot `f15_pause` (P).
   - The generic message box is read (`docs/re/ui.md` §9.4): shown by `0x1000c6a0` (mode 6), closed by `0x1000c8c0`.
+  - The box's strings (UI-PAUSE-1 B, P): `Texte.dat` MESSAGEBOX 27 "Pause!" and 19 "Continue game", glyph-exact on
+    `f15_pause`. Which code builds the pause box's descriptor was not found: no code or data stores 27 next to 19.
     The button's own press handler, inside the box object, was not found within the step's 1-hour limit.
   - **Rebuild (assumption, L):** the button resumes on the press, as P does, and every other press while paused is
     swallowed (`viewer.cpp`, UI-PAUSE-1 A).

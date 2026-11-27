@@ -393,6 +393,13 @@ formats::Result<HudLayout, std::string> parse_hud_layout(const std::string& text
                     if (!tok.more())
                         return fail(line_no, "text_section: missing value");
                     e.text_section = tok.take();
+                } else if (key == "text_index") {
+                    if (!tok.more())
+                        return fail(line_no, "text_index: missing value");
+                    const auto v = to_int(tok.take());
+                    if (!v || *v < 0)
+                        return fail(line_no, "text_index: not a non-negative integer");
+                    e.text_index = static_cast<std::size_t>(*v);
                 } else if (key == "align") {
                     if (!tok.more())
                         return fail(line_no, "align: missing value");

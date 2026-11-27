@@ -97,6 +97,9 @@ struct UiElement {
     /// (`plank_text`: TOOLTIP:BAUMENU_EX, the line of the open category). Empty for every other
     /// element.
     std::string text_section;
+    /// UI-PAUSE-1: `text_index <n>`, a fixed line (0-based) of `text_section` (the pause box's
+    /// `MESSAGEBOX` lines). Unset where the line is chosen at draw time (`plank_text`).
+    std::optional<std::size_t> text_index;
 };
 
 /// One `click` line of hud.txt: either a rectangle centre (`click <name> pos <x> <y>`) in drawable

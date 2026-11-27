@@ -634,6 +634,16 @@ std::string plank_text_of(TexCache& cache, const HudLayout& hud,
     return line != nullptr ? *line : std::string{};
 }
 
+/// UI-PAUSE-1: the fixed line of an element with `text_section` and `text_index` (the pause box's
+/// "Pause!" and "Continue game", Texte.dat MESSAGEBOX 27 and 19), or empty.
+std::string fixed_text_of(TexCache& cache, const HudLayout& hud, const char* element) {
+    const UiElement* el = hud.element(element);
+    if (el == nullptr || el->text_section.empty() || !el->text_index)
+        return {};
+    const std::string* line = cache.text_line(el->text_section, *el->text_index);
+    return line != nullptr ? *line : std::string{};
+}
+
 /// A centred text box (hud.txt `align centre`, docs/re/ui.md 2.5): `text` in the element's font at
 /// x = pos_x + size_w / 2 - text_w / 2, y = pos_y, through `blit`. Nothing when the element is
 /// missing or incomplete, its font does not load, or `text` is empty.
@@ -1392,6 +1402,14 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
     if (paused) {
         blit_el("pause_parchment");
         blit_el("pause_button");
+        // UI-PAUSE-1: the box's text and the button's label (MainSmall.zei, glyph-exact on
+        // f15_pause).
+        for (const char* name : {"pause_text", "pause_label"}) {
+            draw_centred_text(cache, hud, placement, name, fixed_text_of(cache, hud, name),
+                              [&](const assets::Rgba& image, int x, int y) {
+                                  blit_xrgb(dst, dst_w, dst_h, image, x, y);
+                              });
+        }
     }
 
     return "";
@@ -1640,6 +1658,14 @@ std::string draw_live_screen_rgba_into(
     if (paused) {
         blit_el("pause_parchment");
         blit_el("pause_button");
+        // UI-PAUSE-1: the box's text and the button's label (MainSmall.zei, glyph-exact on
+        // f15_pause).
+        for (const char* name : {"pause_text", "pause_label"}) {
+            draw_centred_text(cache, hud, placement, name, fixed_text_of(cache, hud, name),
+                              [&](const assets::Rgba& image, int x, int y) {
+                                  blit_rgba_over(canvas, image, x, y);
+                              });
+        }
     }
 
     return "";

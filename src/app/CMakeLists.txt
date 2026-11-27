@@ -247,20 +247,14 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --speed --app-arg 200)
       set_tests_properties(viewer_wiring_status_icon_forester PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
-      # UI-HARVEST-ICON-1 R1: the owner's zoom-out/zoom-in sequence with the forester's icon, on the
-      # CPU path and on the GPU window (the owner's renderer).
-      add_test(NAME viewer_wiring_status_icon_zoom
-        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
-                $<TARGET_FILE:anno1503> status_icon_zoom
-                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
-                --app-arg --speed --app-arg 200)
-      set_tests_properties(viewer_wiring_status_icon_zoom PROPERTIES
-        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-HARVEST-ICON-1 R1: the forester's icon kept through zooming out and in while the game is
+      # paused with no wood, then cleared once wood arrives. GPU window with enhanced water (the owner's
+      # renderer) only: a paused CPU window draws no frame, so the script cannot advance there.
       add_test(NAME viewer_wiring_status_icon_zoom_gpu
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
                 $<TARGET_FILE:anno1503> status_icon_zoom --gpu
                 --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
-                --app-arg --speed --app-arg 200)
+                --app-arg --speed --app-arg 200 --app-arg --water --app-arg enhanced)
       set_tests_properties(viewer_wiring_status_icon_zoom_gpu PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4 RESOURCE_LOCK gpu)
       # UI-PLACE-1: the pickaxe with nothing armed, a cell chosen while demolishing, the cancel-X.

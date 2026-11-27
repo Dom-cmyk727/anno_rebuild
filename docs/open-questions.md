@@ -3988,3 +3988,8 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **What we know:** the handler `0x1002bf90` has no comparison with the stored index `[this+0x5f0]` (read), so the second click takes the same path as any other. HE was only observed switching to another category.
 - **Rebuild:** the grid shows (the same path), the type stays armed.
 - **How to resolve:** a HE or GOG capture of that click.
+
+## OQ-902: When exactly does the forester's "no raw material" icon clear? (UI-HARVEST-ICON-1 R1, 2026-11-27; OPEN)
+- **Question:** the original clears icon 1 (KeinRohstoff) through `0x10072fb0(0x0e)` (`0x10072ff1`) on the first production step that makes wood (`docs/re/ui.md` 11.2). The rebuild's sim clears it one turn after the first wood reaches the raw stock (measured: wood at turn 698, icon off at 699, `viewer_wiring_status_icon_zoom_gpu`). Are those the same moment, or does the original keep the icon until the raw stock reaches a production step's need (forester: 16 of 32)?
+- **What we know:** the clear itself is evidenced (D); the owner's report of the icon vanishing after zooming back in 1-2 minutes later is this clear, about 5 s after the icon appeared at --speed 200.
+- **How to resolve:** read the callers of `0x10072fb0` in the farm tick (`0x1006ea90`) for the condition of the step that calls it, or watch the icon and the stock in HE.

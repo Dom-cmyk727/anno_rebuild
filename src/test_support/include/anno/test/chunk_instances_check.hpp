@@ -43,8 +43,11 @@ chunk_instances_records_of(const render::Scene& scene, const std::vector<render:
 /// exact same `ObjectRecord`s as resolving the whole list live - the claim "a resolved-once-at-
 /// load SpriteDraw and one resolved fresh by place_prepared produce an identical record through
 /// the same code" (Scene::object_record), checked at the island-list granularity (chunk
-/// bucketing itself is checked separately, against frame.hpp's own visible_chunks, not
-/// re-derived here - ORCH III, 2026-11-27, ADR this avoids a second per-chunk rasteriser).
+/// bucketing itself is checked separately, in chunk_instances_test.cpp, against frame.hpp's own
+/// visible_chunks, not re-derived here - ORCH III, 2026-11-27, to avoid a second per-chunk
+/// rasteriser). Also re-resolves every static entry at a different time_ms to check
+/// is_static_instance's own claim at corpus scale, not just at the time_ms == 0 both sides use
+/// here (a time-0-only comparison would not catch a misclassified time-varying entry).
 /// Adds to `static_total`/`dynamic_total` so a caller can report counts across scenes.
 inline void check_resolve_static_instances(const render::Scene& scene, std::string_view scene_name,
                                            std::size_t& static_total, std::size_t& dynamic_total) {
@@ -86,6 +89,30 @@ inline void check_resolve_static_instances(const render::Scene& scene, std::stri
             std::vector<bool> is_static(list.size(), false);
             for (const auto& s : statics) {
                 is_static[s.list_index] = true;
+            }
+
+            // Time-invariance, at corpus scale, not just assumed at one synthetic case
+            // (chunk_instances_test.cpp): is_static_instance's own claim is that a static entry's
+            // resolved draw never changes with time_ms. A time-0-only comparison against "old"
+            // above would pass even if is_static_instance misclassified a time-varying entry as
+            // static (both sides would read the same wrong, but matching, time-0 value).
+            for (const auto& s : statics) {
+                std::vector<render::SpriteDraw> at_other_time;
+                render::place_prepared(
+                    std::span{&list[s.list_index], 1}, scene.anlagen, group, scene.lift, 999999,
+                    [](int, int, int, int) { return true; }, at_other_time);
+                // A static entry may resolve to a shadow draw and a main draw (both at the same
+                // list_index); match `s.draw` to its own kind, not positionally.
+                const auto other =
+                    std::find_if(at_other_time.begin(), at_other_time.end(), [&](const auto& d) {
+                        return d.is_shadow() == s.draw.is_shadow();
+                    });
+                CAPTURE(scene_name);
+                CAPTURE(s.list_index);
+                CAPTURE(group);
+                REQUIRE(other != at_other_time.end());
+                CHECK(other->anchor == s.draw.anchor);
+                CHECK(other->frame == s.draw.frame);
             }
             std::vector<std::pair<std::size_t, render::SpriteDraw>> merged;
             for (const auto& s : statics) {

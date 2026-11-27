@@ -350,6 +350,13 @@ struct SceneReclaimDeleter {
     void operator()(const Scene* scene) const noexcept { reclaimer->reclaim(scene); }
 };
 
+/// Sorted static-object indices in `Scene::island_lists(island).other` suppressed by an active
+/// render-layer ghost footprint (`UI-GHOST-2`) without mutating `Scene`.
+struct ObjectsExclusion {
+    std::size_t island = 0;
+    std::vector<std::size_t> indices;
+};
+
 class Scene : public std::enable_shared_from_this<Scene> {
   public:
     /// The byte buffers that the islands and `anlagen` view (their Bytes spans). The scene
@@ -629,7 +636,8 @@ class Scene : public std::enable_shared_from_this<Scene> {
     /// islands as unclipped records. Decodes the frames it names on the calling
     /// thread (frame_table).
     [[nodiscard]] ChunkDraws objects_draws(Rect rect, std::size_t group, bool ships, bool bases,
-                                           std::uint32_t bin_px = kDefaultBinPx) const;
+                                           std::uint32_t bin_px = kDefaultBinPx,
+                                           const ObjectsExclusion* exclude = nullptr) const;
     /// render() with the terrain height at each scene pixel given by
     /// `terrain` (from a chunk cache) for the river depth test.
     [[nodiscard]] std::pair<Canvas, SceneStats>

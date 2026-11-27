@@ -110,11 +110,32 @@ TEST_CASE("the watch never reads its own shared guard for an event of another ty
     REQUIRE(SDL_AddEventWatch(watch, &ctx));
     std::atomic<bool> stop{false};
     std::thread pusher([&] {
+        // Force SDL's own event queue past its hard cap deterministically, rather than relying
+        // on how many pushes a CI runner's own speed/contention happens to fit into this test's
+        // ~10 ms window: SDL_AddEvent (SDL_events.c, the pinned 3.4.18 source) refuses and calls
+        // SDL_SetError exactly once the queue already holds SDL_MAX_QUEUED_EVENTS (65535) events
+        // - this test never drains it (no SDL_PollEvent/SDL_PeepEvents call), so 70,000 pushes
+        // always cross that line. SDL_SetError is what allocates the per-thread TLS error buffer
+        // SDL_CleanupTLS below exists to release; without forcing this, the test only leaked that
+        // buffer when a slow/contended run happened to reach 65535 pushes within the main
+        // thread's own 200-iteration loop - the flakiness this task was opened for.
+        for (int i = 0; i < 70000; ++i) {
+            SDL_Event e{};
+            e.type = SDL_EVENT_WINDOW_RESIZED; // never the live-resize signal
+            SDL_PushEvent(&e);
+        }
         while (!stop.load(std::memory_order_relaxed)) {
             SDL_Event e{};
             e.type = SDL_EVENT_WINDOW_RESIZED; // never the live-resize signal
             SDL_PushEvent(&e);
         }
+        // SDL 3.4.18's own docs (SDL_thread.h, SDL_CleanupTLS): "If you are creating your
+        // threads outside of SDL and then calling SDL functions, you should call this function
+        // before your thread exits, to properly clean up SDL memory." This thread is a raw
+        // std::thread, not SDL_CreateThread, so without this call SDL never frees the per-thread
+        // error-state buffer SDL_SetError (above, via the forced queue overflow) lazily
+        // allocates on it - LeakSanitizer reports that as a leak at process exit otherwise.
+        SDL_CleanupTLS();
     });
     for (int i = 0; i < 200; ++i) {
         // The window thread's own flips of the real guard, exactly as live_resize_watch and

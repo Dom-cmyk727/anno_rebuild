@@ -86,8 +86,9 @@ formats::Result<std::optional<ScriptedCommand>, std::string> parse_line(std::str
         return std::optional<ScriptedCommand>{};
     }
     if (tok.size() < 4 || tok[0] != "turn") {
-        return where + "expected `turn <n> build|demolish|buildc|demolishc|found|move|stop|unload|"
-                       "load ...`";
+        return where +
+               "expected `turn <n> build|buildv|demolish|buildc|buildcv|demolishc|found|move|"
+               "stop|unload|load ...`";
     }
     const auto turn = number<std::uint64_t>(tok[1]);
     if (!turn) {
@@ -96,8 +97,8 @@ formats::Result<std::optional<ScriptedCommand>, std::string> parse_line(std::str
     ScriptedCommand out;
     out.turn = *turn;
     out.command.issuer = player;
-    if (tok[2] == "buildc" || tok[2] == "demolishc" || tok[2] == "found" || tok[2] == "move" ||
-        tok[2] == "stop" || tok[2] == "unload" || tok[2] == "load") {
+    if (tok[2] == "buildc" || tok[2] == "buildcv" || tok[2] == "demolishc" || tok[2] == "found" ||
+        tok[2] == "move" || tok[2] == "stop" || tok[2] == "unload" || tok[2] == "load") {
         // The ship-start forms: the issuer is on the line and nothing is looked up in the world.
         auto issuer = number<std::uint32_t>(tok[3]);
         if (!issuer) {
@@ -126,6 +127,32 @@ formats::Result<std::optional<ScriptedCommand>, std::string> parse_line(std::str
                 const auto rotation = number<std::uint8_t>(tok[k + 2]);
                 if (!x || !y || !rotation || *rotation > 3) {
                     return where + "a placement is <x> <y> <rotation 0..3> with numbers";
+                }
+                build.placements.push_back(
+                    sim::PlacementWire{sim::TypeId{*type}, *x, *y, *rotation, 0, 0});
+            }
+            out.command.body = std::move(build);
+        } else if (tok[2] == "buildcv") {
+            // buildcv <issuer> <island> <city> <type> <x> <y> <rot> ...
+            const std::size_t rest = tok.size() >= 6 ? tok.size() - 6 : 1;
+            if (tok.size() < 10 || rest % 4 != 0) {
+                return where + "buildcv takes <issuer> <island> <city> then <type> <x> <y> "
+                               "<rotation> 4-tuples";
+            }
+            const auto island = number<std::uint32_t>(tok[4]);
+            const auto city = number<std::uint32_t>(tok[5]);
+            if (!island || !city) {
+                return where + "island and city are numbers";
+            }
+            sim::BuildCmd build;
+            build.city = sim::CityRef{sim::IslandId{*island}, sim::CityNo{*city}};
+            for (std::size_t k = 6; k < tok.size(); k += 4) {
+                const auto type = number<std::uint32_t>(tok[k]);
+                const auto x = number<std::int32_t>(tok[k + 1]);
+                const auto y = number<std::int32_t>(tok[k + 2]);
+                const auto rotation = number<std::uint8_t>(tok[k + 3]);
+                if (!type || !x || !y || !rotation || *rotation > 3) {
+                    return where + "a placement is <type> <x> <y> <rotation 0..3> with numbers";
                 }
                 build.placements.push_back(
                     sim::PlacementWire{sim::TypeId{*type}, *x, *y, *rotation, 0, 0});
@@ -282,6 +309,45 @@ formats::Result<std::optional<ScriptedCommand>, std::string> parse_line(std::str
         }
         build.city = *city;
         out.command.body = std::move(build);
+    } else if (tok[2] == "buildv") {
+        // turn <n> buildv <type> <x> <y> <rotation> [<type> <x> <y> <rotation>]...
+        const std::size_t rest = tok.size() - 3;
+        if (rest < 4 || rest % 4 != 0) {
+            return where + "buildv takes 4-tuples <type> <x> <y> <rotation>";
+        }
+        sim::BuildCmd build;
+        std::optional<std::uint32_t> island;
+        for (std::size_t k = 3; k < tok.size(); k += 4) {
+            const auto type = number<std::uint32_t>(tok[k]);
+            const auto x = number<std::int32_t>(tok[k + 1]);
+            const auto y = number<std::int32_t>(tok[k + 2]);
+            const auto rotation = number<std::uint8_t>(tok[k + 3]);
+            if (!type || !x || !y || !rotation) {
+                return where + "a placement is <type> <x> <y> <rotation> with numbers";
+            }
+            if (*rotation > 3) {
+                return where + "the rotation is 0..3";
+            }
+            if (!island) {
+                island = island_at(world, *x, *y);
+                if (!island) {
+                    return where + "the first placement is on no island";
+                }
+            }
+            sim::PlacementWire placement;
+            placement.type = sim::TypeId{*type};
+            placement.x = *x;
+            placement.y = *y;
+            placement.rotation = *rotation;
+            build.placements.push_back(placement);
+        }
+        const auto city = city_of(world, *island, player);
+        if (!city) {
+            return where + "player " + std::to_string(player.v) + " has no city on island " +
+                   std::to_string(*island);
+        }
+        build.city = *city;
+        out.command.body = std::move(build);
     } else if (tok[2] == "demolish") {
         // turn <n> demolish <x> <y> [<x> <y>]...
         const std::size_t rest = tok.size() - 3;
@@ -321,6 +387,42 @@ formats::Result<std::optional<ScriptedCommand>, std::string> parse_line(std::str
         return where + "more placements or tiles than one command holds (4095 / 8190)";
     }
     return std::optional<ScriptedCommand>{std::move(out)};
+}
+
+std::optional<FormatError> format_build_line(std::string& out, const std::string& turn,
+                                             const std::string& who, const sim::BuildCmd& b,
+                                             bool ship_start) {
+    if (b.placements.empty()) {
+        return FormatError{"a build without placements has no line form"};
+    }
+    const sim::TypeId type = b.placements.front().type;
+    bool uniform_type = true;
+    for (const sim::PlacementWire& p : b.placements) {
+        if (p.byte7 != 0 || p.byte8 != 0) {
+            return FormatError{"a placement with byte7/byte8 set has no line form"};
+        }
+        if (p.type != type) {
+            uniform_type = false;
+        }
+    }
+    if (ship_start) {
+        out += turn + (uniform_type ? "buildc " : "buildcv ") + who + " " +
+               std::to_string(b.city.island.v) + " " + std::to_string(b.city.city.v);
+        if (uniform_type) {
+            out += ' ' + std::to_string(type.v);
+        }
+    } else {
+        out += turn + (uniform_type ? "build " + std::to_string(type.v) : "buildv");
+    }
+    for (const sim::PlacementWire& p : b.placements) {
+        if (!uniform_type) {
+            out += ' ' + std::to_string(p.type.v);
+        }
+        out += ' ' + std::to_string(p.x) + ' ' + std::to_string(p.y) + ' ' +
+               std::to_string(p.rotation);
+    }
+    out += '\n';
+    return std::nullopt;
 }
 
 } // namespace
@@ -401,23 +503,9 @@ format_commands(const std::vector<ScriptedCommand>& commands, bool ship_start) {
                 continue;
             }
             if (const auto* b = std::get_if<sim::BuildCmd>(&scripted.command.body)) {
-                if (b->placements.empty()) {
-                    return FormatError{"a build without placements has no line form"};
+                if (auto err = format_build_line(out, turn, who, *b, true)) {
+                    return *err;
                 }
-                const sim::TypeId type = b->placements.front().type;
-                out += turn + "buildc " + who + " " + std::to_string(b->city.island.v) + " " +
-                       std::to_string(b->city.city.v) + " " + std::to_string(type.v);
-                for (const sim::PlacementWire& p : b->placements) {
-                    if (p.type != type) {
-                        return FormatError{"a build with more than one type has no line form"};
-                    }
-                    if (p.byte7 != 0 || p.byte8 != 0) {
-                        return FormatError{"a placement with byte7/byte8 set has no line form"};
-                    }
-                    out += ' ' + std::to_string(p.x) + ' ' + std::to_string(p.y) + ' ' +
-                           std::to_string(p.rotation);
-                }
-                out += '\n';
                 continue;
             }
             if (const auto* d = std::get_if<sim::DemolishCmd>(&scripted.command.body)) {
@@ -432,23 +520,9 @@ format_commands(const std::vector<ScriptedCommand>& commands, bool ship_start) {
             return FormatError{"a command of this kind has no ship-start line form"};
         }
         if (const auto* build = std::get_if<sim::BuildCmd>(&scripted.command.body)) {
-            // The line names one type, then the placements as <x> <y> <rotation>.
-            if (build->placements.empty()) {
-                return FormatError{"a build without placements has no line form"};
+            if (auto err = format_build_line(out, turn, who, *build, false)) {
+                return *err;
             }
-            const sim::TypeId type = build->placements.front().type;
-            out += turn + "build " + std::to_string(type.v);
-            for (const sim::PlacementWire& p : build->placements) {
-                if (p.type != type) {
-                    return FormatError{"a build with more than one type has no line form"};
-                }
-                if (p.byte7 != 0 || p.byte8 != 0) {
-                    return FormatError{"a placement with byte7/byte8 set has no line form"};
-                }
-                out += ' ' + std::to_string(p.x) + ' ' + std::to_string(p.y) + ' ' +
-                       std::to_string(p.rotation);
-            }
-            out += '\n';
             continue;
         }
         if (const auto* demolish = std::get_if<sim::DemolishCmd>(&scripted.command.body)) {
@@ -473,6 +547,42 @@ load_commands(const std::filesystem::path& file, const sim::World& world, sim::P
     std::ostringstream buffer;
     buffer << in.rdbuf();
     return parse_commands(buffer.str(), world, player);
+}
+
+std::optional<FormatError> format_build_line(std::string& out, const std::string& turn,
+                                             const std::string& who, const sim::BuildCmd& b,
+                                             bool ship_start) {
+    if (b.placements.empty()) {
+        return FormatError{"a build without placements has no line form"};
+    }
+    const sim::TypeId type = b.placements.front().type;
+    bool uniform_type = true;
+    for (const sim::PlacementWire& p : b.placements) {
+        if (p.byte7 != 0 || p.byte8 != 0) {
+            return FormatError{"a placement with byte7/byte8 set has no line form"};
+        }
+        if (p.type != type) {
+            uniform_type = false;
+        }
+    }
+    if (ship_start) {
+        out += turn + (uniform_type ? "buildc " : "buildcv ") + who + " " +
+               std::to_string(b.city.island.v) + " " + std::to_string(b.city.city.v);
+        if (uniform_type) {
+            out += ' ' + std::to_string(type.v);
+        }
+    } else {
+        out += turn + (uniform_type ? "build " + std::to_string(type.v) : "buildv");
+    }
+    for (const sim::PlacementWire& p : b.placements) {
+        if (!uniform_type) {
+            out += ' ' + std::to_string(p.type.v);
+        }
+        out += ' ' + std::to_string(p.x) + ' ' + std::to_string(p.y) + ' ' +
+               std::to_string(p.rotation);
+    }
+    out += '\n';
+    return std::nullopt;
 }
 
 } // namespace anno::app

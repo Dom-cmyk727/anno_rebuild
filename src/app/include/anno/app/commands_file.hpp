@@ -45,11 +45,14 @@ struct FormatError {
 /// `ship_start`: the ship-start opening's session form (W4-OPENING-1). Every line then names its
 /// issuer and nothing is resolved against the world at parse time (the opening's city does not
 /// exist when the file is read): `turn N buildc <issuer> <island> <city> <type> <x> <y> <rot> ...`,
-/// `demolishc <issuer> <island> <city> <x> <y> ...`, `found <issuer> <ship> <type> <rot> <x> <y>
-/// <click x> <click y>`, `move <issuer> <ship> <target x Q24.8> <target y Q24.8>`, `stop <issuer>
-/// <ship>`, `unload <issuer> <ship> <warehouse> <hold> <goods> <tons>` and `load <issuer> <ship>
-/// <warehouse> <hold> <goods> <tons>` (W4-EXPAND-LIVE-1 D1, the developer Load adapter).
-/// parse_commands reads these lines whatever the mode; the older forms are unchanged.
+/// `buildcv <issuer> <island> <city> <type> <x> <y> <rot> ...` (multi-type variant builds such
+/// as road cosmetic variants), `demolishc <issuer> <island> <city> <x> <y> ...`,
+/// `found <issuer> <ship> <type> <rot> <x> <y> <click x> <click y>`,
+/// `move <issuer> <ship> <target x Q24.8> <target y Q24.8>`, `stop <issuer> <ship>`,
+/// `unload <issuer> <ship> <warehouse> <hold> <goods> <tons>` and
+/// `load <issuer> <ship> <warehouse> <hold> <goods> <tons>` (W4-EXPAND-LIVE-1 D1, the developer
+/// Load adapter). For fixed-map sessions, uniform builds use `build <type> <x> <y> <rot> ...` and
+/// multi-type builds use `buildv <type> <x> <y> <rot> ...`. parse_commands reads all forms.
 [[nodiscard]] formats::Result<std::string, FormatError>
 format_commands(const std::vector<ScriptedCommand>& commands, bool ship_start = false);
 

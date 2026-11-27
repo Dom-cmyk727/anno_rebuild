@@ -1,0 +1,92 @@
+# UI-CATNAV-1: a click on a category tab while a building is armed shows that category's grid
+# and keeps the building armed (the owner's ui_10 finding 4; HE frames 10:03-10:13; View.dll
+# 0x1002bf90, the tab handler, swaps gadget groups and calls no cursor or cancel code).
+# `ui.panel` is the panel the open menu shows (grid / info), `tool.armed` the armed Anlagen id.
+# The pioneer house 501 is the public grid's cell (0, 0) at (833, 330); roads tab y 372.
+# Launch: --play data/maps/lan5.txt --construction-menu on --layout data/ui
+resize 1024 768
+wait frames 5
+look 1140 516
+expect fact ui.panel == none
+expect fact tool.armed == none
+key b
+wait frames 5
+expect fact ui.panel == grid
+expect fact tool.armed == none
+# Arm the house: the info panel shows.
+click_px 833 330
+wait frames 5
+expect fact ui.panel == info
+expect fact tool.armed == 501
+expect fact tool.mode == build
+# Each tab shows its grid, the house stays armed.
+click_px 770 372
+wait frames 3
+expect fact ui.category == roads
+expect fact ui.panel == grid
+expect fact tool.armed == 501
+expect fact tool.mode == build
+click_px 770 418
+wait frames 3
+expect fact ui.category == farms
+expect fact ui.panel == grid
+expect fact tool.armed == 501
+click_px 770 464
+wait frames 3
+expect fact ui.category == workshops
+expect fact ui.panel == grid
+expect fact tool.armed == 501
+click_px 770 510
+wait frames 3
+expect fact ui.category == coastal
+expect fact ui.panel == grid
+expect fact tool.armed == 501
+click_px 770 556
+wait frames 3
+expect fact ui.category == mines
+expect fact ui.panel == grid
+expect fact tool.armed == 501
+click_px 770 602
+wait frames 3
+expect fact ui.category == military
+expect fact ui.panel == grid
+expect fact tool.armed == 501
+click_px 770 648
+wait frames 3
+expect fact ui.category == ornamental
+expect fact ui.panel == grid
+expect fact tool.armed == 501
+click_px 770 326
+wait frames 3
+expect fact ui.category == public
+expect fact ui.panel == grid
+expect fact tool.armed == 501
+# The same cell arms again (info panel); a tab click on the open category shows the grid (OQ-774).
+click_px 833 330
+wait frames 5
+expect fact ui.panel == info
+click_px 770 326
+wait frames 3
+expect fact ui.category == public
+expect fact ui.panel == grid
+expect fact tool.armed == 501
+# Picking a cell in another category's grid arms that type (the dirt road is the roads grid's
+# first cell, 2520 as the title of the owner's test shows).
+click_px 770 372
+wait frames 3
+click_px 833 330
+wait frames 5
+expect fact ui.panel == info
+expect fact tool.armed == 2520
+# A tab click with the road armed: the grid, the road stays armed.
+click_px 770 418
+wait frames 3
+expect fact ui.panel == grid
+expect fact ui.category == farms
+expect fact tool.armed == 2520
+# ESC on the grid closes the menu and puts the armed type away (as before, ui_place_escape).
+key esc
+wait frames 3
+expect fact ui.panel == none
+expect fact tool.armed == none
+quit

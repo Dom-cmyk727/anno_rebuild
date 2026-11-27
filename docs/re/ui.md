@@ -293,6 +293,8 @@ Rebuild: `info_preview::compose` (C++) and `tools/ui_layout.py preview_canvas` (
 | ESC on the grid | the construction menu closes; the panel shows the player tab (overview with the balance figures) | `p2_esc2` |
 | Right click on the map in placement | back to the grid, nothing armed | `p1_d_after_right` |
 
+**Category tab with a building armed (UI-CATNAV-1, 2026-11-19).** The tab strip's handler `0x1002bf90` (registered at `0x1002bb23`) swaps the panel's gadget groups and stores the tab index at `[this+0x5f0]`; it calls no cursor code and posts no cancel, and compares nothing with the stored index. HE (ui_10 10:03-10:13) shows the new category's grid with the building still armed. So a tab click shows the grid and keeps the armed type (rebuild: `after_category_click`, facts `ui.panel`, `tool.armed`, wiring `ui_catnav`; OQ-773, OQ-774).
+
 UI-PLACE-2 (2026-11-15) added three passes (`cache/orig/ui-place-2/d96-20261115-202026`, `-202202`, `-202401` in that packet's worktree; scripts `cache/capture/ui_place_2*_capture.py`):
 
 | Step | Original | Shot |

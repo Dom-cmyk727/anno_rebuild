@@ -37,6 +37,10 @@ struct Frame {
     // The weight of the simulated waves against the analytic ones, 0..1 (GpuLimits::
     // wave_fade_ms: 250 ms after a window switch, OQ-076); 1 = only the simulation.
     fluid_fade: f32,
+    // UI-GHOST-2: active scene-pixel rectangle of the dynamic objects patch
+    // (width <= 0 when inactive).
+    patch_origin: vec2<i32>,
+    patch_size: vec2<i32>,
 }
 
 @group(0) @binding(0) var<uniform> frame: Frame;
@@ -215,18 +219,30 @@ fn terrain_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<u32> {
     return vec4<u32>(textureLoad(terrain_chunk, local, 0).r, 0u, 0u, 0u);
 }
 
+fn in_patch_rect(px: vec2<i32>) -> bool {
+    return frame.patch_size.x > 0 && px.x >= frame.patch_origin.x && px.y >= frame.patch_origin.y &&
+           px.x < frame.patch_origin.x + frame.patch_size.x &&
+           px.y < frame.patch_origin.y + frame.patch_size.y;
+}
+
 @fragment
 fn objects_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     if (chunk.flags & 2u) == 0u {
         discard;
     }
-    let local = chunk_local(scene_px(pos));
+    let px = scene_px(pos);
+    if piece.kind == 0u && in_patch_rect(px) {
+        discard;
+    }
+    let local = chunk_local(px);
     let c = textureLoad(objects_tex, local, 0);
     if c.a == 0.0 {
         discard;
     }
     if frame.enhanced != 0u && frame.objects_water != 0.0 && (chunk.flags & 16u) != 0u {
-        let w = object_in_water(c, local, scene_px(pos), pos);
+        let b = textureLoad(base_tex, local, 0).r;
+        let w = shade_object_in_water(c, local, px, pos, b, piece.kind != 0u, f32(piece.den.y),
+                                      f32(piece.num.y));
         return vec4<f32>(w.rgb, w.a * (1.0 - piece.transparent));
     }
     return vec4<f32>(c.rgb, c.a * (1.0 - piece.transparent));
@@ -245,16 +261,16 @@ const OBJ_MAX_DEPTH: f32 = 6.0;
 const OBJ_FADE: f32 = 2.5;
 const OBJ_FOAM: f32 = 1.2;
 
-fn object_in_water(c: vec4<f32>, local: vec2<i32>, px: vec2<i32>, pos: vec4<f32>) -> vec4<f32> {
-    let b = textureLoad(base_tex, local, 0).r;
+fn shade_object_in_water(c: vec4<f32>, local: vec2<i32>, px: vec2<i32>, pos: vec4<f32>,
+                         b: u32, scaled: bool, den_y: f32, num_y: f32) -> vec4<f32> {
     if b >= 255u {
         return c;
     }
     // Rows above the object's lowest pixel, in pixels of the group shown (a
     // stand-in's base plane counts the rows of its own group).
     var bs = f32(b);
-    if piece.kind != 0u {
-        bs = bs * f32(piece.den.y) / f32(piece.num.y);
+    if scaled {
+        bs = bs * den_y / num_y;
     }
     let foot = vec2<i32>(local.x, min(local.y + i32(b), chunk.size - 1));
     var cover = 255u;
@@ -866,17 +882,108 @@ fn sea_shade(pos: vec4<f32>, allow_fluid: bool) -> vec4<f32> {
     return vec4<f32>(mix(under, c, alpha), 1.0 - piece.transparent);
 }
 
-// The sea once more over the submerged object pixels, after the objects (Original
-// water; FrameRenderer::render's second sea pass, docs/render/depth.md §2.3): the
-// sea sprite over the object (blended by the pipeline), without the open-water fade.
+// The sea once more over the submerged object pixels, after the objects
+// (FrameRenderer::render's second sea pass, docs/render/depth.md §2.3): every sprite
+// pixel the chunk build marked submerged (Chunk::submerged, per-pixel against the sea
+// plane) gets the sea drawn over it again, so tall thin objects (pier poles) sink below
+// the surface the same way in both styles - not just the ones object_in_water's
+// column-foot heuristic happens to reach (WATER-SUBMERGED-1). Original: the sea sprite
+// over the object, without the open-water fade (unchanged). Enhanced: object_in_water
+// still owns the foam line at the contact, so this pass only shades (never adds foam)
+// and blends with a capped alpha - soft, not a hard sprite cutout - to avoid double
+// fading the same pixel twice.
 @fragment
 fn sea_submerged_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
-    if frame.enhanced != 0u || (chunk.flags & 68u) != 68u || piece.kind != 0u {
+    if (chunk.flags & 68u) != 68u || piece.kind != 0u {
         discard;
     }
     let px = scene_px(pos);
+    if in_patch_rect(px) {
+        discard;
+    }
     let local = chunk_local(px);
     if textureLoad(submerged_tex, local, 0).r == 0u {
+        discard;
+    }
+    let f = textureLoad(field_tex, local, 0);
+    if f.r == 0u || (f.a & 1u) == 0u {
+        discard;
+    }
+    if frame.enhanced != 0u {
+        // Enhanced's own shading, not Original's dithered sea sprite: the checkerboard
+        // pattern (below) only covers about half of any given area by design (the
+        // classic look), which would halve this pass's coverage here for no reason -
+        // every submerged pixel sinks, not every other one.
+        let shaded = sea_shade(pos, true);
+        return vec4<f32>(shaded.rgb, 0.7 * (1.0 - piece.transparent));
+    }
+    let pi = vec2<i32>(wrap(px.x, frame.pattern_size.x), wrap(px.y, frame.pattern_size.y));
+    let sprite = textureLoad(sea_sprite, pi, frame.steps.x, 0);
+    if sprite.a == 0.0 {
+        discard;
+    }
+    return vec4<f32>(sprite.rgb, sprite.a * (1.0 - piece.transparent));
+}
+
+// ---- Dynamic objects patch (UI-GHOST-2) ----
+// Group 2 bindings 2..5 keep clear of atlas (0) and piece (1), and share a
+// reduced frame group (group 0 bindings 0..2) so pipeline texture counts stay <= 14.
+struct PatchU {
+    origin: vec2<i32>,
+    size: vec2<i32>,
+    has_base: u32,
+    has_submerged: u32,
+    _p0: u32,
+    _p1: u32,
+}
+@group(2) @binding(2) var<uniform> patch_u: PatchU;
+@group(2) @binding(3) var patch_objects: texture_2d<f32>;
+@group(2) @binding(4) var patch_base: texture_2d<u32>;
+@group(2) @binding(5) var patch_submerged: texture_2d<u32>;
+
+@vertex
+fn patch_vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+    return to_clip(vec2<f32>(patch_u.origin) + quad_corner(i) * vec2<f32>(patch_u.size));
+}
+
+@fragment
+fn patch_objects_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+    let px = scene_px(pos);
+    let local = px - chunk.origin;
+    if local.x < 0 || local.y < 0 || local.x >= chunk.size || local.y >= chunk.size {
+        discard;
+    }
+    let p_local = px - patch_u.origin;
+    if p_local.x < 0 || p_local.y < 0 || p_local.x >= patch_u.size.x || p_local.y >= patch_u.size.y {
+        discard;
+    }
+    let c = textureLoad(patch_objects, p_local, 0);
+    if c.a == 0.0 {
+        discard;
+    }
+    if frame.enhanced != 0u && frame.objects_water != 0.0 && patch_u.has_base != 0u &&
+       (chunk.flags & 4u) != 0u {
+        let b = textureLoad(patch_base, p_local, 0).r;
+        return shade_object_in_water(c, local, px, pos, b, false, 1.0, 1.0);
+    }
+    return c;
+}
+
+@fragment
+fn patch_submerged_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+    if frame.enhanced != 0u || patch_u.has_submerged == 0u || (chunk.flags & 4u) == 0u {
+        discard;
+    }
+    let px = scene_px(pos);
+    let local = px - chunk.origin;
+    if local.x < 0 || local.y < 0 || local.x >= chunk.size || local.y >= chunk.size {
+        discard;
+    }
+    let p_local = px - patch_u.origin;
+    if p_local.x < 0 || p_local.y < 0 || p_local.x >= patch_u.size.x || p_local.y >= patch_u.size.y {
+        discard;
+    }
+    if textureLoad(patch_submerged, p_local, 0).r == 0u {
         discard;
     }
     let f = textureLoad(field_tex, local, 0);
@@ -888,7 +995,7 @@ fn sea_submerged_fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32>
     if sprite.a == 0.0 {
         discard;
     }
-    return vec4<f32>(sprite.rgb, sprite.a * (1.0 - piece.transparent));
+    return vec4<f32>(sprite.rgb, sprite.a);
 }
 
 // ---- Sprites (water objects) from the atlas ----

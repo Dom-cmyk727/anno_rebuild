@@ -105,6 +105,8 @@ struct ViewerHooks {
     /// UI-HARVEST-ICON-1 B: the status icon figures (status_icons.hpp), drawn over the local
     /// player's buildings from PlaySnapshot::status_icons. Null leaves the icons out.
     std::shared_ptr<const StatusIconLayer> status_icons;
+    /// UI-GHOST-2 ADAPTATION (default off): outline blocking footprint(s) on Reject::Occupied.
+    bool occupied_outline = false;
 };
 
 /// Opens the window and runs until it is closed; an empty string on

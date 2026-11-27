@@ -15,7 +15,7 @@ import sys
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ctest_verdict import verdict
+from ctest_verdict import analyze, combine_retries, verdict
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -124,7 +124,7 @@ def gate(args):
     args.build_dir = args.build_dir.resolve()
     args.log = args.log.resolve()
     cache = args.build_dir / "CMakeCache.txt"
-    home = next((s.split("=", 1)[1] for s in cache.read_text().splitlines()
+    home = next((s.split("=", 1)[1] for s in cache.read_text(encoding="utf-8", errors="replace").splitlines()
                  if s.startswith("CMAKE_HOME_DIRECTORY:INTERNAL=")), None)
     if home is None or Path(home).resolve() != source:
         raise RuntimeError("build directory belongs to a different source tree")
@@ -155,6 +155,7 @@ def gate(args):
             record = {"workflow": identity(ROOT, outputs, recorded), "source_before": identity(source, outputs, recorded),
                       "started_unix": time.time(), "argv": sys.argv,
                       "asset_policy": args.asset_policy, "allowed_skips": args.allow_skip,
+                      "retry_refused": not args.no_retry_refused,
                       "game_dir": os.environ.get("ANNO1503_GAME_DIR"),
                       "configuration": args.config, "jobs": args.jobs,
                       "recording_before": {str(p): sha(p) for p in recorded},
@@ -224,14 +225,44 @@ def gate(args):
                 if selected["tests"]:
                     rc = run(base + sel + ["--no-tests=error", "-V", "--timeout",
                              str(args.timeout), "-j", str(args.jobs)], log, source)
-                    code, rows = verdict(args.log.read_text().splitlines(), selected["tests"], allowed, True)
+                    sel_lines = args.log.read_text(encoding="utf-8", errors="replace").splitlines()
+                    initial = analyze(sel_lines, selected["tests"], allowed, True)
+                    code, rows = initial["code"], initial["rows"]
+                    if initial["refused"] and not args.no_retry_refused:
+                        log.write("\n".join(rows) + "\n")
+                        log.flush()
+                        expected_by_name = {t["name"]: t for t in selected["tests"]}
+                        retry_results = {}
+                        retry_rcs = {}
+                        for refused_test in sorted(initial["refused"], key=lambda t: t["name"]):
+                            name = refused_test["name"]
+                            command = base + ["-R", anchor(name), "--no-tests=error", "-V",
+                                              "--timeout", str(args.timeout), "-j", "1"]
+                            log.write("== retry refused " + name + "\n")
+                            log.flush()
+                            start = log.tell()
+                            retry_rc = run(command, log, source)
+                            with args.log.open(encoding="utf-8", errors="replace") as reader:
+                                reader.seek(start)
+                                retry_info = analyze(reader.read().splitlines(),
+                                                     [expected_by_name[name]], allowed, True)
+                            log.write("\n".join(retry_info["rows"]) + "\n")
+                            log.flush()
+                            retry_results[name] = retry_info
+                            retry_rcs[name] = retry_rc
+                        combined = combine_retries(initial, retry_results, retry_rcs, allowed, True)
+                        code, rows = combined["code"], combined["rows"]
+                        if (not initial["failed"] and not initial["incomplete"]
+                                and not initial["problems"]):
+                            nonzero_retries = [r for r in retry_rcs.values() if r]
+                            rc = nonzero_retries[-1] if nonzero_retries else 0
                 else:
                     # Every selected test already ran above as a required contract: there is
                     # nothing left to run, but the gate still needs a clear PASS, not the
                     # "selection contains no tests" failure a genuinely empty call gets.
                     rc = 0
                     log.write("(every selected test already ran as a required contract above)\n")
-                    rows = ["COUNTS: selected=0 executed=0 failed=0 empty=0 skipped=0 (required-asset=0 "
+                    rows = ["COUNTS: selected=0 executed=0 failed=0 refused=0 empty=0 skipped=0 (required-asset=0 "
                             "platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0",
                             "VERDICT: PASS"]
                     code = 0
@@ -277,6 +308,8 @@ def main():
                          help="do not add picture_matrix_contract as a required test on UNIX "
                               "(it is added automatically by default); for a caller that already "
                               "ran it in an earlier call against the same build")
+    parser.add_argument("--no-retry-refused", action="store_true",
+                        help="do not retry refused tests one at a time after the selection")
     parser.add_argument("--preflight-only", action="store_true")
     args = parser.parse_args()
     if args.jobs < 1 or args.timeout < 1:

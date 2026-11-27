@@ -26,13 +26,21 @@ the worktree's `cache/bref/` (git-ignored).
 **Evidence tags used throughout:** **D** = read in the code (module + address given); **P** = parsed from an
 original file; **L** = likely (inferred, not read to the end); **U** = unknown (an open question). The open
 questions this reference raised are OQ-728..749 in `docs/open-questions.md` (part B: 728-734, C: 735-739,
-D: 740-749).
+D: 740-749; BUILDINGS-REF-2, 2026-11-19: OQ-764..772, part B section 10).
 
 **Original data and text:** the per-type field values (part A's tables) and the display names from `Texte.dat`
 are not committed (repo rule: original data is read from the user's files at run time; owner rule: no
 original text in git). This file keeps the method, the field meanings, findings and summary counts.
 
 ## Quick answers
+
+0. **BUILDINGS-REF-2 (2026-11-19), the short version** (part B section 10): roads are an **L drag, long axis first, at
+   most 40 tiles, every tile in own territory, no dirt over cobblestone, re-laying free**, with a neighbour reshaper that
+   picks straight/corner/T/cross/end ids; the flat straight piece has **no terrain test**, so it can stand on territory
+   sea tiles (HE agrees). The rebuild's sim already places land roads, but the **picture draws no runtime tile object**,
+   which is why the owner saw nothing. `Occupied` is always a **building footprint** (trees, fields and stones never refuse
+   in the sim, as in the original; placing removes them, demolish does not bring them back). Only buildings
+   (PRODTYPE <= 192) are selectable; a click with a building armed places it.
 
 1. **One path for everything (D, part D).** Every building, road, wall, field, tree or decoration the player
    places goes cursor → apply mode 6 → `City::Build` → `City::Place 0x100279a0`. Placement is **instant**:
@@ -63,9 +71,12 @@ original text in git). This file keeps the method, the field meanings, findings 
 4. **What the player sees while placing (D + HE pixels, parts B/C):**
    - **A valid ghost:** the building, its radius outline (GOG yellow, HE green), and for crop-input buildings
      the fertility bar (UI-PRODBAR-1).
-   - **Refused ground:** a yellow footprint rectangle and no ghost.
-   - **Unaffordable:** the ghost **blinks** (HE about 0.75 s on, 0.5 s off). The preview ignores cost; the
+   - **Refused ground:** a yellow footprint rectangle and no ghost. It is a 1-pixel `0xffff00` outline
+     along the footprint's tile corners at ground height, also over water (§5.1).
+   - **Unaffordable:** the ghost **blinks**: 700 ms shown, 700 ms hidden (AnnoFrame `0x100038d0`; HE
+     measured 0.700 s / 0.700 s at 80 fps). The radius outline stays steady. The preview ignores cost; the
      click checks it.
+   - **Pointer over the panel:** HE hides the ghost and its radius outline (§5.1).
 5. **Entrance arrows (D + P + HE, part C):**
    - **Where they are drawn:** only in the **info panel's picture**, both in the build menu's preview and in
      a placed building's panel. **The map ghost draws no arrows**, in GOG or HE, valid or refused. The
@@ -92,8 +103,8 @@ original text in git). This file keeps the method, the field meanings, findings 
 | 3 | In-place market/Kontor upgrade refused as `Occupied` | D | sim (O-4) |
 | 4 | Fields and trees (0x29) cannot be placed: no rectangle drag, no dry-variant swap | B, D | FERTILITY-1a has the placement class; planting is still `Unsupported` |
 | 5 | Walls, gates, bridges, ramps, piers, plazas, fences, monuments `Unsupported` | B, D | sim + UI |
-| 6 | Road drag: no L-path, no 40-tile cap, no every-tile-own-territory rule, no no-downgrade rule, no free re-lay; no neighbour reshaping (`0x1007cc40`) | B | sim + UI |
-| 7 | Ghost: the window's check covers bounds, occupancy and cost only; it always draws; no yellow rectangle, no radius outline, no blinking when unaffordable | B, C | UI-GHOST-1 (proposed) |
+| 6 | Road drag: L-path (y first on ties), 40-tile cap, every-tile-own-territory, no-downgrade, same-family free re-lay, live ghost + blink + yellow refusal (`S + code`: ROADS-1 + ROADS-3, default `--road-rules on` in `--play`; compiled sim default off for faithful pins); neighbour reshaping (`0x1007cc40`) still open. Detail and packets: 10.1, rows 16-18 | B | sim + UI (ROADS-2 open for reshaping) |
+| 7 | Ghost: the window's check covers bounds, occupancy and cost only; it always draws; no yellow rectangle, no radius outline, no blinking when unaffordable. **Closed by UI-GHOST-1 stage B** (§5.1 "What the rebuild draws"); left: the multi-record drag ghost and the road/wall prefix. The whole-map pick came in fix round R1 (OQ-760 resolved) | B, C | UI-GHOST-1 |
 | 8 | Ordinary buildings cannot be drag-placed (original: up to 64), and no random house variants (property 0x32) | B | UI + sim |
 | 9 | Mine cursor's snap to deposit sites not modelled; gold and gem mines `Unsupported` | B | sim (OQ-728) |
 | 10 | Arrows on a placed building's info-panel picture (the build preview has them on task/UI-INFO-2b, not yet on main) | C | UI-INFO-2d (re-scoped: no ghost arrows, see below) |
@@ -102,6 +113,11 @@ original text in git). This file keeps the method, the field meanings, findings 
 | 13 | Ctrl auto-align missing | B, C | UI (OQ-735) |
 | 14 | Well hooks on place/remove; church/university/library hooks; run planner for watchtowers and gates; fire/plague stop and stall detach on remove | D | sim |
 | 15 | The figure veto (`0x10045080`) runs only at founding, not in Build | B | sim |
+| 16 | **Runtime tile objects (roads, later fields and trees) never reach the picture**: a placed road is `Applied` but `NoVisualChange`; the trees under a new building stay drawn | B (10.1, 10.2) | **Settled for runtime roads & cleared scenery (S + code, ROADS-0):** `PlayRunner` diffs tracked tile objects (`kRoadFlag`) and cleared tick-0 scenery alongside `BuildingDelta`; `ScenePicture` -> `apply_island_buildings` emits `PROD2` sprites (`id, rotation, height, phase`), placed roads reach `Visible`, cleared trees disappear and stay bare on demolish. Planting crops/trees remains gap 4 |
+| 17 | Road drag: L path with y first on ties, 40 tiles, every tile territory, no downgrade, same-family free, kind-9 prefix commit; hold-and-follow ghost | B (10.1) | **Settled (S + code):** ROADS-1 (`sim::road_path`, `RoadRules`, `check_build_path`, kind-9 commit) + ROADS-3 (`plan_road_ghost`, `RoadVariantDeck`, `DevInput` L-drag, `--road-rules` default `on` in `--play`) |
+| 18 | Road autotiling table (corner/T/cross/end, dirt = cobblestone + 20) | B (10.1 item 8) | ROADS-2 |
+| 19 | The ghost hides no trees; no yellow rectangle on refusal; occupied footprints invisible | B (10.2) | **Settled (D + H + S + code, `UI-GHOST-2`):** render-layer `ObjectsPatch` suppresses flag-`0x20` scenery under shown ghosts while respecting `overwrites()` (`0x10` rocks stay under `0x10` mines; moving away/cancelling restores immediately without mutating `Scene`); `AnnoFrame 0x10048450`/`0x1004b7f0` -> `0x10041050` draws only the yellow (`0xffff00`) empty rectangle on refusal without hiding trees (`0x10047848`); optional `--occupied-outline on\|off` **ADAPTATION (default `off`)** outlines blocking `Reject::Occupied` footprints (`kOccupiedOutlineRgb = 0xff4040`) |
+| 20 | Selected building has a title but no yellow highlight; market/Kontor click does not open the warehouse | B (10.3) | UI-SELECT-1/2 |
 
 **Consequence for open UI packets:** UI-INFO-2d item (a), "the map ghost's entrance arrows", is **dropped**.
 The original draws none (part C §2), so OQ-713 closes as "no arrows on the ghost". Arrows on a placed
@@ -267,14 +283,92 @@ Every cursor ends in `City::Build` (`AnnoWelt 0x100276a0`). That calls the islan
 |---|---|---|---|
 | Preview ignores cost | the preview passes flag `0x2000000`; `City::Build` then skips `0x100275d0`. The ghost/rectangle verdict (byte `B+0x2e4`) is about the site only | `0x1004754f`, `0x1002787d` | D |
 | Click checks cost | the click passes `0x8000000` (no `0x2000000`): `0x100275d0` must pass, meaning goods `0x29`-`0x2d` (tools, wood, bricks, marble, `0x2d`) in the city stock (slot `+0x7c`) and gold (player slot `+0x60`) >= the type's costs. Player option 7 skips it (OQ-126.1). An unaffordable click places nothing | `0x10027890`, `0x100275d0` | D |
-| Ghost of an unaffordable building **blinks** | after a valid preview the cursor sums the costs of the records listed so far plus this one against the stock (`0x10043d80`). The ghost is written into the island with flags `0x80000000` (ghost, no tile write) or, when unaffordable, `0xA0000000`. `0x1008dc10` sets the footprint bits in the chunk's ghost mask `+0x210` and, for `0x20000000`, also in the **unaffordable mask** `+0x218`. The chunk draw `0x1009e1d0` tests that mask together with a draw-context byte `+0x140c`. When both are set it copies the real tile instead of the ghost tile, so the ghost vanishes. `+0x140d` keeps the last value and a flip forces a redraw (`0x100a0098`) | `0x10047598`-`0x100475d3`; `0x1008ec90`; `0x1008e01d`-`0x1008e074`; `0x1009e2b5`-`0x1009e306`; `0x100a00a2` | D (masks, branch); **L** (that `+0x140c` toggles with time; its writer was not found, OQ-730). P: HE recording (ghost appears and disappears for lack of resources) |
+| Ghost of an unaffordable building **blinks** | after a valid preview the cursor sums the costs of the records listed so far plus this one against the stock (`0x10043d80`). The ghost is written into the island with flags `0x80000000` (ghost, no tile write) or, when unaffordable, `0xA0000000`. `0x1008dc10` sets the footprint bits in the chunk's ghost mask `+0x210` and, for `0x20000000`, also in the **unaffordable mask** `+0x218`. The chunk draw `0x1009e1d0` tests that mask together with a draw-context byte `+0x140c`. When both are set it copies the real tile instead of the ghost tile, so the ghost vanishes. `+0x140d` keeps the last value and a flip forces a redraw (`0x100a0098`) | `0x10047598`-`0x100475d3`; `0x1008ec90`; `0x1008e01d`-`0x1008e074`; `0x1009e2b5`-`0x1009e306`; `0x100a00a2` | D (masks, branch). **The writer is found (UI-GHOST-1, §5.1): a 700 ms toggle in AnnoFrame `0x100038d0`-`0x100038f2`, OQ-730 answered.** P: HE 0.700 s on / 0.700 s off |
 | Roads and walls, partial | the drag ghost shows the affordable prefix normally and the rest with `0x20000000` (blinking). The commit sends only the prefix that is valid; cost is checked again per record on apply (OQ-043: op 6 continues, op 9 stops) | `0x1004b762`-`0x1004b7d9`; `0x10049de0`-`0x10049e39` | D |
 | Mines | the same flag fold (`0xA0000000` when unaffordable) | SF §3.4 | D |
 | Status-bar cost row | while a building is armed over own territory, the cost figures show; a cost above the stock blinks `0xaabbee`/`0xee8888` every 250 ms | ST (UI-STATUS-2) `0x10064114`-`0x1006419e` | D |
 | **Yellow rectangle** on invalid ground | draw `0x10048450`: byte `B+0x2e4` clear (preview refused) draws the yellow empty rectangle `0x10041050` (colour `0xffff00`) and no ghost and no fertility bar; set draws the ghost `0x100443c0` | PB §4.1; `f13_place_water` | D + P |
 | Nothing drawn | gates: `[B+0x48] < [B+0x50]` (non-empty clamped footprint) and the type registered | `0x10048491`-`0x100484e8` | D |
-| Pointer over chrome | the input handler returns before any preview when `0x10041290` finds no map tile under the pointer (view slot `+0x94`). The ghost drawn then is the last one; whether it hides over the panel is OQ-700 | `0x1004748a`-`0x10047491`, `0x10041325` | D (gate); U (visible result) |
+| Pointer over chrome | the input handler returns before any preview when `0x10041290` finds no map tile under the pointer (view slot `+0x94`). HE hides the ghost and its radius outline while the pointer is over the panel (§5.1). GOG's visible result is uncaptured (OQ-757) | `0x1004748a`-`0x10047491`, `0x10041325` | D (gate); P (HE) |
 | Kontor ghost | the rebuild shows it only where valid (N); the original's Kontor draw `0x10049230` was not read | - | U |
+
+#### 5.1 The ghost's four states in detail (UI-GHOST-1 stage A, 2026-11-17)
+
+GOG code by address (AnnoFrame, AnnoWelt). HE pixels come from the owner's `ui_9.mp4` (2560x1440, **80 fps**). The
+GOG Wine captures are from UI-1 and UI-PLACE-1. Scripts and frames are in the task worktree's `cache/ghost/`
+(`scan.py`, `refs.py`, `blink.py`, `line.py`, `f*.txt`/`w*.txt` listings). They are not committed.
+
+**(1) The blink: the writer of `+0x140c` and its period (OQ-730, answered).**
+
+| # | Finding | Address | Tag | Conf. |
+|---|---|---|---|---|
+| 1.1 | The draw list (count `+0`, 0x38-byte entries from `+4`, phase byte `+0x140c`, last phase `+0x140d`, word accumulator `+0x140e`) is **embedded in the view frame at `+0x14`**. AnnoFrame passes `lea esi,[ebx+0x14]` to the world's slots `+0xd8` (build), `+0xe4` (draw, AnnoWelt `0x100a0080`) and `+0xdc`. So the writer addresses it as frame `+0x1420`/`+0x1422`. That is why a sweep for `+0x140c` found only the reader and the reset | AnnoFrame `0x10003974`-`0x10003999`, `0x100036ba`-`0x100036df`; AnnoWelt vtable `0x100cc92c` slots `0xd4`/`0xd8`/`0xe4` | D | high |
+| 1.2 | **The toggle:** `acc(+0x1422, u16) += dt; if acc > 0x2bb (699) { acc -= 699; phase(+0x1420) ^= 1 }`. The carry is kept (no reset to 0) | AnnoFrame `0x100038c8`-`0x100038f2` in `0x100037f0` | D | high |
+| 1.3 | `dt` is the frame's elapsed time in **milliseconds**: the elapsed-time argument the frame's slot `+0x6c` passes on to `0x100037f0`. The same value is clamped to 50 for arrow-key scrolling (`0x10005a65`). The unit is L from the code; the HE period below confirms it | `0x1000b1f4`-`0x1000b1fc`; `0x10005a61`-`0x10005a6e` | D (flow) + P (unit) | high |
+| 1.4 | **Phase meaning:** phase 1 = the chunk draw copies the real tile wherever the unaffordable mask `+0x218` is set (ghost hidden). Phase 0 = the ghost is drawn. A change of phase (`+0x140d` != `+0x140c`) forces the redraw | AnnoWelt `0x1009e2fd`-`0x1009e306` (arg 3 = `[list+0x140c]`, pushed at `0x1009f305` and `0x100a02ef`); `0x100a0098`-`0x100a00b2` | D | high |
+| 1.5 | **Who advances it:** only the frame pass called with view flag `0x40000`. `tFrameGameFull` slot `+0x6c` (`0x1000b090`) sets `0x40000` in its own flag register before it calls `0x100037f0`, so its pass toggles. `tFrameGame` slot `+0x6c` (`0x10005a10`) adds `0x40000` only to a copy for `0x10003560`, which has no toggle, so its blink would stand still. The in-game view is `tFrameGameFull` | `0x1000b1e6`; `0x10005b4a`; vtables `0x1008664c`, `0x10086428` (RTTI) | D (paths); L (which frame the game uses; HE blinks) | high / medium |
+| 1.6 | **Reset:** world slot `+0xd4` (AnnoWelt `0x1009eb10`) empties the list, sets phase 0 and loads the accumulator from world `+0x10c`. The callers are AnnoFrame `0x10003b96` and `0x10007b24`, on a view (re)build | `0x1009ebbb`-`0x1009ebca` | D | high (the meaning of world `+0x10c` is U) |
+| 1.7 | **Global, not per ghost:** one phase per view, shared by every masked tile (Default multi-placement records, the road/wall suffix, mines). The blink does not restart when a ghost becomes unaffordable, so the first visible phase is arbitrary | from 1.1-1.6 | D | high |
+| 1.8 | **HE measurement:** tanner 1023 over its own land, `ui_9` 4:03-4:31, crop (1560,340) 400x320, every frame (2240 frames at 80 fps). Metric: the share of non-grass pixels in the ghost's box (bimodal: 0.02-0.06 hidden, 0.74-0.78 shown). Result: **17 shown runs and 17 hidden runs of 56 frames (0.700 s) each, ±1 frame**, from 245.51 s to 269.29 s. This supersedes the earlier 4 fps estimate (0.75 s / 0.5 s) | `cache/ghost/blink.py`, `tanner80.txt` | P | high |
+| 1.9 | **The radius outline does not blink.** It is drawn by the cursor (`0x100443c0`), not through the chunk mask. The HE green outline in the water at (1960,60) 300x120 has 262-268 line pixels in both phases (246.0 s shown, 246.6 s hidden) | `cache/ghost/line.py` | D + P | high |
+
+**(2) The yellow footprint (the refused site).**
+
+| # | Finding | Address | Tag | Conf. |
+|---|---|---|---|---|
+| 2.1 | `0x10041050(rect, 0xffff00, dt, list)`: `rect` = the cursor's clamped rectangle (`B+0x2b0`: x0, y0, x1, y1). x1/y1 are exclusive corner coordinates (x1 = x0 + width). It returns at once when x0 == x1 | AnnoFrame `0x10041050`-`0x10041060`; caller `0x1004846b`-`0x10048483` | D | high |
+| 2.2 | **Shape:** four line strips (edge y0, edge y1, edge x0, edge x1), each with one vertex per tile corner along the edge. A vertex is (x, terrain height at the corner (world slot `+0x5c`) + 2 × 0.04, y) plus the colour. So the outline is the footprint rectangle in tile space, at ground level and **lifted 0.08** height units. It follows the terrain (it bends over slopes and the Kontor's pier in `r2_place_market_1301`) | `0x1004108f`-`0x10041271`; floats `0x10087de8` = 0.04, `0x10087dec` = 1.0 | D + P | high |
+| 2.3 | **Rotation:** the rectangle is the rotated footprint the cursor computed, with width and height swapped for odd turns. The outline is never a turned sprite | `B+0x2b0` set by the input handler | D | medium |
+| 2.4 | **Line:** strips handed to the draw list (slot `+0x9c` buffer, `+0xa4` submit). GOG Wine `f13_place_water` (pioneer house 501, 4x4, over open sea) has 334 pixels of exactly `(255,255,0)` and **one pixel per edge per column** (x 580: y 479 and 560). So the line is 1 pixel wide, not anti-aliased, drawn over the ground and over buildings (it shows over the Kontor's roof) | `f13_place_water.png` (UI-1 d91), `cache/ghost/f13_water_crop.png` | P | high |
+| 2.5 | **Water and off-island:** drawn the same way over open sea (flat corners give a clean 2:1 diamond, 169x82 px at that zoom). There is no island test in the draw. Only an empty clamped rectangle (pointer off the map) draws nothing | `f13_place_water`; `0x1004105d` | D + P | high |
+| 2.6 | HE's refused-site colour was not captured | — | U | — (OQ-758) |
+
+**(3) The radius outline (the valid site).**
+
+| # | Finding | Address | Tag | Conf. |
+|---|---|---|---|---|
+| 3.1 | `0x100443c0(fp, radius, 0xffff00, dt, list)`, `ret 0x14`. `fp` = {x0 u16, y0 u16, w u8, h u8} built from `B+0x2b0`. `radius` = type slot `+0x78` = `HEAD[0x11]` (part D P2). The colour is the same `0xffff00` | AnnoFrame `0x10048491`-`0x1004850a`; `0x10044f79` | D | high |
+| 3.2 | **Which types:** every type the **Default** cursor arms, whenever the site is valid. There is **no radius > 0 test** (only a negative radius skips, `0x1004445e`). Radius-0 types still draw a minimal outline (the half-width table gives 1 for r = 0). The road, wall, field and mine cursors have their own draw methods (not read) | `0x10048491`-`0x1004850a`; `0x1004445c` | D | high (Default); U (other cursors) |
+| 3.3 | **Shape:** a half-width table `w[0..r]` built by a midpoint-circle loop (`r²`, `(r-1)·r`, odd steps), plus 1 on the outer rows when r ≤ 3. For example r = 4 → 4,4,3,3,1; r = 24 → 24,24,24,24,24,23,23,23,23,22,22,21,21,20,19,19,18,17,16,15,13,12,10,8,4. Centre = (x0 + (w−1)/2, y0 + (h−1)/2), integer halves. Rows `cy ± i` span `cx ± w[i]` tiles. The outline is a staircase along tile corners (seen in iso as a zigzag), clipped to the map bounds (world slots `+0x54`/`+0x58`), not to the island. Vertices are at ground height + 0.08 (constants `0x100880f8` = 1.0, `0x100880fc` = 0.04), and it is drawn as several strips | `0x100443c0`-`0x10044439` (table), `0x10044477`-`0x10044f79` (strips) | D (table, centre, clip, lift); L (that the rows are the outline of exactly the cells `cx ± w[i]`; the vertex walk was not traced step by step) | high / medium |
+| 3.4 | **Colour and line:** GOG yellow `0xffff00`, 1 pixel wide (GOG `p1_a_armed`: pioneer house, radius 24; `p1_c_armed_1301`: market, radius 24). HE draws it **green** (`ui_9` 4:01-4:31). The packet follows GOG | pixels | P | high |
+| 3.5 | It does not blink (1.9), and it hides with the ghost when the pointer leaves the map in HE (4) | — | P | high |
+
+**(4) When the ghost hides entirely (OQ-700).**
+
+| # | Case | Evidence | Tag | Conf. |
+|---|---|---|---|---|
+| 4.1 | Nothing armed (`B+0x44` = 0 after cancel, right click or ESC to the grid) | §6 | D + P | high |
+| 4.2 | Empty clamped footprint (`[B+0x48] >= [B+0x50]`) or an unregistered type: no building and no outline (the refused path also returns when x0 == x1) | `0x10048491`-`0x100484e8`; `0x1004105d` | D | high |
+| 4.3 | **Pointer over the panel (HE):** the ghost **and** its radius outline vanish while the pointer is on the build panel and come back when it returns to the map. In `ui_9` the outline is present to 243.4 s, absent from 243.6 s to 244.8 s (pointer on the panel's rotate arrow, frames 244.2 s and 244.8 s), and back at 245.0 s (5 fps sampling) | `cache/ghost/he_244.2.png`, `line.py` | P | high |
+| 4.4 | GOG: the input handler skips the preview off the map (`0x10041290` finds no tile), but nothing in the cursor draw `0x10048450` tests the pointer. The GOG Wine captures `p1_a_armed`/`p1_c_armed_1301` cannot answer this: their action log moves the pointer back to the map (225,215) after every panel click | `0x1004748a`; UI-PLACE-1 `actions.jsonl` | D (gate); U (GOG visible result) | — (OQ-757) |
+| 4.5 | Refused site: the building is hidden and the yellow footprint shows (2). Unaffordable: the building alone hides in phase 1 (1) | — | D + P | high |
+
+**What stage B draws (window only, no sim state):**
+
+- `refused` (the sim's placement rule plus territory says no): a 1-pixel `0xffff00` outline of the rotated
+  footprint along its tile corners at ground height; no building, no radius.
+- `valid`: the building plus the radius staircase (table 3.3, centre on the footprint centre, clipped to the
+  map) in `0xffff00`.
+- `unaffordable` (valid site, the cumulative cost exceeds the stock): as `valid`, but the building is hidden while
+  the phase is 1. The phase is one window-clock accumulator: add the frame's milliseconds; above 699, subtract
+  699 and flip. The radius outline stays steady.
+- `hidden`: nothing armed, empty footprint, or the pointer over the panel/chrome (HE, 4.3).
+- Priority: hidden > refused > unaffordable > valid.
+
+**What the rebuild draws (UI-GHOST-1 stage B, 2026-11-17):**
+
+| Part | Rebuild | Evidence / tag |
+|---|---|---|
+| Verdict | the sim's own: `World::check_build_record(city, record)` runs Build's record check (`check_record`, the footprint owner rule, buildings under the footprint, `placement_rule`, eligibility, research, serials, affordability) on the record a click would send, read-only (`docs/sim/state.md` S10, UI-GHOST-1 note). The window asks for it every frame through `PlayRunner::request_build_probe`; the runner answers in each published snapshot (and while paused), so the answer is at most one turn behind. While it is pending the last state stays (a pointer moving tile by tile does not flash). The window's own partial check (`PlacementKnowledge::check`) only feeds the title now | D (Build's rule) |
+| State | `app::ghost_state`: not armed, empty footprint or pointer on chrome → hidden; reject None → valid; CannotAfford → unaffordable; any other reject → refused | §5.1 (1)-(4) |
+| Refused | `footprint_outline`: one edge per tile side along the footprint's corners at ground height + 0.08, 1 pixel, `0xffff00`, no building, no radius. **ADAPTATION** (accepted 2026-11-17): the 0.08 lift is applied in the rebuild's HEIGHT units; the original's unit for it is not established (under a pixel either way). The radius outline uses the same lift | §5.1 (2) |
+| Valid | the building (`make_preview`) plus `radius_outline(footprint, HEAD[0x11])`: the boundary of the tiles `cx ± w[i]` of rows `cy ± i`, `w` = `radius_half_widths` (the 0x100443c0 table), clipped at the map's near edge only (the window does not know the far one) | §5.1 (3); the boundary reading is L (OQ-756) |
+| Unaffordable | as valid, the building hidden while `GhostBlink` is in phase 1: `acc += window ms; if acc > 699 { acc -= 699; flip }`, one flip per frame, the surplus kept. The window's own steady clock, never game time (it runs while paused) and never sim state. A steady phase lasts 699 ms after the first 700 ms. The window wakes for the next flip (its event wait is cut to the time left) | §5.1 (1) |
+| Hidden over chrome | the pointer's last drawable position hits drawn chrome (`ui_hit_at(...).chrome`) → hidden: "HE-observed, GOG unread (OQ-757)" (orchestrator decision 2026-11-17) | §5.1 (4) |
+| Drawing | CPU path: the outline into the frame after the world and the building, before the chrome. GPU path: into the frame-sized UI layer, only where it is transparent (the chrome stays on top); a layer of its own when the frame has no UI layer | N (no depth test: the original draws over everything too, `r2_place_market_1301`) |
+| Off the island (fix round R1) | the ghost's hover is the tile under the pointer anywhere on the map (`DevTool::ghost_hover`: the city island's exact pick where it gives one, else `pick_point`, any island's ground above the waterline, else the sea-level tile, the rule the opening's clicks and the status bar use). Off the city's island the sim answers OutOfIsland (or TileNotOwned / TerrainRefused), so the refused footprint shows there, as the original's does everywhere (§5.1 (2.5)). A click there is sent and the sim refuses it with the same reject; it no longer stops in the window. The outline is drawn no lower than sea level. R1 because the owner's test saw no ghost at all: the stage-B pick gave no tile away from the city's island rectangle, and the default `--play` view started on the map's centre (lan5: the middle island 100), not on the city. **Since R2** the play window opens on the developer city's Kontor (`DevToolSetup::home`; the owner's decision of 2026-11-17, "Start at my city": the original starts the player at his own ship or settlement); sessions without a developer city keep the scene's middle | D (0x10041050 has no island test) |
+| Facts | `tool.ghost` (`hidden`, `refused`, `unaffordable`, `valid`), `tool.ghost.phase` (1: building hidden), `tool.ghost.flips`, `tool.ghost.pixels` (outline pixels of the last frame) | — |
+| Tests | `placement_ghost_test.cpp` (state, blink at 0 / 1 ms / partitioned / surplus, the table by hand for r = 0, 1, 4, 24, both outlines, the pixels); `command_build_test.cpp` "check_build_record gives Build's verdict and changes nothing"; `viewer_wiring_ui_ghost` (lan5, ANNO_DEV_GOODS_TONS=3: valid, refused over the inlet, hidden over the panel, unaffordable after one house, the phase flipping both ways, refused again); `viewer_wiring_ui_ghost_pixel_check` (exact `0xffff00` pixels; the hidden shot is the negative control) | — |
 
 ---
 
@@ -292,6 +386,7 @@ Every cursor ends in `City::Build` (`AnnoWelt 0x100276a0`). That calls the islan
 | ESC | one step back: info panel → grid with nothing armed; demolish → off (an armed building stays); grid → menu closed with the building put away | UI-PLACE-2 | P |
 | Right click | on the map or the panel, everything is put away and the grid shows; on the grid, the menu closes | UI-PLACE-1/2 | P |
 | Cancel-X | closes the panel only; the building **stays armed** (ghost and orange cell frame) | UI-PLACE-1 | P |
+| Category tab | shows that category's grid in place of the info panel; the building **stays armed** until another cell is picked (no cancel, no cursor call in the handler `0x1002bf90`; HE ui_10 10:03-10:13). A tab already open: the same path (OQ-774) | View.dll `0x1002bf90` (read); HE pixels | D (no cursor call); P (grid replaces panel, OQ-773) |
 | Pickaxe | toggles demolish with or without an armed building; a cell chosen while demolishing ends it | UI-PLACE-1 | P |
 | CTRL | auto-align the entrance to a road (manual p15); code path `0x10047e80` | OQ-546 | D (logic); P (manual); not captured |
 
@@ -319,8 +414,8 @@ Rebuild: `src/sim/src/placement.cpp` classes `Ordinary`, `Coast`, `Road`, `Mount
 | Territory claim by markets (PRODTYPE 33-35, radius 24) | `City::Place` | only the founding claims (`founding.cpp:476`); a market or a second Kontor claims nothing | **gap** (OQ-490 is now answered by SF §11.2) |
 | Figure veto `0x10045080` | on every check | only in founding (`FigureInTheWay`); not in Build | **gap** |
 | UI blocked-tile test (island `+0x64`) | footprint and fields | not modelled | gap (OQ-552 note) |
-| Affordability | click and apply; preview ignores it; the ghost blinks | sim: `CannotAfford`; window: the verdict says "would be refused" as text; the ghost is always drawn | **gap**: no blink, no prefix display |
-| Refused preview | yellow empty rectangle | the ghost sprites are drawn anyway (`make_preview`); the verdict checks only bounds, occupancy and cost, not the placement rule or territory (`dev_feedback.cpp:350`) | **gap** |
+| Affordability | click and apply; preview ignores it; the ghost blinks | sim: `CannotAfford`; window: the ghost blinks 699/700 ms from the sim's verdict (UI-GHOST-1, §5.1; ROADS-3 extends blink to unaffordable road-drag tail past `affordable_prefix`) | **none** for road drags (`ROADS-3`: `plan_road_ghost`, `viewer_wiring_ui_roads`, `roads_ghost_pixel_check.py`); building rectangle multi-place stays gap |
+| Refused preview | yellow empty rectangle | the yellow footprint outline and no building, from the sim's own record check (UI-GHOST-1, §5.1) | none for a single record; a refused site outside the island rectangle shows nothing (the dev tool's pick) |
 | Multi-placement of buildings (Default drag, at most 64) | yes | "a drag places a road; the selected type is not one" | **gap** |
 | Random house variants (`+0x32`) and CTRL | yes | none | gap (OQ-546) |
 | Fertility bar | `0x10047940` | none | gap (PB) |
@@ -344,7 +439,7 @@ Existing ones this note touches:
 - **OQ-552**: see OQ-728.
 - **OQ-566**: the demolish cursor.
 - **OQ-627**: the orange frame on the armed cell.
-- **OQ-700**: the cursor over chrome.
+- **OQ-700**: the cursor over chrome. **Answered for HE (§5.1 (4))**: the ghost and its radius outline hide while the pointer is on the panel. GOG's visible result stays open as OQ-757.
 - **OQ-T15-PLACEREFUSE**: no road adjacency test was found in any check, so a building beside an unconnected road is placed (L).
 - RP **U-R1** (now located at `0x1007cc40`) and **U-R2** (still U).
 
@@ -352,7 +447,11 @@ Proposed new questions:
 
 - **OQ-728.** Does the build menu arm `tCursorAnlageBergwerk` (kind `0xe`) for `MINE` and `STEINBRUCH`? If it does, a player mine can only stand on a site record whose mask holds its ore bit (`0x10046300`). That is a UI-level deposit restriction OQ-552 did not consider, because OQ-552 read the Default cursor `0x10047170`. Next: the View.dll cell callback (from `0x1002c260`) and the source of the 6-byte records (island `+0x24`, object slot `+0xc`).
 - **OQ-729.** Which kind arms which cell: the per-cell rule in View.dll (PRODTYPE, flag class, or a table). Also which cursor places bridges, ramps and piers.
-- **OQ-730.** The writer of the draw-context byte `+0x140c` (the blink phase) and its period. Not in AnnoWelt, AnnoFrame, AnnoGame, View, AnnoScene or AnnoDisplay by direct offset; likely a struct copy or an indexed store.
+- **OQ-730.** The writer of the draw-context byte `+0x140c` (the blink phase) and its period. **Answered (UI-GHOST-1, §5.1 (1)):** the list is embedded at frame `+0x14`, so the writer is AnnoFrame `0x100038f2` `xor byte [ebx+0x1420],1`. It flips every 700 ms of frame time (accumulator `+0x1422`, threshold 699), and HE measures 0.700 s / 0.700 s.
+- **OQ-756.** The radius outline's exact vertex walk in `0x100443c0` (`0x10044477`-`0x10044f79`): confirm that it outlines exactly the cells `cx ± w[i]` of rows `cy ± i`, and what a radius-0 type (decorations, `DENKMAL`/`ZIERDE`, 141 types with `HEAD[0x11]` = 0) shows. Next: one GOG Wine capture of an armed ornamental (for example 2564 flower bed) and of a radius-4 type, compared with the table.
+- **OQ-757.** GOG with the pointer on the panel while a building is armed: is the ghost (and its radius outline) hidden as in HE, or does it stay at the last map tile? Nothing in the cursor draw `0x10048450` tests the pointer. Next: a Wine capture that arms a building, moves the pointer to the map, then onto the panel, and screenshots without moving back.
+- **OQ-760.** Resolved by fix round R1: the ghost's pick reaches every map tile and a click off the city's island is refused by the sim (§5.1 "What the rebuild draws", row "Off the island").
+- **OQ-758.** HE's colour for the refused-site footprint outline (GOG `0xffff00`; HE's radius outline is green). Next: a frame of a refused HE ghost (over water or another building) from an owner recording.
 - **OQ-731.** The neighbour table of the road/wall autotiler `0x1007cc40` (ids 2500-2537, 2672/2673, PRODTYPE `0x181`, flag `0x800`).
 - **OQ-732.** The meaning of event codes 1, 2 and 4 and of flag bit 8 in the cursor input handlers (L: press, release, right click, CTRL). One Wine capture would settle it.
 - **OQ-733.** The dry-tile swap in the field commit: what type slot `+0xf8(3)` returns (dry variant), and whether a tree on a dry tile is really dropped (id 0, `0x1004ab61`-`0x1004ab68`).
@@ -368,6 +467,271 @@ Proposed new questions:
 
 Scripts and listings for this part are in `cache/bref/`: `vt.py`, `sweep.py`, `sweep2.py`, `anl.py`, `anlcmp.py`, the `d*.txt` listings and `w*.txt`.
 
+
+### 10. Roads (UI-ROADS-1 evidence), over-building and selection (BUILDINGS-REF-2, 2026-11-19)
+
+Research for the owner's test `ui_10.mp4` (findings 2, 3, 7, 8, 9, 10, 11). Read-only on the original (GOG 2.0.0.5
+`AnnoFrame.dll`, `AnnoWelt.dll`, static disassembly, image base `0x10000000`; HE by the owner's pixels only). The
+rebuild was run through scripted headless viewer sessions (`tools/test/viewer_wiring.py`, CPU renderer, the
+existing `anno1503.exe`); scripts and logs are in `cache/bref2/` (git-ignored). Tags as above, plus **S** = a
+scripted rebuild session, **H** = HE pixels from the owner's recording.
+
+#### 10.1 Roads (UI-ROADS-1 evidence)
+
+**Answer in ten lines.**
+
+1. **Drag (D `AnnoFrame 0x1004b290`).** Press stores the start tile and shows a one-tile preview; every move recomputes
+   the path from the start tile to the pointer; release commits it; the type **stays armed**. The cursor does nothing
+   while no type is armed (`[B+0x44]` = 0) or when the pointer is not over a map tile (`0x10041290`).
+2. **Path (D `0x1004b392`-`0x1004b51f`).** `dx`, `dy` from start to pointer. The **longer axis runs first**
+   (`|dx| > |dy|`: x first; `|dx| <= |dy|`, so also on a tie: **y first**), for `max(|dx|,|dy|)` steps, then the other
+   axis for the rest: an L. Total steps `|dx|+|dy|`, capped at `0x27` = 39 steps = **40 tiles**; past the cap the
+   path is cut and does not reach the pointer. A tile is a 10-byte record `{id u16, x u16, y u16, rotation byte,
+   byte, height u16}`; `id` is the armed type, the rotation is the cursor's.
+3. **Variant (D `0x1004af50`, slot `+8`).** One random byte per tile (`0x100785ba`, CRT `rand`) is stored at
+   `B+0x1f0+i`; the record id is `slot +8(id, byte)` (`0x10044340`: `id + (rand & 0xff) % n * step`, `n` and `step`
+   from type property `0x32`). The same bytes are reused at release, so the placed variants equal the previewed ones.
+   Dirt road 2520 has 5 flat variants (2520-2524), cobblestone 2500 has 4 (2500-2503) (P).
+4. **Per-tile check (D `0x1004af90`; the commit runs it too).** For each record in path order, stopping at the first
+   failure (the commit takes the valid prefix): (a) the tile lies on an island (world slot `+0x8c`), the same island as
+   the first record; (b) its owner nibble (island `+0xec`) is **not 15**: every tile must be territory, not neutral;
+   (c) that city's owner (city slot `+0x1c`) is the cursor's player (`[B+0x5c]`) and all tiles belong to one city;
+   (d) ids 2518/2519 are checked as 2500; (e) `City::Build` (city slot `+0xa0`) accepts the record; (f) the figure veto
+   `0x10045080`; (g) **no downgrade**: an existing object whose type flag word has bit `0x100` (all `STRASSE`,
+   `BRUECKE`, `RAMPE`) and whose id is in 2500-2515 (cobblestone family) refuses a record whose id is in 2520-2535
+   (dirt family) (`0x1004b11b`-`0x1004b141`).
+5. **Cost (D `0x1004b1ac`-`0x1004b278`).** The checked records go through the island reshaper (item 7) in a dry mode that
+   writes nothing and returns the full list of records it would write (the path plus rewritten neighbours). For each
+   returned record: if the object now at that tile and the returned id are **both** in the cobblestone family
+   (2500-2515) or **both** in the dirt family (2520-2535), the tile is **free** (re-laying a road, or a neighbour
+   re-shaped); otherwise the running sum is tested against the city stock and the player's gold (`0x10043d80`, add
+   `0x10043d30`) and the loop stops at the first tile that does not fit. The preview (`0x2000000`) skips cost. Costs
+   per tile are the types' own: dirt road 5 gold, cobblestone 10, no goods (P); bridges 2516-2519 are in neither family
+   and always pay (grand bridge 2518: 500 gold plus its goods).
+6. **Water and shore (D + P + H).** The per-tile check has **no terrain test of its own** (nothing between (a) and (g)
+   reads a height). `City::Build` accepts the class-`0x4000` types (the flat straight pieces 2500-2503, 2520-2524,
+   2530-2533, and the `0x4386` ramps/bridges) at any terrain (RP section 2, `0x10009199 jne`), so a straight piece can be built on a
+   **sea tile that is territory**. The territory disc covers sea tiles inside the island rectangle (painter `0x10085840`
+   works on the island's tile grid), which is what HE shows (road mode darkens only what is outside the range, and a road
+   piece stands "in the water" near the shore, `ui_10` 11:04). The class-`0x1000` pieces (corner, T, cross, end, see item
+   8) need `rec[8] >= 32` and a slope of at most `0x10` (RP section 2), so those do **not** go on water. Whether a
+   re-shaped piece that would fall on water is refused at commit, and how the ghost shows it, is **U** (OQ-765).
+7. **Reshaping (D, island slot `+0x80` = `AnnoWelt 0x1007cc40`, about 3,000 instructions).** Called with the record list
+   (n records, a mode byte, flags: `0x80` write the ghost, `0x80000000` ghost, `0x20000000` blinking). For each record
+   whose type has flag `0x800` or PRODTYPE `0x181`, or when the mode byte is set, it finds the four orthogonal
+   neighbours (`0x1007e8b0`, first in the list, then in the world, by direction 0-3), classifies them (`0x1007ef60`:
+   strips the dirt offset `0x14`, maps variants to the family base) and appends the neighbour records whose shape
+   changes to the output list (`0x1007ece0`). Bridge pieces (2516-2519, 2536/2537) have their own pass that scans up to
+   20 tiles along the axis (`0x1007d917`-`0x1007dc52`). Heights of re-shaped tiles are recomputed with the type slot
+   `+0x68` (`0x1007e154`). Only the structure was read; the table in item 8 is from files.
+8. **The shape table (P, from the shipped scenarios; D for the family arithmetic).** Dirt id = cobblestone id + 20
+   (`0x1007efcf`, `0x1007f0f3`). Over 28,233 dirt and 13,967 cobblestone tiles of 50 shipped `.sze` files
+   (`cache/bref2/auto.py`; neighbour mask N=1, E=2, S=4, W=8):
+
+   | Piece | Cobblestone / dirt ids | Class | Rotation 0 / 1 / 2 / 3 : neighbour mask |
+   |---|---|---|---|
+   | straight (4 or 5 cosmetic variants) | 2500-2503 / 2520-2524 | `0x4186` | 10 (E+W) / 5 (N+S) / 10 / 5; a lone tile too |
+   | corner | 2505 / 2525 | `0x1186` | 6 (E+S) / 3 (N+E) / 9 (N+W) / 12 (S+W) |
+   | cross | 2506 / 2526 | `0x1186` | 15 |
+   | T | 2507 / 2527 | `0x1186` | 14 (no N) / 7 (no W) / 11 (no S) / 13 (no E) |
+   | end | 2508 / 2528 | `0x1186` | 2 (E) / 1 (N) / 8 (W) / 4 (S) |
+   | slope junction | 2509 / 2529 | special (`0x9cd`, `0x9e1` compared at `0x1007e182`) | mixed masks |
+   | ramps | 2510-2515 / 2530-2535 | `0x4386`, `0x4186` (low/high) | at slopes |
+   | bridges | 2516-2519, 2536/2537 | `0x4386`, `0x1386` | over water, straight |
+
+   The dominant (id, rotation, mask) cells hold 90-100 % of each id; the rest are hand-edited or AI-placed tiles. The menu
+   arms only **2520** (dirt), **2500** (cobblestone) and **2518** (grand bridge), so every other id is the reshaper's
+   output, and the corner/T/cross/end tiles are the only ones it puts in the slope class.
+9. **Preview and draw (D `0x1004b7f0`, `0x1004b762`).** The ghost path is written into the island with flags
+   `0x80000000`; the valid, affordable prefix normally, the rest with `0x20000000` (blinks, section 5). **No radius
+   outline** (only the Default cursor draws it, PB section 4.1) and **no fertility bar**. When the preview has no valid
+   record and no path (`[B-0x18] == 0` and `[B-0x14] == 0`) the draw `0x1004b7f0` draws the yellow empty rectangle
+   `0x10041050` (`0xffff00`) on the hovered tile.
+10. **Commit (D `0x1004b5c7`-`0x1004b69e`).** Release: the ids are re-picked from the stored random bytes, the check runs
+    with `0x9000000` (`0x8000000` cost, `0x1000000` apply path), and the valid prefix (n+1 records) goes to the sink
+    `[B+0x58]` slot `+0x54(9, records, n, city, 0)`: commit **kind 9**, which stops at the first record the apply
+    refuses (OQ-043). The type stays armed; the start tile and the active flag are cleared; new random bytes are
+    drawn. Event 4 (right button) clears the armed type and runs the cursor Reset (slot `+0x5c`): nothing armed.
+
+**Where the darkening comes from (U).** HE darkens everything outside the Kontor/market range while a road is armed. No
+instruction in `tCursorAnlageStrasse` (input `0x1004b290`, draw `0x1004b7f0`) does it; it is another layer (OQ-767).
+
+**What the rebuild has, and the exact gaps (S + code).**
+
+| Item | Original | Rebuild | Gap |
+|---|---|---|---|
+| A road is placed | click/drag, tile object, charge | sim: `BuildCmd` of a land road is `Applied`, 5 gold per tile (S). **Settled by `ROADS-0` (S + code):** `PlayRunner::collect_tile_objects` diffs `kRoadFlag` tile objects (`type, rotation, height, phase`) alongside `BuildingDelta` through `BuildingMailbox` -> `ScenePicture` -> `apply_island_buildings` -> `PROD2` sprite path; a placed road renders (rot 0/1) and reaches `Visibility::Visible` (`picture.tile_objects`), while redemolishing an empty tile stays `NoVisualChange` (`tile_object_picture_test`, `viewer_wiring_roads_picture_objects`) | **G1 settled by ROADS-0** (previously `NoVisualChange`; G2-G8 remain) |
+| Drag path | L, long axis first, y first on ties, 40 tiles | **Settled (`S + code`, ROADS-1 + ROADS-3):** `sim::road_path` + `DevInput` press-hold-move L-drag with 40-tile `RoadRules::drag_cap` (`road_drag_ui_test`, `viewer_wiring_ui_roads`) | **G2 settled** |
+| Hold-and-follow preview | ghost path while held | **Settled (`S + code`, ROADS-3):** `PlayRunner::request_road_probe` -> `World::check_build_path`, `plan_road_ghost` draws valid prefix solid, blinks unaffordable tail (699/700 ms), yellow `0xffff00` refusal rectangle when `valid_count == 0`, UI-side `RoadVariantDeck` preview == commit parity (`tools/test/roads_ghost_pixel_check.py`) | **G3 settled** |
+| Territory per tile | every tile owner != 15, one city, own player | **Settled when `road_rules` on (`S + code`, ROADS-1 + ROADS-3):** `footprint_all_owned_rule` (`enabled = 1` default under interactive `--play --road-rules on`; compiled `RoadRules{}` default `0` preserves faithful pins) | **G4 settled (`road_rules`)** |
+| No downgrade / free re-lay | refuse dirt over cobblestone; same family free | **Settled when `road_rules` on (`S + code`, ROADS-1 + ROADS-3):** `is_road_downgrade` + `same_family_free` + kind-9 prefix commit (`viewer_wiring_ui_roads`, `roads_ghost_pixel_check`) | **G5 settled (`road_rules`)** |
+| Autotiling | corner/T/cross/end pieces, neighbour rewrites | none: the commanded flat straight id for every tile, rotation by the tool only | G6 |
+| Terrain | none for the flat piece; slope class for shape pieces | `road_require_land_level` is **off** by default (the original behaviour); the title's `unchecked: the placement rule` is the window's own text, not a refusal | none for flat; G6 |
+| Radius outline | none | none for a road | none |
+| Armed after placing | yes | yes | none |
+| Darkening outside the range | HE yes | `territory_view` exists, not tied to road mode | G7 (OQ-767) |
+| Bridges 2518, piers, ramps | bridge scan up to 20 tiles | `Unsupported` | G8 |
+
+**Implementation plan, small packets** (ROADS-0 first, or nothing placed can be seen).
+
+| Packet | Part | Size | Content |
+|---|---|---|---|
+| ROADS-0 PICTURE-OBJECTS-1 | app | **Settled (S + code)** | The picture takes **tile-object deltas** (`SceneTileObject` with `phase` and no hardcoded type limit; `type == 0` cleared-tile markers): `PlayRunner` diffs tracked `kRoadFlag` objects and cleared tick-0 scenery alongside `BuildingDelta`, `ScenePicture` -> `apply_island_buildings` draws roads from `(id, rotation, height, phase)` with the existing `PROD2` sprite path and suppresses cleared trees under placed/demolished footprints while preserving flag-`0x10` rocks. Verified (`tile_object_picture_test`, `viewer_wiring_roads_picture_objects`): placed roads reach `Visible`, not `NoVisualChange` |
+| ROADS-1 SIM-ROADS-1 | sim | 4 h | Pure helpers: `road_path(start, end, cap = 40)` (L, y first on ties), the per-tile cursor check (own territory per tile, one city, same island, no downgrade), cost with same-family free; a run command whose apply stops at the first refusal (kind 9, OQ-043). The 40 cap and the no-downgrade rule are original defaults in the config. **Implemented (D + P + S, header extension tag 2 `road_rules`):** `road_path` (`AnnoFrame 0x1004b392`-`0x1004b51f`), `footprint_all_owned_rule`, `is_road_family`/`same_road_family`/`is_road_downgrade` (`Anlagen.dat` 2500-2537: dirt gold=5, cobblestone gold=10, `BRUECKE` 198 excluded and always pays), `check_road_figure_veto` (`0x10045080`), kind-9 prefix commit in `BuildCmd` (`0x1004b5c7`) |
+| ROADS-2 SIM-ROADSHAPE-1 | sim | 4-6 h | The reshaper from the item 8 table: neighbour mask to `(id, rotation)`, neighbour rewrites, dirt = cobblestone + 20, shape pieces in the slope class; checked against the 42,000-tile corpus (agreement of at least 97 %). RE-ROADS-2 (3 h) decodes `0x1007cc40` for the residual cases (OQ-764) |
+| ROADS-3 UI-ROADS-1 | app | **Settled (S + code)** | Press-hold L-drag in menu-armed land road mode (`sim::is_land_road` data-driven, no hardcoded IDs): `World::check_build_path` read-only prefix probe -> `plan_road_ghost` (valid prefix solid, unaffordable tail 699/700 ms blink, `0xffff00` 1x1 refusal rectangle only when `valid_count == 0`, no radius/fertility), UI-side `RoadVariantDeck` (`property 0x32`) guaranteeing preview == commit variants + `commands_file` `buildv`/`buildcv`, kind-9 commit stays armed, right click disarms, `--road-rules on` default in `--play` (`RoadRules{}` compiled default `0`). Verified (`road_drag_ui_test`, `viewer_wiring_ui_roads`, `roads_ghost_pixel_check`) |
+| ROADS-4 UI-RANGE-1 | app | 2 h | Darken the map outside the range while a road (and every territory-bound building) is armed (OQ-767 for what to copy) |
+| ROADS-5 | sim + app | 5 h (later) | Bridges 2518/2536 and ramps; the 20-tile bridge scan (OQ-766) |
+
+#### 10.2 What may be built over, and the `Occupied` refusals
+
+**The rule (D, section 2 "Overlap" and part D section 1.1).** Every placement ends in the island predicate `0x1007c790`
+and the type slot `+0x6c` (`0x10008920`). A new object may share a tile with an existing one only when:
+
+| Existing object on the tile | Allowed? | Evidence |
+|---|---|---|
+| trees, raw objects, dry crops, stones, ruins: type flag word bit `0x20` (all `ROHSTOFF` 41 = `0x29`, `ROHSTWACHS`, `ROHSTDUERR`) | **yes, for every placed type** | D (SP section 4) + P: all 291 crop and tree types carry `0x29` |
+| rocks `FELSEN` (`0x8018`), cliffs `KLIPPE`, rivers `FLUSS`, waterfalls (`0x12`), `EISLOCH` | **no** (bit `0x20` clear): `Occupied`; the bit-`0x10` coverage rule applies | P (flag words read from `Anlagen.dat`) |
+| another building | no, except the in-place market/Kontor upgrade (same PRODTYPE, `word14 & 0x100`) | D |
+| a road, ramp or pier piece | only by a road, ramp or pier (group `0xc1`); a bridge only by a bridge; walls over walls and roads | D (section 2 table) |
+| a crop field | overlappable by anything (bit `0x20`) | D (FERTILITY-1a) |
+
+**What happens to the overwritten object (D, part D section 1.1).** `0x10082040` writes the footprint's tile records
+unconditionally: the object id word is replaced and **the tree is lost with no removal call**; only a placed type with
+flag `0x10` (mines, scenery) keeps a bit-`0x10` object that has its anchor bit. Nothing is stored that could bring a
+tree back: **demolish** (`RemoveAt` step R8, `0x10082c30` clear arm: id 0, walk code 2, mask 0) leaves **bare ground**.
+One arm (the "replacement arm" from a catalogue type, chosen by the high nibble of the `island +0x18` grid) is unread
+(road-placement U-R5, OQ-768); it is the only place a restoration could hide.
+
+**What the owner saw in HE (H).** The trees under the **ghost** vanish while the building is armed and hovering (the
+preview hides the objects under its footprint; consistent with the chunk draw copying the ghost tile instead of the real
+tile, `0x1009e2b5`-`0x1009e306`); after the click, the trees reappear except under the building's footprint tiles. That
+is exactly: the preview hides, the placement removes the footprint's trees, the rest is untouched.
+
+**The rebuild (S + code).** The sim agrees with the original: `placement_rule` accepts flag-`0x20` objects
+(`site::overlap_with_existing`), `create_building` writes `object := type id` on the footprint (stand-in, O-5), so the
+trees under a placed building are removed in the sim and are not restored at demolish. In the **window** (`ROADS-0`
+settled items 1 and 3, S + code): (1) and (3) `PlayRunner` tracks cleared tick-0 scenery anchors (`type = 0` suppression
+markers, preserving flag-`0x10` rocks) into `ScenePicture` -> `apply_island_buildings`, so trees under newly placed
+buildings/roads and direct tree demolishes disappear and demolished footprints show bare ground (`tile_object_picture_test`,
+`viewer_wiring_roads_picture_objects`); (2) **`UI-GHOST-2` (D + H + S + code):** while a valid building ghost, phase-0 unaffordable ghost, or drawn road ghost sprite is shown (`AnnoWelt 0x1009e267`–`0x1009e306`), `FrameRenderer::set_objects_patch` (`ObjectsPatch`) hides underlying flag-`0x20` objects matching `overwrites()` (preserving flag-`0x10` rocks under flag-`0x10` mines) without mutating `Scene` or rebuilding chunks, and clearing/moving/cancelling or blinking to unaffordable phase 1 immediately restores them. Refused ghosts branch past chunk ghost writes (`AnnoFrame 0x10047848`) and keep trees visible (`viewer_wiring_ui_ghost2`, `viewer_wiring_ui_ghost2_pixel_check`).
+
+**Which tiles blocked the sheep farm (S, P, H).**
+
+- **Static data.** Every 3x3 neighbourhood of the seven tiles on island 1 (`N_256x256_0002_2B.scp`, origin 1048,440)
+  is forest: `GELAENDE` `ROHSTOFF` types 69-81, 105-119, 190/191, 411-423 (all flag `0x29`), plus `ROHSTWACHS` 1, 78, 80.
+  **No rock, cliff or river lies within four tiles of any of the seven tiles** (`cache/bref2/occ.py`, `occ2.py`). The
+  accepted and the refused windows are the same kind of forest, so a tree can never be the reason for `Occupied`.
+- **Fresh session (S).** In a fresh `lan5` session the four tiles the owner lists as refused, placed in his order with
+  the sheep farm at rotation 2, are **all `Applied`** (cost 220 gold each). The next click at `(1181,657)` is `Refused
+  (Occupied)`, because the farm at `(1180,656)` covers `1180-1182 x 656-658`; `(1172,646)` is `TerrainRefused` (a
+  different reason). The title then reads `would be refused: occupied in the published picture`.
+- **So `Occupied` is a building footprint** (`tile_has_building` over every building grid of the island, or an earlier
+  record of the same command), and the owner's refusals came from buildings placed earlier in his session.
+- **Where they were (H).** Frame `ui_10` 4:52 (command #27, `at 1181,661`): the yellow 3x3 rectangle lies just left of the
+  Kontor, inside its 4x4 footprint: the warehouse sprite is smaller than its footprint, so the tiles look free (L; the
+  16 tiles were not measured). Frame 4:40 (command #19, `at 1180,646`): the pointer stands on a drawn farm, a true
+  refusal. The owner had issued 27 commands by then, so several farms and foresters existed.
+- **Deviation from the original: none in the rule; refusal & occupied feedback (`D + H + code`, `UI-GHOST-1`/`UI-GHOST-2`).** On refusal, the original draws **only** the cursor's yellow (`0xffff00`) empty rectangle (`AnnoFrame.dll` `0x10048450` / `0x1004b7f0` -> `0x10041050` then `ret 8`) and draws no blocking-building outline. That cursor yellow rectangle matches the original (`UI-GHOST-1` + `UI-GHOST-2` verified on both building and road refusals, without hiding trees). To explain `Reject::Occupied` over visually free perimeter tiles (such as the 4x4 Kontor above), the rebuild provides `--occupied-outline on|off` (**ADAPTATION, DEFAULT OFF**), which outlines overlapping blocking footprints in `0xff4040` while keeping the cursor's yellow rectangle and chrome on top (`placement_ghost_test`, `viewer_wiring_ui_ghost2_occupied`, `viewer_wiring_ui_ghost2_pixel_check`).
+
+**Decision table for the rebuild.**
+
+| Existing | Place | Preview | Demolish |
+|---|---|---|---|
+| tree, field, dry crop (bit `0x20`) | allow; **remove** the tile object (the sim does; the picture must) | hide the objects under the footprint | bare ground; nothing returns |
+| rock, cliff, river (no `0x20`) | refuse, `Occupied` | yellow rectangle | n/a |
+| building | refuse (`Occupied`); in-place market/Kontor upgrade is the exception (O-4) | yellow rectangle | the building's removal |
+| road under a house or farm | refuse (a building is not group `0xc1`) | yellow rectangle | n/a |
+| house or farm under a road | refuse (group `0xc1` only over `0xc1` or flag `0x20`) | yellow rectangle | n/a |
+
+#### 10.3 Selection and highlight
+
+**Answer in eight lines.**
+
+1. **Who handles the click (D).** With **nothing armed** the active cursor is `tCursorInfo` (vtable `0x10088b30`, input
+   `0x100502b0`, draw `0x10050190`); with a building, road, wall, field, mine or demolish armed, the armed cursor takes the
+   click. **A click with a building armed places** (or is refused), in the original and in HE: the owner selected in HE only
+   after nothing was armed.
+2. **The pick (D `0x10050030`, `0x1004f7e0`).** The cursor asks the view for a pick with a mask (`0x4000` for a move,
+   `0xc0000` for a click; view slots `+0x90`/`+0x94`) and gets 16-byte hits whose top nibble is the class: `4` units, `2`
+   a tile hit (x, y 14 bits each), `1` the terrain point, `5` and `6` further object hits. The classifier returns 2
+   (units), 4 or 5 (tiles), 10 or 1. Release (event 2) with no rubber band acts on the result:
+   - **units** (class 2): selected through the player's selection; a rubber band of at least 4 pixels selects several
+     (the cursor draws a yellow rectangle `0xffff00` while dragging, `0x1004f430`);
+   - **a tile hit**: the tile object's type is read (island slot `+0x84(x, y, 6)`), and
+     * PRODTYPE group `0x21` (markets and Kontors, 33-64) opens the warehouse/market window (message `0x17` through the
+       city's view slot);
+     * PRODTYPE `0x103` (259, the gate `TOR`) toggles the gate (commit kind 6 with one of four messages `0x8b9`-`0x8bc`
+       by the gate's state);
+     * anything else goes on to the selection.
+3. **Shift or ctrl** (flag `0x4000` of the event modifiers) adds to the selection (player slot `+0xcc`); otherwise the
+   selection is replaced (slot `+0xd8`): `AnnoFrame 0x10059d00`/`0x10059d40` forward to `AnnoWelt 0x1001afc0`/`0x1001b090`.
+4. **The selection object (D `AnnoWelt 0x1001ae10`, `0x1001afc0`).** The player keeps one selection object of a kind:
+   `2` units, `3` unit group, `4` **one tile object**, `5` several tile objects. Kinds 4 and 5 hold the clicked tile and
+   the footprint rectangle (`0x10019a60`: island slot `+0x84(x, y, 6)` for the object, slot `+0x90` for the rectangle).
+   Setting the selection tells the view layer (`0x10077730`), which opens the object's panel (`docs/re/ui.md` sections 4
+   and 5).
+5. **What is selectable (D `0x10019740`, the kind-4 validity).** The tile's object type is read (island `+0x94`) and its
+   PRODTYPE group `(p - 1) & ~0x1f` must be **at most `0xa0`**: production (1-32), market block (33-64), public (65-96),
+   houses (97-128), military (129-160) and market stalls (161-192); a byte table (`0x100198d0`) maps the block to a list
+   mask, the same as RemoveAt's. **Roads, walls, bridges, piers, plazas, fences, monuments, ornaments, crops, trees,
+   rocks and rivers (PRODTYPE 193 and up) are rejected: not selectable.** The tile's owner must not be neutral
+   (`0x100197eb`).
+6. **The yellow highlight (U for GOG, H for HE).** HE draws the clicked building in yellow with its panel (`ui_10`
+   7:14). The GOG draw of a selected **building** was not found: the only selection-time yellow in `tCursorInfo` is the
+   rubber band for units (`0x1004f430`), and its draw `0x10050190` draws order markers (texture `0x659`). Where the
+   building's mark is drawn (a chunk mask like the ghost's `+0x210`/`+0x218`, the scene, or the building's own draw)
+   is OQ-770. Until then the rebuild copies HE's look: a yellow footprint outline.
+7. **Trees and fields (D).** Not selectable (item 5). A click on a tree or field with nothing armed selects nothing and
+   drops the previous selection (S: the rebuild agrees).
+8. **The "not in the tool's cycle list" message (S + code).** `DevTool::arm(type)` fails for a type the tool does not
+   place. Types **104** and **708** are crop objects (`f12_info_field_104`, `_708`: farm fields), which the menu can arm
+   and the sim cannot place yet (gap 4). The message is the tool refusing the **arm**, not a failed selection.
+
+**The rebuild (S + code).** Selection exists: with the developer tool **off** and nothing armed, a left click on a placed
+building selects it (S: the title reads `selected Farm out=0.00t ...`), a click on a tree or empty ground deselects, ESC
+deselects (`selection.hpp`, `PointerMode::Select`). With the tool **on** (the owner's session: armed from the menu) a
+click on a building is a **build attempt** (S: `Refused (Occupied)`), as in the original. The owner's "nothing happens" is
+therefore the armed state. Gaps:
+
+| Item | Original | Rebuild | Gap |
+|---|---|---|---|
+| Yellow highlight of the selected building | HE yes (U in GOG) | title text only | S1 |
+| Panel of the selected building | View panel by PRODTYPE | the farm shows the title only | S2 (UI-INFO) |
+| Click on a market block or Kontor | opens the warehouse window | selects | S3 |
+| Click on a gate | toggles it | gates are not placeable | later |
+| Rubber band selects units and tile objects (kind 5) | yes | none | S4 |
+| Select without disarming | a click places; to select, unarm (right click or ESC) | same | none; say so in the help |
+| Selectable set | production..stalls only | the city's buildings | none |
+| Message for field types | n/a | `not in the tool's cycle list` | wording: "not placeable yet" |
+
+**Packets:** `UI-SELECT-1` (app, 3 h): the yellow footprint outline (HE pixels for colour and width), the footprint from
+the sim's building record, one per selected building; ESC and right click as now. `UI-SELECT-2` (2 h): a market or
+Kontor click opens the warehouse panel. The GOG highlight code is OQ-770.
+
+#### 10.4 Open questions of this pass (OQ-764 to OQ-772)
+
+- **OQ-764.** The exact road reshaper (`AnnoWelt 0x1007cc40`, helpers `0x1007e8b0`, `0x1007ece0`, `0x1007ef60`,
+  `0x1007f960`, `0x10080610`, `0x1008bae0`): when a one-neighbour tile is an end piece and when it stays a straight piece
+  (the corpus has both), which neighbour rewrites it emits, what the mode byte and flag `0x10` do. The table in 10.1 item
+  8 is data-derived (P), not read.
+- **OQ-765.** Whether the commit (kind 9 apply) re-checks a reshaped corner/T/cross/end piece in the slope class
+  (`rec[8] >= 32`) on a water tile, and what the player sees (a straight run into water that stops at the first corner).
+- **OQ-766.** Bridges: the pass that scans up to 20 tiles (`0x1007d917`-`0x1007dc52`), which cursor places 2516, 2517,
+  2536 and 2537 (the menu arms only 2518), and the grand bridge's ramps.
+- **OQ-767.** Who darkens the map outside the range while a road is armed (HE `ui_10` 10:48-11:13), and whether GOG does
+  the same; the road cursor's own code does not.
+- **OQ-768.** Demolish: the replacement arm of `0x10082c30` (grid `island +0x18`): does a demolished footprint get
+  anything back (a tree, a ground tile)? Evidence so far: the clear arm, bare ground.
+- **OQ-769.** The exact 16 tiles of the Kontor footprint relative to its drawn sprite in the owner's session (the
+  `Occupied` refusals beside the Kontor); needs the owner's command log or a headless dump of the city's building
+  footprints.
+- **OQ-770.** Where the original draws the yellow highlight of a selected building, and the HE look (colour, width,
+  footprint or sprite outline).
+- **OQ-771.** The pick masks `0x4000` and `0xc0000` and what the view's pick returns for a click over a building versus
+  the ground under it (`AnnoFrame 0x10050030`, view slot `+0x94`).
+- **OQ-772.** The tile-object selection's further effects: kind 5 (several), the panel hand-off (`0x10077730`), and what
+  `AnnoFrame 0x10050b90` (unit selection by pick) does for ships.
 
 ---
 
@@ -469,7 +833,8 @@ count differs from the ENTRANCE count: arrows and entrances are different data (
 (D + P) and HE (P). The OQ text ("he_01 3:32-4:21 shows green arrows on the placement ghost that turn with
 it") describes the panel picture, not the map ghost. Side findings for part B: the HE radius outline is
 **green** where GOG's is yellow `0xffff00`. The HE ghost **blinks** when unaffordable: on 0.75 s, off
-0.5 s, measured at 4 fps over 4:05-4:30 (`########..###...##...###...`).
+0.5 s, measured at 4 fps over 4:05-4:30 (`########..###...##...###...`). Superseded by the 80 fps measurement
+and the code in part B §5.1: 0.700 s on, 0.700 s off.
 
 ### 3. What the arrows mean in the world
 

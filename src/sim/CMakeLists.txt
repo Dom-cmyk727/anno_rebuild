@@ -5,7 +5,7 @@ add_library(anno_sim src/sim.cpp src/production.cpp src/mine_source.cpp src/mine
             src/script_runtime.cpp src/permissions.cpp src/script.cpp src/build_availability.cpp src/goods_table.cpp src/synthetic.cpp src/player.cpp src/island.cpp src/scenario.cpp src/original_units.cpp
             src/save.cpp src/building.cpp src/create.cpp src/invariants.cpp src/figure.cpp src/ship.cpp src/ship_step.cpp
             src/driver.cpp src/scheduler.cpp src/codec.cpp src/apply.cpp src/replay.cpp
-            src/placement.cpp src/legacy_codec.cpp src/events.cpp src/timers.cpp
+            src/placement.cpp src/road_drag.cpp src/legacy_codec.cpp src/events.cpp src/timers.cpp
             src/island_tick.cpp src/scenario_formats.cpp src/island_links.cpp src/transport.cpp src/harvest.cpp src/fisher.cpp src/mason.cpp src/walk_cells.cpp src/walk_search.cpp
             src/game_setup.cpp src/house_groups.cpp src/goods_metadata.cpp src/house_kernel.cpp src/terrain_view.cpp src/site_checks.cpp src/territory.cpp src/founding_payment.cpp src/city_creation.cpp src/figure_veto.cpp src/founding.cpp src/resident.cpp src/resident_job.cpp src/inn.cpp src/house_transition.cpp src/house_tick.cpp
             src/route_cache.cpp src/ship_orders.cpp src/freight.cpp src/ship_cargo.cpp src/ship_mover.cpp src/route_coast.cpp src/route_plan.cpp src/route_world.cpp src/route_stamps.cpp)
@@ -40,7 +40,8 @@ if(ANNO_BUILD_TESTS)
                  tests/route_fixture_test.cpp
                  tests/route_unit_test.cpp
                  tests/route_world_test.cpp
-                 tests/route_stamps_test.cpp)
+                 tests/route_stamps_test.cpp
+                 tests/road_drag_test.cpp)
   # Independent spec oracle generated into the build, never the current fixtures.
   set(extension_oracle "${CMAKE_CURRENT_BINARY_DIR}/synthetic-extension.txt")
   add_custom_command(OUTPUT "${extension_oracle}"

@@ -35,6 +35,7 @@
 #include <anno/sim/player.hpp>
 #include <anno/sim/reject.hpp>
 #include <anno/sim/rng.hpp>
+#include <anno/sim/road_drag.hpp>
 #include <anno/sim/route_cache.hpp>
 #include <anno/sim/script_runtime.hpp>
 #include <anno/sim/seams.hpp>
@@ -293,6 +294,8 @@ class World {
     /// Optional feature rules are authoritative in their header extensions, not Rules' base list.
     [[nodiscard]] const ExtensionContext& extension_rules() const { return extensions_; }
     [[nodiscard]] bool fisher_enabled() const { return extensions_.fisher_rules.enabled == 1; }
+    [[nodiscard]] const RoadRules& road_rules() const { return extensions_.road_rules; }
+    [[nodiscard]] bool road_drag_enabled() const { return extensions_.road_rules.enabled == 1; }
     [[nodiscard]] const Seams& seams() const { return seams_; }
     [[nodiscard]] const TypeRegistry& types() const { return *types_; }
     [[nodiscard]] BuildEligibility construction_eligibility(PlayerId, TypeId) const;
@@ -387,6 +390,20 @@ class World {
     /// commands the host stamped come in order, one call each; the AI seam's commands
     /// are applied inside advance by the same code and are not logged by anyone.
     ApplyResult apply(const Command& command);
+    /// UI-GHOST-1: the verdict a Build command of `city`'s owner would give the one record
+    /// `record` now: steps 1-7 of §8.4 exactly as `apply` checks a record (the footprint owner
+    /// rule, buildings under the footprint, the placement rule, eligibility, research, serials,
+    /// affordability, the first-assignment and city-booking checks), with no earlier records.
+    /// UnknownIsland / UnknownCity / UnknownIssuer when `city` or its owner does not resolve;
+    /// Reject::None when the record would be placed (or is type 0, which Build skips). A pure
+    /// read: no state, stream, hash, event or draw changes (the placement ghost asks it every
+    /// turn; docs/BUILDINGSOBJECTS.md part B section 5.1).
+    [[nodiscard]] Reject check_build_record(CityRef city, const PlacementWire& record) const;
+    /// ROADS-3: read-only prefix evaluation of a multi-record road drag path against virtual
+    /// earlier tiles and cumulative cost (stopping at the first site refusal, and marking any
+    /// remaining site-valid records past the first CannotAfford as unaffordable tail).
+    [[nodiscard]] RoadPathCheck check_build_path(CityRef city,
+                                                 std::span<const PlacementWire> records) const;
 
     /// The structural facts and the derived-equals-recomputed facts of docs/sim/
     /// state.md §9.6 that exist at this stage. Empty when they all hold, else one

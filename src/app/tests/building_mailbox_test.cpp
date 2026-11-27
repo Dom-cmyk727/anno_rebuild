@@ -193,3 +193,63 @@ TEST_CASE(
     CHECK(after.front()->turn == 3);
     CHECK(after.front()->full.empty());
 }
+
+TEST_CASE("mailbox: tile objects collapse to resync and incremental apply matches resync") {
+    using anno::app::apply_tile_object_batches;
+    using anno::app::BuildingBatch;
+    using anno::app::BuildingMailbox;
+    using anno::app::diff_sorted_tile_objects;
+    using anno::app::SceneBuilding;
+    using anno::app::SceneTileObject;
+    using anno::app::sort_tile_objects;
+    using anno::app::TileObjectDelta;
+
+    const SceneTileObject road0{0, 2520, 10, 10, 0, 32, 0};
+    const SceneTileObject road1{0, 2520, 10, 10, 1, 32, 0};
+    const SceneTileObject cleared{0, 0, 12, 12, 0, 0, 0};
+    const std::vector<SceneBuilding> no_buildings;
+
+    std::vector<SceneTileObject> world = {road0};
+    std::vector<SceneTileObject> picture = world;
+    std::vector<SceneTileObject> inc_picture = world;
+
+    BuildingMailbox box(3);
+    BuildingMailbox inc_box(4);
+    for (std::uint64_t turn = 1; turn <= 4; ++turn) {
+        const auto before = world;
+        world = turn < 4 ? std::vector<SceneTileObject>{SceneTileObject{
+                               0, 2520, 10, 10, static_cast<std::uint8_t>(turn), 32, 0}}
+                         : std::vector<SceneTileObject>{cleared, road1};
+        sort_tile_objects(world);
+        auto b = std::make_shared<BuildingBatch>();
+        b->turn = turn;
+        b->tile_deltas = diff_sorted_tile_objects(before, world);
+        box.push(b, no_buildings, world);
+        inc_box.push(b, no_buildings, world);
+    }
+    const auto taken = box.take();
+    REQUIRE(taken.size() == 1);
+    CHECK(taken[0]->resync);
+    CHECK(taken[0]->turn == 4);
+    CHECK(taken[0]->full_tile_objects == world);
+
+    const auto resync_applied = apply_tile_object_batches(picture, taken);
+    CHECK(resync_applied.consistent);
+    CHECK(picture == world);
+
+    const auto inc_taken = inc_box.take();
+    REQUIRE(inc_taken.size() == 4);
+    CHECK_FALSE(inc_taken.front()->resync);
+    const auto inc_applied = apply_tile_object_batches(inc_picture, inc_taken);
+    CHECK(inc_applied.consistent);
+    CHECK(inc_picture == world);
+
+    // Incremental apply equals resync apply, and missing removal sets consistent = false.
+    std::vector<SceneTileObject> bad_pic = {road0};
+    auto bad_batch = std::make_shared<BuildingBatch>();
+    bad_batch->turn = 1;
+    bad_batch->tile_deltas.push_back({TileObjectDelta::Kind::Removed, cleared});
+    const auto bad = apply_tile_object_batches(bad_pic, {bad_batch});
+    CHECK_FALSE(bad.consistent);
+    CHECK(bad_pic.size() == 1);
+}

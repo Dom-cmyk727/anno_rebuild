@@ -29,6 +29,7 @@
 #include <anno/app/status_icons.hpp>
 #include <anno/app/territory_view.hpp>
 #include <anno/formats/result.hpp>
+#include <anno/sim/road_drag.hpp>
 #include <anno/sim/world.hpp>
 
 namespace anno::app {
@@ -97,6 +98,13 @@ load_play(const std::filesystem::path& game_dir, const std::filesystem::path& fi
 /// The scenario loader's split: an Anlagen id whose type has a list in the layout.
 [[nodiscard]] bool anlage_is_building(const sim::World& world, std::uint16_t anlage);
 
+/// Whether an Anlagen id is a tracked non-building tile object for the play picture (roads first,
+/// data-driven via `sim::kRoadFlag` without hardcoded type ids; later crops/trees widen this rule).
+[[nodiscard]] bool anlage_is_tracked_tile_object(const sim::World& world, std::uint32_t anlage);
+
+/// The world's tracked runtime tile objects (anchor tiles only, in island-slot order).
+[[nodiscard]] std::vector<SceneTileObject> play_tile_objects(const sim::World& world);
+
 /// The types the developer tool cycles (round ee, D1), registry data in TypeId order and of any id
 /// width: every type whose PRODTYPE has a list in `layout` (what the sim's Build places;
 /// without a list it answers Unsupported, apply.cpp) and every road type (kRoadFlag: the drag's
@@ -164,6 +172,33 @@ struct CityCounters {
     sim::CityAccounts accounts;
 };
 
+/// UI-GHOST-1: one Build record of a city the placement ghost asks the sim about.
+struct BuildProbe {
+    sim::CityRef city;
+    sim::PlacementWire record;
+    friend bool operator==(const BuildProbe&, const BuildProbe&) = default;
+};
+
+/// The sim's verdict on a BuildProbe (World::check_build_record).
+struct BuildProbeAnswer {
+    BuildProbe probe;
+    sim::Reject verdict = sim::Reject::None;
+};
+
+/// ROADS-3: multi-record road path the placement ghost asks the sim about
+/// (World::check_build_path).
+struct RoadPathProbe {
+    sim::CityRef city;
+    std::vector<sim::PlacementWire> records;
+    friend bool operator==(const RoadPathProbe&, const RoadPathProbe&) = default;
+};
+
+/// The sim's prefix verdict on a RoadPathProbe (World::check_build_path).
+struct RoadPathProbeAnswer {
+    RoadPathProbe probe;
+    sim::RoadPathCheck check;
+};
+
 struct PlaySnapshot {
     std::uint64_t tick = 0;
     std::uint64_t game_ms = 0;
@@ -207,6 +242,12 @@ struct PlaySnapshot {
     /// `inspection` is null). The selection (selection.hpp) needs it to tell "answered: nothing
     /// there" from "not answered yet" (W4-NEXT-2 K).
     std::optional<sim::TileXY> inspected;
+    /// UI-GHOST-1: the placement ghost's question (request_build_probe) and the sim's verdict on
+    /// it, `World::check_build_record` taken in the same turn as this snapshot (a pure read: no
+    /// state, stream, hash or draw change). nullopt when nothing is asked.
+    std::optional<BuildProbeAnswer> build_probe;
+    /// ROADS-3: multi-record road path probe answer (`World::check_build_path`).
+    std::optional<RoadPathProbeAnswer> road_probe;
     /// `World::construction_eligibility(local player, type).allowed()` for every type the
     /// registry defines, ascending by id (UI.2 C2: the sim's own lock authority is the one and
     /// only source the construction menu's lock display reads — never a copy of it, and never
@@ -420,6 +461,19 @@ class PlayRunner {
         const std::lock_guard lock(inspect_mu_);
         inspect_tile_ = tile;
     }
+    /// UI-GHOST-1: the placement ghost's record, answered in every snapshot published from now on
+    /// (PlaySnapshot::build_probe), also while paused, until another replaces it or
+    /// `std::nullopt` turns it off. Thread-safe; the same pattern as request_inspect.
+    void request_build_probe(std::optional<BuildProbe> probe) {
+        const std::lock_guard lock(inspect_mu_);
+        build_probe_ = probe;
+    }
+    /// ROADS-3: the placement ghost's road drag path, answered in every snapshot published from now
+    /// on (PlaySnapshot::road_probe), also while paused, until replaced or cleared with nullopt.
+    void request_road_probe(std::optional<RoadPathProbe> probe) {
+        const std::lock_guard lock(inspect_mu_);
+        road_probe_ = std::move(probe);
+    }
     /// Ends a capture that was asked for and has not run (the requester is going away).
     /// Thread-safe.
     void cancel_capture() {
@@ -523,6 +577,10 @@ class PlayRunner {
     void find_local_city();
     /// Fills `inspection` and `inspected` from the requested tile.
     void fill_inspection(PlaySnapshot& next);
+    /// Fills `build_probe` from the requested probe (UI-GHOST-1).
+    void fill_build_probe(PlaySnapshot& next);
+    /// Fills `road_probe` from the requested path probe (ROADS-3).
+    void fill_road_probe(PlaySnapshot& next);
     [[nodiscard]] std::uint64_t p95_locked() const;
 
     sim::World world_;
@@ -544,8 +602,18 @@ class PlayRunner {
     /// prints their median, p95 and max to stderr. Off: nothing is kept or printed.
     bool publish_stats_ = false;
     std::vector<std::uint64_t> stat_turn_us_, stat_snapshot_us_;
-    // The sorted building list the picture has been given so far (sim thread only).
+    /// The tracked and cleared tile objects of `world_` after the turn (sim thread).
+    [[nodiscard]] std::vector<SceneTileObject> collect_tile_objects() const;
+    [[nodiscard]] bool is_building_id(std::uint32_t id) const;
+    [[nodiscard]] bool is_tracked_id(std::uint32_t id) const;
+
+    // The sorted building and tile-object lists the picture has been given so far (sim thread).
     std::vector<SceneBuilding> buildings_;
+    std::vector<SceneTileObject> tile_objects_;
+    std::vector<std::uint8_t> building_type_mask_;
+    std::vector<std::uint8_t> tracked_type_mask_;
+    /// Per island, per tile: 1 iff tick 0 held a non-building, non-tracked object anchor there.
+    std::vector<std::vector<std::uint8_t>> initial_scenery_;
     // The lock only protects the shared_ptr copy/swap and the mailbox's push or
     // take. Snapshot allocation, the building diff and all simulation work
     // happen before it is acquired.
@@ -575,6 +643,8 @@ class PlayRunner {
     std::optional<sim::FoundCmd> probe_;
     std::mutex inspect_mu_;
     std::optional<sim::TileXY> inspect_tile_;
+    std::optional<BuildProbe> build_probe_;   // under inspect_mu_
+    std::optional<RoadPathProbe> road_probe_; // under inspect_mu_
     std::function<void(WorldCapture)> capture_;
     // The developer player's city (sim thread, found at construction) and the last refusal
     // shown in the title.

@@ -14850,6 +14850,92 @@ landing candidate's own build): both pass, run directly with `python3 -I tools/l
 
 READY FOR REVIEW.
 
+## FLAKE-RESIZE-1 — paused on the owner's instruction, mid-proof — PAUSED (task/FLAKE-RESIZE-1, from origin/main `4dfdd9b7`, head `b3304fd1`)
+
+**Stopped here, not finished, on the owner's explicit instruction to halt all work until the next day.** No new step started after this message arrived; what follows records exactly where the task stands.
+
+**Root cause, found and fixed, with CI-confirmed evidence.** `anno_app_input_tests`' ZOOM-SMOOTH-2b F1 case (`src/app/tests/live_resize_test.cpp`) failed once in CI (run 44076929673, attempt 1, `linux-clang-asan`) with a LeakSanitizer report, not a correctness/race failure - all 4 doctest assertions in that case passed. Cause: the case's background `std::thread` floods `SDL_PushEvent` with nothing draining the queue; SDL 3.4.18's own `SDL_AddEvent` (`SDL_events.c`, the pinned source, read directly) refuses and calls `SDL_SetError` once the queue already holds `SDL_MAX_QUEUED_EVENTS` (65535, a hard cap). `SDL_SetError` lazily allocates a per-thread TLS error buffer (`SDL_GetErrBuf`) that SDL only frees for threads it created itself (`SDL_CreateThread`); this is a raw `std::thread`, so the buffer leaked whenever a slow/contended CI run happened to push past 65535 within the test's own ~10 ms window - the flakiness.
+
+**Fix, in two commits for the proof the task asked for.**
+- Commit A (`333b6035`): the pusher now pushes a fixed 70,000 events before its normal loop, forcing the overflow deterministically regardless of timing - with `SDL_CleanupTLS()` deliberately NOT called yet. Pushed; CI run **44177906209**'s `linux-clang-asan` job failed with the identical leak signature (214 bytes, 4 allocations, `SDL_GetErrBuf`) - confirmed via the job's own uploaded `test.log` artifact, not just the summary line. Every other job in that run passed - this one case is the only thing the fix touches.
+- Commit B (`b3304fd1`, current head): restores `SDL_CleanupTLS()` at the end of the pusher lambda, with a comment quoting SDL 3.4.18's own `SDL_thread.h` doc text verbatim. Pushed; **CI on this head has not been checked yet** (the halt instruction arrived before it could complete) - this is the one outstanding verification.
+
+**Local WSL ASan proof: blocked, then started, not finished.**
+- First attempt (before packages were installed): WSL Ubuntu was missing all X11/Wayland/audio dev packages CI installs except `libx11-dev`; SDL3's own cmake configure refused. Reported to the orchestrator; held rather than using `SDL_UNIX_CONSOLE_BUILD=ON` (would diverge from CI's own configuration).
+- Owner installed the 20 missing packages (`dpkg --configure -a` first for an interrupted state). Reconfigured and built `anno_app_input_tests` (ASan preset) successfully - but with the **default compiler** (`/usr/bin/c++`, GCC), not Clang: the commit-A binary then passed 15/15 local runs, i.e. did **not** reproduce the leak locally, because CI's `linux-clang-asan` job specifically uses Clang, and GCC's own sanitizer runtime did not report it here.
+- Rebuilt with the standalone Clang 18 at `/home/altin/clang18/root/usr/lib/llvm-18/bin/clang++` (the same compiler `tools/check_unix_warnings.sh` uses for its compile-only checks) to match CI. Configure and **compiling** succeeded, but **linking** `anno_budget_coord` (a dependency built before `anno_app_input_tests` in the same ninja graph) failed: `/usr/bin/ld: cannot find .../libclang_rt.asan-x86_64.a` (and the `_static`/`_cxx` variants) - this standalone Clang installation has no compiler-rt sanitizer runtime libraries, only enough to compile (consistent with `check_unix_warnings.sh`'s own compile-only use of it). **Never got to actually run the binary with this compiler**; the local WSL Clang ASan proof is NOT_RUN for this reason, distinct from the earlier X11/Wayland blocker.
+- CI runs 44076929673 (the original flaky failure, attempt 1) and 44177906209 (commit A's deterministic failure) stand as the substitute evidence for the local WSL proof, per the orchestrator's own instruction once the compiler gap was found.
+
+**Not started at all: the Windows msvc 50-loop stability proof (item 3) and the second item (`viewer_wiring_r4_occupancy`, 50 loops, item 4).** `anno_app_input_tests` was built once on msvc Release (confirms the code compiles there) but no loop was run - the halt arrived first.
+
+**Cleanup done before stopping:** no background build, test loop, or WSL process left running (checked `pgrep` in WSL and `Get-Process` on Windows for ninja/cc1plus/clang++/cmake/ctest/anno_* after each step); the detached gatecheck worktree and its two scratch WSL build directories (`~/anno-build/flake-resize-1-check`, `~/anno-build/flake-resize-1-check-clang`) were removed.
+
+**What's next, for whoever resumes:**
+1. Check CI on head `b3304fd1` (commit B) - should be fully green; if not, read why before anything else.
+2. Either get this standalone Clang 18 a compiler-rt runtime (or find/install a different Clang 18 that has one) to actually run the local WSL ASan loop proof, or treat CI runs 44076929673/44177906209 as sufficient per the orchestrator's own fallback instruction and say so explicitly in the final report.
+3. Run the msvc 50-loop stability proof (`anno_app_input_tests`/live_resize, confirming the 70,000 forced pushes keep the test's own assertions stable) and the `viewer_wiring_r4_occupancy` 50-loop (item 4), neither started yet.
+4. `check_unix_warnings.sh` has not been run against this branch's change yet either.
+5. Write the final REPORTS.md entry only once all of the above is in, per the task's own acceptance criteria.
+
+No question for the orchestrator right now; this entry is the status record the halt instruction asked for.
+
+## FLAKE-RESIZE-1 — resumed, all steps done — READY FOR REVIEW (task/FLAKE-RESIZE-1, from origin/main `4dfdd9b7`, head `0835d2c5`)
+
+Resumed from the PAUSED entry above after the owner's "Yes, resume both." Root cause, fix (commits
+`333b6035`/`b3304fd1`) and the fix commit's head are unchanged from that entry; this entry closes
+out the five items the pause left open, in the order the orchestrator asked for them.
+
+**1. CI on `b3304fd1` (the fix commit) — green.** All 12 jobs `"conclusion":"success"`: `changes`,
+`lint`, `build-macos`, `test (ubuntu-latest)`, `test (windows-latest)`, `cpp (windows-msvc)`,
+`cpp (linux-gcc)`, `cpp (linux-gcc-release)`, `cpp (macos-clang)`, `cpp-format`,
+`cpp (linux-clang-asan)`, `gate` (run `44190066591`).
+
+**2. msvc 50-loop stability proof, `anno_app_input_tests`/`live_resize`.** Built fresh at head
+`0835d2c5` (the worktree's prior msvc build was stale, from 2026-11-17). `ctest --preset msvc -j 2
+-R "anno_app_input_tests\." --repeat until-fail:50`: all 50 distinct test cases in the binary
+(`#88`-`#137`, including `#130`, the ZOOM-SMOOTH-2b F1 case this task is about, and `#135`/`#136`,
+the other live-resize-labeled cases) passed every one of their up-to-50 repeats -
+**"100% tests passed out of 50"**, 60.61 s total. Ran serially (`-j 2`) alongside another lane's
+own msvc build, per the orchestrator's explicit go-ahead once the owner's "Yes, resume both"
+landed (stability, not timing, is what this loop checks, so shared-PC contention does not
+invalidate it - if anything it is closer to the conditions the original flake needed).
+
+**3. `viewer_wiring_r4_occupancy`, 50 loops.** First attempt (`-j 1 --repeat until-fail:50`, no env)
+skipped outright (`SKIP_RETURN_CODE 77`, 0.12 s) - `ANNO1503_GAME_DIR` was not set in that shell.
+Reran with `ANNO1503_GAME_DIR` pointed at `game/app`: **50/50 passed**, ~7 s per run, 353.51 s
+total, 0 failures, 0 skips. Also ran serially alongside the other lane's build.
+
+**4. `tools/check_unix_warnings.sh`.** Ran via WSL once WSL itself was free (it does not contend
+with Windows-side `cl`/`MSBuild`). All four configurations clean: GCC viewer+GPU on (416 files),
+GCC viewer without GPU (83 files), Clang 18 viewer+GPU on (416 files), Clang 18 viewer without GPU
+(83 files). Both negative controls ("failed as expected (shadowed variable caught)") confirmed the
+check itself is live.
+
+**5. Local WSL ASan loop proof — NOT_RUN.** The standalone Clang 18 install at
+`/home/altin/clang18/root/usr/lib/llvm-18/bin/clang++` can compile (used for item 4 above) but has
+no compiler-rt sanitizer runtime archives (`libclang_rt.asan-x86_64.a` and variants) to **link** an
+ASan-instrumented binary - confirmed by `/usr/bin/ld: cannot find .../libclang_rt.asan-x86_64.a`
+when linking `anno_budget_coord`, a dependency built before `anno_app_input_tests` in the same
+ninja graph. Per the orchestrator's explicit instruction this is left as a toolchain gap - no
+toolchain installed to work around it. Substitute evidence, per the same instruction: CI run
+**44177906209** (commit A, the forced-deterministic trigger without the fix) failed
+`linux-clang-asan` with the identical leak signature (214 bytes, 4 allocations, `SDL_GetErrBuf`),
+and CI run **44190066591** (commit B, the fix, item 1 above) passed the same job clean - together
+the deterministic failure/fix proof the task's own acceptance criterion asks for, just run on CI's
+Clang rather than this host's.
+
+**Decisions and reasoning:**
+- Ran items 2 and 3 while another lane's msvc build was active, on the orchestrator's explicit
+  instruction once the owner's halt lifted: these are stability proofs (the test's own assertions
+  holding over N repeats), not timing measurements, so PC contention does not weaken the result -
+  the original flake (CI run `44076929673`) surfaced under contention in the first place.
+- Did not attempt to fix or install a compiler-rt runtime for the standalone Clang 18 (item 5):
+  explicitly out of scope per the orchestrator's instruction, and that install exists only for
+  `check_unix_warnings.sh`'s compile-only use, not for linking sanitized binaries.
+- Used CI runs 44177906209/44190066591 as the substitute two-commit deterministic proof rather
+  than re-deriving it locally, since the commits, the trigger (70,000 forced pushes) and the leak
+  signature are already pinned and auditable from those run logs.
+
 ## UI-TABS-1 stage B — READY FOR REVIEW (Windows, 2026-11-17)
 
 - Continued on `task/UI-TABS-1` from `ae5164d9` (no rebase, no origin/main merge). Commits
@@ -16776,6 +16862,695 @@ locks the cell, never switches the category. Compare with HE `ui_9` 2:25-2:30.
   slot is still unread (OQ-759), but no shot contradicts it.
 - The selected frame is the open category's, also while the placement panel shows
   (`r2_place_pioneer_house` shows public selected).
+
+## UI-GHOST-1 — the placement ghost as the original shows it (stages A and B) — READY FOR REVIEW
+
+Branch `task/UI-GHOST-1`, base origin/main `4dfdd9b7`. Packet `docs/orchestration/tasks/ui-ghost-1.md`. Commits:
+`c3724220` (merge of the docs-only `task/BUILDINGS-REF-1`), `c54adcf3` stage A (docs), `91486cd4` the sim query (sim
+code, its own commit as asked), `3031338c` the UI work, then this entry.
+
+**Stage A (docs, `docs/BUILDINGSOBJECTS.md` part B §5.1).**
+- The blink writer (OQ-730 answered, D + P): the draw list sits at view frame `+0x14`, so its writer is AnnoFrame
+  `0x100038f2` `xor byte [ebx+0x1420],1`. The accumulator at `+0x1422` adds the frame's milliseconds and flips above
+  699. HE `ui_9` at 80 fps: 0.700 s shown and 0.700 s hidden, 17 cycles.
+- The refused footprint `0x10041050`: a 1-px `0xffff00` outline along the tile corners at ground height + 0.08, also
+  over open sea.
+- The radius outline `0x100443c0`: a midpoint-circle staircase around the footprint's centre tile, for every
+  Default-cursor type, and it does not blink.
+- Over the panel HE hides the ghost and its outline (OQ-700 answered for HE; GOG unread, OQ-757). OQ-756 and OQ-758
+  are new.
+
+**Stage B (code).**
+
+| Requirement | Positive proof | Negative control / failure proof | Evidence |
+|---|---|---|---|
+| The verdict is the sim's own rule, read-only | `World::check_build_record` runs Build's `check_record` on one record; `anno_sim_tests."check_build_record gives Build's verdict and changes nothing"`: the verdict equals Build's for None, Occupied, OutOfIsland, TileNotOwned, TerrainRefused, UnknownType, BadRotation, the type-0 skip, UnknownIsland, UnknownCity and CannotAfford (gold, goods); hash and save unchanged | mutant C (the query maps CannotAfford to None): the case fails | `cache/gates/gate-01.log`, `fp-C.log` |
+| State priority hidden > refused > unaffordable > valid | `anno_app_tests."ghost state: ..."` | mutant B (CannotAfford → valid, chrome test off): the unit case, `viewer_wiring_ui_ghost` (line 30 `wait fact tool.ghost == hidden`: it stayed 'refused') and the pixel check fail | `fp-B.log` |
+| Blink: acc > 699, subtract 699, flip | `"ghost blink: ..."` at 0 ms, 1 ms steps (699 holds, 700 flips, then every 699 ms), 350 + 350 = 700, surplus 2000 → 1301 → 602 | mutant A (`<` instead of `<=`): the case fails | `fp-A.log` |
+| Radius table and outlines | the table by hand for r = 0, 1, 4, 24; footprint and radius outlines; a closed outline | — | `gate-01.log` |
+| Outline colour exact `0xffff00`, 1 px, under the chrome | `"outline pixels: ..."`; `viewer_wiring_ui_ghost_pixel_check` in the real window: valid 1408 exact pixels (box 563 x 371), refused 160 (box 81 x 41, 2:1), hidden 0, panel column 0 in all three | the hidden shot is the negative control; mutant A (`0xfffe00`): the pixel check and the unit case fail | `gate-01.log`, `fp-A.log` |
+| States through the real window | `viewer_wiring_ui_ghost` (lan5, `ANNO_DEV_GOODS_TONS=3`): valid at (1140,516), refused over the inlet (1148,536), hidden on the panel (950,600), one house built, then unaffordable with the phase going 1 then 0, refused again with an empty stock | mutant B | `gate-01.log`, `fp-B.log` |
+
+**Gates** (MSVC Release, `ANNO1503_GAME_DIR`, `ANNO_TEST_THREADS=16`, `ANNO_UI_ORACLE_SHOTS`, `ANNO_UI_HE_CAPTURES`,
+`ANNO_UI_ROTATION_SHOTS`, head `3031338c`):
+- Configure `cmake --preset msvc` (new build dir). Build `anno_sim_tests anno_app_tests anno1503 anno_ui_mock`: no
+  warnings, no errors.
+- clang-format 23.1.3 `--dry-run --Werror` on every changed `.cpp`/`.hpp`: clean.
+- Canary `run_selected.py --jobs 8 --select 'ghost|radius half-widths|footprint outline|radius outline|outline pixels|check_build_record'`:
+  `selected=9 executed=9 failed=0 skipped=0`, PASS (`cache/gates/canary-01.log`).
+- Gate `run_selected.py --jobs 8 --select 'live_screen_matches_oracle|ui_dynamic_draw_check|info_panel|selected_house_pixel_check|ui_panels_match_gog|ui_window_matches_he|ui_mock_matches_oracle|^viewer_wiring_ui_|^viewer_wiring_construction|^anno_app_tests\..*(hud|ui|construction|selection|ghost|outline|radius)|^anno_sim_tests\.(build |check_build_record|demolish |free build)'`
+  with eight `--require-test` (the six oracle tests plus `viewer_wiring_ui_ghost`, `viewer_wiring_ui_ghost_pixel_check`):
+  `selected=165 executed=163 failed=0 empty=0 skipped=2 (opt-in=2) incomplete=0 sanitizer_lines=0`, PASS
+  (`cache/gates/gate-01.log`). The two skips are the opt-in `probe:` cases the `ui` pattern also matched.
+- Failure proofs (each mutant built and run, then restored): A, B and C as above (`cache/gates/fp-{A,B,C}.log`).
+  After restoring: rebuilt, the canary again `selected=9 executed=9 failed=0`, PASS (`canary-02.log`).
+- WSL `check_unix_warnings.sh`: GCC 13 and Clang 18, viewer with and without GPU (418 / 85 files): all clean, both negative controls caught (`cache/gates/unix-warnings-01.log`), one run, after the previous run on the PC had ended.
+
+**ADAPTATIONS** (orchestrator, 2026-11-17):
+- The 0.08 lift is applied in HEIGHT units (the original's unit is unread; under a pixel).
+- The ghost is hidden over open sea outside the city's island rectangle, because the dev tool picks no tile there
+  (OQ-760). The follow-up "pick over the whole map" is in the packet and gap 7.
+- Hidden over chrome: "HE-observed, GOG unread (OQ-757)".
+
+**NOT_RUN:** the GPU path through a real window (only the CPU path is in CTest; the GPU layer code shares the drawing
+functions and is the owner's test); macOS; the full suite (only the changed lanes, per the landing evidence split).
+
+**Decisions and reasoning:**
+- The verdict comes from a new read-only sim query, not from the window's `PlacementKnowledge::check`, as the packet
+  asks. `check_record` takes a `CheckEnv` of const references so the query needs no `const_cast`; Build passes the
+  same members, so the two cannot drift.
+- The window asks once per frame and the runner answers each turn (and while paused). While the answer is pending,
+  the last state stays, so a moving pointer does not flash the ghost off; from hidden it stays hidden until the first
+  answer.
+- The blink runs on the window's steady clock (it keeps running while paused, like the original's frame clock), one
+  flip per frame as the original, and the window's event wait is cut to the time left until the next flip.
+- The CPU path draws the outline into the frame before the chrome; the GPU path draws it into the frame-sized UI
+  layer only where that is transparent, so the chrome stays on top in both.
+- `tool.ghost.pixels` lets the wiring script see that an outline was drawn without a screenshot; the colour itself is
+  checked by the pixel check.
+
+**Owner's viewer test (default rules, the developer city):**
+1. Start the lan5 developer city with one house's worth of wood:
+   `$env:ANNO_DEV_GOODS_TONS=3; build\msvc\src\app\Release\anno1503.exe --play data\maps\lan5.txt --game-dir E:\anno1503\game\app --construction-menu on --layout data\ui`
+   (no `--rules living`).
+2. Press B, open the public category and arm the pioneer house.
+3. Move the ghost over land in your city: the house and a yellow staircase radius outline.
+4. Move it over the inlet near (1148, 536) or other water inside the island: only a yellow footprint diamond, no
+   house.
+5. Move the pointer onto the right panel: the ghost and the outline vanish; back on the map they return.
+6. Place one house (it uses the 3 t of wood). Move the ghost over free land again: the house blinks, about 0.7 s
+   shown and 0.7 s hidden, while the radius outline stays steady.
+7. Over open sea outside the island the ghost stays hidden (ADAPTATION, OQ-760).
+
+READY FOR REVIEW.
+
+### UI-MAGNIFIER-MAC-1 — HiDPI dev-script coordinates & visibility diagnostics (2026-11-20)
+
+- **Branch / Code Head / Tree:** `task/UI-MAGNIFIER-MAC-1` · code `cbfa8b1a2d8d8da4b7914098c7cf2fafe77c5256` (tree `442178f1b74bbd207fc967973a7ef3cd983d0f99`), base Candidate 10 `95897a55` + `origin/main` `a6468efd`.
+- **Root cause:** (1) `DevScript::step` (`src/app/src/dev_script.cpp`) emitted raw drawable-pixel coordinates for `click_px`, `hover_px`, `ldown_px`, `ldrag_px`, `rclick_px`, `rdrag_px`, and `wheel N X Y` without dividing by `st.density`, while `viewer.cpp` multiplies SDL mouse/wheel coords by `density` (at `density = 2.0`, `click_px 835 163` became `(1670, 326)`). (2) `act.resize` (`viewer.cpp`) passed raw `(w, h)` to `SDL_SetWindowSize` instead of dividing by `density` like `ANNO_VIEW_SIZE` and `resize_at_`, producing a `2048x1536` drawable for `resize 1024 768`. Both now share `drawable_to_window_point` / `window_points_for_drawable`. (3) Added `hidden_` transition logging/tracing (`Viewer::handle`), `retry_backoff` trace note (`back_off`), and `format_no_frame_diagnostic` on 30 s no-frame aborts. `src/sim`, `src/formats`, `fixtures/synthetic/sim/` untouched (state 139, 0 pin moves).
+
+| Requirement | Positive proof | Negative control | Evidence | Disposition |
+|---|---|---|---|---|
+| 1. `*_px` & `wheel N X Y` scale by `1/density` | `1.0F`, `1.5F`, `2.0F` round-trip `* density` to exact px; hits `lupe_minus`/`lupe_plus` | `density <= 0` fails step; unscaled mutant misses at `1.5F` | `dev_script_test.cpp` (`anno_app_input_tests`) | pending |
+| 2. `resize W H` targets drawable px | `window_points_for_drawable(1024,768,2.0F)=={512,384}`, `1.5F=={683,512}` | Unscaled `{1024,768}` yields `2048x1536` at `2.0F` | `dev_script_test.cpp`, `viewer.cpp` | pending |
+| 3. `hidden_` & `retry_at_` diagnostics | `format_no_frame_diagnostic` covers `hidden=0/1`, `retry_backoff=0/1`, `drawn=N` | Distinct strings for `hidden=1` vs `retry_backoff=1` | `dev_script_test.cpp`, `viewer.cpp` | pending |
+| 4. Windows PC UI/magnifier/oracle green | All 8 required + UI/minimap/dev_script suites pass | Unchanged `src/sim`, `src/formats`, pins | `cache/gates/ui-magnifier-mac-1-02.log` | pending |
+
+- **Deliberate failure proof:** Temporarily returning unscaled `(x, y)` in `drawable_to_window_point` caused `anno_app_input_tests --test-case="*display density*"` to pass at `1.0F` and fail at `1.5F`: `CHECK(1252.5 == Approx(835))`, `CHECK(244.5 == Approx(163))`, `REQUIRE(u.has_value())` `false` (off `1024x768` UI layer); restored and re-verified green.
+- **Gates (MSVC Release, RTX 4090, `ANNO1503_GAME_DIR` + oracle/HE/rotation env, `ANNO_DEV_GOODS_TONS` unset):**
+  - `python -I tools/test/run_selected.py --build-dir build/msvc --config Release --jobs 8 --require-test viewer_wiring_ui_magnifier_range --require-test viewer_wiring_ui_magnifier_range_stepped --require-test live_screen_matches_oracle --require-test ui_dynamic_draw_check --require-test info_panel_gog_compare --require-test info_panel_rotation_gog_compare --require-test selected_house_pixel_check --require-test ui_panels_match_gog --select "dev_script|minimap|magnifier|hud|ui |ui_|construction|selection|^viewer_wiring_ui_" --log cache/gates/ui-magnifier-mac-1-02.log`
+  - `COUNTS: selected=111 executed=111 failed=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0` · `VERDICT: PASS`
+  - `clang-format` 23.1.3 `--dry-run --Werror`: clean on all 4 touched C++ files.
+  - `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`: clean (GCC 13.3.0 & Clang 18.1.3, 435 files w/ GPU, 92 w/o GPU; negative controls caught).
+- **Decisions & reasoning:** Divide `*_px`/`wheel N X Y` in `DevScript` rather than bypassing `* density` in `viewer.cpp` so real SDL user input and `window_point`/`sail`/`ship_point` share one uniform SDL-window-points contract; log `hidden_` only on state change so normal `EXPOSED` events do not spam stderr/trace.
+- **NOT_RUN:** Live macOS/Metal execution (Windows PC host; Mac re-tests updated candidate), full `main` MSVC/WSL suite (orchestrator at landing), hosted CI (checked after push).
+
+READY FOR REVIEW.
+## UI-GHOST-1 addendum — fix round R1: ghost and click on the whole map — READY FOR REVIEW
+
+**Cause** (the UI lane's trace of the owner's live session, `cache/owner_ghost_trace.txt`): the owner saw no ghost
+at all. Over the map the hover was always empty. `DevTool::pick` gives a tile only on the developer city's island
+rectangle, and the owner's view was not over that island. Every stage-B script ran `look 1148 522` first, so none of
+them saw it. Stage B's OQ-760 adaptation therefore hid the ghost almost everywhere.
+
+**Fix** (`9bcc4efb`, app only, no sim change):
+- `pick_point(frame, px, py)`: FrameProjection::pick's rule, factored out. It returns any island's ground above the
+  waterline (each island's own placement rounding), else the sea-level tile (`render::pick_ray` at `kSeaLevel`,
+  as the status bar uses).
+- `DevTool::ghost_hover()`: the city island's exact pick (`hover()`, rounding fix kept) where it gives a tile,
+  else `pick_point`'s tile.
+- The ghost asks `check_build_record` for that record. Off the city's island the sim answers OutOfIsland, so the
+  ghost is refused and shows the yellow footprint, as the original draws everywhere (AnnoFrame `0x10041050`
+  has no island test).
+- Clicks (presses and releases) use the same tile, so a click off the city's island is sent and the sim refuses
+  it with its own reject. The ghost's "refused" and the click's verdict agree (orchestrator's addition 1).
+  `hover()` stays the city island's pick for the inspection and the preview sprites.
+- The outline is drawn no lower than sea level.
+- OQ-760 is resolved and the packet's follow-up is marked done.
+- Two existing unit tests expected the old local refusal and now expect the sent record: `anno_app_input_tests`
+  "dev tool: off the city's island a click is sent for the sim to refuse, outside the window ..." and
+  "dev tool data: another player's city on another island ...". The tile and the city of the record are checked.
+
+**Start view (report only; not changed, per addition 2):** for `--play data/maps/lan5.txt` the viewer centres the
+camera on the scene's bounds (`viewer.cpp` around line 445: `cam = bounds centre`). For lan5 that is the map's
+middle, the contested middle island 100 at (648, 648) (T_128X128_0038). It is not the developer city, which is on
+island 1 at (1048, 440) with its start at (1284, 540). `viewer_wiring_ui_ghost_world` confirms it: from the
+default view, the pixel left of centre is land of an island other than the city's, and the sim answers OutOfIsland.
+
+| Requirement | Positive proof | Negative control / failure proof | Evidence |
+|---|---|---|---|
+| The ghost works away from the city, from the default view | `viewer_wiring_ui_ghost_world` (no `look`): refused with outline pixels on the middle island, the click there `Refused OutOfIsland`; `lookw 1380 680` (open sea) refused with pixels, the click `Refused OutOfIsland`; then on the city's island valid | mutant D (the old city-island-only pick): line 16 `wait fact tool.ghost == refused` times out with `tool.ghost` 'hidden' | `cache/gates/gate-r1b.log`, `fp-D.log` |
+| A click off the city's island reaches the sim | the two `expect outcome Refused OutOfIsland` above; the dev tool unit tests check the record sent | — | `gate-r1b.log` |
+
+**Gates** (head `9bcc4efb`, MSVC Release, the same env as stage B):
+- Build `anno_sim_tests anno_app_tests anno_app_input_tests anno1503 anno_ui_mock`: no warnings.
+- clang-format 23.1.3 on the changed files: clean.
+- Canary over the ghost and dev tool cases: `selected=28 executed=28 failed=0`, PASS (`canary-r1c.log`).
+- Gate: the stage-B selection plus `^anno_app_input_tests\.dev tool`, nine required tests (the six oracle tests and
+  the three ghost tests): `selected=184 executed=182 failed=0 empty=0 skipped=2 (opt-in=2) incomplete=0
+  sanitizer_lines=0`, PASS (`cache/gates/gate-r1b.log`).
+  - A first attempt, `gate-r1.log`, ran without the game dir in its environment (my shell chain dropped the
+    export): `live_screen_matches_oracle` was skipped for a required asset, so the workflow refused it. It is kept,
+    not counted.
+- Failure proof D built and run, then restored. Its restore reverted my uncommitted R1 edits as well; they were
+  re-applied from their edit scripts, committed, rebuilt, and the gate above ran on that commit.
+- WSL `check_unix_warnings.sh`, one run: GCC 13 and Clang 18, with and without GPU (418 / 85 files), clean, both
+  negative controls caught (`cache/gates/unix-warnings-r1.log`).
+
+**NOT_RUN:** the GPU path in a real window (the owner's test), macOS.
+
+**Owner's test (default rules), updated:** the default `--play` view starts on the middle island, not the city. Arm
+the pioneer house there: a yellow footprint diamond (refused, another island), also over open sea. A click there is
+refused (OutOfIsland). Then move the view to the developer city (island 1, world tile about (1150, 520); the minimap
+shows it): there the house with its yellow radius outline. Over the inlet near (1148, 536): the diamond. With
+`ANNO_DEV_GOODS_TONS=3`, after one house the ghost blinks about 0.7 s on and 0.7 s off.
+
+READY FOR REVIEW.
+
+## UI-GHOST-1 R2 (start the play camera at the developer city) — HALTED, work in progress
+
+Halted on the owner's order (2026-11-17). Head is the WIP commit below; **it does not build**. R1 (`32958430`) is the
+last gated state.
+
+**Done in the WIP commit:**
+- `DevToolSetup::home`: the city's Kontor (`warehouse_prodtypes`), else its first building, else the island's centre.
+- The viewer's start camera on that tile when a play session has a developer city (the owner's decision of
+  2026-11-17, "Start at my city"); otherwise the scene's middle as before.
+- New `viewer_wiring_ui_start_view` (the camera tile on island 1, near the Kontor at (1284, 540)).
+- `ui_ghost_world` now looks at the middle island (712, 712) first.
+
+**State:** the R2 build failed. `play.cpp` reads `world.config().cargo`, but `CargoRules` is a member of `Rules`;
+the fix is `world.rules().cargo` (`cache/gates/build-r2.log`). The `^viewer_wiring_` run that followed
+(`cache/gates/wiring-r2-01.log`) therefore ran the R1 binary: 33 selected, 32 passed, 1 failed (the new
+`ui_start_view`, as expected without R2). It is not evidence for R2.
+
+**Remains:**
+1. Fix that line and build.
+2. Run `^viewer_wiring_`; fix any script that relied on the old start view.
+3. Gate: the ghost, dev tool and oracle cases, all required, plus the sim determinism, replay and save cases (213
+   tests by name; `pins.py check --area sim` if quick). State that no pin or golden moved.
+4. clang-format, one WSL run, a REPORTS addendum, push and mirror.
+
+## UI-GHOST-1 addendum — fix round R2: the play window opens on the developer city — READY FOR REVIEW
+
+Owner's decision (2026-11-17, "Start at my city"): his R1 retest happened on the start-view island, the middle island
+100, where building is refused correctly. Commits: `4c586744` (WIP, did not build; halted that evening), `6634cb8d`
+(the one-line fix `world.rules().cargo`, completing it), then this entry.
+
+- `DevToolSetup::home`: the developer city's warehouse (the Kontor, `Rules::cargo.warehouse_prodtypes`), else its
+  first building in the canonical order, else the island's centre. Computed in `dev_tool_setup` from read-only
+  queries of the loaded world. No hardcoded coordinates.
+- The viewer's start camera centres on that tile, at sea level, when a play session has a developer city. Otherwise
+  (scene views, sessions with no city yet) it stays on the scene's middle. The ship-start opening still overrides it
+  with its ship. The code is marked as the owner's decision. BUILDINGSOBJECTS §5.1 ("Off the island") notes it.
+- Camera only: viewer state, no sim, stream or save change.
+
+| Requirement | Proof | Evidence |
+|---|---|---|
+| The start camera is on the developer city's island | new `viewer_wiring_ui_start_view` (no `look`): `camera.tile` inside island 1 (1048..1303, 440..695) and within ±6 of the Kontor at (1284, 540) | `cache/gates/gate-r2b.log` |
+| R1's off-island coverage kept | `viewer_wiring_ui_ghost_world` now looks at the middle island (712, 712) first | `gate-r2b.log` |
+| No script relied on the old start view | `^viewer_wiring_` on the R2 build: `selected=33 executed=33 failed=0`, PASS. No other script needed a `look` | `cache/gates/wiring-r2-02.log` |
+| Determinism unchanged | the sim replay, determinism, save, golden, pin and hash cases plus the `anno_sim_replay_*` CLI cases (213 by name, inside the gate): all passed, one opt-in skip (`SCRIPT2 original encoded canary replay worker`). **No pin or golden moved**: `git diff 4dfdd9b7..HEAD -- fixtures` is empty. `pins.py check` was skipped as instructed | `gate-r2b.log` |
+
+**Gate** (head `6634cb8d`, MSVC Release, the same env; each heavy job only after checking that no other cl/link or
+WSL compile ran, the new PC-sharing rule):
+- Build `anno1503 anno_app_tests anno_app_input_tests anno_ui_mock anno_sim_tests sim_replay`: no warnings.
+  clang-format 23.1.3: clean.
+- `run_selected.py --jobs 8` over the oracle, `^viewer_wiring_`, ghost, dev-tool, construction/selection, Build
+  and determinism/replay/save lanes, with ten required tests (the six oracle tests, `viewer_wiring_ui_ghost`,
+  `_ghost_world`, `_ghost_pixel_check`, `_start_view`): `selected=407 executed=404 failed=0 empty=0 skipped=3
+  (opt-in=3) incomplete=0 sanitizer_lines=0`, PASS (`gate-r2b.log`).
+- A first run, `gate-r2.log`, failed 45 `anno_sim_replay_*` cases: `sim_replay` had never been built in this build
+  dir ("no such file"). It was built and that lane rerun alone (`46/46`, `gate-r2-replay.log`), then the whole gate
+  was rerun for one verdict (above). The first run is kept, not counted.
+- WSL `check_unix_warnings.sh`, one run: GCC 13 and Clang 18, with and without GPU (418 / 85 files), clean, both
+  negative controls caught (`cache/gates/unix-warnings-r2.log`).
+
+**Owner's test:** start as before (`--play data\maps\lan5.txt`, default rules). The window now opens on your city's
+Kontor. Arm the pioneer house: free land shows the house and its yellow radius outline; water shows the yellow
+diamond. With `ANNO_DEV_GOODS_TONS=3` the ghost blinks after one house. Other islands show the diamond, and a click
+there is refused (OutOfIsland).
+
+READY FOR REVIEW.
+
+## UI-GHOST-1 addendum — merge of the landing candidate `ui-info-2d-buildcat` (95897a55) — READY FOR REVIEW
+
+The candidate (UI-STATUS-1, MINIMAP-2, INFO-2b, INFO-2d, BUILDCAT-1, PRODBAR-1 B, ISLAND-CROPS-1, FERTILITY-1a and
+BUILDINGS-REF-1 on main) merged into `task/UI-GHOST-1` as one merge commit `4a93bac6` (parents `cff27308` and
+`95897a55`; never rebased), the conflict resolutions inside it. Two small follow-up commits after it, so the merge can
+be repeated against a new candidate: `a03131cb` (below). Head `a03131cb`.
+
+**Conflicts and resolutions (inside `4a93bac6`):**
+
+| File | Conflict | Resolution |
+|---|---|---|
+| `frame_projection.hpp` | UI-STATUS-1 and UI-GHOST-1 both split `pick_point` out of `FrameProjection::pick`, same signature and body; the doc comments differed | one declaration, the doc comment names the status bar's cursor tile and the ghost's whole-map hover. `frame_projection.cpp` merged by itself to the one shared `pick_point` |
+| `viewer.cpp`, facts | the ghost's `tool.ghost*` facts against PRODBAR's `tool.fertility` block | both kept, in that order |
+| `viewer.cpp`, CPU draw | the ghost's shown-building gate and outline against PRODBAR's fertility placeholder comment | the ghost's gate and outline, the placeholder comment inside the building branch |
+| `src/app/CMakeLists.txt` | the `anno_app_tests` source list | every test file of both sides: `status_bar`, `balance_rows`, `atlas_pages_lan5`, `info_preview`, `fertility_indicator` and `placement_ghost`; the new wiring cases registered by the auto-merge (`ui_status_island`, `ui_buildcat`, `ui_ghost*`, `ui_start_view`) |
+| `docs/open-questions.md` | both sides appended OQ sections | the union, in numeric order: 727, 750-754, 756-758, 759, 760 |
+| `docs/orchestration/REPORTS.md` | both sides appended entries | the union: the candidate's entries first, then UI-GHOST-1's |
+
+**`a03131cb` (after the merge):** UI-STATUS-1 and UI-GHOST-1 had both added the dev-script verb `hover_px` with the same
+behaviour; Git kept both branches (the second unreachable). One branch stays, its comment and the header line name both
+users. The fertility comment that the resolution indented is rewrapped by clang-format 23.1.3.
+
+**Gate** (MSVC Release, the usual env; each heavy job after checking that no other cl, link or WSL compile ran):
+- Build `anno1503 anno_app_tests anno_app_input_tests anno_ui_mock anno_sim_tests sim_replay` after configure: no warnings
+  (the one-verb cleanup rebuilt `anno1503 anno_app_input_tests`: no warnings). clang-format 23.1.3 `--dry-run --Werror`
+  on every `.cpp`/`.hpp` that differs from the candidate: clean.
+- `run_selected.py --jobs 8`: the six oracle tests, `^viewer_wiring_`, the ghost, dev-tool, status bar, hud, ui,
+  construction, selection, info preview, buildcat and fertility `anno_app_tests` cases, the `check_build_record` and
+  Build sim cases, and the determinism, replay and save lane (the replay CLI cases included), with twelve required
+  tests (the six oracles, `viewer_wiring_ui_ghost`, `_ghost_world`, `_ghost_pixel_check`, `_start_view`,
+  `_status_island`, `_buildcat`): `selected=448 executed=445 failed=0 empty=0 skipped=3 (opt-in=3) incomplete=0
+  sanitizer_lines=0`, PASS (`cache/gates/gate-merge.log`). The three skips are opt-in cases (the SCRIPT2 canary worker
+  and the two `probe:` bursts).
+- **No pin or golden moved by this branch**: `git diff 95897a55..HEAD -- fixtures` is empty.
+- WSL `check_unix_warnings.sh`, one run: GCC 13 and Clang 18, with and without GPU (437 / 94 files), clean, both
+  negative controls caught (`cache/gates/unix-warnings-merge.log`).
+
+**NOT_RUN:** the GPU path in a real window (the owner's test), macOS, the full suite.
+
+READY FOR REVIEW.
+
+## UI-GHOST-1 addendum — merge of origin/main (CI pinned to ubuntu-24.04) — READY FOR REVIEW
+
+Head `0068c34b` went red on the Linux jobs because main pinned them to ubuntu-24.04 (`a6468efd`; CI run 44495678229).
+`origin/main` merged as one clean merge commit `e7118670` (parents `0068c34b` and `a6468efd`, no rebase, **no
+conflicts**). The only code that came in is `.github/workflows/ci.yml`; the rest is docs and task packets.
+
+**Short gate** (MSVC Release, the usual env, after checking that no other cl/link or WSL compile ran; the build was
+up to date, no warnings): the twelve required tests each ran alone and passed, `selected=1 executed=1 failed=0` per
+test: the six oracles (`live_screen_matches_oracle`, `ui_dynamic_draw_check`, `info_panel_gog_compare`,
+`info_panel_rotation_gog_compare`, `selected_house_pixel_check`, `ui_panels_match_gog`),
+`viewer_wiring_ui_ghost`, `_ghost_world`, `_ghost_pixel_check`, `_start_view`, `_status_island` and `_buildcat`
+(`cache/gates/gate-main-merge2.log`). The runner's closing line reads `selected=0` because it ran them as required
+contracts, so nothing was left for the main selection. The first run (`gate-main-merge.log`) was the same.
+
+**NOT_RUN:** WSL (no code of this branch changed since the clean WSL run on `a03131cb`; the merge brought only the CI
+file), the wider lanes (the merge brought no code), macOS. CI is not polled.
+
+READY FOR REVIEW.
+
+## BUILDINGS-REF-2: roads, over-building, selection (research, docs only) — 2026-11-19 — READY FOR REVIEW
+
+Branch `task/BUILDINGS-REF-2`, base candidate `95897a55`. Docs only: `docs/BUILDINGSOBJECTS.md` part B section 10
+(10.1 roads, 10.2 what may be built over, 10.3 selection and highlight, 10.4 questions), the gap table (rows 16-20),
+OQ-764..772 in `docs/open-questions.md`. No code, no build, no `game/` change; the existing `anno1503.exe` was run in
+short headless scripted sessions (CPU renderer, `tools/test/viewer_wiring.py`; scripts and logs in `cache/bref2/`,
+git-ignored). Evidence contract: static disassembly (D), parsed files and the 50-scenario corpus (P), scripted rebuild
+sessions (S), owner's HE frames (H, pixels only); no original executed, no executed test suite (NOT_RUN: none claimed).
+
+**Findings in short.**
+- **A, roads.** L drag (long axis first, y first on ties), at most 40 tiles, every tile in own territory (owner != 15), one
+  city, no dirt over cobblestone, re-laying a road of the same family is free, per-tile random variant byte, commit kind 9
+  of the valid prefix, no radius outline, yellow empty rectangle on refusal, stays armed. The flat straight piece has no
+  terrain test, so roads can stand on territory sea tiles (HE agrees); corner/T/cross/end pieces are slope-class and
+  need level >= 32. The reshaper `0x1007cc40` picks them; its id/rotation table is derived from 42,000 shipped tiles.
+  **The rebuild's sim already places land roads (`Applied`, 5 gold per tile) but the picture draws no runtime tile object
+  (`NoVisualChange`), which is why the owner could not place roads.** The drag is also a straight line, with no ghost.
+- **B, over-building.** Trees, fields, dry crops and stones (flag bit `0x20`) may be built over by everything; rocks,
+  cliffs, rivers, buildings and roads may not (as the sim does). The placement removes the footprint's objects; demolish
+  leaves bare ground. In HE the ghost hides the trees under the footprint. `Occupied` in the sim is always a building
+  footprint: on island 1 every window is forest, and in a fresh session all four refused tiles are `Applied`; the next
+  click overlapping the first farm is `Occupied`. In the owner's frames the refused tiles lie in the Kontor's 4x4
+  footprint (invisible beyond its sprite) or on a drawn farm.
+- **C, selection.** Nothing armed: `tCursorInfo`; a click on a building selects it (tile-object selection, kind 4/5); only
+  PRODTYPE <= 192 (production to market stalls) is selectable; roads, fields, trees are not; market/Kontor opens the
+  warehouse, a gate toggles; with a building armed a click places. Types 104/708 are crop objects refused at arm time
+  (`not in the tool's cycle list`). The rebuild selects only with the tool off and nothing armed, with a title text and
+  no yellow outline.
+
+**Decisions and reasoning.**
+1. The shape table is reported as P (data) with its caveat, not as D: `0x1007cc40` (about 3,000 instructions) was read only
+   for structure in the time given; wrong claims about the autotiler would mislead ROADS-2.
+2. The owner's four "refused" tiles are not claimed to be reproduced: they are `Applied` in a fresh session. The cause is
+   stated as building footprints (D + S) and located by two frames (H, L), because the owner's session state is not saved.
+3. `DevInput::line` (straight line) and the missing picture object are listed as separate gaps (G1 vs G2/G3): fixing the
+   path without drawing would still look like "cannot place".
+4. The selection rule rests on the kind-4 validity function `0x10019740`; the GOG highlight draw was not found and is OQ-770
+   rather than guessed. HE pixels fix the look until then.
+5. No code was changed: the owner asked for research and a plan; every claim carries its tag.
+
+**Implementation plan (sim vs UI, sizes).**
+| Packet | Part | Size | Depends on |
+|---|---|---|---|
+| ROADS-0 PICTURE-OBJECTS-1: tile-object deltas into the picture, road draw, trees removed under a footprint | app + render | 4-5 h | - |
+| ROADS-1 SIM-ROADS-1: L path, per-tile check, no downgrade, same-family free, prefix commit | sim | 4 h | - |
+| ROADS-2 SIM-ROADSHAPE-1: reshaper from the table (+ RE-ROADS-2, 3 h, for the residual) | sim | 4-6 h | ROADS-1 |
+| ROADS-3 UI-ROADS-1: press-hold L drag, ghost path, blinking tail, yellow rectangle, stay armed | app | 3-4 h | ROADS-0, 1 |
+| ROADS-4 UI-RANGE-1: darken outside the range in road and building mode | app | 2 h | - |
+| UI-GHOST-2: ghost hides objects under the footprint, yellow refusal rectangle, occupied-footprint outline | app | 2-3 h | ROADS-0 |
+| UI-SELECT-1: yellow footprint outline of the selected building (HE pixels); UI-SELECT-2: market click opens warehouse | app | 3 h + 2 h | - |
+| ROADS-5: bridges 2518/2536, ramps, the 20-tile scan | sim + app | 5 h, later | OQ-766 |
+Suggested order for the owner's next test: ROADS-0, ROADS-1, ROADS-3 (a road he can see, drag and afford), then UI-GHOST-2.
+
+**What I could not settle.**
+- The reshaper's exact algorithm and the commit-time check of reshaped pieces on water (OQ-764, OQ-765).
+- Who darkens the map outside the range (OQ-767); where GOG draws the selected-building highlight (OQ-770).
+- The exact blocking tiles in the owner's session (OQ-769; needs his command log or a footprint outline).
+- Whether demolish restores anything (OQ-768, the unread replacement arm).
+- Not run: any original or HE; the executed evidence is the rebuild's own scripted sessions and static reads.
+
+## ROADS-0 / PICTURE-OBJECTS-1: runtime tile objects & cleared scenery in picture — 2026-11-20 — READY FOR REVIEW
+
+Branch `task/ROADS-0`, base `60a26f0d` / packet `c3489403`, code SHA `b0b022c6` (`b0b022c691712a9898d0aa1956027eca193bdf8d`),
+followed by this report commit. Zero changes in `src/sim/` (state stays 139) or `src/render/` (`gpu.wgsl`/`gpu.cpp` sea passes
+untouched). Touched: `src/app/` (`loader`, `building_delta`, `play`, `scene_picture`, `main`, `viewer`, tests),
+`tools/test/viewer_wiring/{roads_picture_objects,boundary_view}.script`, and `docs/BUILDINGSOBJECTS.md` (gap row 16, §10.1-10.2).
+Reserved OQ range 775-779 was unused; no new OQs were opened in `docs/open-questions.md`.
+
+**Deliverables & acceptance proof (code + tests, after final C++ edit unless noted).**
+- `building_delta_test` + `building_mailbox_test`: `TileObjectDelta` diff (add/remove/rot/height/cleared/wide id 100000), 50-turn quiet
+  `02Trade01` (`batches.empty()`), `BuildingMailbox` resync collapse & incremental apply parity (`anno_app_tests`, PASS).
+- `tile_object_picture_test` (2 cases, 88 assertions, `ANNO_DUMP_ROADS_PNG` inspected): placed land road `2520` reaches `Visible` (never
+  `NoVisualChange`), rotates (rot 0 vs rot 1), matches fresh `load_placed_scene` reference, demolishes to bare ground; trees under
+  placed pioneer house, road, and direct tree demolish vanish (`>= 1` cleared tile) and stay bare on demolish + collapsed resync.
+- `viewer_wiring_roads_picture_objects` (`tools/test/viewer_wiring/roads_picture_objects.script`): `2520` rot 0/1 -> `Applied` +
+  `Visible`, `picture.tile_objects == 1 -> 2 -> 1`, empty redemolish -> `NoVisualChange`, forest demolish `1188 516` -> `Visible`
+  (`picture.cleared_tiles == 2`), redemolish `1188 516` -> `NoVisualChange` (PASS).
+- Deliberate failure proof: inserted `tile_deltas.clear();` in `PlayRunner::building_batch` -> `anno_app_tests -ts=tile_object_picture`
+  failed 2/2 (21 assertions: `v0 == Visible` got `NoVisualChange`, `live_tile_object_count() == 0`, `0 px` diff, trees remained) and
+  `viewer_wiring_roads_picture_objects` failed line 17 (`NoVisualChange`); restored cleanly -> both PASS.
+
+**Gates & checks (`ANNO_DEV_GOODS_TONS` unset; `ANNO1503_GAME_DIR=E:\anno1503\game\app`).**
+- Initial MSVC `--jobs 8` + `ANNO_TEST_THREADS=16` (`cache/roads-0/gate-msvc.log`, `sha256[:12]=2656bac4822a`): `selected=673`,
+  `executed=665`, `failed=5`, `skipped=3` (opt-in) — only the 5 parallel `(game files)` `anno_render_tests` corpus cases hit
+  `reason=low-memory stop` (Host free RAM 8.24 GiB < headroom + 16*8 threads). Kept separate per `docs/testing/README.md`.
+- Corrected non-heavy `anno_render_tests` (`cache/roads-0/gate-msvc-render.log`, `sha256[:12]=b59555532c01`, `--jobs 2`,
+  `ANNO_TEST_THREADS=2`, untouched `src/render/`): `selected=211 executed=211 failed=0 skipped=0 incomplete=0 sanitizer=0` (**PASS**).
+- Post-final-edit app + wiring + 6 UI oracles (`cache/roads-0/gate-msvc-app-2.log`, `sha256[:12]=9e082e129e3e`, `--jobs 8`,
+  `--exclude-label "^(heavy|gpu)$"`): `selected=462 executed=459 failed=0 skipped=3` (`opt-in=3`), `incomplete=0 sanitizer=0` (**PASS**;
+  all 6 required UI oracles + `viewer_wiring_roads_picture_objects` + all `anno_app*` & non-GPU `viewer_wiring_*`).
+- Post-final-edit RTX 4090 GPU lane (`cache/roads-0/gate-msvc-gpu-2.log`, `sha256[:12]=32602a475633`, `--jobs 1`, `ANNO_REQUIRE_GPU=1`):
+  `selected=15 executed=15 failed=0 skipped=0 incomplete=0 sanitizer=0` (**PASS**; `viewer_wiring_ui_magnifier_range*` + `picture GPU`).
+- Post-final-edit `viewer_wiring.py ... boundary_view --gpu` (RTX 4090): **PASS** (`window exit 0`, 11.7 s).
+- `clang-format` 23.1.3 `--dry-run --Werror` on all 13 modified/added C++ files: **PASS** (exit 0).
+- WSL `tools/check_unix_warnings.sh` (`JOBS=8`): first pass caught 4 `-Wsign-conversion` (`loader.cpp:401`,
+  `tile_object_picture_test.cpp:161,247,248`); fixed, formatted, re-verified -> GCC 13 & Clang 18 (GPU on 436 files, no-GPU 93 files) **clean**.
+
+**Decisions and reasoning.**
+1. Read existing const `TileLayer` getters (`object`, `foot_dx`, `foot_dy`, `foot_rotation`, `item_height`, `phase`) in `src/app/` rather
+   than adding a delta view to `src/sim/`, keeping sim state and files completely unchanged (`b0b022c6` `git diff src/sim/` empty).
+2. Chose generic `SceneTileObject` (`uint32_t type`, `rotation`, `height`, `phase`, unbounded id; `type == 0` cleared-tile marker) so
+   future `ROADS-1..5` and crops/trees reuse the delta and `PROD2` emitter without hardcoded id limits.
+3. Recorded tick-0 `initial_scenery_` anchors and emitted `{0}` suppression or `kRoadFlag` objects, avoiding spurious batches from
+   passive `ROHSTWACHS` regrowth on quiet turns (`02Trade01`, `opening_sail`) while preserving flag-`0x10` rocks under mines/buildings.
+4. Updated `tools/test/viewer_wiring/boundary_view.script`: tile `(1188, 516)` on `lan5` sits in forest (`N_256x256_0002_2B.scp` local
+   `(140, 76)`); pre-ROADS-0 demolish appeared `NoVisualChange` only via G1. First demolish clears the tree (`Visible`); second is
+   the empty-tile demolish (`Applied (NoBuildingAtTile)` -> `NoVisualChange`).
+
+**NOT_RUN:** `-L heavy` corpus tests; non-picture and Radeon-iGPU `anno_render_gpu_tests` (no `src/render/` GPU edits); native
+Linux/macOS test runs (WSL compiled all C++ sources with `-Werror` only); `game/` and `E:\anno1503` untouched.
+
+### ROADS-0 Fix Round 1 Addendum — 2026-11-21 — READY FOR REVIEW
+
+- **Fixes (F1–F2):** Merged `origin/main` (`a6468efd`) via `--no-ff` (`5bd871ff`; 0 `src/` or `fixtures/` diffs); corrected OQ note above (range `775–779` unused, no new OQs opened in `docs/open-questions.md`); verified `clang-format` 23.1.3 `--dry-run --Werror` exits `0` on all 13 C++ files from `b0b022c6`; `src/sim/`, `src/render/`, and `fixtures/` remain untouched vs `c3489403..HEAD`.
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Reviewer disposition |
+|---|---|---|---|---|
+| Tile-object delta diff & unbounded ids (`SceneTileObject`, `TileObjectDelta`, `BuildingMailbox`) | `diff_sorted_tile_objects` tracks add/remove/rot/height/cleared & wide id `100000`; `BuildingMailbox` resync collapses & matches incremental apply; 50-turn `02Trade01` emits `batches.empty()` | Clearing `tile_deltas` breaks `tile_object_picture` (`live_tile_object_count() == 0`) & `viewer_wiring_roads_picture_objects` | `building_delta_test`, `building_mailbox_test` (`anno_app_tests`, PASS) | Pending review |
+| Placed road `(id, rotation)` reaches picture (`Visible`, pixel diff, bare-ground demolish) | Land road `2520` rot 0/1 -> `Applied` + `Visible`, `picture.tile_objects == 1 -> 2 -> 1`, pixels differ from bare tile & match `load_placed_scene`, demolish restores bare ground | Clearing `tile_deltas` yields `NoVisualChange` & `0 px` diff; empty redemolish -> `NoVisualChange` | `tile_object_picture_test` (2 cases, 88 assertions, PASS); `viewer_wiring_roads_picture_objects` (PASS) | Pending review |
+| Cleared scenery under placed/demolished footprints disappears | Trees under pioneer house, road, and direct forest demolish `1188 516` emit `{0}` cleared markers (`picture.cleared_tiles == 2`), stay bare on demolish & resync; flag-`0x10` rocks preserved | Clearing `tile_deltas` leaves trees drawn; second empty demolish at `1188 516` -> `NoVisualChange` | `tile_object_picture_test` (PASS); `viewer_wiring_roads_picture_objects` & `boundary_view` (PASS) | Pending review |
+| No sim/render-sea edits & existing gates | `src/sim/`, `src/render/`, `fixtures/` untouched (`kStateHashVersion = 139`); `anno_app_tests` (`459/459`), 6 UI oracles + wiring (`7/7`), RTX 4090 GPU (`15/15`), `anno_render_tests` (`211/211`), `clang-format` & `check_unix_warnings.sh` clean | Deliberate `tile_deltas.clear()` mutation fails `tile_object_picture` (2/2, 21 assertions) and `viewer_wiring_roads_picture_objects` (line 17) | `cache/roads-0/gate-msvc-{app-2,gpu-2,render}.log` (`GATE_END status=0`) | Pending review |
+
+## ROADS-1 (SIM-ROADS-1) — READY FOR REVIEW (2026-11-20)
+- **Code head:** `bb3dcaf6` (branch `task/ROADS-1`, base `df15310b`).
+- **What changed:**
+  - `src/sim/include/anno/sim/road_drag.hpp`, `src/sim/src/road_drag.cpp`: `road_path(start, end, cap=40)` (`AnnoFrame 0x1004b392`-`0x1004b51f`, L-path, longer axis first, y first on tie, cut at `cap`), `check_road_figure_veto` (`0x1004af90` -> `0x10045080`), `make_road_drag_cmd`.
+  - `src/sim/include/anno/sim/placement.hpp`, `src/sim/src/placement.cpp`: `footprint_all_owned_rule` (`0x1004af90`), `is_road_family`, `same_road_family`, `is_road_downgrade` (`0x1004b11b`-`0x1004b141`, data-driven via `RoadParams` `road_group=0xc1`, `bridge_prodtype=198`, `road_family_flag=0x100`, `cost_gold`).
+  - `src/sim/include/anno/sim/extension_context.hpp`, `world.hpp`, `src/sim/src/apply.cpp`: ADR 0006 header extension tag 2 `road_rules` (`enabled=0` default, `drag_cap=40`, `every_tile_territory=1`, `no_downgrade=1`, `free_same_family=1`, `stop_at_first_refusal=1`, `figure_veto=1`); `BuildCmd` applies per-tile territory, no downgrade, figure veto, same-family free re-lay (bridges always pay), and kind-9 prefix commit (`0x1004b5c7`, OQ-043) when `road_drag_enabled()`.
+  - `src/sim/tests/road_drag_test.cpp`, `extensions_test.cpp`, `world_state_test.cpp` (unknown tag 2->3): 9 new test cases including `Anlagen.dat` 2500-2537 corpus classification; `docs/sim/state.md` §9.8 & `docs/BUILDINGSOBJECTS.md` §10.1 updated.
+- **Pin diff:** `kStateHashVersion` unchanged (139); `0 pins moved; 0 fixture byte changes`.
+- **Gates & classified counts:**
+  - `python -I tools/pins.py check --build-dir build/msvc --config Release --jobs 8 --log cache/gates/pins-roads1.log` (`ANNO1503_GAME_DIR=E:\anno1503\game\app`): `selected=1727 executed=1702 failed=4 empty=0 skipped=21 (opt-in=18 other=3) incomplete=0 sanitizer_lines=0` (`0 pins moved`). Of the 4 failures: `section extensions` was fixed (tag 2->3) and passed on rerun; the other 3 (`population A`, `scenario corpus`, `scenario corpus: every island gets its crop list`) were `[anno-test memory] refused ... reason=low-memory stop` (free < 2048 MiB).
+  - Rerun alone (`--jobs 1`, `cache/gates/sim-refused-rerun.log`): `selected=4 executed=1 failed=3` (`section extensions` PASS; same 3 heavy tests refused by `anno_budget_coord` `low-memory stop`).
+  - Post-edit final MSVC Release (`cache/gates/roads1-final.log`): `^anno_sim_tests\.(road_path:|road drag:|anno_sim_tests_lint)` -> `selected=9 executed=9 failed=0 empty=0 skipped=0 VERDICT: PASS`.
+  - `clang-format.exe` 23.1.3 `--dry-run --Werror` on all 10 touched C++ files: clean (rc=0).
+  - `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`: GCC 13.3 `-O3 -Werror` (437 + 92 files) and Clang 18.1.3 `-O3 -Werror` (437 + 92 files): clean (rc=0).
+- **Failure proofs (mutated then restored):**
+  1. `road_drag.cpp`: changed `adx > ady` to `adx >= ady` -> `road_path: L shape, longer axis first, y first on tie, cap 40` failed at lines 149-151 (`tie[1..3]`).
+  2. `placement.cpp`: forced `is_road_downgrade` to `false` -> `road drag: no downgrade refuses dirt over cobblestone` failed at lines 294, 297, 298.
+- **Decisions & reasoning:**
+  1. *ADR 0006 tag 2 `road_rules` (`enabled=0` default)* instead of changing `BuildCmd` default or `fields(Rules)`: preserves `kStateHashVersion=139`, emits 0 extension bytes by default, keeps existing `build_terrain_test.cpp` legacy `BuildCmd` contracts & all pins untouched.
+  2. *Data-driven family/cost classification* (`road_group=0xc1`, `bridge_prodtype=198`, `flags_word & 0x100`, `cost_gold` comparison) instead of hardcoded IDs `2500..2537` or gold `5`/`10`: verified on `Anlagen.dat` 2500-2537 (all cobblestone=10, dirt=5, `BRUECKE`=198 excluded).
+  3. *`world_state_test.cpp` unknown tag 2 -> 3*: tag 2 is now registered (`road_rules`).
+  4. *`road_drag_test.cpp` `s.players.resize(2)`*: avoids GCC 13 `-O3 -Werror=null-dereference` on copying `PlayerSpec` with empty vector.
+- **NOT_RUN:** The 3 heavy corpus tests refused for `low-memory stop`; full WSL ASan/UBSan gate (`wsl_gate.sh`); `anno_render_gpu_tests`/`anno_app_tests` (not touched); hosted CI (pending push).
+
+## ROADS-1 (SIM-ROADS-1) — Fix Round 1 READY FOR REVIEW (2026-11-20)
+- **Final code head:** `ed040a55` (branch `task/ROADS-1`, merged `origin/main` `a6468efd` with `--no-ff`).
+- **Fixes (F1-F8):**
+  - **F1:** Added `road_rules` header tag `2` to `tools/lint_sim_allow.txt`; `python -I tools/lint_sim.py --root .` exits 0 (`lint_sim: ok`).
+  - **F2:** Removed duplicate `check_road_figure_veto` before `construction_eligibility` in `apply.cpp`; added test proving `ConstructionDenied` precedes `FigureInTheWay`.
+  - **F3:** Appended `Reject::PrefixStopped` (`reject.hpp`, `reject_name()`, `docs/sim/state.md` §8.3); kind-9 prefix stop marks all trailing non-skip placements `Reject::PrefixStopped` and is scoped to road records (`chk.is_road || road_count > 0`); added tests for `PrefixStopped`, non-road multi-building continuation, and `Rules::build_atomic`.
+  - **F4:** Enforced `RoadRules::drag_cap` in `apply.cpp::build()` (excess road records get `Reject::PrefixStopped`); `RoadRulesExtension::validate()` rejects `enabled == 0 && payload != default_value()`.
+  - **F5:** Gated road drag rules on `out.tile_object && out.is_road`, guarded empty footprints in `same_family_free`, tested rotated 2x1 figure veto, all 5 fallback toggles (`enabled = 1`), and full ADR 0006 tag-2 persistence in `extensions_test.cpp` (16-byte header-only delta, `HashTree` section 0 only, tag 1+2 coexist, corrupt/invalid refusals).
+  - **F6:** Merged `origin/main` (`a6468efd`, `ubuntu-24.04` CI pin) with `--no-ff`.
+- **Oracle & pin impact:** `tools/placement_ref.py`: `0 changes`; `kStateHashVersion`: `139`; `0 pins moved; 0 fixture byte changes`.
+- **Gates (post-edit, `ANNO1503_GAME_DIR=E:\anno1503\game\app`):**
+  - `python -I tools/pins.py check --build-dir build/msvc --config Release --jobs 8 --log cache/gates/pins-roads1-r2.log`: `selected=1732 executed=1711 failed=0 empty=0 skipped=21 (required-asset=0 platform=0 opt-in=18 gpu=0 other=3) incomplete=0 sanitizer_lines=0`; `0 pins moved; 0 fixture byte changes` (exit 1 solely from 3 pre-existing `ship start:` `other` skips on Windows).
+  - `tools/test/run_selected.py ... --log cache/gates/roads1-r2-contracts.log`: `selected=1 executed=1 failed=0` (+4 required contracts `anno_sim_tests_lint_sim_passes`, `anno_sim_tests_lint_sim_self_test`, `placement_reference_agrees`, `placement_tile_corpus_reference_agrees` PASS), `VERDICT: PASS`.
+  - `anno_app_tests` (`cache/gates/roads1-r2-app.log`): `selected=369 executed=366 failed=0 empty=0 skipped=3 (opt-in=3)`, `VERDICT: PASS`.
+  - `anno_render_gpu_tests` (`ANNO_GPU_ADAPTER=4090`, `cache/gates/roads1-r2-gpu.log`): `selected=135 executed=134 failed=0 empty=0 skipped=1 (opt-in=1)`, `VERDICT: PASS`.
+  - `clang-format.exe` 23.1.3 `--dry-run --Werror`: clean (rc=0); `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`: GCC 13.3 + Clang 18.1.3 `-O3 -Werror` (437 + 92 files): clean (rc=0).
+- **Mutation controls (mutated -> named test failed -> restored & rebuilt):**
+  1. `road_drag.cpp` `adx >= ady`: `road_path: L shape...` failed (lines 153-155).
+  2. `road_drag.cpp` `check_road_figure_veto` -> `Reject::None`: `figure veto stops prefix and rotated footprint` failed (lines 282-296).
+  3. `placement.cpp` `is_road_downgrade` -> `false`: `no downgrade refuses dirt over cobblestone` failed (lines 334-340).
+  4. `placement.cpp` `same_road_family` -> `false`: `same-family re-lay free...` failed (lines 377-379).
+  5. `placement.cpp` `footprint_all_owned_rule` -> `footprint_owner_rule`: `every tile must be owned` failed (line 222).
+  6. `apply.cpp` `drag_cap = 1000000U` & `stop_on_refusal = false`: `drag_cap enforced in BuildCmd` (lines 422-439) & `City::Build refusal stops prefix` (lines 252-258) failed.
+- **Acceptance Table:**
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Reviewer disposition |
+|---|---|---|---|---|
+| `road_path(start, end, cap=40)` (`AnnoFrame 0x1004b392`-`0x1004b51f`) | L-path, longer axis first, y first on tie, truncated at `cap=40` | Tie does NOT go x-first; `(0,0)->(50,0)` does NOT reach `(50,0)` | `road_drag_test.cpp`: `road_path: L shape...` | pending |
+| Same island as start (`AnnoFrame 0x1004af90`) | Drag within island 0 succeeds | Drag off-island stops at `OutOfIsland`, tail `PrefixStopped` | `road_drag_test.cpp`: `stops at first off-island tile` | pending |
+| Every tile owned by single city (`0x1004af90`) | All owned tiles pass | Neutral or rival tile stops with `TileNotOwned`, tail `PrefixStopped` | `road_drag_test.cpp`: `every tile must be owned by single city` | pending |
+| `City::Build` & eligibility precedence (`0x1004af90`) | Valid road accepted; non-road multi-building continues | Building obstacle -> `Occupied`; `ConstructionDenied` precedes `FigureInTheWay` | `road_drag_test.cpp`: `City::Build refusal`, `ConstructionDenied precedes...`, `non-road multi-building` | pending |
+| Figure veto (`0x1004af90` -> `0x10045080`) | Clear tile accepted | Blocking figure (incl. rotated 2x1) -> `FigureInTheWay`, tail `PrefixStopped` | `road_drag_test.cpp`: `figure veto stops prefix and rotated footprint` | pending |
+| No downgrade (`0x1004b11b`-`0x1004b141`) | Cobblestone over dirt accepted | Dirt over cobblestone -> `Occupied`, tail `PrefixStopped` | `road_drag_test.cpp`: `no downgrade refuses dirt over cobblestone` | pending |
+| Cost & same-family free (`0x1004b1ac`-`0x1004b278`) | Same-family re-lay 0 gold; upgrade pays; bridges always pay | Insufficient gold stops at `CannotAfford`, tail `PrefixStopped` | `road_drag_test.cpp`: `same-family re-lay free...`, `Anlagen.dat road corpus` | pending |
+| Kind-9 prefix, `drag_cap`, ADR 0006 tag 2 (`0x1004b5c7`, `state.md` §9.8) | 40-tile cap & custom cap; 0B default; tag 1+2 round-trip | Excess/trailing -> `PrefixStopped`; invalid `RoadRules` refused | `road_drag_test.cpp`: `drag_cap enforced...`; `extensions_test.cpp`: `road_rules extension...` | pending |
+
+- **NOT_RUN:** UI pixel-oracle tests (`src/app` and `src/render` untouched, N/A); full WSL ASan/UBSan gate (`wsl_gate.sh`, orchestrator); hosted CI (in progress on push).
+
+## ROADS-3 (UI-ROADS-1) — READY FOR REVIEW (2026-11-21)
+
+- **Branch & stack:** `task/ROADS-3` (prerequisite `--no-ff` merges `280141a0` `origin/task/ROADS-0`, `024091c2` `origin/task/ROADS-1`, `09a7e53c` `origin/task/UI-GHOST-1` on `origin/main` `a6468efd`). Reserved OQs `785–789`: **unused** (no new OQs added to `docs/open-questions.md`). No assets added; `fixtures/` unchanged (`0` diffs); `kStateHashVersion = 139`.
+- **Implementation:**
+  - `src/sim/` (`road_drag.hpp`, `apply.{hpp,cpp}`, `world.hpp`, `road_drag_test.cpp`): read-only `RoadPathCheck` (`valid_prefix`, `affordable_prefix`, `first_refusal`) via `World::check_build_path` / `Commands::check_build_path`.
+  - `src/app/` (`cli.{hpp,cpp}`, `main.cpp`, `play.{hpp,cpp}`, `road_drag_ui.{hpp,cpp}`, `dev_input.{hpp,cpp}`, `dev_tool.{hpp,cpp}`, `dev_script.{hpp,cpp}`, `viewer.cpp`, `commands_file.{hpp,cpp}`): `--road-rules on|off` (`--play` defaults `on`), asynchronous `PlayRunner::request_road_probe`, `RoadVariantDeck` (`property 0x32`, preview == commit variants strictly UI-side), `plan_road_ghost` (valid prefix solid, unaffordable tail 699/700 ms blink, `0xffff00` refusal box when `valid_count == 0`, no radius/fertility), `DevInput` press-hold-move L-drag (`sim::is_land_road`, `RoadRules::drag_cap`, keeps armed on release, right-click disarms), `buildv`/`buildcv` mixed-variant recording, and `ui_roads.script` + `roads_ghost_pixel_check.py`.
+- **Acceptance Table:**
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Reviewer disposition |
+|---|---|---|---|---|
+| Data-driven land road L-path & 40-tile cap (`road_rules`) | Arbitrary ID `4100` (`prodtype=193`) L-drags via `sim::road_path`; 45-tile drag caps at 40 tiles | Non-road ID `9001` does not drag-path; >40 drag stopped at `cap` | `road_drag_ui_test`, `road_drag_test`, `ui_roads.script` (`tool.road.path == 40`) | Pending review |
+| Live prefix ghost & unaffordable tail blink (`UI-ROADS-1`) | Phase 0 draws 7 tiles; phase 1 draws 4 affordable (`phase0-hidden=1328 px`, `phase1-hidden=961 px`, `phase0-phase1=840 px`); `tool.fertility == none`, no radius outline | Pointer on chrome (`road_hidden`) draws `0` ghost px; mutating `plan_road_ghost` fails both `viewer_wiring_ui_roads` & `roads_ghost_pixel_check` at line 46 | `road_drag_ui_test`, `viewer_wiring_ui_roads`, `roads_ghost_pixel_check.py` | Pending review |
+| Refusal rectangle on `valid_count == 0` (D `0x10041050`) | Hovered over occupied pioneer house renders yellow `0xffff00` 1x1 diamond only (`40 px`, box `482,329,21,11`) | Zero `0xffff00` pixels in `road_hidden`, `road_drag_phase0`, `road_drag_phase1`, and panel area; mutating `draw_refusal_box=false` fails line 46 | `roads_ghost_pixel_check.py`, `viewer_wiring_ui_roads` | Pending review |
+| UI-side variant parity (`property 0x32`), kind-9 commit, disarm | Original `2520` (5 variants) & `2500` (4); release commits 4-tile prefix (`picture.tile_objects == 4`, `commit_matched_preview == 1`), stays `armed == 2520`; `buildv`/`buildcv` round-trip | Right click clears `tool.armed == none` & cancels drag mid-drag; `reroll()` advances post-commit variants; `Commands` rejects invalid negative controls | `road_drag_ui_test`, `commands_file_test`, `viewer_wiring_ui_roads` | Pending review |
+| Faithful sim defaults (`RoadRules{}` default off, `--play` on) | `--play` defaults `road_rules=on` (`road_rules` extension emitted only when toggled); compiled `RoadRules{}` remains `enabled=0` | `tools/pins.py check`: `0` pins moved, `0` fixture byte changes; `kStateHashVersion = 139`; `lint_sim: ok` | `app_test`, `pins.log` (`abb12ffe1c0f`), `tools/lint_sim.py` | Pending review |
+
+- **Deliberate failure proof:** Temporarily mutated `src/app/src/road_drag_ui.cpp::plan_road_ghost` (`draw_refusal_box=false`, `draw_count=0`), rebuilt `anno1503`: BOTH `viewer_wiring_ui_roads` (`FAIL line 46 (expect): tool.ghost.pixels is '0', expected > 0`, exit 1) and `roads_ghost_pixel_check.py --renderer cpu` (`dev script: FAIL line 46 (expect): tool.ghost.pixels is '0', expected > 0`, exit 1) failed; restored & cleanly recompiled all binaries.
+- **Post-final-edit gates (`ANNO1503_GAME_DIR`, `ANNO_DEV_GOODS_TONS` unset):**
+  - `tools/pins.py check` (`cache/roads-3/pins.log`, sha `abb12ffe1c0f`): `selected=1734 executed=1713 failed=0 skipped=21 (opt-in=18 other=3)`, `0 pins moved`, `0 fixture diffs`.
+  - MSVC Release gate (`cache/roads-3/gate-msvc-app.log`, sha `3f2b7159e50d`): `selected=503 executed=500 failed=0 skipped=3 (opt-in=3)`, `VERDICT: PASS`; all 12 required contracts (`live_screen_matches_oracle`, `ui_dynamic_draw_check`, `info_panel_gog_compare`, `info_panel_rotation_gog_compare`, `selected_house_pixel_check`, `ui_panels_match_gog`, `viewer_wiring_roads_picture_objects`, `viewer_wiring_ui_ghost`, `viewer_wiring_ui_ghost_world`, `viewer_wiring_ui_ghost_pixel_check`, `viewer_wiring_ui_roads`, `viewer_wiring_ui_roads_pixel_check`) PASS (`0` skips).
+  - RTX 4090 GPU (`cache/roads-3/gate-msvc-gpu.log`, sha `d0ac428e9dc0`): `selected=2 executed=2 failed=0 skipped=0`, `VERDICT: PASS` (+ both magnifier GPU contracts); `ui_roads --gpu` (`cache/roads-3/ui-roads-gpu.log`, sha `675e7deac3d7`): exit 0 (`5.5 s`).
+  - Hygiene: `tools/lint_sim.py` (`lint_sim: ok`), `CheckTestNames.cmake` (`ok`), `clang-format` 23.1.3 on 24 C++ files (exit 0), WSL `tools/check_unix_warnings.sh` (`cache/roads-3/unix-warnings.log`, sha `b97091b30935`): GCC 13.3 + Clang 18.1.3 (442 + 97 files) clean, negative controls caught.
+- **Decisions and reasoning:** Default `--road-rules on` in interactive `--play` while leaving compiled `RoadRules{}` `enabled=0` gives authentic L-drag gameplay without shifting faithful fixtures/pins (`kStateHashVersion=139`); `RoadVariantDeck` isolates RNG/variant parity to UI so sim stays deterministic; `commands_file` uses backward-compatible `buildv`/`buildcv` only when a single `BuildCmd` contains mixed road variant IDs.
+- **CI skip-classification fix (post-`56c7cbfa`, `0` diffs in `src/` or `fixtures/`):** `tools/test/roads_ghost_pixel_check.py` skip message aligned to `ctest_verdict.py` `REQUIRED` regex (`ANNO1503_GAME_DIR is not set` / `is not in this game directory`); post-edit no-assets parity check (`cache/roads-3/gate-roads-pixel-noassets.log`, sha `ab8a090d1b71`: `selected=3 executed=1 failed=0 skipped=2 (required-asset=2 other=0)`, `VERDICT: PASS`) and with-assets MSVC 12-contract gate (`cache/roads-3/gate-msvc-post-skipfix.log`, sha `bdb16fb6935b`: all 12 required contracts `selected=1 executed=1 failed=0 skipped=0`, `VERDICT: PASS`).
+- **NOT_RUN:** Heavy/full sim corpus (outside `pins.py` / selected unit gate), macOS, full WSL ASan/UBSan `wsl_gate.sh` (runs in hosted CI), GPU desktop PNG readback (locked host skipped GPU screenshots with `NOT_RUN (the desktop copy failed)`).
+
+## UI-GHOST-2 — READY FOR REVIEW (2026-11-21)
+
+- **Branch & stack:** `task/UI-GHOST-2` stacked via `--no-ff` merge `f08e4ab0` (`origin/task/ROADS-3` `7288379f`). Reserved OQs `790–794`: **unused** (`0` edits to `docs/open-questions.md`, `src/sim/`, `fixtures/`; `kStateHashVersion = 139`). Updated `docs/BUILDINGSOBJECTS.md` (row 19, §10.2).
+- **Implementation:**
+  - **Render-layer object suppression (`ObjectsPatch`):** `Scene::objects_draws(..., const ObjectsExclusion*)` + `FrameRenderer::set_objects_patch` / `build_objects_patch` (`frame.{hpp,cpp}`) + WGSL/WebGPU `patch_vs`/`patch_objects_fs`/`patch_submerged_fs` (`gpu.{hpp,cpp}`, `gpu.wgsl`) suppress flag-`0x20` objects matching `cover_of` + `overwrites()` (`collect_suppressed_object_indices` in `placement_ghost.{hpp,cpp}`, bracketed by diagonal `partition_point`, cached across idle frames and blink phase toggles without mutating `Scene` or rebuilding chunks).
+  - **Refusal & `Occupied` outline (`ADAPTATION`, `DEFAULT OFF`):** `AnnoFrame.dll 0x10048450`/`0x1004b7f0 -> 0x10041050` & `0x10047848` establish that original refusals draw only the yellow (`0xffff00`) empty rectangle without hiding trees or outlining blocking footprints. Added `--occupied-outline on|off` **ADAPTATION (default `off`)** (`cli`, `viewer.{hpp,cpp}`, `occupied_blocking_boxes` + `blocking_footprint_outline` in `placement_ghost.{hpp,cpp}`, `0xff4040` drawn under `0xffff00` and chrome on both CPU and GPU).
+- **Acceptance Table:**
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Reviewer disposition |
+|---|---|---|---|---|
+| Ghost hides `0x20` objects, preserves `0x10` rock under `0x10` mine | Valid & unaffordable phase-0 hide trees (`valid=2559 px`, `unaff_p0=2035 px`); `0x10` mine suppresses tree & keeps `0x10` rock; `ObjectsPatch` GPU matches CPU (`max <= 1`, `gpu_sup != gpu_base`) | Moving away (`moved=0`), cancel (`cancel=0`), unaffordable phase 1 (`unaff_p1=0`), & clearing patch restore baseline byte-for-byte; empty/OOB exclusion returns `nullopt`; placing keeps tiles cleared (`placed=1866`) | `render_test`, `gpu_test` (`GPU ObjectsPatch...`), `placement_ghost_test`, `viewer_wiring_ui_ghost2`, `ghost2_pixel_check.py` | Pending review |
+| Refusal yellow (`0xffff00`) rectangle without hiding trees (`0x10041050`/`0x10047848`) | Inlet `TerrainRefused` & Kontor `Occupied` draw `160 px` `0xffff00` box (`tool.ghost.suppressed == 0`) on CPU & GPU (`6.4 s`) | Pointer on chrome draws `0` outline/suppressed px; `occupied_default_off` has `0` `0xff4040` px | `viewer_wiring_ui_ghost2`, `ghost2_pixel_check.py` | Pending review |
+| `Occupied` blocking-footprint outline (`ADAPTATION`, `DEFAULT OFF`) | `--occupied-outline on` outlines 4x4 Kontor (`occupied_on_kontor`: `158 px` `0xff4040` box `472,379,81,45` + `160 px` `0xffff00`); chrome & yellow box stay on top | Default CLI leaves `occupied_outline=false` (`0` red px in all 9 shots); `--view`/`--ship-start` reject flag; `TerrainRefused` (`occupied_on_terrain_refused`) & hidden chrome draw `0` red px | `app_test`, `placement_ghost_test`, `viewer_wiring_ui_ghost2_occupied`, `ghost2_pixel_check.py` | Pending review |
+
+- **Deliberate failure proof:** Temporarily mutated `viewer.cpp` (`ghost_update_patch` + `ghost_occupied_lines` disabled): `viewer_wiring_ui_ghost2` (`FAIL line 23: tool.ghost.suppressed is '0', expected > 0`), `viewer_wiring_ui_ghost2_occupied` (`FAIL line 19: tool.ghost.occupied_pixels is '0', expected > 0`), and `viewer_wiring_ui_ghost2_pixel_check` (exit 1) all failed as expected; reverted and recompiled cleanly.
+- **Post-final-edit gates (`ANNO_DEV_GOODS_TONS` unset, `ANNO1503_GAME_DIR` + UI oracle shot vars set):**
+  - Gate 1A (`scratch/gates/gate-final-app-ui.log`, sha `65f8a242a37b`, `--jobs 8`): `selected=430 executed=427 failed=0 skipped=3 (opt-in=3)`, `VERDICT: PASS`; all 18 required contracts (render/app unit tests, `viewer_wiring_roads_picture_objects`, `viewer_wiring_ui_ghost*`, `viewer_wiring_ui_roads*`, `viewer_wiring_ui_ghost2*`, all 6 UI oracles) PASS (`0` skips).
+  - Gate 1B (`scratch/gates/gate-final-render.log`, sha `755a4857a842`, `--jobs 4`): `selected=220 executed=220 failed=0 skipped=0`, `VERDICT: PASS`.
+  - Gate 2 RTX 4090 GPU (`scratch/gates/gate-final-gpu.log`, sha `9d03637716da`): `selected=20 executed=20 failed=0 skipped=0`, `VERDICT: PASS`; `ui_ghost2 --gpu` (`6.4 s`) & `ui_ghost2_occupied --gpu` (`3.9 s`) (`gate-final-gpu-wiring.log`, sha `a343a471656c`) PASS.
+  - Gate 3 no-assets parity (`scratch/gates/gate-final-noassets.log`, sha `cff6ce072656`): `selected=5 executed=1 failed=0 skipped=4 (required-asset=4 other=0)`, `VERDICT: PASS`.
+  - Hygiene: `clang-format --dry-run --Werror` on 19 C++ files (exit 0); `CheckTestNames.cmake` (`-- test names ok`); `tools/check_unix_warnings.sh` (`gate-unix-warnings-clean.log`, sha `b31889efe327`): GCC 13.3 + Clang 18.1.3 (442 + 97 files, negative controls caught) clean.
+- **Decisions and reasoning:** Ephemeral `ObjectsPatch` keeps `Scene` immutable and avoids 512x512 chunk rebuilds on hover, updating a small screen-space patch cached by `(scene, group, island, excluded_indices)`; on GPU, keeping `frame_layout` at 6 textures and running `patch_*_pipe` with a slim Group 0 (`{frame, sampler}`) keeps pipeline bindings at 14/16 sampled textures; `--occupied-outline` defaults `off` per GOG `0x10048450` evidence.
+- **NOT_RUN:** Two `6.84 GiB` (`10.84 GiB` w/ headroom) `anno_render_tests` digest corpus cases (`scene renders match the recorded digests`, `legacy river shading reproduces the previous enhanced digests` excluded on host with 5.65 GiB free RAM; covered in CI), full sim corpus (0 `src/sim/` edits), macOS, desktop `BitBlt` GPU PNG capture (`NOT_RUN (the desktop copy failed)`; GPU `ObjectsPatch` pixels verified via offscreen readback).
+## GATE-2a — READY FOR REVIEW (Windows, 2026-11-21)
+
+- Branch `task/GATE-2a` from `origin/main` `a6468efd`, code commit `7d2797a1` (`tools/test/ctest_verdict.py`,
+  `tools/test/run_selected.py`, `tools/test/wsl_gate.sh`, `tools/test/ctest_verdict_test.py`,
+  `tools/test/workflow_test.py`, `docs/testing/README.md`). No `src/` changes.
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Reviewer disposition |
+|---|---|---|---|---|
+| Refused class (exit 10) | `REFUSED: <name>`, `refused=<n>`, `VERDICT: FAIL refused tests (not run)`, exit `10` | `"command refused"`, missing doctest summary, non-refusal throw -> `FAILED`, exit `1` | `ctest_verdict_test.py`, `canonical-gate.log`, `live-refusal-no-retry.log` (`rc=10`) | pending |
+| Real failure wins | `CHECK`/`REQUIRE*`/crash/timeout/sanitizer/non-refusal -> `FAILED`; `1 > 4 > 10 > 6/7/8` | Refusal-only test never triggers exit `1` alone or masks sanitizer `4` | `ctest_verdict_test.py`, `workflow_test.py` (`rc=1`), `delib-failure-precedence.txt` (`1`,`4`) | pending |
+| Serial `-j 1` retry | Sorted `-R <anchored> -j 1` under `== retry refused <name>`, preserves 1st run, `COUNTS (after retry)`, `RETRIED:` | `--no-retry-refused` skips retry (`10`); retry refused again -> `10`; retry fails -> `1` | `workflow_test.py` (6 retry tests), `live-refusal-retry.log` (`rc=10`), `live-normal-pass.log` (`0`) | pending |
+| `wsl_gate.sh` & re-read | `lane_summary()` reads last `COUNTS`/`VERDICT`; `recorded_verdict` handles old & retry logs | Forged `GATE_END status=0` after retry failure fails; old `status=1` preserved | `wsl-lane-summary-proof.txt` (`LF_OK`), `ctest_verdict_test.py`, `reread-*.txt` | pending |
+
+- **Refusal texts matched (`ctest_verdict.py:42`):** `REFUSAL = re.compile(r"\[anno-test memory\] refused estimate=\d+ reason=\S")`:
+  - `src/test_support/src/budget.cpp:710` (`reserve_bytes`, called by `reserve_cpu_render` `721` and `reserve_cpu_setup` `725`):
+    `"[anno-test memory] refused estimate=" + std::to_string(bytes) + " reason=" + info.reason + " available=" + std::to_string(info.available)`
+  - `src/test_support/include/anno/test/parallel.hpp:247` (`parallel_indexed`):
+    `"[anno-test memory] refused estimate=" + std::to_string(opt.budget) + " reason=" + info.reason`
+  - `src/render/tests/render_corpus_test.cpp:260` (`reserve_picture`): `Budget::process().reserve` throw with `reason=... available=...`
+  - Audited non-matched forms: `budget.cpp:72` `admit_line("refuse", ...)` stderr line; `budget.cpp:590-607` `acquire_cpu` returns
+    empty `CpuToken{}` silently; `coord.cpp:699,764` timeout surfaces inside `reserve_bytes` as `reason=wait deadline` /
+    `wait deadline, no server reply`; `budget.cpp:238` (`coord.cpp:874,894,911,980` coordinator startup/compat failures) stays `failed`.
+- **Verdict & retry behaviour:** `is_refused_failure()` (`ctest_verdict.py:106-114`) requires `status == "Failed"`, `refused=True`,
+  zero `sanitizer`/`real_failure`/`failed_asserts`, and `cases > 0` when doctest ran; `DOCTEST_THREW` checks refusal regex inside
+  exception text. Exit precedence `9 > 8(zero) > 1 > 4 > 10 > 6 > 7 > 8(no exec) > 0`. `run_selected.py` keeps the initial run
+  intact, retries refused tests once (`-R <anchored> -j 1`) unless `--no-retry-refused`, emits `COUNTS (after retry)`,
+  `RETRIED: <name> passed`, updates effective `GATE_END ctest_rc` when retries clear all refusals, and `docs/testing/README.md`
+  adds exit `10` + one retry sentence. `wsl_gate.sh` `lane_summary()` reads the final `COUNTS` and `VERDICT` from `.out`.
+- **Contracts & WSL:** `python -I tools/test/ctest_verdict_test.py`: `Ran 29 tests in 0.051s` `OK` (`ctest_verdict_test.out` sha256 `1d36afd306cd`).
+  `python -I tools/test/workflow_test.py`: `Ran 35 tests in 24.884s` `OK` (`workflow_test.out` sha256 `fcd64b7aa3e9`).
+  `run_selected.py --preflight-only`: `PREFLIGHT: PASS` (`preflight-only.txt` sha256 `44e6dad9edc4`).
+  WSL `bash -n tools/test/wsl_gate.sh`, LF check (`18905` bytes), `lane_summary` retry smoke test (`wsl-lane-summary-proof.txt` sha256 `428dc319befa`).
+- **Real-log re-reads (`cache/gate-2a/`):**
+  - `canonical-gate.log`: `rc=1` (`VERDICT: FAIL recorded gate status=1`), 6 `REFUSED:` (`anno_render_tests.chunk draw lists...`,
+    `render_chunk...`, `legacy river shading...`, `water field...`, `river flow corpus...`, `scene renders match...`),
+    `COUNTS: selected=2564 executed=2532 failed=0 refused=6 empty=0 skipped=26 (required-asset=0 platform=3 opt-in=20 gpu=0 other=3) incomplete=0 sanitizer_lines=0`,
+    `VERDICT: FAIL refused tests (not run)` (`reread-canonical-gate.txt` sha256 `63ded87996a0`).
+  - `wsl-play-live-1a-sim.log`: `rc=1` (`VERDICT: FAIL recorded gate status=1`), 3 `REFUSED:` (`anno_sim_tests.population A...`,
+    `scenario corpus ... five minutes`, `scenario corpus ... 20000 ticks more`),
+    `COUNTS: selected=1609 executed=1588 failed=0 refused=3 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0`,
+    `VERDICT: FAIL refused tests (not run)` (`reread-wsl-play-live-1a-sim.txt` sha256 `7f1ab5618329`).
+- **Live MSVC Release & precedence (`cache/gate-2a/`, `ANNO1503_GAME_DIR=E:\anno1503\game\app`):**
+  Target `^anno_sim_tests\.population A original-data components: created players carry every independent shipped mask$`:
+  - `ANNO_TEST_STOP_MB=999999 --no-retry-refused`: `rc=10`, `REFUSED: ...`, `COUNTS: selected=1 executed=0 failed=0 refused=1 ...`, no retry
+    (`live-refusal-no-retry.log` sha256 `7a8c56fb8354`, re-read `rc=10`).
+  - `ANNO_TEST_STOP_MB=999999` (default retry): `rc=10`, `== retry refused ...` (`-j 1`), `COUNTS (after retry): selected=1 executed=0 failed=0 refused=1 ...`,
+    `VERDICT: FAIL refused tests (not run)`, `GATE_END {"status": 10, "ctest_rc": 8}` (`live-refusal-retry.log` sha256 `b504810d8bff`, re-read `rc=10`).
+  - `ANNO_TEST_STOP_MB` unset: `rc=0`, `COUNTS: selected=1 executed=1 failed=0 refused=0 ...`, `VERDICT: PASS`, no retry (`live-normal-pass.log` sha256 `ecbbd343d817`).
+  - Live contracts `--asset-policy unavailable` (`test_verdict_contract|test_workflow_contract|test_names_are_selectable`): `rc=0`, `executed=3`, `VERDICT: PASS` (`live-contracts.log` sha256 `8082ca6799bb`).
+  - Deliberate precedence (`delib-failure-precedence.txt` sha256 `248a378b9b71`): `fail_and_refused` `rc=1` (`failed=1 refused=1`); `sanitizer_and_refused` `rc=4` (`failed=0 refused=1`, `sanitizer_lines=2`).
+- **CI:** hosted CI (`gate` included) run on push of `task/GATE-2a` and verified green on pushed `HEAD` at handover.
+- **NOT_RUN:** full WSL `-O1` sanitizer gate and full MSVC Release game-file run (per `gate-2a.md`, orchestrator at merge); macOS local.
+- **Decisions and reasoning:**
+  - Require `REFUSAL` regex + `cases > 0` (when doctest ran) + zero `failed_asserts`/`DOCTEST_REAL_FAIL`/crash/non-refusal throw/sanitizer
+    so startup/assert/crash failures never hide behind `refused`.
+  - Split `== retry refused <name>` sections cleanly in `recorded_verdict` rather than rewriting initial log rows, keeping `canonical-gate.log`
+    historical failure intact while validating retried gates end-to-end.
+  - Update post-retry effective `ctest_rc` only when initial selection has zero non-refusal failures/incomplete/problems, keeping `GATE_END` consistent.
+- **QUESTIONs:** None.
+
+READY FOR REVIEW.
+
+## WATER-SUBMERGED-1 — pier poles sink in Enhanced water too — READY FOR REVIEW (task/WATER-SUBMERGED-1, from origin/main `a6468efd`)
+
+**Bug (owner, ui_10.mp4):** with `--water enhanced` the Kontor's pier poles stand opaque above the
+sea; classic water covers them below the sea plane.
+
+**Root cause, verified against code (the UI lane's read-only RCA,
+`cache/water_rca.md`, confirmed correct):** the per-pixel submerged pass
+(`sea_submerged_fs`, gpu.wgsl, drawn after objects at gpu.cpp) ran only in Original water
+(`if (style == WaterStyle::Original)`, gpu.cpp; `if frame.enhanced != 0u { discard; }`, gpu.wgsl).
+Enhanced relied only on `object_in_water` (gpu.wgsl, applied per object pixel): a per-COLUMN
+heuristic sampled once at the object's foot pixel, with early-outs (base plane > 0.6 tile_h above
+the anchor, cover/sd <= 0 at the foot). Pier poles are long and thin, many columns; most columns'
+foot samples land on shallow/edge pixels and take an early return, leaving the whole pole opaque
+and sharply cut - `object_in_water` was built for rocks/cliffs standing in water, not thin tall
+poles (its own test, `gpu_test.cpp`, only ever checks rocks at a river mouth).
+
+**Fix (GPU compositor only; the CPU path's enhanced water has no `object_in_water` equivalent, so
+no CPU change needed, per the RCA):**
+- `src/render/src/gpu.cpp`: the `sea_over_pipe` draw (the submerged pass) now runs in both
+  styles, gated by a new `GpuLimits::submerged_over_objects` (default on) instead of
+  `style == WaterStyle::Original`.
+- `src/render/shaders/gpu.wgsl` (`sea_submerged_fs`): dropped the `frame.enhanced != 0u` discard.
+  Original is unchanged (the sea sprite's checkerboard over the object). Enhanced branches before
+  sampling the checkerboard sprite at all (sampling it and gating on its own alpha there cut
+  coverage to ~50% in testing - the checkerboard is Original's own dithered look, not a property
+  of which pixels are submerged) and instead shades with `sea_shade(pos, true)` (Enhanced's own
+  sea colour) at a capped alpha (soft blend, not a hard cutout), so the same pixel is never faded
+  twice against `object_in_water`'s foam line at the contact (which is kept, foam-only, for that).
+- `src/render/include/anno/render/gpu.hpp`: new `GpuLimits::submerged_over_objects` (default on) -
+  a test/diagnostic switch (used by the new test's failure proof and its A/B comparison), not a
+  player-facing option; there is no faithful reason to run water without the per-pixel pass.
+
+**Cost checked, not just assumed:** `Chunk::submerged`'s mask is built whenever
+`Scene::depth_test` is on (default), independent of `WaterStyle` (`src/app/src/main.cpp:417`,
+`src/render/src/gpu.cpp:1364`) - the mask this pass now reads in Enhanced water was already being
+built and uploaded there before this fix, only never drawn with. No new texture, no new compute
+pass; one more full-chunk draw call per frame (the same pipeline Original water already runs for
+this pass). `docs/perf/README.md` has the measurement attempt and why a GPU-timestamp number isn't
+reported (NOT_RUN on this headless host; see there).
+
+**Proof:**
+- New GPU test (`src/render/tests/gpu_test.cpp`, "the sea over submerged objects, enhanced water:
+  pier poles sink in too (WATER-SUBMERGED-1, game files)"): the Kontor of `S01_02_01.sze` (tile
+  421, 605, same scene/tile as the existing Original-water submerged test above it), Enhanced
+  water, `GpuLimits::submerged_over_objects` on vs off (an in-repo A/B, not a reverted commit).
+  Builds the submerged mask for the view from `Chunk::submerged` (1,768 pixels in view) and checks:
+  coverage - at least 95% of submerged pixels actually changed colour between on/off (measured
+  100%: `changed-in-mask 1768/1768` after the checkerboard-gating fix, up from 884/1768 = 50%
+  before it); `changed_out_of_mask == 0` (deck and upper poles unchanged - true by construction,
+  since the shader discards outside the submerged mask, not just measured).
+- **Failure proof:** reverted only the product fix (`gpu.cpp` + `gpu.wgsl`, via
+  `git checkout HEAD --`, keeping the new test and the new `GpuLimits` field) and reran the new
+  test: `CHECK( 0 >= 0.95 )` - `submerged 1768, changed-in-mask 0, changed-out-of-mask 0`, i.e. the
+  pre-fix code reproduces the bug exactly (zero of the submerged pixels change in Enhanced water).
+  Restored the fix, rebuilt, confirmed the test passes again.
+- **The rocks test stays green:** "enhanced water meets objects standing in it (game files)"
+  (gpu_test.cpp, river-mouth rocks, `object_in_water`'s own test) - unchanged, still passing.
+- **Ships/rivers/zoom-levels/foam-at-sea-only:** not separately re-derived; the full `gpu` label
+  (120 doctest cases in `anno_render_gpu_tests`, msvc Release, `ANNO1503_GAME_DIR` set) - which
+  includes the ship-waterline, river and derived-zoom-level tests the RCA's own risk list named -
+  all pass (100% out of 120; the one `Skipped` is an unrelated pre-existing opt-in case).
+
+**Gates:**
+- `anno_render_gpu_tests` (label `gpu`, msvc Release, game dir, 4090): 120/120 passed (one
+  pre-existing opt-in case skipped, unrelated).
+- `clang-format` 23.1.3 (WSL pip install): the four changed `.cpp`/`.hpp` files, clean after one
+  auto-format pass (a multi-line `INFO(...)` in the new test).
+- `tools/check_unix_warnings.sh` (WSL, GCC 13 / Clang 18, `-Werror`, viewer+GPU and without): all
+  four configurations clean (GCC 418/85 files, Clang 18 418/85 files); both negative controls
+  caught the shadowed-variable probe as expected.
+
+**Decisions and reasoning:**
+- Kept `object_in_water` exactly as-is (foam line only) rather than folding its fade logic into
+  the new per-pixel pass or vice versa: the task asked to avoid double-fading, and the two passes
+  now have a clean split - `object_in_water`'s column-foot heuristic owns only the foam line at
+  the contact; the per-pixel submerged pass owns the actual "sinks below the surface" shading in
+  both styles, matching what classic water already did for every object, piers included.
+  `object_in_water`'s own early-outs/fade on non-foam pixels become redundant under the submerged
+  mask but are left alone (not this task's scope, and harmless: the two passes never disagree on
+  a submerged pixel's final look since the per-pixel pass draws over it after).
+- Used a new `GpuLimits` boolean instead of reverting code for the failure proof and the A/B test:
+  a toggle the test suite owns, rather than a scripted git-revert step a reviewer has to trust was
+  run correctly - the failure-proof revert was still done and recorded above for the bug itself,
+  separately from the A/B mechanism the committed test uses.
+- Did not gate the new shader branch on the sea sprite's own alpha (as the Original branch does):
+  measured directly (50% coverage) that doing so inherits Original's dithered checkerboard look,
+  which has nothing to do with which pixels are submerged in Enhanced water.
+
+READY FOR REVIEW.
+
+## UI-CATNAV-1 (executor, 2026-11-19): a category tab shows its grid and keeps the armed type
+
+**Rule found.** Code (GOG, read): the tab strip's handler `View.dll 0x1002bf90` (registered at `0x1002bb23`, tab index = property `0x1b3`) swaps the panel's gadget groups (removes the vector at `[this+0x5e4]` and the info gadget, adds the clicked tab's group), stores the index at `[this+0x5f0]` and sends the tab a message; it calls no cursor (AnnoFrame) code and posts no cancel, and compares nothing with the stored index. HE (ui_10 10:03-10:13, frame 10:08): the road grid shows while the building stays armed. So: (1) a tab click shows that category's grid and keeps the armed type; (2) no disarm; (3) the tab already open takes the same path (code; HE not captured). Unread/HE-only parts: OQ-773 (whether the info panel is one of the swapped groups; GOG panel switch not read to its end), OQ-774 (second click on the open tab).
+
+**Changed.** `construction_menu.hpp/.cpp`: `ConstructionPanelState` + `after_category_click` (grid, category, nothing disarmed), commented with the evidence. `viewer.cpp`: the SwitchCategory click uses it (the old code changed only the category, so the info panel stayed); new facts `ui.panel` (none/grid/info) and `tool.armed` (Anlagen id or none). Tests: unit case in `construction_menu_test.cpp`; wiring `tools/test/viewer_wiring/ui_catnav.script` + `viewer_wiring_ui_catnav` in `src/app/CMakeLists.txt` (arm 501, click all eight tabs and the open one, arm the dirt road 2520 via the roads grid, tab click, ESC closes and disarms). Docs: `docs/re/ui.md` 2.6, `docs/BUILDINGSOBJECTS.md` B 6 row, OQ-773/774.
+
+**Gate.** msvc Release, game dir, GOG shots, HE captures, rotation shots, `run_selected.py --jobs 8 --select 'hud|ui |ui_|construction|selection|^viewer_wiring_ui_|live_screen_matches_oracle|ui_dynamic_draw_check|info_panel_gog_compare|info_panel_rotation_gog_compare|selected_house_pixel_check|ui_panels_match_gog'`, all six oracle tests and `viewer_wiring_ui_catnav` required: `COUNTS: selected=83 executed=83 failed=0 empty=0 skipped=0 incomplete=0 sanitizer_lines=0`, `VERDICT: PASS` (`cache/gates/ui-catnav-1-01.log` first run, `-02.log` after the failure proof and restore). `viewer_wiring_ui_buildcat` and `ui_panels_match_gog` in the selection, green. clang-format 23.1.3 `--dry-run --Werror` clean. WSL `check_unix_warnings.sh`: GCC 13 and Clang 18, with and without GPU, all clean, negative control fails as expected (one note: another WSL compile was running when it started, so the run overlapped it).
+
+**Failure proof.** With `after_category_click` keeping `placement_open`: the unit case fails (`CHECK_FALSE(next.placement_open)` lines 507, 512) and `viewer_wiring_ui_catnav` fails at `ui.panel is 'info', expected == grid` after the first tab click. Restored; green again.
+
+**Owner test (default rules, plenty of resources, `ANNO_DEV_GOODS_TONS=2000`):** `anno1503 --play data/maps/lan5.txt --construction-menu on --layout data/ui`; B, click a building cell (panel with picture and costs), click any category tab: that category's grid shows, the ghost on the map is still the building; click a cell in the grid: that type arms. Arm the dirt road, click another tab: grid, road still armed. X and ESC behave as before.
+
+NOT_RUN: GPU window live, Linux/Mac CI.
 
 ### UI-HARVEST-ICON-1 stage B (UI lane, read-only app work), 2026-11-17
 

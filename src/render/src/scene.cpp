@@ -1881,7 +1881,7 @@ std::pair<DrawStats, std::size_t> Scene::draw_island_objects(Canvas& local, cons
 }
 
 ChunkDraws Scene::objects_draws(Rect rect, std::size_t group, bool ships, bool bases,
-                                std::uint32_t bin_px) const {
+                                std::uint32_t bin_px, const ObjectsExclusion* exclude) const {
     assert(group < kGroups);
     // render_with_terrain's setup for Layers::objects: the base band of the
     // chunk canvas and of every island's local canvas.
@@ -1895,11 +1895,23 @@ ChunkDraws Scene::objects_draws(Rect rect, std::size_t group, bool ships, bool b
     };
     // The sprites of `list` (placed as draw_prepared does: time 0, kept when
     // the island's local canvas `local` can see them) as records.
-    auto emit_list = [&](std::span<const Prepared> list, std::pair<int, int> offset,
-                         const Rect& local) {
+    auto emit_list = [&](std::span<const Prepared> list, std::size_t base_index, bool filter_island,
+                         std::pair<int, int> offset, const Rect& local) {
+        std::span<const Prepared> active = list;
+        std::vector<Prepared> filtered;
+        if (filter_island) {
+            filtered.reserve(list.size());
+            for (std::size_t k = 0; k < list.size(); ++k) {
+                if (!std::binary_search(exclude->indices.begin(), exclude->indices.end(),
+                                        base_index + k)) {
+                    filtered.push_back(list[k]);
+                }
+            }
+            active = filtered;
+        }
         std::vector<SpriteDraw> draws;
         place_prepared(
-            list, anlagen, group, lift, 0,
+            active, anlagen, group, lift, 0,
             [&](int x, int y, int w, int h) { return overlaps(local, x, y, w, h); }, draws);
         for (const SpriteDraw& d : draws) {
             // A frame that cannot be decoded is left out, as draw_prepared does.
@@ -1974,17 +1986,19 @@ ChunkDraws Scene::objects_draws(Rect rect, std::size_t group, bool ships, bool b
             return Key{std::uint32_t{o.first.x} + o.second.first + o.first.y + o.second.second,
                        o.first.x};
         };
+        const bool filter_island =
+            exclude != nullptr && exclude->island == p.index && !exclude->indices.empty();
         std::size_t start = 0;
         for (const auto& [k, u] : on) {
             const auto it =
                 std::partition_point(list.begin() + static_cast<std::ptrdiff_t>(start), list.end(),
                                      [&](const Prepared& o) { return key(o) <= k; });
             const auto end = static_cast<std::size_t>(it - list.begin());
-            emit_list(list.subspan(start, end - start), p.offset, local);
+            emit_list(list.subspan(start, end - start), start, filter_island, p.offset, local);
             start = end;
             emit_unit(*u, *r);
         }
-        emit_list(list.subspan(start), p.offset, local);
+        emit_list(list.subspan(start), start, filter_island, p.offset, local);
     }
     if (ships) {
         // draw_units: after all islands, straight onto the chunk canvas.

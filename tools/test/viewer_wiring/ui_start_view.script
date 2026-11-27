@@ -1,0 +1,16 @@
+# UI-GHOST-1 R2, the owner's decision of 2026-11-17 ("Start at my city"): a --play window opens on
+# the developer city's home tile (DevToolSetup::home, its Kontor), not on the scene's middle. lan5:
+# the developer city is on island 1 (1048, 440, 256 x 256), its Kontor at its start (1284, 540).
+# No `look`: the camera's tile (camera.tile.x/y, the sea-level tile under the view's centre) must lie
+# on that island and near the Kontor.
+resize 1024 768
+wait frames 5
+expect fact camera.tile.x >= 1048
+expect fact camera.tile.x < 1304
+expect fact camera.tile.y >= 440
+expect fact camera.tile.y < 696
+expect fact camera.tile.x >= 1278
+expect fact camera.tile.x <= 1290
+expect fact camera.tile.y >= 534
+expect fact camera.tile.y <= 546
+quit

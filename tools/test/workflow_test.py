@@ -31,10 +31,29 @@ class Workflow(unittest.TestCase):
 mode, marker = sys.argv[1:3]
 # Appended, not overwritten: a marker with more than one line means this case ran more than
 # once in a single gate invocation (setUp() removes it before each test).
-with pathlib.Path(marker).open("a") as f:
+marker_path = pathlib.Path(marker)
+with marker_path.open("a") as f:
     f.write(mode + "\\n")
+attempt = len(marker_path.read_text().splitlines())
 if mode == "empty":
     print("[doctest] test cases: 0 | 0 passed | 0 failed | 12 skipped")
+elif mode in ("refused_always", "refused_and_fail", "refused_once", "refused_then_fail", "a_refused", "z_refused"):
+    if mode in ("refused_once", "a_refused", "z_refused") and attempt > 1:
+        print("[doctest] test cases: 1 | 1 passed | 0 failed | 12 skipped")
+        print("[doctest] assertions: 1 | 1 passed | 0 failed |")
+        sys.exit(0)
+    if mode == "refused_then_fail" and attempt > 1:
+        print("/t.cpp:2: ERROR: CHECK( false ) is NOT correct!")
+        print("[doctest] test cases: 1 | 0 passed | 1 failed | 12 skipped")
+        print("[doctest] assertions: 1 | 0 passed | 1 failed |")
+        sys.exit(1)
+    if mode == "refused_and_fail":
+        print("/t.cpp:2: ERROR: CHECK( false ) is NOT correct!")
+    print("[anno-test memory] refuse estimate=1073741824 available=0 free=100 headroom=200 pending=0 resident=0 private=50 reason=low-memory stop t=1")
+    print("/t.cpp:1: ERROR: test case THREW exception: [anno-test memory] refused estimate=1073741824 reason=low-memory stop")
+    print("[doctest] test cases: 1 | 0 passed | 1 failed | 12 skipped")
+    print("[doctest] assertions: 1 | 0 passed | 1 failed |" if mode == "refused_and_fail" else "[doctest] assertions: 5 | 5 passed | 0 failed |")
+    sys.exit(1)
 elif mode not in ("missing_summary", "cmake_skip"):
     print("[doctest] test cases: 1 | 1 passed | 0 failed | 12 skipped")
 if mode == "asset": print("/t.cpp:1: MESSAGE: ANNO1503_GAME_DIR not set: skipped")
@@ -47,7 +66,8 @@ if mode in ("mutate", "record_and_mutate"): (pathlib.Path(marker).parent.parent 
 sys.exit(1 if mode == "failure" else 0)
 ''')
         cmake = 'cmake_minimum_required(VERSION 3.25)\nproject(Gate NONE)\nenable_testing()\n'
-        for mode in ["pass", "empty", "asset", "gpu", "asan", "failure", "missing_summary", "cmake_skip", "mutate", "record", "record_and_mutate"]:
+        for mode in ["pass", "empty", "asset", "gpu", "asan", "failure", "missing_summary", "cmake_skip", "mutate", "record", "record_and_mutate",
+                     "refused_once", "refused_always", "refused_and_fail", "refused_then_fail", "a_refused", "z_refused"]:
             cmake += ('add_test(NAME ' + mode + ' COMMAND "' + Path(sys.executable).as_posix()
                       + '" "${CMAKE_SOURCE_DIR}/case.py" ' + mode
                       + ' "${CMAKE_BINARY_DIR}/' + mode + '.ran" --test-case=' + mode + ')\n')
@@ -271,6 +291,85 @@ sys.exit(1 if mode == "failure" else 0)
                 self.assertFalse((self.build / "pass.ran").exists())
         finally:
             shutil.rmtree(self.source / "src/tools")
+
+    def test_refused_only_with_no_retry_gives_refused_and_exit_10(self):
+        p = self.invoke("^refused_always$", "--no-retry-refused")
+        self.assertEqual(p.returncode, 10, p.stdout + p.stderr)
+        log = self.log.read_text(encoding="utf-8")
+        self.assertIn("REFUSED: refused_always", p.stdout)
+        self.assertIn("failed=0 refused=1", p.stdout)
+        self.assertIn("VERDICT: FAIL refused tests (not run)", p.stdout)
+        self.assertNotIn("== retry refused", log)
+        self.assertEqual((self.build / "refused_always.ran").read_text().count("\n"), 1)
+        again = subprocess.run([sys.executable, "-I", str(ROOT / "tools/test/ctest_verdict.py"),
+                                str(self.log), "--inventory", str(self.log) + ".inventory.json"],
+                               capture_output=True, text=True)
+        self.assertEqual(again.returncode, 10, again.stdout + again.stderr)
+
+    def test_refused_retry_passes_by_default_and_keeps_first_run_in_log(self):
+        p = self.invoke("^(pass|refused_once)$", "--jobs", "2")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertEqual((self.build / "pass.ran").read_text().count("\n"), 1)
+        self.assertEqual((self.build / "refused_once.ran").read_text().count("\n"), 2)
+        log = self.log.read_text(encoding="utf-8")
+        self.assertIn("REFUSED: refused_once", log)
+        self.assertIn("COUNTS: selected=2 executed=1 failed=0 refused=1", log)
+        self.assertIn("VERDICT: FAIL refused tests (not run)", log)
+        self.assertIn("== retry refused refused_once\n", log)
+        self.assertIn('"-R", "^refused_once$", "--no-tests=error", "-V"', log)
+        self.assertIn('"-j", "1"', log)
+        self.assertIn("RETRIED: refused_once passed", p.stdout)
+        self.assertIn("COUNTS (after retry): selected=2 executed=2 failed=0 refused=0", p.stdout)
+        self.assertIn("VERDICT: PASS", p.stdout)
+        self.assertNotIn("VERDICT: FAIL refused tests", p.stdout)
+        self.assertIn('GATE_END {"status": 0, "ctest_rc": 0}', log)
+        again = subprocess.run([sys.executable, "-I", str(ROOT / "tools/test/ctest_verdict.py"),
+                                str(self.log), "--inventory", str(self.log) + ".inventory.json"],
+                               capture_output=True, text=True)
+        self.assertEqual(again.returncode, 0, again.stdout + again.stderr)
+        self.assertIn("RETRIED: refused_once passed", again.stdout)
+        self.assertIn("COUNTS (after retry): selected=2 executed=2 failed=0 refused=0", again.stdout)
+
+    def test_refused_again_on_retry_gives_exit_10(self):
+        p = self.invoke("^refused_always$")
+        self.assertEqual(p.returncode, 10, p.stdout + p.stderr)
+        self.assertEqual((self.build / "refused_always.ran").read_text().count("\n"), 2)
+        log = self.log.read_text(encoding="utf-8")
+        self.assertIn("== retry refused refused_always\n", log)
+        self.assertIn("REFUSED: refused_always", p.stdout)
+        self.assertIn("COUNTS (after retry): selected=1 executed=0 failed=0 refused=1", p.stdout)
+        self.assertIn("VERDICT: FAIL refused tests (not run)", p.stdout)
+        again = subprocess.run([sys.executable, "-I", str(ROOT / "tools/test/ctest_verdict.py"),
+                                str(self.log), "--inventory", str(self.log) + ".inventory.json"],
+                               capture_output=True, text=True)
+        self.assertEqual(again.returncode, 10, again.stdout + again.stderr)
+
+    def test_real_failed_assertion_with_refusal_gives_failed_and_exit_1(self):
+        p = self.invoke("^refused_and_fail$")
+        self.assertEqual(p.returncode, 1, p.stdout + p.stderr)
+        self.assertEqual((self.build / "refused_and_fail.ran").read_text().count("\n"), 1)
+        self.assertIn("FAILED: refused_and_fail Failed", p.stdout)
+        self.assertIn("failed=1 refused=0", p.stdout)
+        self.assertIn("VERDICT: FAIL failed tests", p.stdout)
+        self.assertNotIn("== retry refused", self.log.read_text(encoding="utf-8"))
+
+    def test_refused_then_fail_on_retry_gives_failed_and_exit_1(self):
+        p = self.invoke("^refused_then_fail$")
+        self.assertEqual(p.returncode, 1, p.stdout + p.stderr)
+        self.assertEqual((self.build / "refused_then_fail.ran").read_text().count("\n"), 2)
+        self.assertIn("FAILED: refused_then_fail Failed", p.stdout)
+        self.assertIn("COUNTS (after retry): selected=1 executed=0 failed=1 refused=0", p.stdout)
+        self.assertIn("VERDICT: FAIL failed tests", p.stdout)
+
+    def test_multiple_refused_retried_in_name_order(self):
+        p = self.invoke("^(z_refused|a_refused)$", "--jobs", "2")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        log = self.log.read_text(encoding="utf-8")
+        self.assertLess(log.index("== retry refused a_refused\n"),
+                        log.index("== retry refused z_refused\n"))
+        self.assertIn("RETRIED: a_refused passed", p.stdout)
+        self.assertIn("RETRIED: z_refused passed", p.stdout)
+        self.assertIn("COUNTS (after retry): selected=2 executed=2 failed=0 refused=0", p.stdout)
 
 
 if __name__ == "__main__":

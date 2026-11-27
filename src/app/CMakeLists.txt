@@ -250,8 +250,8 @@ if(ANNO_BUILD_TESTS)
       set_tests_properties(viewer_wiring_status_icon_forester PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # UI-HARVEST-ICON-1 R1: the forester's icon kept through zooming out and in while the game is
-      # paused with no wood, then cleared once wood arrives. GPU window with enhanced water (the owner's
-      # renderer) only: a paused CPU window draws no frame, so the script cannot advance there.
+      # paused with no wood, then cleared once wood arrives. GPU window with enhanced water exercises
+      # the continuous zoom path used for the owner's observation.
       add_test(NAME viewer_wiring_status_icon_zoom_gpu
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
                 $<TARGET_FILE:anno1503> status_icon_zoom --gpu

@@ -19,29 +19,35 @@ click 1156 516
 wait outcome
 expect outcome Applied
 wait fact status_icons.count >= 1 within 200000
+wait fact status_icons.drawn >= 1
 key space
-# A paused window draws only when something changes: every step below moves the camera.
+wait fact game.paused == 1
+note fact game.ms
+# A look requests a redraw, then a settled paused view can go idle immediately.
+expect fact camera.tile.x <= 1145
 look 1156 516
-wait frames 10
+expect fact camera.tile.x >= 1150
+expect fact view.drawn_tile_w == 20
 expect fact inspection.raw_88 == 0
 expect fact status_icons.drawn >= 1
 screenshot icon_start
 checkpoint icon_on_paused
+# From width 20, each three-notch step divides by 1.1^3. The closest width rounds to 119.
 wheel -3
-wait frames 30
+wait fact view.drawn_tile_w == 15
 expect fact status_icons.drawn >= 1
 screenshot icon_out1
 wheel -3
-wait frames 30
+wait fact view.drawn_tile_w == 11
 expect fact status_icons.drawn >= 1
 screenshot icon_out2
 wheel 40
-wait frames 30
-look 1156 516
-wait frames 10
-expect fact view.tile_w >= 84
+wait fact view.drawn_tile_w == 119
+expect fact zoom.at_max == 1
 expect fact status_icons.drawn >= 1
 expect fact inspection.raw_88 == 0
+expect fact game.paused == 1
+expect fact game.ms same
 screenshot icon_closest
 checkpoint icon_kept_through_zoom
 key space

@@ -3575,6 +3575,7 @@ void Viewer::script_tick() {
         }
         // FISHER-VIEW-1: the game time the facts above belong to (the snapshot's clock).
         st.facts["game.ms"] = std::to_string(st.snapshot->game_ms);
+        st.facts["game.paused"] = st.snapshot->paused ? "1" : "0";
         // UI-HARVEST-ICON-1 B: the icons the snapshot carries, and the units this frame drew.
         st.facts["status_icons.count"] =
             std::to_string(st.snapshot->status_icons ? st.snapshot->status_icons->size() : 0);
@@ -3778,6 +3779,9 @@ void Viewer::script_tick() {
         st.facts["camera.tile.y"] = std::to_string(std::llround(cy));
         const double view_w = continuous_ ? zoom_target_ : levels().tile_w(group_);
         st.facts["view.tile_w"] = std::to_string(std::llround(view_w));
+        // Match draw-dependent facts such as status_icons.drawn to the frame they came from.
+        const double drawn_w = pointer_frame_->geometry.tile_w * pointer_frame_->map.scale;
+        st.facts["view.drawn_tile_w"] = std::to_string(std::llround(drawn_w));
         // UI-MINIMAP-2: that tile width, the wheel's furthest zoom-out (zoom_floor, the
         // magnifier's last stage) and closest zoom-in (zoom_ceiling, its first), all in
         // thousandths of a pixel (the far stages are a pixel or two wide), and whether the view

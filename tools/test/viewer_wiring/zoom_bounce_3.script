@@ -1,0 +1,21 @@
+# ZOOM-BOUNCE-3: a scripted pair - one inward tick, then an outward tick 5, 10 and 20 ms
+# later, away from either zoom limit, reported frame by frame via the new wheel trace
+# (wheel.tsv) and the presented scale (frames.tsv). Run with --gpu --trace.
+look 1080 635
+wait ms 1500
+# pair 1: 5 ms gap
+wheel 1 1080 635
+wait ms 5
+wheel -1 1080 635
+wait ms 300
+# pair 2: 10 ms gap
+wheel 1 1080 635
+wait ms 10
+wheel -1 1080 635
+wait ms 300
+# pair 3: 20 ms gap
+wheel 1 1080 635
+wait ms 20
+wheel -1 1080 635
+wait ms 300
+quit

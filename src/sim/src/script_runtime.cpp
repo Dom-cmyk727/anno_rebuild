@@ -47,6 +47,16 @@ struct Host final : ScriptHost {
         staged_events.push_back(std::move(e));
         return true;
     }
+    std::span<const std::optional<Island>> islands;
+    bool city_killed(IslandId island, CityNo city, bool& result) override {
+        // Island::cities is the configured city ring (SimConfig::city_slots at creation).
+        // SO-1b safe-domain decision: refuse rather than copy the original invalid read.
+        if (island.v >= islands.size() || !islands[island.v] ||
+            city.v >= islands[island.v]->cities.size())
+            return false;
+        result = !islands[island.v]->cities[city.v].has_value();
+        return true;
+    }
     const FigureRegistry* figures;
     const WorldSettings* settings;
     ScriptQueryStats& stats;
@@ -136,9 +146,10 @@ struct Host final : ScriptHost {
     std::optional<ScriptTimers> staged_timers;
     Host(PlayerTable& p, ScriptTimers& t, const TypeRegistry& registry,
          const std::vector<PlayerId>& b, const FigureRegistry* f, const WorldSettings* s,
-         ScriptQueryStats& q, std::vector<SimEvent>* events, std::uint64_t tick)
-        : output(events), event_tick(tick), figures(f), settings(s), stats(q), players(p),
-          timers(t), types(registry), bindings(b) {}
+         ScriptQueryStats& q, std::vector<SimEvent>* events, std::uint64_t tick,
+         std::span<const std::optional<Island>> city_islands)
+        : output(events), event_tick(tick), islands(city_islands), figures(f), settings(s),
+          stats(q), players(p), timers(t), types(registry), bindings(b) {}
     bool begin() override {
         staged_events.clear();
         staged.clear();
@@ -334,13 +345,13 @@ std::string restore_script(ScriptRuntime& r, const TypeRegistry& types, const Pl
 bool advance_script(ScriptRuntime& r, PlayerTable& players, ScriptTimers& timers,
                     const TypeRegistry& types, std::uint32_t arg, const FigureRegistry* figures,
                     const WorldSettings* settings, std::vector<SimEvent>* output,
-                    std::uint64_t event_tick) {
+                    std::uint64_t event_tick, std::span<const std::optional<Island>> islands) {
     r.query_stats = {};
     if (!r.program)
         return r.state.context == ScriptContext::Missing ||
                r.state.context == ScriptContext::ExplicitNone;
     Host host(players, timers, types, r.state.bindings, figures, settings, r.query_stats, output,
-              event_tick);
+              event_tick, islands);
     return visit_script(*r.program, r.state, arg, host);
 }
 } // namespace anno::sim

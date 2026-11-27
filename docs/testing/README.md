@@ -190,6 +190,18 @@ non-zero if any lane fails, or if a lane that was requested (such as `--gpu-lane
 with no lavapipe ICD installed) could not run at all; a reviewer or CI step can
 rely on the exit code alone, without re-deriving the verdict from the log text.
 
+## The Linux/macOS warning check
+
+`tools/check_unix_warnings.sh` (CLAUDE.md's own "Linux/macOS warnings before a push") compiles
+every `.cpp` under `src/` with the CI's `-O3 -Werror` flags under GCC 13 and Clang 18, viewer and
+GPU code on, then the app once more without `ANNO_VIEWER_GPU`; MSVC does not report most of these
+warnings, so a clean MSVC build says nothing about them. UNIX-WARN-1 (2026-11-16) fixed the one
+file it had reported red since 2026-11-14 (`src/sim/tests/extensions_test.cpp`, missing the
+`ANNO_EXTENSION_ORACLE_FILE` define `src/sim/CMakeLists.txt` passes) and added a negative control:
+a scratch file with a deliberate `-Wshadow` violation that the script compiles itself and expects
+to fail, so a flags or toolchain regression that silently stopped catching warnings is caught
+instead of every check passing for the wrong reason.
+
 ## Pins and goldens
 
 PINS-1 (2026-11-13), ADR 0006 step1: no state, behaviour or expected hash change.
@@ -305,3 +317,18 @@ comments are preserved; inline comments after pin rows are not retained by the w
    and highmap_digest_reference_agrees. It must end with zero failures; quote each
    COUNTS/VERDICT line, distinguish skips, and retain source/diff, log hashes and
    the moved-pin/recorded-file counts. A successful regen alone is not acceptance.
+
+## The layer check (LAYER-CHECK-1)
+
+`layer_check_contract`/`layer_check_self_test` (`tools/layer_check.py`) keep `anno_formats`,
+`anno_sim` and `anno_sim_load` free of code above them in the stack (determinism, separate
+libraries by responsibility, the dependency direction of the former crates). The allowed
+`#include`s and link targets for each of the three libraries are the rule, stated once in
+`tools/layer_check.py`'s own module docstring — this page cites it, not a copy of it. Two checks
+run from CTest: every `#include` under the three libraries' `include/`, `src/` and `tests/`
+directories, and each library's real CMake `LINK_LIBRARIES` (read at configure time via
+`file(GENERATE)` with `$<TARGET_PROPERTY:...,LINK_LIBRARIES>` into `layer_check_links.txt` in the
+build directory, never a hand-written copy of the link graph). `--self-test` checks the rule table
+and the scanner itself against synthetic trees and a synthetic link list, including the required
+failing cases (an injected SDL/Vulkan/`windows.h` include in a sim source; `anno_render` linked
+under `anno_sim`).

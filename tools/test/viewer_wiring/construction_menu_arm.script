@@ -21,13 +21,20 @@ expect title build 501
 click 1156 516
 wait outcome
 expect outcome Applied
-# ESC is the menu's own key while it is open (data/ui/construction.txt's `leave_key ESC`): it
-# closes the menu, not the window (the window's own Esc-quits-the-app binding would end the
-# session here, which `quit` below would then never reach - proving the collision resolves to
-# the menu, not the window, is the point of this step).
+# ESC is the menu's own key while it is open (data/ui/construction.txt's `leave_key ESC`), not
+# the window's (the window's own Esc-quits-the-app binding would end the session here, which
+# `quit` below would then never reach - proving the collision resolves to the menu, not the
+# window, is the point of this step). Since UI-PLACE-2 it goes one step back, as the original's:
+# the first ESC puts the building away and shows the grid, the second closes the menu.
 key esc
 wait frames 5
+expect fact tool.mode == off
+expect fact ui.tab == construction
+key esc
+wait frames 5
+expect fact ui.tab == player
 # The menu is closed now: the same grid pixel does nothing (falls through; no further command).
 click_px 833 330
 wait frames 5
+expect fact tool.mode == off
 quit

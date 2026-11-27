@@ -56,6 +56,7 @@
 #include <anno/app/commands_file.hpp>
 #include <anno/app/dev_session.hpp>
 #include <anno/app/loader.hpp>
+#include <anno/app/minimap.hpp>
 #include <anno/app/opening.hpp>
 #include <anno/app/opening_session.hpp>
 #include <anno/app/play.hpp>
@@ -344,6 +345,10 @@ int run(const std::vector<std::string>& raw) {
             if (args->city_booking.has_value()) {
                 fixed_options.rules.city_booking = *args->city_booking;
             }
+            // FISHER-VIEW-1: the developer switch for the fisher rule (an extension, off by
+            // default; the rule itself stays behind that flag in the sim).
+            fixed_options.extensions.fisher_rules.enabled =
+                args->fisher_rules ? std::uint8_t{1} : std::uint8_t{0};
             if (const char* g = std::getenv("ANNO_DEV_GOLD"); g != nullptr && *g != 0) {
                 fixed_options.gold = std::strtoll(g, nullptr, 10);
             }
@@ -360,10 +365,11 @@ int run(const std::vector<std::string>& raw) {
         }
         if (args->commands) {
             // Parsed against the loaded world, before the world moves into the runner.
-            auto parsed =
-                anno::app::load_commands(*args->commands, play->world,
-                                         opening ? anno::sim::PlayerId{opening->setup.local}
-                                                 : anno::app::developer_player());
+            auto parsed = anno::app::load_commands(
+                *args->commands, play->world,
+                opening             ? anno::sim::PlayerId{opening->setup.local}
+                : args->play_player ? anno::sim::PlayerId{*args->play_player}
+                                    : anno::app::developer_player());
             if (!parsed) {
                 std::fprintf(stderr, "%s: %s\n", name.c_str(), parsed.error().c_str());
                 return 1;
@@ -480,6 +486,10 @@ int run(const std::vector<std::string>& raw) {
     std::optional<anno::app::ConstructionLayout> construction_layout;
     std::optional<anno::app::MaskLayout> construction_masks;
     std::optional<anno::app::ConstructionMenu> construction_menu;
+    // UI-MINIMAP-1 B1: data/ui/minimap.txt and the world the minimap shows, outliving the window.
+    std::optional<anno::app::MinimapConfig> minimap_config;
+    std::optional<anno::app::MinimapWorld> minimap_world;
+    std::optional<anno::app::MinimapOwnerRule> minimap_rule;
     // A scripted session (ANNO_DEV_SCRIPT=<file>) and its record (ANNO_DEV_SESSION=<new dir>),
     // round ee E3: --play only.
     std::optional<anno::app::DevScript> script;
@@ -562,9 +572,13 @@ int run(const std::vector<std::string>& raw) {
         }
         picture = std::make_unique<anno::app::ScenePicture>(shown, buildings, objects.is_building,
                                                             2, std::move(limits));
-        dev.emplace(anno::app::dev_tool_setup(*play, opening
-                                                         ? anno::sim::PlayerId{opening->setup.local}
-                                                         : anno::app::developer_player()));
+        // FISHER-VIEW-1: --player picks the developer tool's player for --play (a shipped scenario
+        // seats its human elsewhere than slot 1).
+        const anno::sim::PlayerId tool_player =
+            opening ? anno::sim::PlayerId{opening->setup.local}
+                    : (args->play_player ? anno::sim::PlayerId{*args->play_player}
+                                         : anno::app::developer_player());
+        dev.emplace(anno::app::dev_tool_setup(*play, tool_player));
         hooks.dev = &*dev;
         if (args->construction_menu) {
             const fs::path layout_dir = args->layout.value_or(fs::path("data/ui"));
@@ -572,13 +586,48 @@ int run(const std::vector<std::string>& raw) {
             auto construction_loaded =
                 anno::app::load_construction_layout(layout_dir / "construction.txt");
             auto masks_loaded = anno::app::load_mask_layout(layout_dir / "masks.txt");
-            if (!hud_loaded.ok() || !construction_loaded.ok() || !masks_loaded.ok()) {
+            auto minimap_loaded = anno::app::load_minimap_config(layout_dir / "minimap.txt");
+            if (!hud_loaded.ok() || !construction_loaded.ok() || !masks_loaded.ok() ||
+                !minimap_loaded.ok()) {
                 std::fprintf(stderr, "--construction-menu: %s\n",
                              !hud_loaded.ok()            ? hud_loaded.error().c_str()
                              : !construction_loaded.ok() ? construction_loaded.error().c_str()
-                                                         : masks_loaded.error().c_str());
+                             : !masks_loaded.ok()        ? masks_loaded.error().c_str()
+                                                         : minimap_loaded.error().c_str());
                 return 1;
             }
+            // The minimap's world (UI-MINIMAP-1 B1): the size from the world's settings, each
+            // island's HEIGHT grid from the scene as loaded. The owners come with every snapshot
+            // (PlaySnapshot::territory, B2), coloured by the rule read here from the world before
+            // it moves into the runner (docs/re/ui.md 2.9, OQ-629).
+            minimap_config.emplace(std::move(minimap_loaded).value());
+            minimap_world.emplace();
+            minimap_world->w = play->world.settings().world_width;
+            minimap_world->h = play->world.settings().world_height;
+            for (const auto& island : shown->islands) {
+                auto heights = island.heights();
+                if (!heights.ok()) {
+                    continue; // an island without a readable grid shows as sea, as it renders
+                }
+                anno::app::MinimapIsland mi;
+                mi.x = island.x;
+                mi.y = island.y;
+                mi.w = island.width;
+                mi.h = island.height;
+                mi.heights = std::move(heights).value();
+                minimap_world->islands.push_back(std::move(mi));
+            }
+            // The viewer is the play runner's local player whenever it is set (the ship start's
+            // participant, or --player: FISHER-VIEW-1; UI-MINIMAP-1 C); otherwise B2's first
+            // human slot (OQ-629 (b): the runner's default, developer_player, is not the human in
+            // a shipped scenario).
+            minimap_rule.emplace(anno::app::minimap_owner_rule(
+                *play, args->file,
+                opening || args->play_player ? std::optional{tool_player} : std::nullopt));
+            std::fprintf(stderr, "[minimap] viewer player %u\n", minimap_rule->viewer);
+            hooks.minimap_config = &*minimap_config;
+            hooks.minimap_world = &*minimap_world;
+            hooks.minimap_rule = &*minimap_rule;
             construction_hud.emplace(std::move(hud_loaded).value());
             construction_layout.emplace(std::move(construction_loaded).value());
             construction_masks.emplace(std::move(masks_loaded).value());
@@ -590,6 +639,9 @@ int run(const std::vector<std::string>& raw) {
         play_rules_digest = play->world.rules().digest();
         runner = std::make_unique<anno::app::PlayRunner>(std::move(play->world), args->play_speed);
         runner->set_record_hashes(!session_dir.empty());
+        if (!opening && args->play_player) {
+            runner->set_local_player(tool_player); // the snapshot reports the tool's player
+        }
         if (opening) {
             runner->set_local_player(opening->setup.local);
             runner->set_opening(true);
@@ -661,6 +713,13 @@ int run(const std::vector<std::string>& raw) {
             name, args->play_speed, args->rules_profile, play_rules_digest);
         if (opening) {
             invocation += anno::app::format_opening_identity(opening->identity);
+        }
+        // FISHER-VIEW-1: the developer switches a replay needs as well (information lines).
+        if (args->fisher_rules) {
+            invocation += "extension fisher_rules\n";
+        }
+        if (args->play_player) {
+            invocation += "player " + std::to_string(*args->play_player) + "\n";
         }
         if (!write_session(session_dir, *runner, script ? &*script : nullptr, invocation,
                            opening.has_value()) &&

@@ -1,0 +1,32 @@
+# FISHER-VIEW-1: the closed site with the fisher rule on (FISHER-1f on main). Tutorial/02Trade01,
+# player 2, type 810 at origin (242, 217), rotation 1 (both entrances on land; docs/re/fisher.md
+# sections 10-11; the History Edition's ui_5.mp4, FISHER-HE-1 step A). The click is the 4 x 3
+# footprint's centre tile (243, 218). The worker goes out (sim: tick 690), never comes home: at
+# its release (sim: tick 19720) workers_out is 0 again and raw and output are still 0; then a
+# second worker is sent (sim: tick 19890), and the stock stays 0.
+# Launch: --play {game}/Scenes/Tutorial/02Trade01.sze --player 2 --fisher-rules on --speed 200
+resize 1024 768
+wait frames 5
+look 242 217
+wait frames 5
+key b
+wait frames 3
+select 810
+rotate 1
+expect title build 810
+click 243 218
+wait outcome
+expect outcome Applied
+expect fact inspection.type == 810
+expect fact inspection.kind == Farm
+wait fact inspection.workers_out == 1 within 60000
+checkpoint worker_out
+wait fact inspection.workers_out == 0 within 120000
+checkpoint released
+expect fact inspection.raw_88 == 0
+expect fact inspection.out_88 == 0
+wait fact inspection.workers_out == 1 within 60000
+checkpoint second_worker
+expect fact inspection.raw_88 == 0
+expect fact inspection.out_88 == 0
+quit

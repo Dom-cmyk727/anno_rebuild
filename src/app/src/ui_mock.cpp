@@ -3,6 +3,8 @@
 #include <fstream>
 #include <map>
 
+#include <anno/app/balance_rows.hpp>
+#include <anno/app/hud_tabs.hpp>
 #include <anno/app/ui_mock.hpp>
 #include <anno/assets/building.hpp>
 #include <anno/assets/text.hpp>
@@ -385,12 +387,15 @@ constexpr std::array<std::array<std::uint8_t, 3>, 3> kInfoTextLevels = {
 
 /// `text` in `font` as one opaque image, each level in its own kInfoTextLevels colour: three
 /// render_text passes (one level each at alpha 255, the others at 0) merged - every glyph pixel
-/// has exactly one level, so the passes never overlap.
-assets::Rgba render_info_text(const formats::zei::CharSet& font, const std::string& text) {
+/// has exactly one level, so the passes never overlap. `level1` replaces level 1's white
+/// (UI-TABS-1 stage B: the balance row's red, the text gadget's colour property 0x1c5; docs/re/
+/// ui.md 5.5).
+assets::Rgba render_info_text(const formats::zei::CharSet& font, const std::string& text,
+                              std::array<std::uint8_t, 3> level1 = kInfoTextLevels[0]) {
     assets::Rgba out;
     for (std::size_t level = 0; level < 3; ++level) {
         assets::TextStyle style;
-        style.rgb = kInfoTextLevels[level];
+        style.rgb = level == 0 ? level1 : kInfoTextLevels[level];
         style.level_alpha = {0, 0, 0};
         style.level_alpha[level] = 255;
         assets::Rgba pass = assets::render_text(font, text, style);
@@ -532,6 +537,50 @@ void draw_info_content(TexCache& cache, const HudLayout& hud, const UiPlacement&
     blit(clip_to(fitted, x, y, box_x, box_y, bw, bh), x, y);
 }
 
+/// UI-TABS-1 stage B: the balance pages' figures (docs/re/ui.md 5.5) over the screen's panel,
+/// through `blit` (an opaque blit of an RGBA image at (x, y): the XRGB or the GPU-overlay
+/// path's own), shared by both paths as draw_info_content is. Every hud.txt element with a
+/// `value` whose `page` is the panel showing draws counters.rows[value] (absent: nothing) in its
+/// font, `align right` at pos_x + size_w - text_w, top at pos_y + text_dy, level 1 in
+/// `negative_rgb` below 0, cut to its box with `clip box`.
+template <typename Blit>
+void draw_balance_rows(TexCache& cache, const HudLayout& hud, const UiPlacement& placement,
+                       const UiMockSpec& screen, const HudCounters& counters, Blit&& blit) {
+    if (counters.rows.empty())
+        return;
+    const std::string panel = ui_panel_group(hud, screen);
+    if (panel.empty())
+        return;
+    for (const UiElement& el : hud.elements) {
+        if (el.value.empty() || el.page != panel || el.align != "right" || !el.has_pos ||
+            !el.has_size || el.file.empty())
+            continue;
+        const auto it = counters.rows.find(el.value);
+        if (it == counters.rows.end())
+            continue;
+        const formats::zei::CharSet* font = cache.font(el.file);
+        if (font == nullptr)
+            continue;
+        std::array<std::uint8_t, 3> level1 = kInfoTextLevels[0];
+        if (it->second < 0 && el.negative_rgb) {
+            level1 = {static_cast<std::uint8_t>(*el.negative_rgb >> 16),
+                      static_cast<std::uint8_t>(*el.negative_rgb >> 8),
+                      static_cast<std::uint8_t>(*el.negative_rgb)};
+        }
+        const assets::Rgba image = render_info_text(*font, balance_text(it->second), level1);
+        const auto [bx, by] = placement.place(el.anchor, el.pos_x, el.pos_y);
+        const int x = bx + static_cast<int>(el.size_w) - static_cast<int>(image.width);
+        const int y = by + el.text_dy;
+        if (el.clip_box) {
+            blit(clip_to(image, x, y, bx, by, static_cast<int>(el.size_w),
+                         static_cast<int>(el.size_h)),
+                 x, y);
+        } else {
+            blit(image, x, y);
+        }
+    }
+}
+
 /// `sprite` cut to at most `w` x `h` pixels, its top-left kept.
 assets::Rgba crop_to(const assets::Rgba& sprite, unsigned w, unsigned h) {
     if (w >= sprite.width && h >= sprite.height)
@@ -647,64 +696,59 @@ void draw_column_filler(TexCache& cache, const HudLayout& hud, const UiPlacement
     blit(*picture, x, picture_y);
 }
 
-/// UI-WINDOW-1 fix round R2: which of the four tabs (hud.txt `tab_*`) is selected on a screen
-/// kind, and which `panel` group of hud.txt elements its right-chrome panel draws.
-const char* selected_tab(UiMockScreen kind) {
-    switch (kind) {
-    case UiMockScreen::Construction:
+/// UI-WINDOW-1 fix round R2 / UI-TABS-1: which of the four tabs (hud.txt `tab_*`) is selected on
+/// a screen: the construction tab, or the main tab whose `view` the screen shows.
+std::string selected_tab(const HudLayout& hud, const UiMockSpec& screen) {
+    if (screen.kind == UiMockScreen::Construction)
         return "tab_construction";
-    case UiMockScreen::Hud:
-    case UiMockScreen::PlayerList:
-        return "tab_military";
-    case UiMockScreen::Info:
-        return "tab_help";
-    case UiMockScreen::MainMenu:
-        return "tab_options";
-    }
-    return "tab_military";
+    const std::string view = screen.view.empty() ? hud_first_view(hud) : screen.view;
+    for (const UiElement& e : hud.elements)
+        if (!e.subtab && e.view == view)
+            return e.name;
+    return {};
 }
 
 /// The four tabs with `selected` in its `frame_selected` and the others in `frame_idle`
 /// (hud.txt), through `blit_el(name, tex id)`.
 template <typename BlitEl>
-void draw_tabs(const HudLayout& hud, const char* selected, BlitEl&& blit_el) {
+void draw_tabs(const HudLayout& hud, const std::string& selected, BlitEl&& blit_el) {
     for (const char* tab : {"tab_construction", "tab_military", "tab_help", "tab_options"}) {
         const UiElement* el = hud.element(tab);
         if (el == nullptr)
             continue;
-        const bool on = std::string(tab) == selected;
+        const bool on = tab == selected;
         const std::optional<int> frame = on ? el->frame_selected : el->frame_idle;
         blit_el(tab, frame ? frame : el->tex_id);
     }
 }
 
-/// Every hud.txt element of `group` (its `panel` field), in file order, through `blit_el`.
+/// Every hud.txt element of the screen's panel group (its `panel` field, ui_panel_group), in file
+/// order, through `blit_el`; a sub-tab of the shown view (UI-TABS-1) in its selected frame when it
+/// is the screen's sub-tab, else in its idle frame.
 template <typename BlitEl>
-void draw_panel(const HudLayout& hud, const char* group, BlitEl&& blit_el) {
-    if (group == nullptr)
+void draw_panel(const HudLayout& hud, const UiMockSpec& screen, BlitEl&& blit_el) {
+    const std::string group = ui_panel_group(hud, screen);
+    if (group.empty())
         return;
+    const std::string view = screen.view.empty() ? hud_first_view(hud) : screen.view;
     for (const UiElement& e : hud.elements) {
-        if (std::find(e.panels.begin(), e.panels.end(), group) != e.panels.end())
+        if (std::find(e.panels.begin(), e.panels.end(), group) == e.panels.end())
+            continue;
+        if (e.subtab && e.view == view)
+            blit_el(e.name, hud_subtab_frame(e, *e.subtab == screen.subtab));
+        else
             blit_el(e.name, std::nullopt);
     }
 }
 
 } // namespace
 
-const char* ui_panel_group(UiMockScreen kind) {
-    switch (kind) {
-    case UiMockScreen::Hud:
-        return "player";
-    case UiMockScreen::PlayerList:
-        return "player_list";
-    case UiMockScreen::Info:
-        return "info";
-    case UiMockScreen::MainMenu:
-        return "main_menu";
-    case UiMockScreen::Construction:
-        return nullptr;
-    }
-    return nullptr;
+std::string ui_panel_group(const HudLayout& hud, const UiMockSpec& screen) {
+    if (screen.kind == UiMockScreen::Construction)
+        return {};
+    const std::string view = screen.view.empty() ? hud_first_view(hud) : screen.view;
+    const UiElement* e = hud_subtab_element(hud, view, screen.subtab);
+    return e != nullptr ? e->body : std::string();
 }
 
 int centred_text_x(int box_x, unsigned box_w, int text_w) {
@@ -722,23 +766,38 @@ struct UiTexCache::Impl : TexCache {
 UiTexCache::UiTexCache(std::filesystem::path game_dir)
     : impl_(std::make_unique<Impl>(std::move(game_dir))) {}
 UiTexCache::~UiTexCache() = default;
+const assets::Rgba* UiTexCache::decode(const std::string& rel_path, int tex_id) {
+    return impl_->decode(rel_path, tex_id);
+}
 UiTexCache::UiTexCache(UiTexCache&&) noexcept = default;
 UiTexCache& UiTexCache::operator=(UiTexCache&&) noexcept = default;
 
 std::optional<UiMockSpec> parse_screen_name(const std::string& screen) {
     if (screen == "hud_idle")
-        return UiMockSpec{UiMockScreen::Hud, ""};
+        return UiMockSpec{UiMockScreen::Hud, "", "", 0};
+    // UI-WINDOW-1 fix round R2's panel names, as views and sub-tabs (UI-TABS-1).
     if (screen == "player_list")
-        return UiMockSpec{UiMockScreen::PlayerList, ""};
+        return UiMockSpec{UiMockScreen::Hud, "", "player", 1};
     if (screen == "info")
-        return UiMockSpec{UiMockScreen::Info, ""};
+        return UiMockSpec{UiMockScreen::Hud, "", "info", 0};
     if (screen == "main_menu")
-        return UiMockSpec{UiMockScreen::MainMenu, ""};
+        return UiMockSpec{UiMockScreen::Hud, "", "options", 0};
+    // UI-TABS-1: "<view>.<k>", sub-tab k of a view.
+    if (const auto dot = screen.find('.');
+        dot != std::string::npos && dot > 0 && dot + 1 < screen.size() && dot + 4 > screen.size()) {
+        int k = 0;
+        for (std::size_t i = dot + 1; i < screen.size(); ++i) {
+            if (screen[i] < '0' || screen[i] > '9')
+                return std::nullopt;
+            k = k * 10 + (screen[i] - '0');
+        }
+        return UiMockSpec{UiMockScreen::Hud, "", screen.substr(0, dot), k};
+    }
     static const std::array<const char*, 8> kCategories = {
         "public", "roads", "farms", "workshops", "coastal", "mines", "military", "ornamental"};
     for (const auto* cat : kCategories) {
         if (screen == std::string("construction_") + cat)
-            return UiMockSpec{UiMockScreen::Construction, cat};
+            return UiMockSpec{UiMockScreen::Construction, cat, "", 0};
     }
     return std::nullopt;
 }
@@ -769,6 +828,8 @@ formats::Result<assets::Rgba, std::string> compose_screen(const HudLayout& hud,
     };
 
     blit_el("weltkarte");
+    // UI-MINIMAP-1 fix F1: the scroll's rolled left end, left of the column (hud.txt).
+    blit_el("minimap_curl");
     blit_el("mainuntergrund");
     if (!is_construction) {
         blit_el("tab_construction", 8);
@@ -803,8 +864,8 @@ formats::Result<assets::Rgba, std::string> compose_screen(const HudLayout& hud,
     // UI-WINDOW-1 fix round R2: the idle HUD's own panel (hud.txt `panel player`), mirrored by
     // tools/ui_layout.py compose_screen.
     if (!is_construction) {
-        draw_panel(hud, "player",
-                   [&](const std::string& name, std::optional<int>) { blit_el(name); });
+        draw_panel(hud, screen,
+                   [&](const std::string& name, std::optional<int> tid) { blit_el(name, tid); });
     }
 
     if (is_construction) {
@@ -849,7 +910,8 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
                                   const HudCounters& counters, bool placement_open,
                                   bool demolish_mode, bool paused, bool selected_house,
                                   const InfoPanelContent* info,
-                                  const formats::anlagen::AnlagenFile* anlagen) {
+                                  const formats::anlagen::AnlagenFile* anlagen,
+                                  const MinimapOverlay* minimap) {
     if (dst == nullptr || dst_w < hud.resolution_w || dst_h < hud.resolution_h)
         return "draw_live_screen_xrgb: destination smaller than the layout's resolution";
     const UiPlacement placement = place_hud(hud, dst_w, dst_h);
@@ -889,12 +951,31 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
         blit_xrgb(dst, dst_w, dst_h, image, x, y);
     };
 
+    // UI-MINIMAP-1 B1: the minimap under the chrome (AnnoFrame draws it first; WELTKARTE's
+    // diamond hole shows it, docs/re/ui.md 2.9).
+    if (minimap != nullptr) {
+        if (minimap->raster != nullptr)
+            blit_image(*minimap->raster, minimap->x, minimap->y);
+        const std::uint32_t box = (std::uint32_t{minimap->box_rgb[0]} << 16) |
+                                  (std::uint32_t{minimap->box_rgb[1]} << 8) | minimap->box_rgb[2];
+        for (const auto& [x, y] : minimap->box)
+            if (x >= 0 && y >= 0 && x < dst_w && y < dst_h)
+                dst[static_cast<std::size_t>(y) * static_cast<std::size_t>(dst_w) +
+                    static_cast<std::size_t>(x)] = box;
+        // B2: the markers over the box.
+        for (const MinimapPixel& m : minimap->marks)
+            if (m.x >= 0 && m.y >= 0 && m.x < dst_w && m.y < dst_h)
+                dst[static_cast<std::size_t>(m.y) * static_cast<std::size_t>(dst_w) +
+                    static_cast<std::size_t>(m.x)] = m.rgb & 0xffffffU;
+    }
     blit_el("weltkarte");
+    // UI-MINIMAP-1 fix F1: the scroll's rolled left end, left of the column (hud.txt).
+    blit_el("minimap_curl");
     blit_el("mainuntergrund");
     draw_column_filler(cache, hud, placement, blit_image);
     // UI-WINDOW-1 fix round R2: the selected tab follows the screen (hud.txt frame_selected /
     // frame_idle; the same frames as before for the idle HUD and the construction menu).
-    draw_tabs(hud, selected_tab(screen.kind),
+    draw_tabs(hud, selected_tab(hud, screen),
               [&](const char* name, std::optional<int> tid) { blit_el(name, tid); });
     draw_statusbar(cache, hud, placement, blit_image);
     blit_el("gold");
@@ -985,8 +1066,13 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
     blit_el("compass_e");
     // UI-WINDOW-1 fix round R2: the selected tab's panel, static chrome only (hud.txt `panel`;
     // its names and figures are UI-TABS-1).
-    draw_panel(hud, ui_panel_group(screen.kind),
+    draw_panel(hud, screen,
                [&](const std::string& name, std::optional<int> tid) { blit_el(name, tid); });
+    // UI-TABS-1 stage B: the balance pages' figures over the panel (docs/re/ui.md 5.5).
+    draw_balance_rows(cache, hud, placement, screen, counters,
+                      [&](const assets::Rgba& image, int x, int y) {
+                          blit_xrgb(dst, dst_w, dst_h, image, x, y);
+                      });
 
     if (is_construction) {
         blit_el("plankegross");
@@ -1070,15 +1156,13 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
     return "";
 }
 
-std::string draw_live_screen_rgba_into(assets::Rgba& canvas, int w, int h, const HudLayout& hud,
-                                       const ConstructionLayout& construction,
-                                       const MaskLayout& masks, const UiMockSpec& screen,
-                                       UiTexCache& cache_wrapper,
-                                       const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
-                                       const HudCounters& counters, bool placement_open,
-                                       bool demolish_mode, bool paused, bool selected_house,
-                                       const InfoPanelContent* info,
-                                       const formats::anlagen::AnlagenFile* anlagen) {
+std::string draw_live_screen_rgba_into(
+    assets::Rgba& canvas, int w, int h, const HudLayout& hud,
+    const ConstructionLayout& construction, const MaskLayout& masks, const UiMockSpec& screen,
+    UiTexCache& cache_wrapper, const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
+    const HudCounters& counters, bool placement_open, bool demolish_mode, bool paused,
+    bool selected_house, const InfoPanelContent* info, const formats::anlagen::AnlagenFile* anlagen,
+    const MinimapOverlay* minimap) {
     if (w < hud.resolution_w || h < hud.resolution_h || w > 0xFFFF || h > 0xFFFF)
         return std::string("draw_live_screen_rgba: destination smaller than the layout's "
                            "resolution, or larger than an assets::Rgba holds");
@@ -1124,12 +1208,42 @@ std::string draw_live_screen_rgba_into(assets::Rgba& canvas, int w, int h, const
         blit_rgba_over(canvas, image, x, y);
     };
 
+    // UI-MINIMAP-1 B1: the minimap under the chrome (draw_live_screen_xrgb's own copy).
+    if (minimap != nullptr) {
+        if (minimap->raster != nullptr)
+            blit_image(*minimap->raster, minimap->x, minimap->y);
+        for (const auto& [x, y] : minimap->box) {
+            if (x < 0 || y < 0 || x >= w || y >= h)
+                continue;
+            const std::size_t d = (static_cast<std::size_t>(y) * static_cast<std::size_t>(w) +
+                                   static_cast<std::size_t>(x)) *
+                                  4;
+            canvas.pixels[d] = minimap->box_rgb[0];
+            canvas.pixels[d + 1] = minimap->box_rgb[1];
+            canvas.pixels[d + 2] = minimap->box_rgb[2];
+            canvas.pixels[d + 3] = 255;
+        }
+        // B2: the markers over the box.
+        for (const MinimapPixel& m : minimap->marks) {
+            if (m.x < 0 || m.y < 0 || m.x >= w || m.y >= h)
+                continue;
+            const std::size_t d = (static_cast<std::size_t>(m.y) * static_cast<std::size_t>(w) +
+                                   static_cast<std::size_t>(m.x)) *
+                                  4;
+            canvas.pixels[d] = static_cast<std::uint8_t>((m.rgb >> 16) & 0xffU);
+            canvas.pixels[d + 1] = static_cast<std::uint8_t>((m.rgb >> 8) & 0xffU);
+            canvas.pixels[d + 2] = static_cast<std::uint8_t>(m.rgb & 0xffU);
+            canvas.pixels[d + 3] = 255;
+        }
+    }
     blit_el("weltkarte");
+    // UI-MINIMAP-1 fix F1: the scroll's rolled left end, left of the column (hud.txt).
+    blit_el("minimap_curl");
     blit_el("mainuntergrund");
     draw_column_filler(cache, hud, placement, blit_image);
     // UI-WINDOW-1 fix round R2: the selected tab follows the screen (hud.txt frame_selected /
     // frame_idle; the same frames as before for the idle HUD and the construction menu).
-    draw_tabs(hud, selected_tab(screen.kind),
+    draw_tabs(hud, selected_tab(hud, screen),
               [&](const char* name, std::optional<int> tid) { blit_el(name, tid); });
     draw_statusbar(cache, hud, placement, blit_image);
     blit_el("gold");
@@ -1200,8 +1314,12 @@ std::string draw_live_screen_rgba_into(assets::Rgba& canvas, int w, int h, const
     blit_el("compass_e");
     // UI-WINDOW-1 fix round R2: the selected tab's panel, static chrome only (hud.txt `panel`;
     // its names and figures are UI-TABS-1).
-    draw_panel(hud, ui_panel_group(screen.kind),
+    draw_panel(hud, screen,
                [&](const std::string& name, std::optional<int> tid) { blit_el(name, tid); });
+    // UI-TABS-1 stage B: the balance pages' figures over the panel (docs/re/ui.md 5.5).
+    draw_balance_rows(
+        cache, hud, placement, screen, counters,
+        [&](const assets::Rgba& image, int x, int y) { blit_rgba_over(canvas, image, x, y); });
 
     if (is_construction) {
         blit_el("plankegross");
@@ -1277,11 +1395,11 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
                       const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
                       const HudCounters& counters, bool placement_open, bool demolish_mode,
                       bool paused, bool selected_house, const InfoPanelContent* info,
-                      const formats::anlagen::AnlagenFile* anlagen) {
+                      const formats::anlagen::AnlagenFile* anlagen, const MinimapOverlay* minimap) {
     assets::Rgba canvas;
     std::string error = draw_live_screen_rgba_into(
         canvas, w, h, hud, construction, masks, screen, cache, eligibility, counters,
-        placement_open, demolish_mode, paused, selected_house, info, anlagen);
+        placement_open, demolish_mode, paused, selected_house, info, anlagen, minimap);
     if (!error.empty())
         return error;
     return canvas;

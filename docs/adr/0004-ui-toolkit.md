@@ -218,7 +218,9 @@ original's Escape with a selection exists (W4-NEXT-2 W could take one).
 **QUESTION K-2: click or drag.** The left button already pans by dragging. (a) A press and
 release within 4 drawable pixels is a click (selects); farther is a drag (pans) - **recommended
 and implemented** (`Viewer::kClickSlop`). (b) Pan with the right button only and give the left
-button to selection alone (changes how the map feels today).
+button to selection alone (changes how the map feels today). Since UI-PAN-1 (owner, 2026-11-16,
+"no click pan") a click moves the map not at all either: the pan starts only once the pointer
+leaves the slop, for both buttons, and then catches up with the whole way from the press.
 
 **QUESTION K-3: a click on empty ground or water.** (a) Deselect - **recommended and
 implemented**. (b) Keep the selection until Escape or another building is clicked.

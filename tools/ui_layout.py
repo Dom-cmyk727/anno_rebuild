@@ -774,6 +774,8 @@ def compose_screen(layout_dir: str, screen: str, game_dir: str) -> "object":
         blit_rgba(rgb, w, h, sprite, el["pos"][0], el["pos"][1])
 
     blit_el("weltkarte")
+    # UI-MINIMAP-1 fix F1: the scroll's rolled left end (hud.txt minimap_curl).
+    blit_el("minimap_curl")
     blit_el("mainuntergrund")
     if spec["kind"] == "hud":
         blit_el("tab_construction", 8)

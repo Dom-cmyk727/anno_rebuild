@@ -1,0 +1,115 @@
+# UI-PLACE-2: ESC and the right click in the construction menu, as the original's (GOG Wine
+# runner, cache/orig/ui-place-1 and ui-place-2 in the packets' worktrees; docs/re/ui.md 2.6).
+# ESC goes one step back: the info panel -> the grid with nothing armed; the demolish mode ->
+# off (a building armed under it stays); the grid -> the menu closes (an armed building with it).
+# A right click on the map or on the info panel puts away whatever the pointer carries and shows
+# the grid; on the grid's chrome it closes the menu. A right drag stays the window's pan. Before
+# UI-PLACE-2 the first ESC closed the whole menu and a right click changed nothing.
+# Launch: --play data/maps/lan5.txt --construction-menu on --layout data/ui
+resize 1024 768
+wait frames 5
+look 1140 516
+key b
+wait frames 5
+# ESC with the info panel open: the grid, nothing armed, the menu stays (p1_c_after_esc, p2_esc1).
+click_px 833 330
+wait frames 5
+expect fact tool.mode == build
+key esc
+wait frames 3
+expect fact tool.mode == off
+expect fact ui.tab == construction
+# The grid is showing: the same cell arms again.
+click_px 833 330
+wait frames 5
+expect fact tool.mode == build
+# Cancel-X (the house stays armed, p1_a_after_x), the pickaxe (demolish over it), ESC: only the
+# demolish mode goes (p4_armed_demolish_esc).
+click_px 1000 742
+wait frames 3
+expect fact tool.mode == build
+expect fact ui.info.rotation == none
+click_px 996 736
+wait frames 3
+expect fact tool.mode == demolish
+key esc
+wait frames 3
+expect fact tool.mode == build
+expect title build 501
+expect fact ui.tab == construction
+# ESC on the grid: the menu closes and the house with it (p4_armed_demolish_esc2, p3_after_x_esc).
+key esc
+wait frames 3
+expect fact ui.tab == player
+expect fact tool.mode == off
+# A right click on the map with the info panel open: the grid, nothing armed (p1_d_after_right).
+key b
+wait frames 5
+click_px 833 330
+wait frames 5
+rclick_px 400 400
+wait frames 3
+expect fact tool.mode == off
+expect fact ui.tab == construction
+# A right click on the info panel itself: the same (p3_panel_right).
+click_px 833 330
+wait frames 5
+rclick_px 900 400
+wait frames 3
+expect fact tool.mode == off
+expect fact ui.tab == construction
+# Cancel-X, then a right click on the map: the house is put away, the grid stays
+# (p5_after_x_right).
+click_px 833 330
+wait frames 5
+click_px 1000 742
+wait frames 3
+expect fact tool.mode == build
+rclick_px 400 400
+wait frames 3
+expect fact tool.mode == off
+expect fact ui.tab == construction
+# The demolish mode, then a right click on the map: off, the grid stays (p3_demolish_right).
+click_px 996 736
+wait frames 3
+expect fact tool.mode == demolish
+rclick_px 400 400
+wait frames 3
+expect fact tool.mode == off
+expect fact ui.tab == construction
+# A right drag on the map is the window's pan, not a click: the armed house stays.
+click_px 833 330
+wait frames 5
+rdrag_px 400 400 480 440
+wait frames 3
+expect fact tool.mode == build
+# Back to the grid (cancel-X), the house put away (right click on the map), then a right click
+# on a grid cell with nothing armed: the menu closes (p5_right_on_cell).
+click_px 1000 742
+wait frames 3
+rclick_px 400 400
+wait frames 3
+expect fact tool.mode == off
+rclick_px 885 382
+wait frames 3
+expect fact ui.tab == player
+# Nothing is armed now: a map click on the tile construction_menu_arm.script builds on sends no
+# command (p5_after_x_right_left).
+click 1156 516
+wait frames 10
+expect outcome none
+# A held ESC acts once: from the info panel it goes back to the grid and no further (the repeats
+# neither close the menu nor, after that, quit the window).
+key b
+wait frames 5
+click_px 833 330
+wait frames 5
+key-held esc
+wait frames 3
+expect fact ui.tab == construction
+expect fact tool.mode == off
+key-held esc
+wait frames 3
+expect fact ui.tab == player
+expect fact tool.mode == off
+quit

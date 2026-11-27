@@ -2053,6 +2053,17 @@ unhashed mirror is added to `Rules`. `fields(Rules)` and its digest are unchange
 `World::extension_rules()` is a const view; TickContext copies the active flag.
 Tag 1 writes one byte, and flag off emits no entry. No base section version moves.
 
+**FISHER-1f (existing fields only).** With tag 1 enabled, job 45 may have
+`HarvestStep::Done`, no home, no expiry stamp and positive `HarvestState::wait`:
+it has released its worker slot and is waiting in place before Remove. An
+outside end starts the nominal 7,500-tick integer remainder; elapsed and surplus
+ticks consume it, including across native reload. At zero, ordinary expiry
+begins. An inside completion owes no end wait. Other jobs and flag off retain
+their existing invariants. This reuses the existing serialized step/wait/home/
+expiry fields; no enum value, field, extension payload or version is added.
+See [fisher.md §11](../re/fisher.md#11-closed-fisher-runtime-and-native-proof-fisher-1f-2026-11-16).
+
+
 **Registration.** `ExtensionContext` belongs to World (empty in SAVE-SECTIONS-1b;
 FISHER-1b adds its one-byte rules payload).
 Its ten ordered compile-time lists map `StateSection` to extension types. Each

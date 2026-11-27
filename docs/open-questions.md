@@ -873,12 +873,25 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Faithful default:** no look change while the budget holds.
 
 ## OQ-096: GPU-built chunks: the sprite atlas budget (new, T11 stage 0, C3)
-- **Status:** open, owner decides (a limit default)
+- **Status:** **decided by the owner 2026-11-17** (together with OQ-096b). Question asked: "Raise it
+  to 384 MiB, one mipmap level on both cards (my recommendation), against keeping 256 MiB with no
+  mips on the iGPU, or deciding later on a build." Owner's answer, verbatim: **"your
+  recommendation."** `GpuLimits::atlas_budget_mb` is **384 MiB on the integrated adapter** (was the
+  256 MiB proposed default), **512 MiB on the discrete adapter** (unchanged).
 - **Area:** render (GPU memory)
 - **What:** T11 keeps sprite frames resident on the GPU per scene (`docs/render/gpu-chunks.md` section 4). WebGPU reports no memory size, so the budget is a config value. Measured: every original scenario's frames for all three groups fit in 197 MiB (330 MiB estimated with enhanced water's smoothed copies); one chunk needs at most 7.8 MiB.
-- **Proposed default:** `GpuLimits::atlas_budget_mb` 512 on a discrete adapter, 256 on an integrated one, clamped to the device's texture array and buffer limits; above the budget the least recently used atlas layer is emptied, and a chunk whose frames cannot fit at all is built on the CPU and counted.
-- **Owner decides:** accept 512 / 256, or another rule (for example a share of the adapter's reported VRAM where a backend exposes it). Decide after the stage 2a owner check, when the measured resident MiB are in the perf README.
+- **Decided default:** `GpuLimits::atlas_budget_mb` 512 on a discrete adapter, **384** on an integrated one, clamped to the device's texture array and buffer limits; above the budget the least recently used atlas layer is emptied, and a chunk whose frames cannot fit at all is built on the CPU and counted.
 - **Faithful default:** no look-and-feel stake; the original keeps all sprites in system memory.
+
+## OQ-096b: The direct renderer's resident atlas: a mip level, and the iGPU budget's adjacent-group pair (RENDER-DIRECT-1a, 2026-11-17; DECIDED)
+- **Status:** **decided by the owner 2026-11-17**, together with OQ-096 (same question, same
+  answer, quoted there): one mip level on **both** the RTX 4090 and the integrated adapter, with
+  2 px padding; the integrated budget raised to 384 MiB (OQ-096) rather than kept at 256 MiB with
+  no mips.
+- **Area:** render (GPU memory), direct-rendering path (ADR 0007)
+- **What:** ADR 0007 keeps all three zoom groups' static+water atlases resident at once and draws the finer groups minified with mips (decisions 2, 3). Measured (`docs/render/atlas.md` §3-4, `bench_frame --atlas-report`, 519 scenes): at 2 px padding only one mip level is valid (a level *n* needs 2ⁿ px of padding or atlas neighbours bleed in; a full chain needs far more padding than any candidate measured), costing +25% over the base. The RTX 4090 (512 MiB) holds all three groups with one level at every candidate measured (worst: 360 MiB). At the original 256 MiB proposed default the iGPU did **not** hold the adjacent pair a zoom crosses for the worst scene found, `Scenes/0010SingleEndlos/02_1024_easy_128.sze` groups 0+1: 272 MiB at the cheapest candidate (2048 px page, 2 px padding, no mips), 16 MiB over; with one mip level, 340 MiB — **fits the 384 MiB decided default**, with 44 MiB headroom. All three groups together, one level: 360 MiB at worst, fitting the 4090's 512 MiB with 152 MiB headroom.
+- **Decided:** one mip level for the static+water atlas, on both adapters; the integrated budget raised to 384 MiB (OQ-096) rather than kept at 256 MiB with no mips, or decided later on a real build.
+- **Faithful default:** no look-and-feel stake for the budget; the mip level affects only the enhanced, non-original direct-rendering path's own zoom quality.
 
 ## OQ-100: Up to 8 players: how the world grows above 4 players (new, owner decision 2026-10-22, PLAN §0.6 / M4.1)
 - **Status:** **decided by the owner 2026-10-22** (all items: 1 as answered, 2-6 as recommended, 7 with a stricter floor of 99 %). Implementation: PLAN M4.1, spec `docs/sim/world-scaling.md`. The 99% floor is the later generator's rule. It is not the acceptance rule for the fixed-map ship starts (`fixed-map.md` §11, 2026-10-31).
@@ -1114,6 +1127,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   4. What does `HELPPLAYER` switch?
   5. Does the game choose the active profile from the registry value `HKCU\Software\Max-Design\Anno1503` `AKTPLAYER`? The first start wrote `"AKTPLAYER"="ANNOnymous"` to the prefix's `user.reg`, and the string sits next to the profile code's strings in `AnnoFrame.dll` and `1503Startup.exe` (`user-dat.md`); the reader is not traced.
 - **How to resolve:** move one slider at a time and diff the file. For the scale, trace the reader of the `VOLUME` chunk. For `AKTPLAYER`, trace the references to the string in `AnnoFrame.dll` (`tFrameStartupProfile`), or set it to a second profile's name in a run's prefix and see which profile the game opens.
+- **Update 2026-11-16 (UI-PANELS-PREP, D; `docs/re/ui-options-mainmenu.md` section 2.6; OQ-688, OQ-689):** item 2: the in-game music slider's handler `View.dll` 0x1007b9c0 calls 0x1007aa30(v), which passes 10 · v to the music object (`+0x64`(10 · v), then `+0x88`(10 · v, -2500), 0x1007aa52..0x1007aa77), so 0 .. -250 becomes 0 .. -2500, DirectSound hundredths of a dB (A); whether -2500 is silence and the speech slider's path (0x1007e313) are not traced. Items 1 and 4 stay open as before; OQ-688 and OQ-689 continue them for the options pages.
 
 ## OQ-112: `COMPPROFIL2` profile columns the hand-over does not use, and its doubled `SUSPEND` call (new, T18 2026-10-22)
 - **Status:** open
@@ -1213,7 +1227,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Question:**
   1. Is the figure number the unit id of the `SPIELER` record, and what is the city number?
   2. Are the area numbers two corners in tiles?
-  3. What does `[CAMARAPOS]` hold?
+  3. What does `[CAMARAPOS]` hold? **Answered (UI-MINIMAP-1 F4, 2026-11-16):** `CAMERA_MEMORY`'s slot: read into the script object `+0x64`/`+0x68` (AnnoScene `0x10016f13`..`0x10016f50`), written by `CAMERA_MEMORY` from the frame's camera (`0x10015a00`), applied by `CAMERA_RECALL` as frame command 3 (`0x10015a50`), saved at `0x100161da`; not a start camera.
   4. What does `STARTUP` contain?
 - **How to resolve:**
   - match `OBJECT_FIGUR` numbers against the unit ids in the same `.sze` (`tools/sze.py`);
@@ -1504,6 +1518,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **The question:** `VK` is *Verkauf* (sale) and `EK` *Einkauf* (purchase) by name, so the rebuild's `GoodsSetting::buy` (true for bit 0 = 1) names the `VK` list: is `buy` the wrong way round? What does `+4` hold (the price, as `docs/sim/state.md` calls it; P: 1–136 in the 42 entries with a value), and what do the trade routines do with `+4` and `+8`?
 - **What the rebuild does:** `trade_lists[0]`/`[1]` and `GoodsSetting::buy` as in `docs/sim/state.md` §4.7; the scenario lists are not loaded yet.
 - **How to resolve:** read the Kontor trade function that uses the lists (`0x100ac360` books trade sales and purchases, `population.md` §8) and the UI's labels for the two lists; then rename the field (same bit, no behaviour change) and map `[0]` to `price` or its real name.
+- **Update 2026-11-16 (UI-PANELS-PREP, D, View.dll; docs/re/ui-warehouse-trade.md section 0 item 3):** the city panel's "Sell goods" page (page id 0xa3d) sends and reads list 1 (the `VK` list at city +0xdc), the "Buy goods" page (0xa3e) list 0 (`EK`, +0x44). So `GoodsSetting::buy` (true for list 1) names the **sell** list: the naming question is answered by the UI code; renaming the sim field is a sim-lane decision. The entry field +4 is the amount (u16 tons) and +6 the price, from the 0x73 command record (same spec, section 0 item 4).
 
 ## OQ-156: When the warehouse capacity and the trade slot counts are recomputed from the markets (new, T25 2026-10-23; OQ-145)
 - **Status:** open, RE
@@ -2153,6 +2168,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Question:** Pixel rectangles and ACCESS of the Kontor/settlement buy and sell sliders (upper stock-limit / keep, lower price; `screens.json` `panels.kontor`).
 - **What we know:** click Kontor at (0.38, 0.47) opens the goods column (`f15_kontor`, `r2_hud_kontor`). `TOOLTIP:INFOSTADT_WAREN_EIN-VERKAUF` has 6 lines. Four clicks at (820, 870, 920, 970), y=680, did not change the panel (`f15_kontor_btn_*`). `VIEWINFOSTADTTAB` id 661 is 42 x 46.
 - **How to resolve:** sprite-sad `VIEWINFOSTADTTAB` frames on `f15_kontor`; click those centres; or a hover tooltip bind.
+- **Update 2026-11-16 (UI-PANELS-PREP, D + M-GOG; docs/re/ui-warehouse-trade.md section 0 item 2):** the sliders are on the city panel's third and fourth tabs ("Sell goods" 0xa3d, "Buy goods" 0xa3e), not on its first page; the four clicks at y=680 hit the first page's "Deny building material" toggle (on in `f15_kontor_btn_b`, off in `btn_c`). Where the sliders are is answered; their pixel rectangles still need a capture (OQ-650).
 
 ## OQ-548: Help page on a placed building (UI.1.F1)
 - **Status:** open.
@@ -2951,6 +2967,8 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **D/P:** figure142 is FISCHER kind4, created by `AnnoWelt.dll 0x1009a36b` with table `0x100cb4d8`; its route45 is the worker route `0x100c4340`, not whaler `0x100c72a8`. Special creation `0x10067e60` uses the first rotated entrance vector; search `0x10038ad0` selects island cell mode3 with figure layer2. Cell builder `0x10090560`–`0x100906df` and goal-mask arm `0x1009226b`–`0x100922df` admit four-corner integer mean below32, with equality refused. Movement `0x10038730`–`0x10038a85` keeps the segment Y and sets vertical velocity0. The addressed call order, initialization constants and data identities are in [fisher.md §3](re/fisher.md#3-figure142-actual-route45-target-and-return).
 - **U:** exact cross-host reproduction of the original x87 shore-offset/route-segment continuation, including a chosen rounding/serialization contract and original-runtime evidence for stranded or malformed entrance recovery. The local no-path result is known; it does not establish an unconditional no-sea spawn refusal or authorize relocation. Main's land-worker cells and sailing-ship motion must not silently substitute for the specialized fisher path. This packet adds no state/identity change or engine adaptation.
 
+- **2026-11-16, FISHER-RE-3 (NARROWED):** [fisher.md §10](re/fisher.md#10-all-entrances-on-land-fisher-re-3-2026-11-16) proves that AnnoGame `0x10008ea0` coast placement does not require an open entrance. For figure 142 outside an all-closed home, goal keys do not override layer-2 code-7 admission (`0x10006aab`–`0x10006ab3`); failed home kind 4 takes null fallback (`0x1005e280`) without raw credit, then releases the worker. The inside-footprint bypass remains. This narrows the stranded rule, not x87 motion, original temporary-worker save survival or HE frame parity. The capture candidate is Tutorial/02Trade01, type 810 at (242,217), rotation 1, entrance means 32/48; live HE and enabled viewer capture remain NOT_RUN.
+
 ## OQ-604: Transitive world-draw closure on the fisher's creation-to-release path (FISHER-RE-1a, 2026-11-13; OPEN)
 - **D:** eligible Farm dispatch `AnnoWelt.dll 0x1006ee06` consumes one world+0xb4 draw, discards the result and then selects figure-list element(0,0). Failed worker creation still follows that draw. The fisher launch `0x10067e60`–`0x10067f61`, resource-search start `0x10059210`–`0x10059398`, search setup `0x10038ad0`–`0x10038cc5`, mode3 cell/goal bodies, route arrival `0x1005c260`, movement `0x10038730` and return credit `0x10057bd0` contain no direct world draw. Shared tile-query/cut/return behavior is cited rather than re-decoded; [fisher.md's ledger](re/fisher.md#draw-ledger) identifies the body scopes.
 - **U:** the complete selected manager/attach, type-animation `+0x64`, search/conversion, event and persistence callback closure, continuing the distinction in OQ-578/594 for this different figure class. Absence of a direct draw is not a zero transitive total. Resolve the actual selected callees before calling full fisher reference vectors complete; do not borrow whaler projectile/target draws or invent a random fish/species choice. No original-runtime draw capture was run in this documents-only packet.
@@ -3016,6 +3034,7 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Question:** what a click on the already-selected tab does; where Esc from the construction menu returns to; whether the "?" tab has a key; which sub-panel the player tab opens on a click (the shots show the start panel and the list); the player list's background; the per-player crest index; how the diplomacy cluster and the list rows are drawn.
 - **What we know:** the start state shows the player tab selected with the player overview (`hud_idle_running`: SPIELER_BILANZ_BK 1128 at (779, 301), sub-tab VIEWINFOPIELERTAB 1185 selected); the bust tab and key D show the player list (`r2_tab_military`, `r2_player_menu`: sub-tab 1187 selected, scroll arrows 1007/1143, list rows DIPLISTE_UNTERGRUND 1137/1139 differing per row, DIPACTIONS_* matching only half their pixels, background not identified among the 245-wide fenster.tex panels: best mean abs 22 per channel); "?" shows the info panel (`r2_tab_help`: STADT_BILANZ_BK 677, VIEWINFOSTADTTAB 662..675, AUSBAUSTOP 678; the settlement emblem at about (965, 245) not found in fenster.tex); the gears tab and key O show the main menu (`r2_options`: OPTION_BACKGROUND 1475, OPTION_TABS 1477..1484, statistics 1580, help 1488, balance 1486, exit 1492). The crest is GRPLAYERSCHILDER 1403 + 4 on both player shots (one player). The rebuild: a click on the selected tab changes nothing, except the bust from the overview, which opens the list (shot `r2_player_menu`); a second bust click (on the list) is open; Esc from construction returns to the panel shown before; the bust tab opens the list; no "?" key; the list background, rows, diplomacy cluster and the emblem are not drawn; the crest is drawn as 1407 for every player. No GOG code was read for the tab handling.
 - **How to resolve:** read View.dll's tab gadget handlers (MAINTAB, the four ids 8..15) and the player panel's sub-tab switch; GOG captures: a second click on each tab, Esc from construction, the player tab after its list.
+- **Code read (UI-TABS-1, 2026-11-16; docs/re/ui.md 5.4):** a main-tab click shows its view with the sub-tab that view showed last (View.dll `0x10034ab0` -> `0x100335d0`; the views are persistent, `0x100194c0`); a click on the selected tab re-shows the same. The rule "the bust from the overview opens the list" does not hold: `r2_tab_military` was taken after key D had selected the list (`actions.jsonl` of run `d91-20261030-112532`: O, Esc, D, Esc, "?", Esc, bust). Esc from the construction grid gives the overview (AnnoFrame `0x1000bd43`, View `0x100333e3`; with a selection the "?" view, OQ-643). No "?" key in the key switch (`0x1000bfc4`). The rebuild follows the code since UI-TABS-1; the list's background, the crest index, the rows and the diplomacy cluster stay open here.
 
 ## OQ-622: Which city's stock the status bar shows (UI-WINDOW-1 fix round R2, 2026-11-14; OPEN)
 - **Question:** the original's rule for the status bar's materials and residents: which point counts as "the view's centre", when the counters update, and what they show over open sea and over an island with only another player's city (or several cities of one player on one island).
@@ -3040,3 +3059,530 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **QUESTION / options:** (1) implement the missing script-object contract in a separately sized packet, then retain the normal-session canary (recommended for its requested claim); (2) explicitly authorize a script-free component canary with a narrower claim, while leaving normal-session acceptance open. Supporting or suppressing these definitions is outside the state-free fish derivation. No cost in state numbers is inferred; sizing requires the script owner to inventory the definitions and their uses.
 - **Evidence:** [fisher.md §6](re/fisher.md#6-runtime-fish-fill-and-the-real-map-boundary-fisher-re-2-2026-11-15), ignored `cache/fisher-re-2/preflight-01.log`; no original script bytes committed.
 - **2026-11-15, FISHER-1d / owner option 1:** the owner chose script-object inventory and a sized SCRIPT-OBJECTS-1 proposal, retaining normal-session acceptance. [fisher.md §8](re/fisher.md#8-script-object-inventory-and-proposed-next-packet-2026-11-15) inventories both OBJECT_STADT definitions (operands 4/18) and their only KILLED uses. Numeric namespace and KILLED lifetime remain unread. The same script also needs five PLAYER queries and 11 currently unsupported action names, so object bindings alone cannot unblock the unchanged session. No script suppression or narrower gameplay canary was substituted. Runtime fish fill is implemented behind the existing flag; the normal-session question remains open.
+
+- **2026-11-15, SO-1a / owner option 1a, review pending:** [script-objects.md](re/script-objects.md) traces AnnoScene `0x10023642`–`0x100236c5`, `0x10011898`–`0x100118dd`, and AnnoWelt `0x100a3820` / `0x100863e0`. The operand is a packed low-word pair (low byte island registry index, high byte city slot); city KILLED reads that slot live and tests null, without a binding/death latch. Absent city on an existing island is true even on the first query. A null island is unguarded in the original; SO-1b needs an explicit safe disposition. Other script-language and normal-canary dependencies remain open; no engine implementation is included.
+
+## OQ-626: ESC and the right click in the construction menu's placement and demolish modes (UI-PLACE-1, 2026-11-15; RESOLVED by the owner 2026-11-15)
+- **Question:** should the rebuild's ESC and right click leave the placement or demolish mode back to the grid, as the original's do, and how does a right click coexist with the right-button pan?
+- **What we know:** GOG Wine runner (docs/re/ui.md 2.6, UI-PLACE-1): ESC in placement or demolish mode returns to the grid with nothing armed and the menu open (`p1_c_after_esc`, `p2_esc1`, `p2_demolish_esc`); a second ESC closes the menu (`p2_esc2`); a right click on the map in placement returns to the grid with nothing armed (`p1_d_after_right`). The rebuild's ESC closes the whole menu at once (`Viewer::construction_close`), and a right click does nothing to the mode (the right button pans the map here). The 2026-10-30 pass 1 note "ESC after a cell closed the construction menu" (section 7) conflicts with `p2_esc1`; that pass ran paused (key P), which may be the difference - not checked. Changing ESC changes several viewer wiring scripts that press it after arming (`construction_menu_arm`, `ui_menu_close_disarms`, `ui_dynamic_draw_check`).
+- **How to resolve:** the owner decides whether to follow the original (proposed packet UI-PLACE-2: ESC one step back, a right click without a drag leaves the mode, a right drag still pans); capture whether the original's right drag pans at all.
+- **Resolution (owner, 2026-11-15, "Yes, like original"; UI-PLACE-2):** three more Wine-runner passes (docs/re/ui.md 2.6, second table) gave the full rule, now in `Viewer::construction_step_back` and `construction_right_click`: ESC goes one step back (info panel → grid with nothing armed; demolish → off, an armed building stays; grid → the menu closes to the player overview, the armed building with it); a right click on the map or the info panel puts away everything the pointer carries and shows the grid; a right click on the grid closes the menu. A held ESC acts once. A right drag stays this window's pan (press and release within 4 px is a click). The pass 1 conflict is explained: the right click / ESC rule depends on the state, and B never toggles the menu (`p5_b_again`).
+- **Still open as evidence (not blocking):** a right click on chrome other than a grid cell, or on the grid with a building armed or the demolish mode on (the rebuild closes the menu, inferred from ESC and `p5_right_on_cell`); whether the original's right drag pans (the runner's `drag` is left-button only).
+
+## OQ-627: The armed building's frame on the grid, and a map click while demolishing with a building armed (UI-PLACE-1, 2026-11-15; OPEN)
+- **Question:** which graphic draws the orange frame the original's grid puts on the armed building's cell after the cancel-X, and what a map click does while the demolish mode is on with a building still armed under it.
+- **What we know:** after the cancel-X the original's grid shows the armed cell (pioneer house, (0, 0)) in an orange frame, kept while the pickaxe toggles (`p1_a_after_x`, `p1_b_demolish`, `p1_b_after_x`, `p1_b_pickaxe_third`); ESC and the right click remove it with the armed building (`p1_c_after_esc`, `p1_d_after_right`, `p5_after_x_right`) - except a right click while demolishing over the armed house, after which the frame stayed though the ghost was gone (`p4_armed_demolish_right`; so the frame may mark the last chosen cell rather than the armed one). The rebuild draws no frame. With the house armed and the pickaxe on, the original shows the house's ghost and the yellow demolish outline together (`p1_b_demolish`); which of the two a map click does was not captured. The rebuild demolishes then (`DevInput`'s demolish mode decides a release).
+- **How to resolve:** find the frame sprite (`baumenu`/`fenster` gadget states next to the cell images) and measure it on `p1_a_after_x`; capture one map click on a placed building in that state.
+
+## OQ-628: The minimap's exact pixels at 1024 x 768 (UI-MINIMAP-1, 2026-11-16; OPEN)
+- **Question:** where exactly do the parchment quad, the map quad, the 1 px box lines and the marker squares land on screen?
+- **What we know:** `AnnoFrame` gives the rectangle (767, 10)-(1023, 138) after its +2/-2 shift (`0x10031a40`..`0x10031ef1`); the parchment strip uses x0..x0 + W' and y0..y0 + H' with W' = x1 - x0 + 2 and H' = y1 - y0 + 2 (`0x10031ef1`..`0x10031f1d`) and v up to 133/256. A best fit of `KARTE_NORDUNG` 52 on GOG `hud_idle_running` puts a 256 x 128 copy at (768, 11) (median abs RGB diff 20 in the chrome hole, islands on top; docs/re/ui.md 2.9). Direct3D 7 rasterisation rules, texture filtering and the 16-bit frame are not modelled; the map quad's UV table per turn (`0x100317e0`) was not transcribed.
+- **How to resolve:** transcribe the four parchment and map vertices (`0x10031f1d`..`0x10032bb9`, `0x100317e0`..`0x100319f8`) and compare a CPU rendering with the GOG shots and the HE frames (step A.2/B).
+- **Rebuild default (UI-MINIMAP-1 B1, 2026-11-16):** both quads (parchment and map) land at the rectangle + (1, 1) (`data/ui/minimap.txt` `quad_offset`): the parchment against the GOG shot `hud_idle_running` gives a median of 17 sum-RGB at that offset against 34-41 one pixel off, 13 after the RGB565 reduction, 18 % of the pixels exact; the tutorial's islands against the History Edition capture (`ui_5.mp4`, frame 60 s) fit best at that offset too (overlap 0.61 against 0.52-0.60 at the neighbours). The parchment's 133 rows go to 128 by a linear filter between two rows (nearest gave a median of 20, linear 13 after the reduction); not exact, so the original's filter and texel offsets are still unknown. The map samples the nearest cell at each pixel's integer coordinates. Colours as the RGB565 frame shows them: red and blue `(v * 255 + 15) / 31`, green as 6 bits `(g << 1) | (g >> 4)` - the GOG shot's land colours (58, 40, 0), (107, 105, 0), (115, 113, 0), (132, 121, 0) are palette entries (9, 2), (9, 3), (9, 4), (9, 6) exactly that way; odd 6-bit greens in the shot (107, 109, 0) are not palette entries (filtering?). The view box is not shifted; its pixels are `floor(x + 0.5)` with both ends drawn.
+- **Fix round (UI-MINIMAP-1 F2, 2026-11-16):** the History Edition's parchment is the code's strip, (767, 10) 258 x 130 bilinear (mean 8.3 sum-RGB on its lossless capture against 12.3 for the GOG fit), and its colours are 8-bit (palette channels floor(c * (k + 16) / 31), exact). Data: `parchment_quad 0 0 2 2`, `colour_depth 32` (defaults); the GOG fit stays selectable (`parchment_quad 1 1 1 1`, `colour_depth 16`). Still open: the map quad (the code fills it from the parchment's positions, so probably 258 x 130 too; kept at B1's geometry), the GOG D3D7 frame's own rasterisation, the box and marker pixels.
+
+## OQ-629: Which player each minimap colour belongs to, and what hides a settlement (UI-MINIMAP-1, 2026-11-16; MOSTLY RESOLVED by B2)
+- **Question:** which player index (settlement vfunc `+0xc8`(2)) uses which of the ten minimap base colours, and what the mask from `+0xc8`(0) means.
+- **What we know:** `AnnoWelt` `0x100a3ed7`..`0x100a40bb` writes owner × 16 + shade into the 256 x 256 image; owner = 9 (olive b2ab00) unless the tile's settlement exists and its `+0xc8`(0) mask has bit (1 << world vfunc `+0x114`) set, or world vfunc `+0x74`(5) returns 0 (mask all ones). The palette (`AnnoFrame` `0x100338c0`) is e6aa10, 00bbff, ff4400, fff40a, 00e6ce, ff9e00, 15e015, f839ff, fafafa, b2ab00. Whether these match the in-game player colours and whether the mask means "discovered by" or "allied with" was not read.
+- **How to resolve:** read settlement `+0xc8` (vtable from `0x100863e0`'s result) for arguments 0 and 2, and world `+0x74` case 5 (`0x100a3380`); check one own and one AI settlement on a capture.
+- **Rebuild default (UI-MINIMAP-1 B1, 2026-11-16):** no owners yet: every cell is `no_owner` (9, olive). The History Edition capture of the tutorial `02Trade01` shows a teal patch at the player's settlement next to the view box, so the owner colours are live there; B2 brings them from the sim (the tile owner per island, the city's player) and needs this question for the colour index.
+- **Read (UI-MINIMAP-1 B2, 2026-11-16; docs/re/ui.md 2.9 Q2):** the settlement is the island's city (vtable `0x100c2f40`); `+0xc8`(0) (`0x1002df80`) is city `+0x61c`, the players that know the city (the sim's `City::player_mask`); `+0xc8`(2) is the city's colour byte `+0x16`, written from the owner's colour slot (player property 11 = `+0xa8`, `0x10020b2f`) when the city gets its owner (`0x1002f42b`) and on every recolour (`0x1001cdf0` → city property 0xb, `0x1002f5e7`), 0xff stored as 0. So the palette index is the owner's colour slot (HEAD +0x4C; 1-8 humans and computers, 0 natives and pirates), the mask means "known to the viewer", the viewer is `[world + 0xf8]` (the local player, AnnoFrame `SetPlayer`), and world property 5 (`[world + 0x69cd] == 0`, `0x100a33ce`) is 1 after a world reset (`0x100a3a93`), so the mask applies by default. Checked on the History Edition tutorial capture: the human (player 2, HEAD colour 4 = 00e6ce) is teal; the computer's (colour 2) and the natives' (colour 0) cities, whose masks lack player 2, are olive.
+- **Still open:** (a) property 11 for a player whose `+0xa8` is 0xff returns 0xff (stored 0) or `+0xa9` depending on the first dword of an uninitialised stack buffer at `0x1002f424`; the game start (`0x10029100`) assigns every such player but player 31 and removed human slots, so it matters only for those. (b) The rebuild's viewer for a scenario `--play` without a ship start is the first human slot (the original's local player at a new single-player game), not the app's developer player 1 (player 1 is the natives in the tutorial); a session that commands another player sees that player's HUD but the human's minimap. Since UI-MINIMAP-1 C a `--play` with `--player` (FISHER-VIEW-1) shows that player's minimap, the runner's local player; without it the first human slot stays the default. (c) The sim keeps HEAD +0x4C in `Player::default_colour` (named `+0xa9`) and never sets `colour_slot` (`+0xa8`): OQ-639.
+
+## OQ-630: Which figures the minimap marks, and when other players' are shown (UI-MINIMAP-1, 2026-11-16; OPEN)
+- **Question:** what the player's figure lists 1 and 0 hold (ships? land units?), what flag 0x10 (white) and flags & 0xc0 = 0x80 (skipped) mean, and when world query `+0x48`(0xe) returns GUID {a2414664-1a42-4f88-aae8-c0b27db939f5}, which turns on red markers for the other players' list-1 figures.
+- **What we know:** `AnnoFrame` `0x10002e48`..`0x100030cd`; colours own list 1 = 0x00d000, own list 0 = 0x00ff00, flag 0x10 = 0xffffff, others = 0xff3000. The owner's HE capture shows a green ship dot.
+- **How to resolve:** read the player vfunc `+0x84` list builder and the figure vfunc `+0x8c`(0) flags; find the implementer of world `+0x48` for 0xe; capture own ships, own soldiers, a selected ship and an AI ship in view.
+- **Read (UI-MINIMAP-1 B2, 2026-11-16; docs/re/ui.md 2.9 Q5):** list 0 holds the player's `SOLDAT` units (`0x1001ddfd`), list 1 its `SCHIFF` units (`0x1001e06f`), list 2 its cities; so own ships are dark green 0x00d000 (the GOG shot `construction_open` shows a 3 x 3 outline in (0, 210, 0)) and own soldiers green. The world query is world `GetProperty` 0xe = the 16 bytes at world `+0x6938` (`0x100aef99`); their writer was not read. The History Edition's ship marker reads brighter (peak (82, 240, 86) in the 0.75-scale video, chroma-subsampled), between 0x00d000 and 0x00ff00: not decisive. Still open: flag 0x10 (white), flags & 0xc0 = 0x80, vfunc `+0x8c`(4), and who writes world `+0x6938`.
+- **Rebuild default (B2):** the snapshot's ships (`PlaySnapshot::map_figures`, list 1) as own (0x00d000) markers; the rebuild's figures carry no flag word (flags 0, never white) and the sim has no soldier figures (no list-0 markers); the others' ships stay hidden (`marker_others 0`), the rebuild's world has no id.
+
+## OQ-631: Which mouse button jumps the camera on the minimap (UI-MINIMAP-1, 2026-11-16; OPEN)
+- **Question:** the frame's mouse handlers (`AnnoFrame` `0x10006c60`, `0x1000b5c2`) jump the camera on events 1 and 3 and do nothing on a move while captured; which of 1 and 3 is the left and which the right button?
+- **What we know:** events 1 and 3 share one branch (`0x10006d19`, `0x1000b971`), 2 and 4 another (release), 0 is the move. The usual order (1 left down, 2 left up, 3 right down, 4 right up) is not proven: the caller that turns window messages into these numbers was not read. If it holds, both buttons jump the camera and a drag does not scroll.
+- **How to resolve:** read the caller of frame vfunc `+0x60` (the message pump), or capture a right click on the minimap (owner recipe step 3).
+- **Rebuild default (UI-MINIMAP-1 C, 2026-11-16):** the left button jumps the camera (on the press; no drag). The right button is left as it was: the window's own handling (a right drag pans, a right click with the construction menu open is its step back), so a right press on the minimap does not jump the camera. If the owner's History Edition recording shows a right click jumping it too, the right press joins the left one in `Viewer::minimap_press`.
+
+## OQ-632: Which way the minimap's chevrons turn the view (UI-MINIMAP-1, 2026-11-16; OPEN)
+- **Question:** commands 0xc ((turn - 1) & 3, left chevron, id 48) and 0xd ((turn + 1) & 3, right chevron, id 50) change the camera's turn byte; which is clockwise on screen, and which `KARTE_NORDUNG` frame (52 + turn) shows for each turn?
+- **What we know:** `AnnoFrame` `0x100077ad`, `0x10007819`; the minimap angle is 45° - 90°·turn (`0x10030860`..`0x1003087f`). The rebuild has no camera turn yet (UI-INFO-2's view-turn term is 0).
+- **How to resolve:** capture each chevron once (owner recipe step 2) and match the parchment's "N".
+- **Rebuild (UI-MINIMAP-1 C, 2026-11-16):** both chevrons are taken by the UI and do nothing (`Viewer::minimap_press`, hud.txt `compass_w` / `compass_e`); the view turn, the parchment frame 52 + turn, the rotated map quad and the turned click inverse are the render lane's packet VIEW-TURN-1.
+
+## OQ-633: The minimap alert sprite and its time unit (UI-MINIMAP-1, 2026-11-16; OPEN)
+- **Question:** which file and frames are graphic group 0x655 (16 frames, `AnnoFrame` `0x1000a36c`..`0x1000a3b5`), and in which unit the alert's time t grows (drawn while t mod 1000 < 500, removed at t ≥ 50 000).
+- **What we know:** `MINIMAP_ALERT x y` → `AnnoScene` `0x10015980` → frame vfunc `+0xb4` `0x10002ac0` → `0x10033bb0`; t grows by the draw call's argument (`0x10003471`..`0x10003488`). Milliseconds would give a 1 s blink and a 50 s life; not proven.
+- **How to resolve:** trace the argument of `0x100030f0` from its callers (`0x10005beb`, `0x1000b317`) and the gfx object behind `+0x6c`(0x655); a scenario with `MINIMAP_ALERT` on the Wine runner.
+- **Rebuild (UI-MINIMAP-1 B2, 2026-11-16):** not drawn. The snapshot carries no alerts: the scenario script's `MINIMAP_ALERT` action is not an event the sim or the play runner publishes. Needed: the script action as a published event (position, time of the call), the sprite group 0x655 and the time unit. The slot count is data (`alerts 8`). The route line (Q5) is not drawn either: the snapshot has no selection and no trade routes.
+
+## OQ-634: When the world refreshes the minimap image (UI-MINIMAP-1, 2026-11-16; OPEN)
+- **Question:** who calls `tKarteObject::Update` (`AnnoWelt` `0x100a3cc0`, flags bit 1 owners, bit 2 heights, a world rectangle) and when (game start, a new settlement, terrain change, discovery)?
+- **What we know:** the frame rebuilds its texture only when the object's counter changes (`AnnoFrame` `0x100030f9`..`0x10003125`). The callers of slot `+0xc` of vtable `0x100ccd40` were not searched.
+- **How to resolve:** find calls through world `+0x120` / `+0xbc` followed by vfunc `+0xc` in `AnnoWelt` and `AnnoGame`.
+- **Rebuild default (UI-MINIMAP-1 B1, 2026-11-16):** the image is built once when the window opens (1.0 ms for the 512 x 512 tutorial world) from the scene's island heights; nothing refreshes it yet (B2 with the owners).
+- **Rebuild default (UI-MINIMAP-1 B2, 2026-11-16):** the owners come with every snapshot (`PlaySnapshot::territory`, 35 µs per turn on the sim thread for the tutorial's 39,168 island tiles); the runner republishes the same object while the content is equal and raises its `version` when it differs; the window rebuilds the image only when the version changes (1.1-2.9 ms), as the original's frame does on its counter. The heights are still read once at load (no terrain change is published).
+
+## OQ-635: Which world axis is the minimap's u (UI-MINIMAP-1 B1, 2026-11-16; OPEN)
+- **Question:** the original's transform (`AnnoFrame` `0x100306f0`) names map axes u, v; the world image is row = world y, its rows mirrored left-right on upload (`0x10031000`..`0x10031418`), the map quad's UV table per turn (`0x100317e0`..`0x100319f8`) was not transcribed, and the wrapper passes the camera "negated and swapped" (`0x10002990`). Which world axis is u?
+- **What we know:** the rebuild takes u = world y, v = world x, so the minimap shows the world in the main view's handedness (`docs/render/iso.md`: tile x runs left-down, y right-down). On the History Edition capture of the tutorial `02Trade01` (`ui_5.mp4`) both islands lie where this choice draws them, shapes included (inner lagoon of the lower island): land overlap 0.62 as drawn, 0.00 for the mirror choice (u = world x), which reflects the map across the diamond's vertical axis. So the choice holds for turn 0; the code path that makes it so is unread.
+- **How to resolve:** transcribe the UV table at `0x100317e0` and the row mirror together (VIEW-TURN-1 needs it for turns 1-3).
+- **More evidence (UI-MINIMAP-1 B2, 2026-11-16):** the markers pass a figure's vfunc `+0x5c` as the transform's first coordinate and `+0x54` as the second (`AnnoFrame` `0x10002e85`..`0x10002eae`); `+0x54` is the figure's x and `+0x5c` its other horizontal coordinate (docs/re/transport.md, docs/re/ship-founding.md). So u = world y in the original's own call, as the rebuild chose; the ship marker lands where the History Edition draws it (within 1 px). The UV table is still untranscribed (turns 1-3).
+
+## OQ-636: The minimap shade's float rounding and the height it reads (UI-MINIMAP-1 B1, 2026-11-16; OPEN)
+- **Question:** the original sums `height * 0.04` (a float table filled at `AnnoWelt` `0x1007c760`, via island `+0x98` = `0x10084c20`) in float, divides by `sx * sy * 4` and by 0.04 again and truncates (`0x100a3e38`..`0x100a3e6e`). Where does that differ from the integer sum the rebuild divides once? And is the byte island `+0x98` returns the island's HEIGHT grid byte at that tile (the rebuild's reading)?
+- **What we know:** the rebuild computes `trunc(sum of HEIGHT bytes / (sx * sy * 4))` with sx, sy as float32 (exact for the original's sizes); a mean just below a multiple of 16 minus 8 could fall one shade lower in the original through the float round trip. The tutorial's island outlines agree with the History Edition capture.
+- **How to resolve:** read the table fill at `0x1007c760` and `0x10084c20`; compare the image byte for byte with a dump of the original's `tKarteObject` (+0x14) from a running game.
+
+## OQ-637: Which point the minimap's view box is centred on (UI-MINIMAP-1 B1, 2026-11-16; OPEN)
+- **Question:** the box is built around the minimap centre c, which follows the frame's camera values `+0x1608`/`+0x1610` (`AnnoFrame` `0x10002990`, `0x10033ad0`), shifted by `332.8 / (W / 2)` map units on both axes (`0x1002ffd3`; 5.2 tiles whatever W). Is that camera value the point under the view's centre, so the shift centres the box on something else, or is it a point the shift moves to the view's centre?
+- **What we know:** the rebuild passes the world point at sea level under the view's centre (its whole window, the chrome included) and applies the shift as read; at the tutorial's 512-tile world that moves the box about 1.3 px down on the minimap. The rebuild's continuous zoom scales the box by the closest level's tile width over the shown one (2^level at the three original levels) - an extension, not the original.
+- **How to resolve:** read how `+0x1608`/`+0x1610` are set from the 3D camera (`0x10003be0`), or measure the box against the view on History Edition frames at each zoom level (owner recipe step 4).
+- **Size checked (UI-MINIMAP-1 B2, 2026-11-16):** the box's size agrees with the History Edition at levels 0 and 1 (docs/re/ui.md 2.9 B2: 5.85 x 5.43 and 11.7 x 10.9 px by the formula, 5.3 x 6.7 and 12.0 x 10.7 px measured at 0.75 scale). Its position could not be compared: the rebuild's start camera and the History Edition's view in the capture differ (OQ-638).
+
+## OQ-638: The original's start zoom level and start camera (UI-MINIMAP-1 B2, 2026-11-16; OPEN)
+- **Question:** at which main-view zoom level (frame view object `+0x4c`, vfuncs `+0x10`/`+0x14`, commands 8, 9, 0xa at `AnnoFrame` `0x1000755d`, `0x10007692`, `0x10007710`) and at which camera point does a game start?
+- **What we know:** the rebuild's `--play` window opens at zoom group 2 (`main.cpp` `args->group.value_or(2)`, a viewer default, not read from the original), so its minimap box starts at level 2 (23.4 x 21.7 px for a 512-tile world), four times the History Edition's level-0 box in the owner's recording `ui_5.mp4` (which also shows level 1 at 30-33 s). The recording does not show the first frame of the game, so HE's start level is not known either. The rebuild's start camera puts the tutorial's box about 6 px below the human's settlement; HE's box sat on it in the frames measured (the owner had moved the view).
+- **How to resolve:** read the view object's constructor and the game start's camera set-up in AnnoFrame (`0x10003be0` and its callers), or record the first frames of a new game in GOG and HE.
+- **Fix round (UI-MINIMAP-1 F4, 2026-11-16):** not `[CAMARAPOS]` (OQ-122: `CAMERA_MEMORY`'s slot, `0,0` everywhere). The recording `ui_5.mp4` does show the start (first game frame about 28.5 s): zoom level 1 and the view box on the player's ship marker (within about 2 minimap pixels). The rebuild opens `--play` at group 2 at the scene's centre (2.1 times farther out). The reader of the original's start camera is still unread.
+
+## OQ-639: The sim's player colour fields (UI-MINIMAP-1 B2, 2026-11-16; OPEN, sim lane)
+- **Question:** the original keeps the colour slot at player `+0xa8` (property 11, HEAD +0x4C, the game start's assignment) and a default at `+0xa9` (property 60, constructor 0xff; docs/re/annoscene.md 6, 9). The sim's `Player` stores HEAD +0x4C in `default_colour` (commented as `+0xa9`) and leaves `colour_slot` (`+0xa8`) at the constructor's 0 on every load path; no game-start assignment is modelled. Which field should hold HEAD +0x4C, and should the game start's pool (`0x10029100`) be part of the load?
+- **What we know:** the app assigns start colours itself (`assets::unit::start_colours`) for the units and, since UI-MINIMAP-1 B2, for the minimap's owner colours (`play.hpp` `minimap_owner_rule`), falling back to `default_colour`; nothing in the sim reads either field for a rule.
+- **How to resolve:** the sim lane checks `0x1001d2b9`..`0x1001d430` (HEAD +0x4C → `+0xa8`) against `src/sim/src/scenario.cpp` and decides whether the start assignment belongs in `World::create`.
+
+## OQ-640: What a press on the minimap outside its diamond does, and where the magnifier's buttons sit (UI-MINIMAP-1 C, 2026-11-16; OPEN)
+- **Question:** (a) the frame's mouse handler gives a press on the minimap rectangle that misses the diamond to the map's input (`AnnoFrame` `0x10006db7` → `0x10002340`, capture state 1; the same at `0x1000ba31`). Does the View.dll chrome in front (the `WELTKARTE` frame, x >= 779) take such a press first, and what does a press on the parchment left of the chrome (x 765..778 at 1024, outside the diamond) do in the original: select, scroll, nothing? (b) The six `KARTEPLUS` gadgets' rectangles come from a position lookup (View.dll vfunc `+0x24`, `0x100343fd`) that was not read; the magnifier's + and - were measured instead.
+- **What we know:** (a) inside the diamond the press jumps the camera (docs/re/ui.md 2.9 Q6). (b) Sprite-SAD on GOG `hud_idle_running`: id 40 at (796, 135) mean 1.81, id 42 at (826, 153) mean 1.19, 19 x 21; ids 44, 46, 48, 50 as section 2.2 measured them.
+- **How to resolve:** (a) read whether View.dll's root gadget consumes presses on drawn chrome before the frame's handler (`0x10006c60` caller), or click the parchment outside the diamond in the owner's History Edition recording; (b) read the lookup behind vfunc `+0x24` for gadget ids 1..6.
+- **Rebuild default (UI-MINIMAP-1 C):** the packet's choice (orchestrator, 2026-11-16): every press in `minimap_click_area` (the drawn raster and the wrapper rectangle together, x 765..1023, y 10..139 at 1024; x 765..1024 since the fix round's 258-pixel parchment quad) is the UI's, so none reaches the map; only one inside the diamond moves the camera. The buttons use the measured rectangles in `data/ui/hud.txt`.
+- **Fix round (UI-MINIMAP-1 F1, 2026-11-16):** the scroll's rolled left end (`fenster.tex` id 3 at (745, 49), `hud.txt` `minimap_curl`) is drawn now and its rectangle is chrome under the same choice: a press there does nothing.
+
+## OQ-650: Pixel layout of the Sell / Buy pages (tabs 2 and 3) (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open.
+- **Area:** UI / original.
+- **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
+- **Question:** Rectangles of the two sliders (track, knob travel), the four plus/minus buttons, the
+  two value texts, the goods grid and its cells, the Add and Delete buttons, the stock bar; text
+  format of the values; how an empty list and an empty cell look.
+- **What we know:** sizes, textures, tooltips and handlers (D, section 2.4); the background
+  `VKEK_HINTERGRUND` should sit at (781, 301) on GOG 1024 x 768 (A). No capture of either edition.
+- **How to resolve:** HE recording R2 and R3 (packet), then sprite-sad of each texture on the frames.
+
+## OQ-651: Where View.dll's gadget positions come from (UI-PANELS-PREP, 2026-11-16; PARTLY ANSWERED 2026-11-17)
+- **Status:** partly answered (UI-TABS-1 stage B, `docs/re/ui.md` section 5.5): for the player overview and the
+  city status page, each page's layout function (vtable slot 29; city `0x1006c4c0`, overview `0x1007fcf0`)
+  places the children with gadget slot `+0x5c` `(x, y)` at (page x + 35, page y + C - 244) from float
+  constants. Open: whether every other View.dll page uses the same layout slot (check per panel packet).
+- **Area:** UI / original code.
+- **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
+- **Question:** The View.dll builders set size, image, tooltip and handler but no position; where is
+  each child's (x, y) defined (slot index + a table, a parent layout pass, the gadget base class)?
+- **What we know:** AnnoFrame builders set positions with gadget slot +0x5c `(x, y)` (0x1001ef47);
+  View.dll builders add children with slot +0x24 `(gadget, index)` only; page backgrounds are placed by
+  `[obj+8](x, y)` in the draw slot (0x1006c7cb, 0x1002130b). Slot +0x24 is 0x10019830 in the city
+  panel's and the options view's vtables: it grows the child vector at `+0x5e0` to the index and
+  stores the gadget pointer (0x10019883..0x1001991d), so the index selects no rectangle table
+  (orchestrator's review 2026-11-16; re-read for this note).
+- **How to resolve:** read the gadget base class (0x100188c0 constructor, 0x10018b90 message
+  handler) and the gadgets' own default sizes and positions; search the panel's later layout or
+  draw pass for writes to the children's position fields.
+
+## OQ-652: Confirm that the HE videos show the plain set at 0.75 (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open, narrowed 2026-11-16 by the orchestrator's review (related: OQ-535).
+- **Area:** UI / HE.
+- **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
+- **Question:** Do the owner's HE videos show the city panel in the plain graphic set at UI scale
+  1.0, recorded at 0.75 (2542 x 1351 client in a 1920 x 1080 video)?
+- **What we know:** 0.75 x the plain-set positions fits the tab, plank and deny button within 2 px
+  (section 3); this prep's first reading ("the `8` set at 1920 x 1080") compared the 0.78125-size
+  `8` set with the unscaled plain set and is retracted. `he-ui-scale.md`: UI scale 1.0 at 1200
+  lines or fewer, chrome at x = W - 245.
+- **How to resolve:** match the 0.75-scaled plain set on `ui_5.mp4` 405 s and `HE_UI_1.mp4` 91 s
+  (expected: at least as good as the `8` set's means); or measure a lossless recording made at the
+  common set-up (`docs/orchestration/tasks/ui-panels-he-recording.md`), where the plain set must
+  match 1:1.
+
+## OQ-653: Add-goods flow and the goods-to-list link (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open.
+- **Area:** UI / original code.
+- **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
+- **Question:** After "Add goods" and a choice in the chooser (id 0xa0c), which command is sent (0x73
+  at the free index, or 0x8a append through sender slot +0xd0)? Does the UI send 0x7c mode 0/1, or does
+  the 0x73 handler set the goods record itself? What goods value does Delete send?
+- **What we know:** 0x10025790 opens the chooser for the first empty cell; the chooser callback region
+  0x10023480..0x1002369b calls helper 0x100249f0 and city slot +0x78; no slot +0xd0 call was found in
+  0x10021290..0x10025a00.
+- **How to resolve:** read 0x100249f0 and the chooser's selection handler; read AnnoWelt's 0x73
+  apply for the goods-setting write.
+
+## OQ-654: Slider units and the property 0x1a2 (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open.
+- **Area:** UI / original code.
+- **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
+- **Question:** What does property 0x1a2 (0 on the amount slider, 2 on the price slider) select
+  (step, display as percent, gold)? Is the price slider's 0..150 a gold price per ton or a percentage
+  of the base price (`Preis` in `BGruppen.dat`)? What do the two "00" texts print?
+- **What we know:** ranges (0, 100.0) and (0, 150.0) (D); the amount range is later set from the
+  capacity (D, likely); corpus prices 1..136 (`annowelt.md`).
+- **How to resolve:** read the slider class (factory 0xb17 → 0x1000fa60) property handler and the
+  formatter 0x10025110; HE recording R2 with narration of the numbers shown.
+
+## OQ-655: The city-status rows' sources and period (UI-PANELS-PREP, 2026-11-16; PARTLY ANSWERED 2026-11-17)
+- **Status:** partly answered (UI-TABS-1 stage B, `docs/re/ui.md` section 5.5, update `0x1006c0f0`): sources
+  and signs are read. Row 1 = city statistic 0, row 2 = 1 + 2, row 3 = 4, row 4 = 5, row 5 = 2, row 6 =
+  row 1 - row 2 - row 3 + row 4 - row 5 (statistic 2, military, enters twice), row 7 = city `+0x64` ->
+  `+0x20` / 256. Open: the period of the statistics (the sim's decay, `SimConfig::stat_decay_den`, is
+  the rebuild's reading, not checked against a recording), the labels of statistics 4 and 5 (OQ-693)
+  and the knowledge source (OQ-695).
+- **Area:** UI / simulation.
+- **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
+- **Question:** Which city field (and which period: per minute, running, last cycle) does each of rows
+  1-5 show, where does row 7 "knowledge" come from, and with which sign does each of rows 3-5
+  (purchase costs, sales revenue, military costs) enter the balance (row 6)?
+- **What we know:** `CityAccounts` holds the five money statistics (ECON-BOOK-1); HE 6:45 shows
+  91 / 248 for a 120-inhabitant town (one sample). Both captures (GOG `f15_kontor`, HE `ui_5` 6:45)
+  show row 6 = row 1 - row 2 with rows 3-5 at 0; the guess "- row 3 + row 4 - row 5" from the
+  row names is not evidence. The page update functions (slots +0x9c / +0xa0 of
+  vtable 0x100a0a70: 0x1006bfe0, 0x1006c070) were not read.
+- **How to resolve:** read those update functions (the balance sum among them); HE recording R1
+  holding the panel open for 60 s, ideally in a city with trade and military costs (rows 3-5 not 0).
+
+## OQ-656: What "Deny building material" does to the sim (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open.
+- **Area:** simulation.
+- **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
+- **Question:** The toggle sends 0x7c mode 9 for goods 0x29 (tools) only, value 0x7fff00. Does the
+  original's mode-9 handler (AnnoWelt 0x1002dbd0) apply it to the other build goods, and how does a
+  reserve of 32 767 t on tools stop house upgrades (population-live.md section 5)?
+- **What we know:** D section 2.3; the sim stores `build_goods[g - first].setting` for the one goods.
+- **How to resolve:** read 0x1002dbd0's mode-9 branch and the upgrade check; HE recording R4.
+
+## OQ-657: The crest at the right end of the city name plank (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open.
+- **Area:** UI / original.
+- **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
+- **Question:** Which texture is drawn in the 42 x 55 gadget at the plank's right (a house picture on
+  `f15_kontor`), and what selects its frame (settlement stage, player)?
+- **What we know:** the builder sets `GRNATIVESCHILDER` first (0x1006aa06); no frame of
+  `GRNATIVESCHILDER`, `GRPLAYERSCHILDER` or `KLPLAYERSCHILDER` matches (best 43.9).
+- **How to resolve:** read the city panel's update for property 0x198 on that gadget; search other
+  `ToolGfx` files for the picture.
+
+## OQ-658: Foreign Kontor panel and ship trade at a Kontor (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open.
+- **Area:** UI / original, simulation.
+- **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
+- **Question:** When is panel 0xa36 shown instead of the city panel? Which of its grids is
+  "Purchase" and which "Sales"; what do the cells and the price texts show? Which ship pages (0xa51,
+  0xa53-0xa58, 0xa6e) appear at an own vs a foreign Kontor, and which commands do they send?
+- **What we know:** inventory in section 2.7 (D).
+- **How to resolve:** HE recording R5 (another player's or a trader's Kontor, ship docked there);
+  read the right-panel host's selection switch around 0x1003a7d6.
+
+## OQ-659: Which goods each stock page lists (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open.
+- **Area:** UI / data.
+- **Spec:** [`docs/re/ui-warehouse-trade.md`](re/ui-warehouse-trade.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-warehouse-1.md`.
+- **Question:** The membership and order of goods on tabs 4-7 and in the chooser (raw 21, building 4,
+  consumer 14, weapons 8 icon frames) and the goods → icon frame map (`LinkTO_GetWarenGfxid`,
+  0x10088220 / 0x100881c0).
+- **What we know:** D section 2.6; the raw page special-cases `STEINE`, `MAMORSTEIN`.
+- **How to resolve:** read 0x10088220 and the category builders' loops; HE recording R3 (each tab
+  held 3 s with a known stock).
+
+## OQ-660: Ship view host and selection (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original
+- **Spec:** [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-ships-diplomacy-1.md`.
+- **Question:** Under which main tab does the ship view sit, and how is a ship selected and deselected? Does a single click select; does a ship-list row click select and centre (key **J** "jump to active object", C p4); what does Esc or a deselect do; does selecting a ship switch away from the bust or construction tab?
+- **What we know:** HE shows the ship view under the "?" main tab (highlighted while a ship is selected) and selects by a drag rectangle (M-HE `HE_UI_1.mp4` 00:46.0-00:57); clicking empty sea leaves the "?" tab with `MAX_PIC` (00:50.0). The GOG runner never reached a selected ship (`ui.md` section 1).
+- **How to resolve:** the ships packet's HE recording (`ui-ships-diplomacy-1.md` section R, steps on selection and lists); read the GOG view switch from the `[view+0x9c]` callers.
+
+## OQ-661: Exact rectangles and disabled drawing of the ship and player views (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original
+- **Spec:** [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-ships-diplomacy-1.md`.
+- **Question:** Where exactly does every element of the ship tabs and the player tabs sit; where does the disabled (hatched) overlay come from; where are the cannon slot and the second separator?
+- **What we know:** HE positions are measured ±2 px on a compressed 0.75 video; GOG has no ship-view shot. The builders set only sizes (gadget slot `+0x50`); the position source is unread (OQ-651). Disabled treaty buttons and action tabs draw at rms 27-42 against their frames on GOG and hatched on HE (section 3). The player info's seventh row is not open: the code builds seven text gadgets (`View.dll` 0x100800c7, section 2.10).
+- **How to resolve:** lossless HE frames at the common recording set-up (`docs/orchestration/tasks/ui-panels-he-recording.md`) of every ship tab and the player tabs; read the position source (OQ-651) and the disabled draw.
+
+## OQ-662: Load/unload tab layout (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original
+- **Spec:** [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-ships-diplomacy-1.md`.
+- **Question:** Where do the hold slots, arrows, amount balls, category tabs and the city goods list of the ship's load/unload tab sit, and which goods does a category show (`ship-cargo.md` OQ-CARGO-5)?
+- **What we know:** Never captured (greyed before a Kontor in HE; unreached in GOG). Builder D `0x10059d00..0x1005a5c0`; the click chain and the amount buttons 1/5/10/50 are in `ship-cargo.md` sections 2 and 11.
+- **How to resolve:** the ships packet's HE recording (`ui-ships-diplomacy-1.md` section R, load/unload step); sizes from the builder.
+
+## OQ-663: Behaviour verbs (stop, sink, flag, patrol, boarding) (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code, simulation
+- **Spec:** [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-ships-diplomacy-1.md`.
+- **Question:** What records stand behind net client `+0x88` (MP `0x75`) and `+0xc0` (MP `0x84`) for stop, sink, flag and patrol; what does the orange X mark (state off, or not allowed); how does the patrol-point pick mode work; how is a boarding target chosen; which world functions apply them?
+- **What we know:** Behaviour tab builder D `0x100603b1..0x10060878`; patrol mode `0x1005fc00` with `[view+0x634]`; boarding handler `0x10060960`; sink = client `+0x88(0xb, ...)` (section 4, commands table). The rebuild has none of these commands.
+- **How to resolve:** read the AnnoFrame packers of `0x75` and `0x84` and the AnnoWelt functions they reach; the ships packet's HE recording (`ui-ships-diplomacy-1.md` section R, behaviour step).
+
+## OQ-664: Treaty button state and the partner list (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code, simulation
+- **Spec:** [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-ships-diplomacy-1.md`.
+- **Question:** How is a treaty button's state (property `0x1cc`, 0..3) computed from both players' `Player::relations` and pending offers; when are the buttons disabled (natives, pirates, an undiscovered "Unknown" partner, no trade agreement for an alliance, C p19); what rule and colours does the mood bar `STIMMUNG_PLAYER` (44 frames) follow; why does the HE list show five cultures although C p18 says natives are not listed; in which order are partners listed?
+- **What we know:** The three handlers read `0x1cc`, send and write the new state (state machine of section 2.11, D `0x10084a80`, `0x10084b20`, `0x10084bc0`); the send path ends in AnnoWelt `0x100ad280` (single player) or MP type `0x6f`. The partner rows choose player or culture shields by kind (D `0x10085100..0x100854ad`). The rebuild keeps `Player::relations` but no offer record.
+- **How to resolve:** read where the diplomacy page writes `0x1cc` on update and the world side of `0x100ad280`; the ships packet's HE recording (`ui-ships-diplomacy-1.md` section R, diplomacy-after-contact step).
+
+## OQ-665: Tribute (demand and pay) (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code, simulation
+- **Spec:** [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-ships-diplomacy-1.md`.
+- **Question:** What is the field layout of the `0x70` record, what are the slider ranges, which world function applies it, how is a goods tribute fulfilled by unloading (C p20), and how does the AI answer?
+- **What we know:** `0x70` is 9 bytes, packed by AnnoFrame `0x1005dc40` from net client slot `+0xac` (two call shapes, `0x10080d84`, `0x10080dc7`); this prep read it only in outline (goods, bit-packed mode/flags, u32 amount, two player ids). The pay action `0x10084080` reads the partner's demand (partner slot `+0xa4`) and sends it back with flag 1.
+- **How to resolve:** read `0x1005dc40` field by field and the world function behind slot `+0xac`; the ships packet's HE recording (`ui-ships-diplomacy-1.md` section R, tribute step).
+
+## OQ-666: Diplomatic messages (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code; sim or net (lane decision)
+- **Spec:** [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-ships-diplomacy-1.md`.
+- **Question:** What does a `0x7b` message (five canned messages) do to the receiving player or AI, how is it displayed, and does it belong to the sim (AI mood) or only to the net layer?
+- **What we know:** Send `0x100830d0`: net client slot `+0xb0`(0x14, message index, partner, local) → MP `0x1005e460` type `0x7b` (D); texts `DIPLOMATIEMESSAGES` 0-4 (line 5 "Reserved"); icons `MELDUNGS_ICONS` 12 frames 27 × 28; `state.md` lists `0x7b` with chat.
+- **How to resolve:** read the receiving side of `0x7b` in AnnoFrame and AnnoWelt; the ships packet's HE recording (`ui-ships-diplomacy-1.md` section R, messages step, say whether the player answers).
+
+## OQ-667: Selling and buying ships (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code, simulation
+- **Spec:** [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-ships-diplomacy-1.md`.
+- **Question:** What are the price slider's range and step and the `SCHIFFVERKAUFFLIP` states; who buys an offered ship and when (AI, Venetians); where does the purchase list come from, at which price; what are the two commands' records?
+- **What we know:** Sell tab D `0x10064451..0x10064cb8`; offer / withdraw `0x10064f20`, `0x10064f30..0x10065040`; buy `0x10061770`; the HE purchase list was empty (`HE_UI_1.mp4` 01:01.0).
+- **How to resolve:** read those handlers to their packers and the world side; the ships packet's HE recording (`ui-ships-diplomacy-1.md` section R, sell/buy step).
+
+## OQ-668: Ship list rows and ship names (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original, simulation
+- **Spec:** [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-ships-diplomacy-1.md`.
+- **Question:** Which row text colour (HE: red), what do `SCHIFF_ROUTE` frame 0 (32 × 28) and frame 1 (34 × 25) mean (on route / idle), is the `SCHIFF_LISTENENERGY` height the health share, in which order and which ships (own only?) are listed, what does a row click do, and how does a new ship get its name from `SHIPS` (107 lines)?
+- **What we know:** List builder D `0x10061f21..0x100622d8`; GOG `f15_ship_list`, HE `HE_UI_1.mp4` 01:44.5 and 02:18; the bar meaning is S. The rebuild's `Figure` has no name.
+- **How to resolve:** read the row update and the ship-naming code; the ships packet's HE recording (`ui-ships-diplomacy-1.md` section R, lists step).
+
+## OQ-669: Trade-route editor mapping (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code, simulation
+- **Spec:** [`docs/re/ui-ships-diplomacy.md`](re/ui-ships-diplomacy.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-ships-diplomacy-1.md`.
+- **Question:** What do "Load I / Load II / Unload I / Unload II" (`SCHIFF_ROUTETAB`) select; how do the route-point list, the four goods slots, `VERLADEPFEILE`, the amounts and `ROUTEAKTIV` map onto the original route nodes and onto `FreightStop` / `FreightAction` / `FreightControl`; where is a route point set (a map click on a warehouse?); what are the 16 text gadgets (`cmp esi, 0x10` at `0x100286ea`)?
+- **What we know:** Gadgets and handlers in section 2.8; route node fields `+0xc` goods, `+0xe` direction, `+0xa` tons (`ship-trade-routes.md`).
+- **How to resolve:** read the route handlers (`0x10028bf0`, `0x10028c90`, `0x1002ac90` / `0x1002aca0`, `0x1002acb0`) to the node writes; the ships packet's HE recording (`ui-ships-diplomacy-1.md` section R, trade-route step).
+
+## OQ-670: Does the player statistics screen pause the game, and how? (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code, simulation
+- **Spec:** [`docs/re/ui-statistics.md`](re/ui-statistics.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-statistics-1.md`.
+- **Question:** Does game time stop while `tFrameSpielerStatistik` is open; by which mechanism (a frame flag or a speed command); does multiplayer differ?
+- **What we know:** HE: no game time seemed to pass while it was open (boat timing, the wood line ends at the opening; `ui_5-report.md` section 2): **inferred**, not decoded. GOG: no pause call found in the frame.
+- **How to resolve:** read the frame's slot 19 `0x10013cb0` message table (cases at `0x10013d38`) and the frame manager; the statistics packet's HE recording (`ui-statistics-1.md`, pause-check step).
+
+## OQ-671: Which key closes the player statistics screen (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code
+- **Spec:** [`docs/re/ui-statistics.md`](re/ui-statistics.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-statistics-1.md`.
+- **Question:** Which key closes it: ESC, `-` again, or any key?
+- **What we know:** HE 8:50.45 closed with the mouse resting still (no click). The exit button `0x10014dd0` → `0x100147f0` sets the close flag `+8`.
+- **How to resolve:** read the frame's key path (slot 19, the frame manager); the statistics packet's HE recording (`ui-statistics-1.md`, first step).
+
+## OQ-672: Supply series colours and meaning (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code
+- **Spec:** [`docs/re/ui-statistics.md`](re/ui-statistics.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-statistics-1.md`.
+- **Question:** Which supply row (production or demand) is drawn in which colour, how is `0xfaf023` interpreted, and did the HE change it?
+- **What we know:** Code: two polylines per goods, colours `0xfaf023` and `0xfffff0` (`0x100147a6`, `0x100147c7`); HE shows one yellow dashed line at about 1 t on food and beer; the stocks colour table reads as `0x00BBGGRR`.
+- **How to resolve:** read the supply draw `0x10014410` in full; the statistics packet's HE recording (`ui-statistics-1.md`, overview step).
+
+## OQ-673: Axis label placement and font of the statistics charts (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code
+- **Spec:** [`docs/re/ui-statistics.md`](re/ui-statistics.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-statistics-1.md`.
+- **Question:** By which rule are the axis labels placed (count from the width? a per-label offset?), and in which `.zei` font?
+- **What we know:** Labels 20…280 (step 20) and 30…270 (step 40) do not sit on the 10-s ticks: "20" is centred on the 10-s tick, "280" on 280 s (HE `s_006`, `s_130`).
+- **How to resolve:** read the chart class `tDrawLayerDiagramm` in `AnnoDisplay.dll` (not opened yet).
+
+## OQ-674: Goods icon hover and tooltips on the statistics screen (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code
+- **Spec:** [`docs/re/ui-statistics.md`](re/ui-statistics.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-statistics-1.md`.
+- **Question:** Which states (idle, hover, pressed, disabled) do the goods icons' three texture messages (`0x198`, `0x199`, `0x19c`) select, and where does the tooltip's goods name come from (the game's name lookup kind `0x20`, or the `WARE_*` sections)?
+- **What we know:** The icons get a tooltip and the three messages (D `0x10012cbb..0x10012d41`); the lookup kind `0x20` gives the internal name; `ui_5` has no hover.
+- **How to resolve:** read the icon builder's messages and the tooltip binding; the statistics packet's HE recording (`ui-statistics-1.md`, hover step).
+
+## OQ-675: Statistics memory slots: meaning (ownership decided by the owner) (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open for the meaning; **ownership decided by the owner 2026-11-16**
+- **Area:** simulation / save format
+- **Spec:** [`docs/re/ui-statistics.md`](re/ui-statistics.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-statistics-1.md`.
+- **Question:** Are `SEL_0`…`SEL_7` (player `+0x370`, `+0x37c`) exactly the statistics memories, and what does the record's flag u16 hold besides 0 and 1?
+- **What we know:** Player slots `+0x130..+0x13c` (`0x10018870..0x10018900`) hold a selected city entry and a vector of `{u16 goods, u16 flag}` per memory; saved as `SEL_%d` (writer `0x1001ec62`); the match with the memories is likely from shape and slot count. **Owner decision 2026-11-16:** the memories are saved game state, as in the original: player state, saved and loaded with the game, synchronised in multiplayer (the rebuild keeps them in the hashed sim state, changed by `SetStatsGoods` / `SetStatsCity`, section 5.2).
+- **How to resolve:** read the `SEL_n` loader in AnnoWelt and survey the corpus values with the `tools/` readers.
+
+## OQ-676: Productivity inputs of the statistics sampler (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** simulation / original code
+- **Spec:** [`docs/re/ui-statistics.md`](re/ui-statistics.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-statistics-1.md`.
+- **Question:** What do the rate getters `+0x94` of the farm (`0x1006ef30`), the mine (`0x1006e2f0`) and the base class (`0x10025410`) return; what is the second argument of type `+0xc8(j, 0)`; which building list does city slot `+0x60` → `+0x24(1)` enumerate; what are the unwritten block byte `+0x0001` and the bytes `+0x30bc` / `+0x30bd`?
+- **What we know:** The workshop getter `0x100684e0` = `u16 +0x20 · 60 >> 10`; the productivity rule is in section 3.1; the productivity rows themselves are fully written (row 59 at `[city + 0x28de + g]`, g = 0..69, `0x1002d615..0x1002d64b`).
+- **How to resolve:** read the three getters and city slot `+0x60` in AnnoWelt.
+
+## OQ-677: Rating screen data (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code, simulation
+- **Spec:** [`docs/re/ui-statistics.md`](re/ui-statistics.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-statistics-1.md`.
+- **Question:** Which player and world values and which score formulas fill the rows of `tFrameGameStatistik` (`STATISTIK` lines 3-16: villages, subjects, satisfaction, capital, islands, soldiers defeated/died, ships sunk/lost, enemies, bonus, summary); what is the player record `STATIS` (12 bytes); why does the HE's `HISCORE_UNTERGRUND` differ?
+- **What we know:** Init `0x1000f5e0`; `ui.md` section 9.5 has the screen; out of the statistics packet's first steps.
+- **How to resolve:** a read of its own: the init, the row fill and the `STATIS` writer.
+
+## OQ-678: HE presentation of full-screen frames (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / HE
+- **Spec:** [`docs/re/ui-statistics.md`](re/ui-statistics.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-statistics-1.md`.
+- **Question:** Where does the grape-vine pillarbox art come from; does a full-screen frame follow `UI_SCALE` or always fit the window height; how is the stretched frame filtered?
+- **What we know:** HE draws the 1024 × 768 frame stretched to the client height (×1.3229 in the `ui_5` capture) and centred, with the border left and right (M-HE); `he-ui-scale.md` covers the in-game UI, not full frames.
+- **How to resolve:** find the border art in the HE files; a recording at the common set-up (client 1024 × 768, where the frame is 1:1) and one at another window size or UI scale.
+
+## OQ-679: City list semantics on the statistics screen (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code
+- **Spec:** [`docs/re/ui-statistics.md`](re/ui-statistics.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-statistics-1.md`.
+- **Question:** Confirm that "Alle anzeigen" shows the average over the player's cities and the y-max quirk; is the red text the selected entry; in which order are cities listed (player list or (island, city)); how does the list scroll with more than about 25 cities?
+- **What we know:** Average: D `0x10014350..0x10014371`; y max: `if (ymax < cap_i) ymax += cap_i` over the cities, then divided by their count (`0x1001402e..0x10014091`); the first entry is drawn red on HE.
+- **How to resolve:** the statistics packet's HE recording (`ui-statistics-1.md`, city-list steps) with two or more cities.
+
+## OQ-680: HE main-menu "Optionen" and the GOG multiplayer switch (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / HE, original code
+- **Spec:** [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-options-mainmenu-1.md`.
+- **Question:** Does the HE main menu's "Optionen" open the original resolution list (section 2.4) or the HE settings overlay, and where is the interface-scale slider `he-ui-scale.md` mentions? Which gadget does the GOG `MULTIPLAYER` value show or hide, and does the HE bypass the check?
+- **What we know:** Not in any HE capture; `he-ui-scale.md` speaks of "the main-menu slider" (A: probably HE settings). GOG reads `MULTIPLAYER` at 0x10028860 and writes `value != 0` to a gadget attribute (0x1002887f..0x100288b1); the HE shows "Mehrspieler" without a registry change.
+- **How to resolve:** the options packet's HE recording (`ui-options-mainmenu-1.md`, R1 main-menu options step); trace 0x10028860's caller in GOG.
+
+## OQ-681: GOG main-menu Options: DETAILS and the supported modes (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code
+- **Spec:** [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-options-mainmenu-1.md`.
+- **Question:** What does `DETAILS` change in play, and which stored value means "on"? Are the modes other than 1024 × 768 disabled on the Wine desktop by the support check?
+- **What we know:** The init 0x10025b60 flips the flag once through 0x10025c10, which ties the stored value to the shown line; the support check is display `+0x90`(w, h); seven clicks did not move the tick on the Wine runner (`f16_opt_click_0..6`).
+- **How to resolve:** trace the `DETAILS` reader (AnnoFrame 0x1000cc9f); a Windows-harness check (owner's call).
+
+## OQ-682: In-game load and save details (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code, app
+- **Spec:** [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-options-mainmenu-1.md`.
+- **Question:** In which order are saves listed; what default name is in the plank; how long may a name be; when does `MESSAGEBOX` 17 show; does delete ask first; does saving over a selected row reuse its GUID file?
+- **What we know:** The list is the profile's `*.sav` files (`FindFirstFileA`, 0x1007c617), each named by its `ALIASNAME` (0x1007c44d..0x1007c4c8); `CompareFileTime` is used near 0x1007c54a; a new save gets a GUID name (0x1007c209, 0x1007c286); `MESSAGEBOX` 17 "Overwriting of savegames in Singleplayer only!" exists (P).
+- **How to resolve:** read around 0x1007c54a and the save and delete handlers (refs 0x1007ced3, 0x1007ce33); the options packet's HE recording (`ui-options-mainmenu-1.md`, R2 load and save steps).
+
+## OQ-683: The options exit door (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code
+- **Spec:** [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-options-mainmenu-1.md`.
+- **Question:** What does frame call `+0x58`(0x10) do (a confirm box, `MESSAGEBOX` 21-23?); does it return to the main menu or end the program; does it write `Lastgame.sav`?
+- **What we know:** Handler 0x1007a370 calls frame `+0x58`(0x10) (D). Overlaps `ui.md` OQ-549.
+- **How to resolve:** read the frame's `+0x58` handler for 0x10; the options packet's HE recording (`ui-options-mainmenu-1.md`, R2 door steps).
+
+## OQ-684: The pause box texts and which screens pause (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code
+- **Spec:** [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-options-mainmenu-1.md`.
+- **Question:** Which texts does the pause box use (`MESSAGEBOX` 24 / 16 assumed); does the gear tab or any options page pause the game; does P work while a menu page is open?
+- **What we know:** The box is `MESSAGEBOX_BK` at (222, 191) with one `MESSAGEBOX_BUTTONS` button at (286, 500) (`ui.md` 9.4, `f15_pause`); texts 24 "Pause!" and 16 "Continue game" exist (P); the statistics screen appears to pause, inferred from `ui_5` only (OQ-670).
+- **How to resolve:** read the pause box builder; the options packet's HE recording (`ui-options-mainmenu-1.md`, R2 pause step).
+
+## OQ-685: Choose game: folders, headings and icons (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code, data
+- **Spec:** [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-options-mainmenu-1.md`.
+- **Question:** Which `Scenes` folder feeds which heading (`SZ_AUSWAHL` 4..9); in which order are rows listed; what do the `SCENARIOB_*` icons mean and in which column; why does GOG list five endless rows (Citizen..Marquess) under heading 8 while `0011SingleEndlosAddon` holds three `.sze`?
+- **What we know:** Folder names are not in `AnnoFrame.dll`; paths are formatted from `%s\Scenes\%s`, `%s\scenes\%s%s`, `SaveGame` (0x10095424..0x10095454, P); icons `SCENARIOB_SPIELDAUER`, `_SCHWIERIGKEIT`, `_SPIELERMIN` / `MAX` (P); the GOG list on `x_choose_game` (M-GOG).
+- **How to resolve:** read the list fill of the choose-game frame (0x1002e2c0 and its helpers); the options packet's HE recording (`ui-options-mainmenu-1.md`, R1 new-game step).
+
+## OQ-686: The HE settings overlay: items and where values persist (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / HE
+- **Spec:** [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-options-mainmenu-1.md`.
+- **Question:** Which items does the HE "Spieleinstellungen" overlay have (is there a sound page); do `MUSIC_VOLUME` / `SOUND_VOLUME` in the HE registry replace or mirror the profile `VOLUME`; what does "Bestätigen" apply; where do the values persist?
+- **What we know:** One frame (`overlay_146.6.png`): sections Grafikeinstellungen and Steuerung, a greyed "Bestätigen", X, a keyboard icon; code in `AnnoDisplay.dll` (`onlineoverlay::Anno2GameSettings`, `CSettings*`, `SoundSettingsList`, P strings); `he-ui-scale.md` section 1: the registry is not the whole story.
+- **How to resolve:** the options packet's HE recording (`ui-options-mainmenu-1.md`, R1 options step); read `OnGameSettingsApplied`'s writes.
+
+## OQ-687: How the HE fits the 800 x 600 menus to the window (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / HE
+- **Spec:** [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-options-mainmenu-1.md`.
+- **Question:** What exact scale and filter does the HE use for the menus; where does it place `RESOLUTION_BORDER_*` at other aspect ratios; is a wide but short client ever width-limited?
+- **What we know:** 2.25 screen px per menu px at a 1351-px client (A, `he_29.5.png` at 1.69 video px); border textures HE `Startup.tex` ids 21..24 (P). The owner declined the HE fit as the rebuild's default (options packet, decision 2: a design study instead), so this is reference only.
+- **How to resolve:** the options packet's HE recording (`ui-options-mainmenu-1.md`, optional R1 sizes step); read `OnResize(false)` in HE `AnnoDisplay.dll`.
+
+## OQ-688: Music and speech volume, song names (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / original code, formats
+- **Spec:** [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-options-mainmenu-1.md`.
+- **Question:** Which `VOLUME` i32 is music; does a slider move write `user.dat` at once; how are song names made from file names?
+- **What we know:** Overlaps main's OQ-111 items 1 and 2. The music slider's path is 0x1007b9c0 → 0x1007aa30, which passes 10 · v (0 .. -2500, DirectSound hundredths of a dB, A); the speech path at 0x1007e313 is not traced; both sliders were seen to write at once (`user-dat.md`); the HE shows "Capturetrip" for `Music\normal\Capture-trip.WAV`.
+- **How to resolve:** trace 0x1007e313; move one slider at a time and diff `user.dat` (OQ-111).
+
+## OQ-689: The HE sixth options line and HELPPLAYER (UI-PANELS-PREP, 2026-11-16; OPEN)
+- **Status:** open
+- **Area:** UI / HE, formats
+- **Spec:** [`docs/re/ui-options-mainmenu.md`](re/ui-options-mainmenu.md) (section numbers in this entry are that spec's); draft packet `docs/orchestration/tasks/ui-options-mainmenu-1.md`.
+- **Question:** Is the HE's sixth `TOOLTIP:OPTION` / `OPTIONSUBS_TEXTE` line "Options" a hidden sixth page or the gears page's banner? Is profile `HELPPLAYER` the active-help toggle?
+- **What we know:** Only five sub-tabs are visible in HE (M-HE); `HELPPLAYER` matches the toggle by name only (A); the second half is main's OQ-111 item 4.
+- **How to resolve:** the options packet's HE recording (`ui-options-mainmenu-1.md`, R2 first steps: the gears overlay's banner, active help on and off with a `user.dat` diff).
+
+## OQ-641: Why the History Edition's bust showed the ship list after a ship's own tabs (UI-TABS-1, 2026-11-16; OPEN)
+- **Question:** in the owner's History Edition run `HE_UI_1.mp4` the player view showed sub-tab 0 (the overview) at 00:44.0-00:46.0 and was not shown again until the bust click at 01:44.25, which showed sub-tab 3 (the ship list, "Sanata"). In between the owner had used the ship view's sub-tabs under "?", among them its tab 5, the same ship list (00:59.9). What set the player view's column to 3?
+- **What we know:** the GOG code (View.dll) shows the player view again with its column's own selection (`0x10034ab0` -> `0x100335d0`(1) -> message 1 -> `0x1007e9c0` -> `0x1007f600`, which reads property `0x1b3` of the column `[view+0x5d4]+0xc`); only a click on that column (`0x1007f730`) or the HUD message 0x10 with param 4..7 (keys, `0x10033485` -> table `0x1007ea3c`) change it. No key was pressed in the recording as far as the frames show. GOG's own runner never showed the ship view (docs/re/ui.md 1). Possibilities: the ship list page is shared by both views and its activation updates the player column; the History Edition differs; an unseen key.
+- **Rebuild default (UI-TABS-1):** the GOG code's rule: a view shows the sub-tab it showed last, the bust from the overview stays on the overview.
+- **How to resolve:** read the ship view's tab 5 page activation (`0x10061f21..0x100622d8`) for a message to the player view, or record in the History Edition: start, ship view tab 5, bust; and start, bust, without the ship view.
+
+## OQ-642: What the "?" tab shows with nothing or something else selected, and whether its sub-tab is kept per city (UI-TABS-1, 2026-11-16; OPEN)
+- **Question:** the "?" main tab's view (`[hud+0x5e4][2]`, View.dll `0x100335d0` case 2, which also calls the view's vfunc `+0x8c`(-1)) shows the city view with eight sub-tabs on GOG `r2_tab_help` (taken after the runner clicked the Kontor), but only the castle background (`MAX_PIC`) in the History Edition with nothing selected (`HE_UI_1.mp4` 00:50.0, 02:22.7) and the ship view while a ship is selected (00:46.2). Which object decides, and does the city view keep its sub-tab across "?" visits and across cities?
+- **What we know:** the city view's activation re-shows its column's selection (message 1, `0x1006a439` -> `0x1006af30`), so one city view object keeps its sub-tab; whether the "?" host keeps one object per kind or per selection was not read.
+- **Rebuild default (UI-TABS-1):** "?" always shows the city view (UI-WINDOW-1 R2's panel), which keeps its sub-tab like the other views. Selection-dependent content is the warehouse / ship packets' (`ui-warehouse-1.md`, `ui-ships-diplomacy-1.md`).
+- **How to resolve:** read the "?" view's factory and its vfunc `+0x8c` / `[+0x5f8]` (`0x100191a0`), or capture GOG: "?" before any selection, after a Kontor click, after a second city.
+
+## OQ-643: Esc from the construction menu with something selected, and the switch's side messages (UI-TABS-1, 2026-11-16; OPEN)
+- **Question:** (a) Esc sends the HUD message 0x10 param 2 (AnnoFrame.dll `0x1000bd43`); with the construction tab showing and no info panel / demolish flag, View.dll `0x1003337c..0x100333a3` asks the selection holder `[hud+0x618]` (vfunc `+0xc8`, then `+0x28`) and sends param 3 (the "?" view) when something is selected, else param 4 (the player overview). The rebuild always gives the overview. (b) Every sub-tab switch first sends message 6 to sub-page 1 of the player view (`0x1007f62a`) and to sub-pages 2 and 3 of the city view (`0x1006af5e`, `0x1006af75`); its meaning is not read. (c) Lower-case key k sends the same param 2 as Esc (`0x1000c256`).
+- **Rebuild default (UI-TABS-1):** Esc on the construction grid gives the player view at sub-tab 0 (unchanged from UI-PLACE-2); message 6 and key k are not modelled.
+- **How to resolve:** read vfunc `+0xc8` / `+0x28` of the selection holder and the pages' handlers for message 6; capture GOG: select a house, open the construction menu, Esc.
+
+## OQ-644: The bodies' backgrounds of the sub-pages not yet built (UI-TABS-1, 2026-11-16; OPEN)
+- **Question:** which plate each sub-page draws under its content: the player view's city list, ship list and ships for purchase (GOG `f15_city_list`, `f15_ship_list`: not `SPIELER_BILANZ_BK`, 0.01 of its pixels exact), the city view's sub-tabs 1-7 (no shot), the options pages 1-4 (`OPTION_BACKGROUND` 18-36 % of its pixels exact on `f15_options_y360..y510`, the rest covered by the page).
+- **What we know:** the overview's `SPIELER_BILANZ_BK` (0.94 exact on `hud_idle_running`), the city view's `STADT_BILANZ_BK` and the options main page's icons are sub-tab 0's own (0.00-0.03 exact on the other pages); the crest `GRPLAYERSCHILDER` 1407 is the player view's on every page (1.00 on `f15_ship_list` and `f15_city_list`).
+- **Rebuild default (UI-TABS-1):** a placeholder page draws its view's column and crest and, in the options view, `OPTION_BACKGROUND`; nothing else (data/ui/hud.txt, `body` names the packet that fills it).
+- **How to resolve:** each page's builder (`ui-ships-diplomacy.md` 2.6-2.7, `ui-warehouse-trade.md`, `ui-options-mainmenu.md` 2.6) and its GOG shot.
+
+## OQ-690: Whether any static (Anlagen.dat) object is ever drawn in its owner's colour (RENDER-DIRECT-1a, 2026-11-17; OPEN)
+- **Question:** OQ-022 already confirms the COLORS record's `flag` 4 means `EffectsMulti`, a player-colour-variant palette kind, and names `Flagge01_01.PCX` (Anlagen.dat colour-table id 109) as a user of it. Today's code path never applies it to a placed object: `assets::building::to_rgba` (the static-frame decoder `iso.cpp`'s `SpriteCache::get` calls) has no colour parameter at all, and `assets::figure::player_coloured`/`recolour` are called only from `assets/src/unit.cpp` (live ships/soldiers), never from the static draw path. Does the *original* ever draw a static object (a flag, say) tinted by its owner's colour, or is `EffectsMulti` on `Flagge01_01.PCX` unused by placement (e.g. only reached through a UI icon, not a placed ANLAGEN object)? A decoder-level test (RENDER-DIRECT-1a's own `static_player_colour_eligibility`, `bench_frame/main.cpp`) found 40.6% of static frames have at least one pixel matching the green-dominance test `recolour` uses — but that test cannot distinguish ordinary green content (grass, trees, foliage) from a genuine player-colour marking, so it does not answer this question either way.
+- **What we know:** OQ-022's own kind=4/`Flagge01_01.PCX` finding (D: `AnnoGame.dll` `0x10004e60`); the static decode path's lack of a colour parameter (C: `iso.cpp:322`, `building.hpp`, `iso.hpp:276-277`).
+- **How to resolve:** check whether any `ANLAGEN` entry's `palette_ids` references colour table id 109 (or another `EffectsMulti`-kind table); if so, check whether the original ever renders that entry recoloured (Ghidra on the building-frame decoder/blitter in `AnnoDisplay.dll`, or a capture of a placed flag object across players in the original/History Edition).
+
+## OQ-691: Which city the "?" view's city status page shows (UI-TABS-1 stage B, 2026-11-17; OPEN)
+- **Question:** which city the city status page (the "?" view's sub-tab 0) shows in each state: after a click on an own Kontor or marketplace, after a click on a foreign one, with nothing selected, and after a main-tab press.
+- **What we know:** the page's update `0x1006c0f0` reads the city at `[page+0x634]`, which the message handler `0x1006c030` stores from a message object whose kind (slot `+0x14`) is `0x1a00` (slot `+0x18` gives the city); a click on the own Kontor (GOG `f15_kontor`) or marketplace (HE `ui_5.mp4` 6:41) opens it. HE with nothing selected shows only the castle background (OQ-642).
+- **Rebuild default (UI-TABS-1 B):** the page shows the status bar's city (docs/re/ui.md 5.2: the city on the island the view is centred on, else the player's first), because no Kontor click opens it yet; the fact `hud.counters.city` names it.
+- **How to resolve:** read who sends message `0x1a00` (the Kontor/market click path in View.dll and AnnoFrame.dll) and capture the page after clicks on two different own cities.
+
+## OQ-692: The balance rows' text placement rule, cut and refresh (UI-TABS-1 stage B, 2026-11-17; OPEN)
+- **Question:** why the text of a 195 x 15 text gadget (class `0xb1c`, alignment `0x1c6` = 1) starts 3 rows above the gadget, whether the gadget also cuts at its bottom and at its left edge, and how often the original refreshes the figures.
+- **What we know:** measured, not read: right edge on the gadget's right edge, top at gadget y - 3, the glyph rows above the gadget not drawn (glyph-match on `hud_idle_running`, `f15_kontor`, `r2_tab_help`, 0 differing pixels; the '1' and '5' lose their top outline row); digits never reach the bottom (glyph rows 2..16 of 25). The update functions run from vtable slot 40 (`0x1006c070`: every call, the deny toggle only after a 1000 ms stamp; overview `0x1007f8d0`); what calls slot 40 and how often is not read.
+- **Rebuild default (UI-TABS-1 B):** `text_dy -3`, `clip box` (cut to the whole gadget), figures refreshed every frame from the latest snapshot.
+- **How to resolve:** the text gadget's draw method (class `0xb1c`, View.dll factory `0x10019d60`) and its caller chain; a shot with a figure wider than the gadget.
+
+## OQ-693: The names of the city statistics 4 and 5 (UI-TABS-1 stage B, 2026-11-17; OPEN)
+- **Question:** which of the city statistics 4 (`+0x5fc`) and 5 (`+0x600`) holds the city's trade sales and which its trade purchases.
+- **What we know:** the sim names index 4 `trade_sales` and index 5 `trade_purchases` (`docs/re/population.md` section 8, HEAD2 0x38 / 0x3c in `scenario_formats.cpp`). The city status page prints index 4 on row 3 ("Purchase costs" / "Einkaufskosten", tooltip `TOOLTIP:INFOSTADT_STADTMAIN`) and subtracts it, index 5 on row 4 ("Sales revenue" / "Verkaufserlöse") and adds it (View.dll `0x1006c234`, `0x1006c275`, `0x1006c2ef..0x1006c2fd`); the overview does the same with the player's `+0x80` / `+0x84`. So either the sim's names are swapped or the page's labels name the other side of the trade.
+- **Rebuild default (UI-TABS-1 B):** the rows follow the original's index (row 3 = `trade_sales`, row 4 = `trade_purchases`); no sim field is renamed. Both are 0 until the sim trades (no trade stage yet).
+- **How to resolve:** the trade function `0x100ac360` (AnnoWelt), which adds to them: which one grows when a city sells.
+
+## OQ-694: The player's own terms of the overview's rows 3-5 (UI-TABS-1 stage B, 2026-11-17; OPEN)
+- **Question:** what feeds the player's statistics `+0x80` / `+0x84` and the unit upkeep sums `+0x88` / `+0x8c`, which the overview adds to the cities' purchase costs (row 3), sales revenue (row 4) and military costs (row 5).
+- **What we know:** player getter `+0x9c` (`0x1001c0f0`): 2 `+0x88`, 3 `+0x8c`, 4 `+0x80`, 5 `+0x84`, raw; the overview adds them at `0x1007f921..0x1007f96d`. The sim holds them (`Player::upkeep_a/b`, `stat_a/b`) and books and decays them (`player.cpp`), but nothing adds to them: no unit upkeep is charged for ships or soldiers, and the writers of `+0x80` / `+0x84` are not read. HE on the ship start shows 17 in row 5 (`HE_UI_1.mp4` 44.5 s), GOG `hud_idle_running` 16.
+- **Rebuild default (UI-TABS-1 B):** overview rows 3, 4, 5 and the balance row 6 stay empty.
+- **How to resolve:** the writers of player `+0x80..+0x8c` (figure creation and removal, the trade function), then a sim rule that feeds them.
+
+## OQ-695: The city's knowledge on the city status page (UI-TABS-1 stage B, 2026-11-17; OPEN)
+- **Question:** what the "Knowledge in city" figure (row 7) counts.
+- **What we know:** row 7 = city slot `+0x64` (`0x1002dfd0`: the object at city `+0x320`), its slot `+0x20`, divided by 256 toward zero (View.dll `0x1006c145..0x1006c167`); GOG `f15_kontor` 0, HE `ui_5.mp4` 6:45 9. The sim has no research sub-object for a city (OQ-157).
+- **Rebuild default (UI-TABS-1 B):** row 7 stays empty.
+- **How to resolve:** the object at city `+0x320` and its slot `+0x20` (AnnoWelt), with OQ-157.

@@ -149,6 +149,13 @@ if(ANNO_BUILD_TESTS)
   add_test(NAME journal_report_contract
            COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/test/journal_report_test.py)
   set_tests_properties(journal_report_contract PROPERTIES LABELS "workflow")
+  # TRACE-COLS-1: window_trace.cpp's own frames.tsv/sim.tsv/wheel.tsv headers against
+  # tools/bench/window_table.py's COLUMNS/SIM_COLUMNS/WHEEL_COLUMNS - a column added to one side
+  # and not the other fails here instead of only when the reader next refuses a real trace.
+  add_test(NAME window_trace_columns_contract
+           COMMAND ${Python3_EXECUTABLE} -I
+                   ${CMAKE_SOURCE_DIR}/tools/test/window_trace_columns_test.py)
+  set_tests_properties(window_trace_columns_contract PROPERTIES LABELS "workflow")
   # The gate's verdict reader (tools/test/ctest_verdict.py, ported from MAP-2) and the launcher's
   # preflight order (round ec): tools/test/run_selected.sh runs test_verdict_contract, with
   # test_names_are_selectable and picture_matrix_contract, as mandatory preflights. Python3 is
@@ -298,6 +305,11 @@ if(ANNO_BUILD_TESTS)
                      --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/early_needs_vectors.txt)
     add_test(NAME highmap_digest_reference_agrees
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/highmap_digest_ref.py --check)
+    add_test(NAME annoscene_ore_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/annoscene_ore_ref.py)
+    add_test(NAME annoscene_ore_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/annoscene_ore_ref_contract_test.py
+                     --ref ${CMAKE_SOURCE_DIR}/tools/annoscene_ore_ref.py)
     add_test(NAME mine_terrain_reference_agrees
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/mine_terrain_ref.py
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/mine_terrain_vectors.txt)
@@ -327,6 +339,13 @@ if(ANNO_BUILD_TESTS)
                      --ref ${CMAKE_SOURCE_DIR}/tools/whale_ref.py
                      --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/whale_vectors.txt)
     # FISHER-RE-1b: standalone integer reference and its public CLI contract.
+    add_test(NAME script_objects_reference_agrees
+      COMMAND ${Python3_EXECUTABLE} -I "${PROJECT_SOURCE_DIR}/tools/script_objects_ref.py"
+              "${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/script_objects_vectors.txt")
+    add_test(NAME script_objects_reference_contract
+      COMMAND ${Python3_EXECUTABLE} -I "${PROJECT_SOURCE_DIR}/tools/script_objects_ref_contract_test.py"
+              --ref "${PROJECT_SOURCE_DIR}/tools/script_objects_ref.py"
+              --vectors "${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/script_objects_vectors.txt")
     add_test(NAME fisher_reference_agrees
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/fisher_ref.py
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/fisher_vectors.txt)
@@ -382,4 +401,23 @@ endif()
 
 if(ANNO_BUILD_TESTS)
   add_custom_target(pins_checks DEPENDS anno_sim_tests sim_replay)
+endif()
+
+if(ANNO_BUILD_TESTS AND Python3_FOUND)
+  # LAYER-CHECK-1: anno_formats/anno_sim/anno_sim_load's real link graph, read from CMake itself
+  # (TARGET_PROPERTY,LINK_LIBRARIES; file(GENERATE) evaluates it at the generate step, after every
+  # target_link_libraries call), not a hand-written copy. tools/layer_check.py checks it against
+  # the rule that file states; this is only the generated input.
+  file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/layer_check_links.txt" CONTENT
+"anno_formats:$<TARGET_PROPERTY:anno_formats,LINK_LIBRARIES>
+anno_sim:$<TARGET_PROPERTY:anno_sim,LINK_LIBRARIES>
+anno_sim_load:$<TARGET_PROPERTY:anno_sim_load,LINK_LIBRARIES>
+")
+  add_test(NAME layer_check_contract
+           COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/layer_check.py
+                   --root ${CMAKE_SOURCE_DIR}
+                   --link-list "${CMAKE_BINARY_DIR}/layer_check_links.txt")
+  add_test(NAME layer_check_self_test
+           COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/layer_check.py --self-test)
+  set_tests_properties(layer_check_contract layer_check_self_test PROPERTIES LABELS "workflow")
 endif()

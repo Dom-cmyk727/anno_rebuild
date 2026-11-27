@@ -7,9 +7,15 @@
 // window when the transform is not 1:1 (ui_transform.hpp), over black. No live counters and no
 // eligibility (every cell locked): the chrome only, for comparing placement and scale against
 // captures (tools/test/ui_window_compare.py).
+//
+// UI-TABS-1 stage B: `--rows <name>=<value>,...` (with --live) fills HudCounters::rows, the balance
+// pages' figures by hud.txt `value` name (e.g. `player.0=0,player.6=-31`), so their drawing can be
+// compared with the GOG shots (tools/test/ui_balance_rows_compare.py).
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -29,7 +35,28 @@ struct Args {
     std::string screen;
     std::optional<std::pair<int, int>> live;
     std::optional<float> ui_scale;
+    std::map<std::string, std::int64_t> rows;
 };
+
+/// `name=value,name=value,...` into `out`; false on a malformed item or a repeated name.
+bool parse_rows(const std::string& text, std::map<std::string, std::int64_t>& out) {
+    std::size_t at = 0;
+    while (at <= text.size()) {
+        const std::size_t comma = std::min(text.find(',', at), text.size());
+        const std::string item = text.substr(at, comma - at);
+        const std::size_t eq = item.find('=');
+        if (eq == std::string::npos || eq == 0 || eq + 1 == item.size())
+            return false;
+        long long v = 0;
+        char tail = 0;
+        if (std::sscanf(item.c_str() + eq + 1, "%lld%c", &v, &tail) != 1)
+            return false;
+        if (!out.emplace(item.substr(0, eq), static_cast<std::int64_t>(v)).second)
+            return false;
+        at = comma + 1;
+    }
+    return true;
+}
 
 std::optional<Args> parse(int argc, char** argv) {
     Args a;
@@ -67,6 +94,10 @@ std::optional<Args> parse(int argc, char** argv) {
                 w > 0xFFFF || h > 0xFFFF)
                 return std::nullopt;
             a.live = std::pair{w, h};
+        } else if (arg == "--rows") {
+            auto v = next();
+            if (!v || !parse_rows(*v, a.rows))
+                return std::nullopt;
         } else if (arg == "--ui-scale") {
             auto v = next();
             float s = 0.0f;
@@ -78,7 +109,7 @@ std::optional<Args> parse(int argc, char** argv) {
             return std::nullopt;
         }
     }
-    if (a.ui_scale && !a.live)
+    if ((a.ui_scale || !a.rows.empty()) && !a.live)
         return std::nullopt;
     if (a.layout.empty() || a.game_dir.empty() || a.out.empty() || a.screen.empty())
         return std::nullopt;
@@ -92,7 +123,8 @@ int main(int argc, char** argv) {
     if (!args) {
         std::fprintf(stderr,
                      "usage: anno_ui_mock --layout <data/ui dir> --screen <name> --game-dir "
-                     "<dir> --out <file.png> [--live <W>x<H> [--ui-scale <1.0-2.0>]]\n");
+                     "<dir> --out <file.png> [--live <W>x<H> [--ui-scale <1.0-2.0>] "
+                     "[--rows <name>=<value>,...]]\n");
         return 2;
     }
     const auto spec = anno::app::parse_screen_name(args->screen);
@@ -123,9 +155,11 @@ int main(int argc, char** argv) {
         const auto t =
             anno::app::ui_transform(args->live->first, args->live->second, args->ui_scale, rule);
         anno::app::UiTexCache cache(args->game_dir);
+        anno::app::HudCounters counters;
+        counters.rows = args->rows;
         const auto layer =
             anno::app::draw_live_screen_rgba(t.ui_w, t.ui_h, hud.value(), construction.value(),
-                                             masks.value(), *spec, cache, nullptr);
+                                             masks.value(), *spec, cache, nullptr, counters);
         if (!layer.ok()) {
             std::fprintf(stderr, "draw: %s\n", layer.error().c_str());
             return 1;

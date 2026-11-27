@@ -234,7 +234,7 @@ Name, figures and chrome: 0 differing pixels on all 15. The live window (CPU) re
 
 **HE code:** the HE `View.dll` is PE32+ x86-64 (machine 0x8664), so the GOG 32-bit sequences above cannot appear in it. It contains `INFOUNTERGRUND` twice and 135.0f 21 times, so a string cross-reference is the open route; its panel code was not located (OQ-613).
 
-Click a U cell: info panel + placement mode. Click an L cell: no panel (`f12_locked_*`). Left click on a valid tile places and stays in mode (`r2_place_*`). ESC / right click / cancel-X leaves.
+Click a U cell: info panel + placement mode. Click an L cell: no panel (`f12_locked_*`). Left click on a valid tile places and stays in mode (`r2_place_*`). ESC and a right click leave the placement mode (back to the grid, nothing armed); the cancel-X closes only the panel and the building stays armed (section 2.6, UI-PLACE-1).
 
 **Rotate arrows and the preview per rotation (UI-INFO-2, 2026-11-14).** Static reads of GOG `View.dll` (pefile + capstone, VAs) and a Wine-runner capture of the original (Citizen game, `cache/orig/ui-info-2/shots/` in the packet's worktree, not in git: `u2_501_*` the pioneer house, `u2_2520_*` the dirt road, the pointer on the map after each step).
 
@@ -258,6 +258,41 @@ Rebuild: `data/ui/hud.txt` gives `rotate_left` `turn -1` and `rotate_right` `tur
 - Rotation in placement: key DOT turns the ghost (`f13_place_rot_dot` vs `f13_place_land`); COMMA is the other direction (`f13_place_rot_comma`).
 - Road drag: `backend.drag` after selecting dirt road (`f13_road_drag`). The drag on this Citizen island did not leave a painted road (forest / water under the path); the dirt-road info panel stayed open.
 - CTRL alignment: the runner's `key` call cannot hold a modifier across a later `click` (keydown/up is one command). Not captured; manual p15 still states it (OQ-546).
+
+**Cancel-X, ESC, right click and the pickaxe (UI-PLACE-1, 2026-11-15).** Two silent Wine-runner passes of the GOG original (Citizen game, F8, public category; `cache/orig/ui-place-1/d96-20261115-174705` and `d96-20261115-174948` in the packet's worktree, not in git; the pointer parked on land at (0.22, 0.28) before every shot, so a ghost or the demolish highlight shows when that mode is on). The cancel-X handler 0x10030410 only posts a message (`[this+0x60c]->vfunc 0x9c(1, 1, &msg)`); what it does was measured:
+
+| Step | Original | Shot |
+|---|---|---|
+| Pioneer house cell, then the cancel-X | the panel closes to the grid; the house **stays armed**: its ghost stays on the pointer and the grid marks its cell (0, 0) with an orange frame | `p1_a_armed`, `p1_a_after_x` |
+| Pickaxe with nothing armed | demolish mode: the pickaxe drawn active, a yellow tile outline under the pointer | `p2_pickaxe_nothing_armed` |
+| Pickaxe again | demolish off; no outline, no ghost: nothing armed | `p2_pickaxe_off` |
+| Pickaxe with the house armed (after the cancel-X) | demolish on; the house's ghost **and** the yellow outline both show | `p1_b_demolish`, `p1_b_pickaxe_again` |
+| Pickaxe again | demolish off; the house's ghost stays (still armed) | `p1_b_pickaxe_third` |
+| A cell while demolishing | the cell's panel opens and the demolish mode is **off** (no outline), with or without a building armed before; after the cancel-X the pickaxe shows off | `p1_b_demolish_then_501`, `p1_b_after_x`, `p2_demolish_then_501` |
+| ESC in placement | back to the grid, nothing armed (no ghost, no orange frame); the menu stays open | `p1_c_after_esc`, `p2_esc1` |
+| ESC in demolish mode | back to the grid, demolish off | `p2_demolish_esc` |
+| ESC on the grid | the construction menu closes; the panel shows the player tab (overview with the balance figures) | `p2_esc2` |
+| Right click on the map in placement | back to the grid, nothing armed | `p1_d_after_right` |
+
+UI-PLACE-2 (2026-11-15) added three passes (`cache/orig/ui-place-2/d96-20261115-202026`, `-202202`, `-202401` in that packet's worktree; scripts `cache/capture/ui_place_2*_capture.py`):
+
+| Step | Original | Shot |
+|---|---|---|
+| Right click on the map in demolish mode (nothing armed) | demolish off, the grid stays | `p3_demolish_right` |
+| Right click on the info panel's preview in placement | back to the grid, nothing armed | `p3_panel_right` |
+| Cancel-X, then ESC (house armed, grid shown) | the menu closes; no ghost | `p3_after_x_esc` |
+| House armed, cancel-X, pickaxe on, then ESC | only the demolish mode goes: grid, orange frame and ghost stay | `p4_armed_demolish_esc` |
+| ESC again | the menu closes; no ghost | `p4_armed_demolish_esc2` |
+| House armed, cancel-X, pickaxe on, then a right click on the map | demolish off **and** the ghost gone; the grid stays (the orange frame stayed in this case) | `p4_armed_demolish_right`, `p4_armed_demolish_right2` |
+| Right click on the map, grid open, nothing armed | nothing changes | `p4_grid_right` |
+| Help tab, B, public, then ESC | the menu closes to the player overview, not back to the help tab | `p4_help_tab`, `p4_help_b_esc` |
+| B with the menu open | nothing changes (B only opens it) | `p5_b_again`, `p5_b_third` |
+| Right click on a grid cell ("?"), nothing armed | the menu closes (player overview) | `p5_right_on_cell` |
+| House armed, cancel-X, then a right click on the map | ghost and frame gone, the grid stays; a left click on the land then builds nothing | `p5_after_x_right`, `p5_after_x_right_left` |
+
+(`p3_after_x_right`, `p3_grid_right` and `p4_grid_right_on_cell` are not evidence: the menu had already closed, or the script's B was assumed to toggle it.) So ESC goes one step back - info panel → grid with nothing armed; demolish → off, an armed building stays; grid → menu closed with the armed building put away, the player overview showing - while a right click on the map or the info panel puts away everything the pointer carries at once and shows the grid, and a right click on the grid closes the menu. Not captured: a right click on the grid's chrome with a building armed or the demolish mode on, or on other chrome (tabs, status bar); whether the original's right drag pans (the runner's `drag` is left-button only).
+
+Rebuild: since UI-PLACE-1 a cell chosen while demolishing leaves the demolish mode (`DevTool::arm`); the pickaxe works with nothing armed and, turned off again, leaves nothing armed, while a building armed before stays armed under it (`DevTool::toggle_demolish`); the cancel-X already kept the building armed. Since UI-PLACE-2 (owner, 2026-11-15, "like original"; OQ-626): ESC is `Viewer::construction_step_back` (the chain above; a held ESC acts once), a right click (press and release within 4 px) is `Viewer::construction_right_click` (map or info panel: everything put away, the grid; any other chrome while the grid shows: the menu closes, to the player overview - the armed case inferred), and a right drag stays this window's pan. Still different: no orange frame marks the armed cell (OQ-627).
 
 ### 2.7 What is still fraction-based
 
@@ -299,6 +334,129 @@ No screen exceeded 0.08. Residual bad pixels (channel > 48, still under the frac
 | `STATUSBAR_EINWOHNER` count | Mask (439, 733) 108 x 35. The head at (401, 733) is compared on construction. |
 | Status-bar right of x=779 | `STATUSBAR` is 746 × 35; chrome below the pickaxe is panel stone. |
 | BAUMAT on idle | Pass-2 `hud_idle_running` does not draw ids 36–39. |
+
+### 2.9 Minimap (UI-MINIMAP-1 step A.1)
+
+Static read of the GOG 2.0.0.5 binaries (pefile + capstone, VAs; listings in the packet worktree's `cache/re/`, not in git), 2026-11-16. Module names are the GOG files under `game/app`. "HE" marks a cross-check in the History Edition's 32-bit `AnnoWeltAddOn.dll`, used only to find class names through its RTTI. Confidence: **high** = read instruction by instruction; **medium** = the control flow is read but one link (a caller, a unit, a meaning) is inferred; **low** = a reading that needs a capture.
+
+**Who does what.** The minimap is not a View.dll gadget. `AnnoFrame.dll` draws it with Direct3D 7 into the frame, under the HUD chrome. `WELTKARTE` (id 2) is the frame around it and has a transparent diamond hole. View.dll only creates the six `KARTEPLUS` buttons, and they send frame commands. `AnnoWelt.dll` fills a 256 x 256 byte image of the world. Objects:
+
+| Object | Where | Notes |
+|---|---|---|
+| Minimap wrapper | `AnnoFrame` frame object `+0x1658` | Non-virtual methods `0x10002800` (set rectangle, load the four `KARTE_NORDUNG` textures), `0x10002920` (attach world), `0x10002970` (hit test), `0x10002990` (follow camera), `0x100029d0` (minimap zoom), `0x100029f0` (screen to world), `0x10002a60` (view turn), `0x10002a70` (main zoom level), `0x10002a80` (add alert), `0x10002ab0` (clear alerts), `0x10002b10` (collect route line and markers), `0x100030f0` (per-frame draw). |
+| Minimap renderer | `AnnoFrame`, 0x9228 bytes, ctor `0x100337e0`, init `0x10033280`, at wrapper `+0x24` | Created in `0x10002710` with size 256 x 256 (`push 0x100` twice at `0x100027a5`). |
+| World image | `AnnoWelt` `tWeltServer::tKarteObject` (name from HE RTTI); GOG vtable `0x100ccd40` | Created in `0x100aaa53`..`0x100aaa8f` with 256 x 256 (`0x100a40d0(world, 0x100, 0x100)`), stored at world `+0x120`; the world's vfunc `+0xbc` (`0x100a3510`) returns it. |
+
+**Q1 - what draws it, where, and the routine.**
+
+| Finding | Address | Confidence |
+|---|---|---|
+| The frame layout computes `base` = 1024 if the screen width W > 800, 800 if 640 < W <= 800, else 640; the right chrome's x = W - base/4 + 11 (779 at 1024). | `AnnoFrame` `0x1000a038`..`0x1000a0f4` | high |
+| Minimap rectangle passed to the wrapper: pos = (W - base/4 - 3, 12), size = (base/4, base/8). At 1024 x 768: (765, 12) 256 x 128. | `0x1000a2f2`..`0x1000a342` (also `0x1000517b`..`0x100051d9`) | high |
+| The renderer then shifts it: W > 800: x +2, y -2 (both edges) → (767, 10)-(1023, 138); 800-class: x +3, y0 -5, y1 -4. It stores the scale s = min-class W / 1024 (1.0 above 800, 0.78125 at 800) and s·88, s·44, s·128, s·64 for the transform. | `0x10031a40`..`0x10031ef1` | high |
+| Draw order, every frame (`0x10031490`): (1) parchment quad, texture `+0x91d8`, VB `+0x9208`, a 4-vertex triangle strip; (2) alpha blending on (SRCALPHA / INVSRCALPHA), map quad, texture `+0x91d4`, VB `+0x9204`; (3) an optional scrolling text banner (`data\banner.dat`, `0x10030c90`/`0x10030dc0`); (4) blending off, route line list `+0x9210`; (5) view box line list `+0x920c`. Then the wrapper draws markers and alerts as 2D draw-list items (`0x100030f0`). | `0x10031490`..`0x100317d0`; `0x100030f0`..`0x100034e4` | high |
+| The minimap is drawn only while frame flag `+0x16ec` bit 0x20 is set (default flags 0x893f / 0xfb7f have it); command 0x15 XORs the flags. | `0x10005bda`, `0x10008e75`, `0x10009518`, `0x1000772e` | high |
+| Pixel check: `KARTE_NORDUNG` id 52 matches `hud_idle_running` best at (768, 11) scaled to 256 x 128 (median abs RGB diff 20 inside the chrome hole; islands lie on top), one pixel off the code's (767, 10). So the parchment reaches 12 px left of the chrome, under its scroll ends. | `cache/re/fitnord.py` | medium (exact rasterisation OQ-628) |
+
+**Q2 - what fills the diamond.**
+
+| Finding | Address | Confidence |
+|---|---|---|
+| **Parchment:** `KARTE_NORDUNG` ids 52 + turn (four 256 x 133 sprites, the parchment diamond with a compass rose and an "N" in four places) is blitted into a 256 x 256 texture when the view turn changes (else the texture is filled with 0x00ff). Shown with v from 0 to 133/256 (`0.51953125`), squeezed to the rectangle's height. | load `0x10002842`..`0x10002867`; blit `0x10030940`..`0x10030a86`; v `0x10031dd3` | high |
+| **Map texture:** 256 x 256, 16-bit. Each byte of the world image is looked up in a 256-entry palette at `+0x9040`; each row is then mirrored left-right. | `0x10031000`..`0x10031418` | high |
+| **Byte = owner × 16 + shade.** High nibble: for each map pixel, the world tile at ((x + 0.5)·sx, (y + 0.5)·sy) (sx = world width / 256); its island (world vfunc `+0x8c`), the tile's settlement index (island vfunc `+0xec` = `0x100860c0`, bits 25..28 of the tile record; 0xf = none), the settlement (`+0xf8` = `0x100863e0`); if the settlement's mask (vfunc `+0xc8`(0)) has the viewing player's bit (or the world says everything is visible, vfunc `+0x74`(5) = 0), owner = settlement vfunc `+0xc8`(2); else 9. | `AnnoWelt` `0x100a3ed7`..`0x100a40bb` | high (B2 read below) |
+| **B2: what the owner nibble means.** The settlement is the island's city (`island[0x38 + 4·i]`), city vtable `0x100c2f40`. Its `+0xc8` is `0x1002df80`: argument 0 returns `+0x61c`, the players that know the city (bit i = player i; the owner's bit is set when the city gets its owner, `0x1002f44d`, HEAD2 `[0x30]` is ORed in, the founding's registration adds the MILIT-3 peers: the sim's `City::player_mask`); argument 2 returns the byte `+0x16`, the city's colour. `+0x16` is written when the city gets its owner (`0x1002f416`..`0x1002f439`: the owner's property 11 through player `GetProperty` `0x10020a00` case 0xb = `0x10020b2f`, the colour slot `+0xa8`, else `+0xa9`; a value 0xff is stored as 0) and by every recolour (player property 11 setter `0x10020f91` → `0x1001cdf0`, which sends property 0xb to the objects of the player's lists, the city's setter `0x1002f560` case 0xb = `0x1002f5e7`, again 0xff → 0). So **the owner index is the owner's colour slot** (HEAD +0x4C, 1..8 for humans and computers, 0 for natives, pirates and player 31; docs/re/annoscene.md 9), the palette's base colour of that index. The viewer is world vfunc `+0x114` = `0x100a34b0` = `[world + 0xf8]`, the local player set by AnnoFrame `SetPlayer` (docs/re/ship-founding.md). World vfunc `+0x74`(5) = `0x100a33ce` returns `[world + 0x69cd] == 0`; a world reset stores 0 there (`0x100a3a93`), so the mask applies by default; the only setter call found is AnnoScene's kind-3 instance (`0x1000d730`: property 5 = 0, every city shown). The tutorial `02Trade01`: player 2 (human, kind 8) has colour 4 = 00e6ce (teal), player 0 (computer) 2 = ff4400, player 1 (natives) 0; the History Edition shows the human's settlement teal and the other two olive. | city `0x1002df80`, `0x1002f3d0`..`0x1002f46c`, `0x1002f560`; player `0x10020a00`, `0x10020b2f`, `0x10020f91`, `0x1001cdf0`; world `0x100a34b0`, `0x100a3380`, `0x100a3280`, `0x100a3a93` | high; which value the 0xff case takes (an uninitialised stack word picks `+0xa9` or 0xff) is open (OQ-629) |
+| Low nibble: the mean island corner height over a 2 x 2-pixel window (world vfunc `+0x5c` = `0x1009db00` → island `+0x98` = `0x10084c20`, the corner byte times 0.04 from table `0x100e2d90`, filled at `0x1007c760`; sea = 0.0), divided back by 0.04, then (v + 8) >> 4. So shade ≈ mean height byte / 16. | `0x100a3cc0`..`0x100a3ece` | high |
+| **Palette** (`0x100337e0`): 10 base colours × 16 shades. Entry (c, k) for k = 2..15 = colour c scaled by (k + 16)/31 per channel, packed 1:5:5:5 with the alpha bit set. Entries k = 0, 1 are 0 = transparent, so the sea and the lowest land show the parchment. Base colours (0xRRGGBB, index 0..9): e6aa10, 00bbff, ff4400, fff40a, 00e6ce, ff9e00, 15e015, f839ff, fafafa, b2ab00; index 9 (no owner, the olive land) uses 664400 for k = 2. | `0x100338c0`..`0x10033a31` | high (which player owns which index: OQ-629) |
+| **Cached, not per frame.** `tKarteObject::Update(flags, rect)` (`0x100a3cc0`; bit 2 heights, bit 1 owners) rewrites a world rectangle and increments a counter (`+0xc`). Each frame the wrapper compares that counter with its copy and rebuilds the texture only when it changed. | `0x100030f9`..`0x10003125`; `0x100a3ece`, `0x100a40bb` | high (who calls Update and when: OQ-634) |
+
+**Q3 - world to minimap.**
+
+| Finding | Address | Confidence |
+|---|---|---|
+| The image always covers the whole world in 256 x 256 cells, whatever the world size (cell = world width / 256 tiles across, world height / 256 down). | `0x100aaa6d`, `0x100a3cee`..`0x100a3d10` | high |
+| Minimap zoom `z` (`+0x18`, start 1.0, clamp 0.15..1.0) and centre `c` (`+0x1c`, `+0x20`, 0..1). The visible window is [c - z/2, c + z/2] in world fractions, pushed back inside [0, 1] at the edges. `c` follows the camera: `0x10033ad0` sets it from the camera position / world size (the wrapper passes the frame's camera values `+0x1608`/`+0x1610`, negated and swapped). | `0x10033710`, `0x10033ad0`, `0x10002990`, callers `0x1000777c`.. | high (camera axis convention: see `docs/render/iso.md`) |
+| A world point (wx, wy) → u = 128·wx/W, v = 128·wy/H; inside the window: du, dv in [-1, 1] across it; a = 45° - 90°·turn; screen x = x0 + s·(128 - 88·(cos a·dv - sin a·du)), y = y0 + s·(64 + 44·(cos a·du + sin a·dv)). With turn 0 the diamond is 2 : 1, half-diagonals 124.5 and 62.2 px at s = 1, centred at (x0 + 128, y0 + 64). | `0x100306f0`..`0x10030927` (points), same math in `0x1002fde0` and `0x10030350` (lines) | high |
+| The map quad's texture corners come from the zoom window and are permuted per view turn (switch on `+0x91a8`). | `0x100317e0`..`0x100319f8` | high (exact UV table not transcribed; step B) |
+| Screen → world (`0x100333f0`): hit test `0x100332f0` (inside the rectangle and inside its inscribed diamond), then (x + o_x)·1.03, (y + o_y)·1.03 with o = (-6, 0) above 800 and (-5, 2) at 800, rotated back per turn, mapped through the zoom window to world tiles; the minimap then recentres on that point. | `0x100332f0`..`0x100333ea`, `0x100333f0`..`0x100336a0`, offsets `0x10031e4f`/`0x10031eb5` | high |
+
+**Q4 - the view box.**
+
+| Finding | Address | Confidence |
+|---|---|---|
+| Four line segments (8 vertices, D3D line list), 1 px, colour from floats `0x1009cfe8`..`0x1009cff4` = (1, 1, 1, 1): **opaque white**. | build `0x1002fde0`..`0x10030316`; colour init `0x1002fb00`..`0x1002fb1e`, packed at `0x100327f3`..`0x1003292c`; drawn `0x10031776`.. | high |
+| Built around the minimap centre `c` (= the camera), in 0..128 map units: the centre is shifted by f = 332.8 / (W/2) on both axes with signs per view turn, and the corners use e = 2^level · 2200 / W and 0.3·e (W = world width; switches `0x10030320` and `0x10030330`). `level` = the main view's zoom level (0..2, `+0x8ee8`, set by `0x10031a20` from the zoom commands), so the box doubles per zoom-out step. It does not use the screen size. Each segment is clipped to the minimap window (`0x1002fb70`), then transformed like the markers (Q3). | `0x1002ff4d`..`0x100302f8` | high for the inputs, medium for the corner arrangement (step B checks it against captures) |
+
+**Q5 - markers.**
+
+| Finding | Address | Confidence |
+|---|---|---|
+| Each marker is a small square with corners (x − 1, y − 1) and (x + 1, y + 1) around its transformed point, in its colour (up to 1500 per frame, list cleared each update at `0x10002e43`). | add `0x10033b60`; draw `0x10003135`..`0x1000327f` | high (2 or 3 px wide depends on rasterisation, OQ-628) |
+| Own player's figures from list kind 1: dark green 0x00d000; from list kind 0 (skipped when flags & 0xc0 = 0x80): green 0x00ff00. Either is white 0xffffff when its flag 0x10 is set. Colours stored by `0x10002800` at wrapper `+0x14`..`+0x20`. | `0x10002e48`..`0x10002fab`; `0x10002896`..`0x100028ab` | high for the colours; flag 0x10's meaning (selected?): OQ-630 |
+| **B2: the lists.** Player vfunc `+0x84` = `0x1001c5a0` returns the head of the list at player `+0x26c + 8·kind`; vfunc `+0x8c` = `0x1001c5e0` adds an object to list `kind`. The `SPIELER` reader (`0x1001d240`) adds each `SOLDAT` with kind 0 (`0x1001ddf3`..`0x1001ddfd`) and each `SCHIFF` with kind 1 (`0x1001e063`..`0x1001e06f`); kind 2 holds the cities (the recolour `0x1001cdf0` walks `+0x27c` with the island). So **own ships are 0x00d000, own soldiers 0x00ff00**. A figure whose vfunc `+0x8c`(4) is non-zero is skipped in both lists. The position passed to the transform is the figure's vfunc `+0x5c` first, then `+0x54` (`0x10002e85`..`0x10002eae`); `+0x54` is x and `+0x5c` the other horizontal coordinate (docs/re/transport.md, docs/re/ship-founding.md), so the map's first axis u is the world's y (OQ-635). The point is truncated (`__ftol`), scaled and offset, and drawn as draw-list item 5 with the corners (x − 1, y − 1), (x + 1, y + 1) (`0x10003135`..`0x10003257`). The GOG shot `construction_open` shows it as a **1 px 3 x 3 outline** in (0, 210, 0) - 0x00d000 in the RGB565 frame - with its centre showing the map. | `0x1001c5a0`, `0x1001c5e0`, `0x1001ddfd`, `0x1001e06f`; `0x10002e48`..`0x10002f9e`; `0x10003135`..`0x10003257` | high |
+| Other players' kind-1 figures (players 0..30 except the own): red 0xff3000 - only when a world interface query (vfunc `+0x48`(0xe)) returns GUID {a2414664-1a42-4f88-aae8-c0b27db939f5}. | `0x10002fb1`..`0x100030cd` | high for the code, low for when it is true (OQ-630) |
+| **B2:** the query is the world's `GetProperty` (vtable `0x100ccdd8` slot `+0x48` = `0x100aeeb0`) key 0xe = `0x100aef99`: the 16 bytes at world `+0x6938`. Who writes them was not read. | `0x100aeeb0`, `0x100aef99` | high for the read; the writer: OQ-630 |
+| Route line: when the own player's selection is a kind-2 object of type 0x71 that the player owns, its route stops (entries 9 and 8) become a polyline (points closer than 6 tiles merged, max 1024), drawn as a line list in (1, 1, 0.38, 0.8): pale yellow, 80 % alpha. | `0x10002b10`..`0x10002e37`; `0x10033a50`; colour `0x1002fb40`..`0x1002fb5e` | high for drawing, medium for "selected ship's trade route" |
+| **`MINIMAP_ALERT x y`** (script): AnnoScene parses two values (`0x1001906e`..`0x10019140`), the action (`0x10015980`) calls frame vfunc `+0xb4` = `0x10002ac0` → `0x10002a80` → `0x10033bb0`(x, y, 0): up to 8 alerts. Each shows a 16-frame sprite at its transformed point (frames loaded from graphic group 0x655 at `0x1000a36c`..`0x1000a3b5`, frame = (t / 128) & 15, drawn through the draw list's vfunc `+0xcc`); a 32 x 36 area from (x − 16, y − 32) is copied to a per-alert surface first (`0x10033cb0`). It blinks (drawn while t mod 1000 < 500) and is removed when t ≥ 50 000; t grows by the draw call's time argument. | `0x10003285`..`0x100034bf`, `0x10033c20` | high for the code; the sprite file and the time unit: OQ-633 |
+| Nothing else is drawn on the minimap (no cities, no fog). The compass rose is part of the `KARTE_NORDUNG` parchment. | whole draw path above | medium (absence) |
+
+**Q6 - clicks and the six buttons.** View.dll `0x10033f50` (the HUD builder) creates gadgets 1..6 of class 0xb09 with textures 40, 42, 44, 46, 48, 50 (`KARTEPLUS` + 2·(i - 1), `0x100343c9`..`0x10034449`) and handlers from the jump table at `0x10034764`. A handler calls the frame's command sink (`[this+0x62c]` vfunc `+0x5c`(2, cmd, param, 0)); the frame's dispatcher `0x100071b0` takes type 2 at `0x10007514` and jumps through `0x10007d14` on cmd - 3. No `KARTEPLUS` gadget gets a tooltip (no property 0x1c9 in that loop; the tabs below get `TOOLTIP:CONTROLFELD`), and neither GOG nor HE `Texte.dat` has a minimap tooltip section.
+
+| Control (measured, 2.2) | Gadget / handler | Command | Effect | Confidence |
+|---|---|---|---|---|
+| Magnifier + (id 40) | 1 / `0x10034a50` | 0xa | main view zoom level - 1, not below 0 (closer), `0x10007710`; then the minimap's box level | high |
+| Magnifier − (id 42) | 2 / `0x10034a50` | 9 | main view zoom level + 1, not above 2, `0x10007692` | high |
+| Top-right + (id 44, (959, 7)) | 3 / `0x10034a20` | 0x1b, param 1 | minimap zoom: z − 0.15 (shows less world, larger), `0x10007537` → `0x10033770` | high |
+| Top-right − (id 46, (982, 19)) | 4 / `0x10034a20` | 0x1b, param 0 | minimap zoom: z + 0.15, up to the whole world | high |
+| Left chevron (id 48, (965, 140)) | 5 / `0x10034a80` | 0xc | view turn (turn − 1) & 3; recomputes the camera (`0x10003be0`), sets the minimap turn (new parchment frame, rotated map) and recentres it, `0x100077ad` | high (screen direction: OQ-632) |
+| Right chevron (id 50, (986, 140)) | 6 / `0x10034a80` | 0xd | (turn + 1) & 3, `0x10007819` | high (screen direction: OQ-632) |
+| `LUPE` (id 7) | none | - | No module references the string `LUPE`; the magnifier, its + and −, both arrows and the top + and − are also painted into `WELTKARTE` itself (decoded id 2). Only the six gadgets above react. | high |
+| Click on the minimap | frame mouse handlers `0x10006c60` (switch `0x10006df4`) and `0x1000b5c2` (switch `0x1000bb70`) | events 1 and 3 (button down) | if bit 0x20 is on and the point hits the diamond: screen → world (`0x100029f0`), camera centred there (`0x100040f0`, then `0x10003be0`), capture state `+0x16f8` = 2 | high; which event number is the left and which the right button: OQ-631 |
+| Drag on the minimap | same | event 0 (move) | while the state is 2 the move does nothing (`0x1000bb8c`[2] = `0x1000bb61`; `0x10006c87`): **no drag-scrolling**; the release (2, 4) only resets the state | high |
+
+Other commands seen in the same switch: 8 sets the main zoom level directly (param 100 / 50 / 25 → level 0 / 1 / 2, `0x1000755d`); 0xb sets the view turn to the param (`0x1000774d`); 3 sets the camera to the tile packed as x | y << 16 (`0x10007885`; fix round F4 below). The View.dll gadget 1/2 handler passes param = (id == 1), which commands 9 and 0xa ignore.
+
+**Q7 - window size.**
+
+| Finding | Address | Confidence |
+|---|---|---|
+| The minimap is anchored to the right edge: x = W - base/4 - 3 (+2), y = 12 (-2), with `base` from the width class (1024 / 800 / 640). Above 800 wide it is never scaled (s = 1.0); at 800 everything is 0.78125 and the `Fenster8`/`MainMedium8` graphics are loaded. | `0x1000a038`..`0x1000a342`, `0x10031d8e`..`0x10031e17`, `0x1000a5ce`..`0x1000a5f7` | high |
+| The view box size depends on the world width and the zoom level only, not on the screen size: in GOG a wider window shows more world but the box stays the same. | `0x1002ff4d`..`0x1003004b` | high (HE may differ; check in A.2) |
+| View.dll's HUD builder sets its gadget scale to 0.78125 when the width is 800. | View `0x10033f6a`..`0x10033f7b` | high |
+
+**For the view turn (render packet VIEW-TURN-1, orchestrator 2026-11-16).** What this read found about the turn, gathered: the view turn is one value 0..3 held by AnnoFrame; the chevrons send commands 0xc ((turn − 1) & 3) and 0xd ((turn + 1) & 3), command 0xb sets it to a parameter (dispatcher `0x100071b0`, jump table `0x10007d14`; `0x100077ad`, `0x10007819`, `0x1000774d`); a turn recomputes the camera (`0x10003be0`) and the minimap's turn. The minimap shows it three ways: the parchment frame `KARTE_NORDUNG` id 52 + turn (four orientations, each with the compass rose and "N" turned), the map quad's texture corners permuted per turn (`0x100317e0`..`0x100319f8`), and the angle a = 45° − 90°·turn in the world → minimap transform (`0x100306f0`); clicks are rotated back per turn (`0x100333f0`). Which way each chevron turns on screen is OQ-632. The info panel's preview adds the same view turn (section 2.5, `0x100302c0`). The UI lane builds none of this; its chevrons stay dead until VIEW-TURN-1.
+
+**Corrections to 2.2.** `KARTE_NORDUNG` 52-55 are the minimap's parchment (one per view turn), drawn under the chrome's hole, not unused. The `0xb02` parent of 244 x 63 created after the six buttons (`0x10034509`..`0x100345e3`) is the **tab strip** (four 61 x 63 `MAINTAB` children of class 0xb0d, `0x10034607`..`0x10034745`), not a wood strip under the parchment.
+
+**Rebuild, step B1 (2026-11-16).** `src/app` `minimap.hpp` draws the minimap from `data/ui/minimap.txt` (every number above as data, the original's values as defaults, each line with its address): the world image (Q2, the shade over a 2 x 2-cell window divided by the nominal tile count, the owner at the cell's centre tile), the palette (Q2, shown as the RGB565 frame shows it), the rectangle (Q1/Q7, right-anchored: (767, 10) at 1024, (2285, 10) at 2542), the turn-0 transform (Q3) with u = world y (OQ-635), the view box (Q4, clipped Cohen-Sutherland, 1 px white) and the parchment `KARTE_NORDUNG` 52. The window builds the image once at load (1.0-2.2 ms, 512 x 512 world; composing the raster 0.7-1.0 ms, the first compose 77-86 ms because it is the first use of `fenster.tex`, parsed once for the whole HUD), keeps the composed parchment + map raster until the layer width or the minimap window changes, and redraws only the box per frame; both UI paths (CPU, GPU overlay) draw it first, under `WELTKARTE`. Not yet: owners (all olive; B2, OQ-629), markers, alerts, route, clicks, the zoom buttons, the turn (VIEW-TURN-1). Measured defaults: both quads at the rectangle + (1, 1), the parchment's rows filtered linearly (OQ-628). Checks (crops under `cache/ui-minimap-1/`, not in git): the tutorial `02Trade01` against the History Edition capture `ui_5.mp4` - island outlines agree (land overlap 0.62 in the hole, the settlement and box area left out; 0.00 for the mirrored axis), HE's land is a little darker (mean (105, 104, 19) against (115, 111, 11) in the hole, compressed video); the islands fit best at the drawn offset (overlap 0.61 against 0.52-0.60 one pixel off); the CPU and GPU paths draw the minimap identically (0 of 31,850 pixels differ) and at 2542 x 1351 it is the 1024 picture moved right (0 differ); the parchment against the GOG shot `hud_idle_running` - median 17 sum-RGB at the code's offset, 13 after the RGB565 reduction, 34-41 one pixel off; the GOG shot's land colours are palette entries exactly.
+
+**Rebuild, step B2 (2026-11-16).** Owners, markers and the box's level, all read through the snapshot (the minimap never touches the sim; no sim change). `PlaySnapshot::territory` (`src/app` `territory_view.hpp`) carries every island's tile owners (`TileLayer::owner`) and cities (number, owner, `player_mask`), taken at publication from read-only accessors (35 µs per turn for the tutorial's 3 islands, 39,168 tiles) and republished as the same object while the content does not change (a `version` that grows on change, the rebuild's counterpart of the original's counter, OQ-634); `PlaySnapshot::map_figures` carries the ships (figures with a navigation state, list 1) every turn. `minimap_owner_rule` (`play.hpp`) reads, before the world moves into the runner, the viewer - the first human slot (kind 8 or 11, not `neutral_player`), the slot a new single-player game gives the local identity (`0x10029100`; a ship start's participant when there is one) - and each player's colour slot: the game start's assignment (`assets::unit::start_colours`, the same the units are drawn with), else the HEAD colour the sim keeps (`Player::default_colour`). `minimap_owner_layers` applies the read above per tile; the window rebuilds the image only when the territory version changes (1.1-2.9 ms for the 512-tile tutorial, first build at the first frame). Markers: `minimap_markers` (own list 1, own list 0, others' list 1 only with `marker_others`, at most 1500), drawn as the 3 x 3 outline over the box, colours shown through RGB565. The box's level factor is now 2^level at the built levels (B1 used the tile width ratio, 84 / 20 = 4.2 at group 2). Data: `owner_rule`, `marker_colours`, `marker_flags`, `marker_square`, `marker_others`, `alerts` in `data/ui/minimap.txt`.
+
+Checks (crops under `cache/ui-minimap-1/b2/`, not in git), tutorial `02Trade01` at 1024 x 768 against the History Edition capture `ui_5.mp4` (frame 166 s, aligned by the islands' best overlap at (+1527, +31) of the frame scaled to 2560 x 1440, land IoU 0.70): the human's settlement is teal in both, bounding box x 889-909, y 67-73 ours against 891-907, 68-72 HE (HE's box covers part of it); the computer's and the natives' cities are olive in both; the ship's marker centre (905, 70) ours against the green blob's centroid (905.9, 71.1) HE. CPU and GPU paths draw the minimap identically (0 of 30,240 pixels differ). **The view box:** the box is an axis-aligned rectangle 1.361·e across and 1.264·e down (corners from Q4, 0.972 px per map unit across, 0.486 down), e = 2^level · 2200 / W: for the 512-tile tutorial 5.85 x 5.43 px at level 0, 11.7 x 10.9 at level 1, 23.4 x 21.7 at level 2. The rebuild draws 6 x 6, 12 x 10 and 24 x 22 px (line-centre spans at groups 0, 1, 2). The History Edition (0.75-scale capture, ±1.3 px) shows 4 x 5 frame px = 5.3 x 6.7 px for most of the recording, including the owner's "I can't zoom in any further" (166 s), and 9 x 8 = 12.0 x 10.7 px at 30-33 s: levels 0 and 1 of the formula, so formula and HE agree. B1's larger box came from the start zoom: `--play` opens at zoom group 2 (`main.cpp` `args->group.value_or(2)`, a viewer default), the box at level 2 (then with the 4.2 factor), while HE was at level 0 or 1; where the original starts and where its camera starts is OQ-638.
+
+**Rebuild, step C (2026-11-16): the controls.** Read further for C (AnnoFrame, same listings): the hit test `0x100332f0` works on the point relative to the **wrapper's** rectangle (`0x10002970` and `0x100029f0` subtract `[wrapper+0]`, `[wrapper+4]`, the rectangle the frame passed, (765, 12) at 1024, before the renderer's +2/-2 shift): inside [0, w) x [0, h) and, with t = y when y <= h/2 else h - y, -2t <= x - w/2 < 2t (the inscribed diamond; left corner x 765, right corner 1020, top y 13, bottom 139 at 1024). The inverse `0x100333f0`: X = (x - 6)·1.03, Y = (y + 0)·1.03 (`+0x8f18` = -6, `+0x8f1c` = 0, `+0x8f20` = 0x3f83d70a above 800 px; -5, 2 at 800), D = X - w/2; P = N/h·(Y + D/2), Q = N/h·(Y - D/2) with N = 256 (the renderer's size; `0x1003347e`..`0x100334ce`); turn 0 (jump table `0x100336a4` → `0x100334e1`): x0 = ftol(W·Q/256), y0 = ftol(H·P/256); then through the zoom window (`0x1003357e`..`0x10033685`, the same clamp as `0x10033710`): x = ftol(((x0/W - 0.5)·z + mid of the `+0x20` axis)·W), y likewise with the `+0x1c` axis; finally `0x10033ad0`(y, x) recentres the minimap there (`+0x1c` = y/H: u is the world's y, as OQ-635 chose). The click handler (`0x10006d19`..`0x10006d9d`, the same at `0x1000b989`) puts the camera at (-x·1.0, 0, -y·1.0) (`0x100040f0`; 0x10086320 = 1.0): the tile's integer position, then recomputes it (`0x10003be0`). A press on the rectangle outside the diamond goes on to the map's input (`0x10006db7` → `0x10002340`, state 1; OQ-640). The minimap zoom: `0x10033770`(param) subtracts (param 1) or adds the float 0.15 (`0x10087bd4`) and `0x10033710` clamps to [0.15, 1.0] with the same constant as the minimum. The magnifier buttons' rectangles are not in the code read (View.dll asks a position lookup, vfunc `+0x24`, `0x100343fd`); measured by sprite-SAD on `hud_idle_running`: id 40 at **(796, 135)** mean 1.81, id 42 at **(826, 153)** mean 1.19 (pressed frames 41, 43 at 19.8 and 16.5: idle is drawn), both 19 x 21.
+
+What the rebuild does now (`src/app` `minimap.hpp`, `viewer.cpp` `minimap_press`; data `zoom_range 0.15 1.0 0.15` and `click -6 0 1.03` in `data/ui/minimap.txt`, `lupe_plus` / `lupe_minus` in `data/ui/hud.txt`, not drawn - `WELTKARTE`'s own pixels show them):
+
+| Control | Rebuild | Original |
+|---|---|---|
+| Left press on the diamond | `minimap_hit` + `minimap_world_at` (turn 0, the current minimap window), the camera centred on that tile at sea level (`centre_on_tile`, then the view's clamp); the window follows the camera every frame, which is the original's recentring. No drag (a move while the press is held does nothing, its release is the UI's). | `0x10006d19`, `0x100332f0`, `0x100333f0`, `0x10033ad0` |
+| Right press on the minimap | unchanged: the window's own handling (it pans on a drag, and a right click with the construction menu open is its step back). Whether the original's events 1 and 3 are left and right is OQ-631. | events 1 / 3 |
+| Press on the parchment outside the diamond | taken by the UI, nothing happens: `ui_hit` treats `minimap_click_area` (the drawn raster and the wrapper rectangle, x 765..1024 since the fix round (1023 before), y 10..139 at 1024, right-anchored) as chrome, including the strip left of the right column (x 765..778). The packet's choice; the original passes it to the map (OQ-640). | `0x10006db7` |
+| Top-right + / − (ids 44 / 46) | `minimap_zoom_step`: z − / + 0.15 in float, clamped to 0.15 .. 1.0; the box grows by 1/z | command 0x1b, `0x10033770`, `0x10033710` |
+| Magnifier + / − (ids 40 / 42) | one built level per press (`magnifier_target`): the stepped zoom moves one group (0..2), the continuous zoom eases (`zoom_to`) to the next built level from its target (between levels: the next one in that direction; closer than level 0 only − acts). The viewer's built levels 0..2 are the original's three (tile widths 84, 42, 20); the box's level factor follows (2^level at the levels). | commands 0xa / 9, `0x10007710`, `0x10007692` |
+| Chevrons (ids 48 / 50) | taken and dead, waiting for the render lane's **VIEW-TURN-1** (nothing of the turn is built here) | commands 0xc / 0xd |
+| Pressed frames (id + 1) | not drawn: the HUD has no pressed state for any `0xb09` gadget yet (follow-up; 2.2's two-frame rule) | `0xb09` |
+
+The minimap's viewer is the play runner's local player whenever one is set: the ship start's participant, or `--player` (FISHER-VIEW-1, merged into the branch for C); otherwise B2's first human slot (the runner's default `developer_player` is not the human in a shipped scenario, OQ-629 (b)). Fact `minimap.viewer`; wiring case `ui_minimap_player` (lan5 `--player 3`: viewer 3, 0 without the change). Checks: `minimap_test.cpp` (hit test corners, the inverse at two windows and two world shapes, its round trip with the drawing transform within 4 tiles, the click area, the zoom steps, the magnifier levels, the HUD hit) and the wiring cases `ui_minimap_player` and `ui_minimap_controls` on lan5 (1431 tiles: a click at (900, 50) puts the camera at tile (410, 464), as computed by hand; the strip outside the diamond moves nothing; the box 9 → 13 px wide at z 1.0 → 0.7; tile width 20 → 42 → 84 → 84 → 42).
+
+**Fix round (2026-11-16, after the orchestrator's History Edition check).** Evidence crops under `cache/ui-minimap-1/fix/` (not in git). The History Edition's lossless capture `he_s10_hud_idle_win.png` (2542 x 1351, UI scale 1.0, `ANNO_UI_HE_CAPTURES`) is the reference for F1 and F2; the recording `ui_5.mp4` (0.75 scale, H.264) only where the capture has nothing.
+
+- **F1, the scroll's rolled left end.** Not drawn before: `fenster.tex` id **3** (34 x 47, the texture after `WELTKARTE` id 2; no ACCESS name; GOG and HE files identical, header word `+0x1a` = -6, meaning unread). It hangs left of the column; without it the chrome stopped at the parchment quad's rectangle (the "rectangular notch"). Measured: sprite-SAD on GOG `hud_idle_running` at **(745, 49)** mean 7.61 (37.9 one pixel off), on the HE capture right-anchored at the same place median 0, mean 0.78. The code that draws it was not found (`WELTKARTE` and id 3 are never looked up by name). Rebuild: `hud.txt` `minimap_curl`, drawn after `WELTKARTE` by the oracle mock, the CPU frame, the GPU overlay and `tools/ui_layout.py`; a press on its rectangle is chrome and does nothing (`ui_hit`, step C's rule; OQ-640).
+- **F2, the parchment's grain.** The HE parchment quad is the code's strip: W' = x1 - x0 + 2, H' = y1 - y0 + 2 from the rectangle's corner (`0x10031ef1`..`0x10031f1d`; vertices at x - 0.5, the float 0.5 at `0x10086340`; the map quad's vertex buffer is filled from the same positions, `movsd` at `0x10031fc6`), i.e. **258 x 130 at (767, 10)**, sampled bilinearly. Fit on the HE capture (a bilinear sampler over the parchment's 256 x 133, inside the diamond, islands left out): mean 8.3 sum-RGB for (767, 10) 258 x 130 against 12.3 for B1's (768, 11) 256 x 128 and 10.5-17.7 for the neighbours; a free fit gives scales 0.9928 x 1.0232 (256/258 = 0.9922, 133/130 = 1.0231). At that size the samples fall between texels, which is the HE's smoothness (a one-texel checkerboard keeps 192 of its 200 step in the GOG fit and 85 in the 258-pixel quad). The GOG shot still prefers B1's fit (11.0 against 12.2, RGB565): its D3D7 frame rasterises differently. The colour depth differs as well: the HE capture's minimap colours are 8-bit, palette entry = floor(channel * (k + 16) / 31) (entries (9, 3) (109, 104, 0), (9, 4), (9, 5), (9, 6), (1, 3) exact, 1943 of 2518 saturated pixels exact; none on the RGB565 grid), the map quad point-sampled (hard island edges). Rebuild: `minimap.txt` `parchment_quad 0 0 2 2` and `colour_depth 32` (HE, the defaults); `parchment_quad 1 1 1 1` with `colour_depth 16` is the GOG frame (B1's rows-only filter, 1:5:5:5 palette, markers and parchment in RGB565). On the HE capture's parchment (islands left out) our frame's median difference went from 18 to 1 sum-RGB. The map quad keeps B1's geometry ((768, 11) 256 x 128 and the diamond transform): the code shares the parchment's positions, so the HE probably draws it 258 x 130 too, which the islands' overlap cannot separate (0.8 %; OQ-628). Sure: high for the parchment quad and the 32-bit palette (exact pixels on a lossless capture, matching the code), medium for the map quad.
+- **F3, the settlement's lower edge.** No change. Against `ui_5.mp4` at 166 s (aligned as B2), with the HE's view box and ship marker and ours left out: 36 of our teal pixels remain, 22 on HE teal, 13 on HE parchment (12 of them one pixel from HE land); our olive shows the same fringe (48 of 315 on HE parchment, all within 2 px). A tile's shade decides whether a cell is drawn and the owner only its colour, so a teal cell past the land would need a wrong shade, which olive cells would show as well; the fringe is the video's chroma blur and OQ-636, not the owner rule. Sure: medium (a compressed 0.75-scale video; no lossless HE frame of the tutorial).
+- **F4, the start camera.** `[CAMARAPOS]` is `CAMERA_MEMORY`'s slot, not a start camera: AnnoScene reads its `x,y` into the script object `+0x64`/`+0x68` (`0x10016f13`..`0x10016f50`), `CAMERA_MEMORY` writes them from the frame's camera (`0x10015a00`: negated, truncated), `CAMERA_RECALL` sends them to the frame as command 3 with x | y << 16 (`0x10015a50`), and the script writer saves them (`0x100161da`); nothing else reads them, and every shipped scenario and save has `0,0`. Command 3 (`0x10007885`) **sets** the camera to that tile (`0x100040f0` with (-x, 0, -y), then `0x10003be0`), like a minimap click; the sentence above calling it a scroll by a delta was wrong. Where the original's start camera and zoom come from is still OQ-638. Measured on `ui_5.mp4`: the first game frame is at about 28.5 s (the menu and loading screen before it); the box is level 1 (B2) and sits on the player's ship marker (box centre about (904, 72) at 1024 against the marker (905, 70)). So the HE starts at zoom level 1 on (or next to) the player's ship; the rebuild's `--play` starts at group 2 (42 / 20 = 2.1, the 2.08 the orchestrator correlated) at the centre of the scene's bounds.
+- **F5, the closest zoom** (the orchestrator, 2026-11-16): the rebuild's viewer zooms to 84 x sqrt(2) = 118.8 px tiles (`kZoomEndFactor`, `zoom.hpp`), the History Edition's closest is 84 px (group 0): the 1.42 measured. Not changed here (owner's decision). The box there uses the factor 84 / 118.8 = 0.71 (`minimap_level_factor` beyond the closest level), smaller than the original's level-0 box, which the original never shows.
 
 ## 3. Construction menu tree
 
@@ -468,9 +626,9 @@ Type 501 panel upkeep reads **0** on `r2_info_pioneer_house` (glyph-exact, UI-IN
 Measured rectangles in section 2.5-2.6. Summary:
 
 - Select a U cell: info panel at (804, 302) 220 x 466 plus placement mode; cancel-X `INFOEXIT` at (984, 725) 33 x 38.
-- Valid preview: yellow building footprint (`f13_place_land`). Refused: yellow empty rectangle (`f13_place_water`). Left click on valid land places and stays in mode (`r2_place_*`); ESC / right click / cancel-X leaves.
+- Valid preview: yellow building footprint (`f13_place_land`). Refused: yellow empty rectangle (`f13_place_water`). Left click on valid land places and stays in mode (`r2_place_*`); ESC / right click leave it (nothing armed), the cancel-X closes only the panel and keeps the building armed (section 2.6, UI-PLACE-1).
 - Rotate: DOT / COMMA (`f13_place_rot_dot`, `f13_place_rot_comma`). CTRL alignment is in the manual (p15) and was not captured (OQ-546).
-- Demolish: pickaxe `ABRISSICON` at (970, 710) 53 x 53 (id 659 idle-in-menu, id 660 while demolishing). Tooltip family `TOOLTIP:ABRISS` (4 lines). Cursor `tCursorAbriss` / `Abreissen_Gebaeude.tex` 73 x 65 as the OS cursor, not a blit.
+- Demolish: pickaxe `ABRISSICON` at (970, 710) 53 x 53 (id 659 idle-in-menu, id 660 while demolishing). Tooltip family `TOOLTIP:ABRISS` (4 lines). Cursor `tCursorAbriss` / `Abreissen_Gebaeude.tex` 73 x 65 as the OS cursor, not a blit. It works with nothing armed and toggles; a cell chosen while demolishing ends the demolish mode (section 2.6, UI-PLACE-1).
 
 Sim refusal rule stays OQ-T15-PLACEREFUSE.
 
@@ -576,6 +734,117 @@ matched by ACCESS id on its shot (exact after the RGB565 reduction, or mean abs 
 two big backgrounds); `tools/test/ui_panels_compare.py` checks them. Names, figures, list rows,
 the diplomacy cluster and the info emblem are not drawn (UI-TABS-1). Unproven parts (a second
 click on a tab, Esc's return, the list background, the crest per player): OQ-621.
+
+**Corrected by section 5.4 (UI-TABS-1, 2026-11-16):** the exception above does not hold. The
+bust shows the player view at the sub-tab it showed last (code read below); `r2_tab_military` shows
+the list because the runner had pressed key D before it (`actions.jsonl` of run
+`d91-20261030-112532`: O, Esc, D, Esc, "?", Esc, bust).
+
+### 5.4 The sub-tabs (UI-TABS-1, 2026-11-16)
+
+Each of the three panel views (the bust's player view, the "?" tab's city view, the gears' options
+view) has a column of sub-tabs left of the panel, x 762, sub-tab k at y 303 + 46k, 42 x 46. Code:
+GOG 2.0.0.5, static disassembly (pefile/capstone). Frames: `fenster.inc` line 1 (P). Shots: GOG
+Wine runner (`cache/orig/ui-1/shots`), exact = fraction of the frame's opaque pixels within 2 of
+the shot after the RGB565 reduction, idle / selected frame at each position. History Edition:
+`HE_UI_1.mp4` (owner's run), sub-tab crops compared with ours at UI scale 1.0 scaled to the video
+(0.75): mean abs per channel against our selected / idle frame.
+
+| Fact | Evidence | Confidence |
+|---|---|---|
+| Player view: 5 sub-tabs, `VIEWINFOPIELERTAB` idle 1184 + 2k, selected 1185 + 2k | builder View.dll `0x1007f428..0x1007f507` (`cmp esi, 5` at `0x1007f504`; image property `0x198` = base + 2k, `0x197` = 1); ACCESS `VIEWINFOPIELERTAB,1184`, next name at 1194 | D, P |
+| City view ("?"): 8 sub-tabs, `VIEWINFOSTADTTAB` idle 661 + 2k, selected 662 + 2k | builder `0x1006ac92..0x1006adc0` (`cmp esi, 8` at `0x1006adb9`, `0x198` = base + 2k); ACCESS `VIEWINFOSTADTTAB,661`, next 677 | D, P |
+| Options view: 5 sub-tabs, `OPTION_TABS` idle 1476 + 2k, selected 1477 + 2k | ACCESS `OPTION_TABS,1476`, next 1486; `TOOLTIP:OPTION` 0..4 (`ui-options-mainmenu.md` 2.6) | P |
+| A sub-tab press selects it: the handler reads the column's index (property `0x1b3`), stores it at `[view+0x5f0]`, sends message 1 to that page, hides every page and the column, adds the page and then the column on top | player `0x1007f730` -> `0x1007f600`; city `0x1006b070` -> `0x1006af30`; options `0x100786a0` -> `0x100784c0` (also sets the banner text to the page's line, `0x100784f4..0x10078523`) | D |
+| A press on the selected sub-tab shows the same page again (no compare with the current index) | the three handlers above | D |
+| Before switching, the player handler sends message 6 to page 1, the city handler to pages 2 and 3 | `0x1007f62a`, `0x1006af5e`, `0x1006af75`; meaning not read (OQ-643) | D / U |
+| The views are persistent children of the HUD; a main-tab press shows a view again with its column's last selection | main-tab handler `0x10034ab0` -> `0x100335d0`(i): `[hud+0x5f0]` = i, page = vfunc `+0x20`(0xa00, i) = `[hud+0x5e4][i]` (`0x100194c0`), message 1; player view message 1 -> `0x1007f600` (`0x1007e9c0`, `dec eax; je`); city view message 1 -> `0x1006af30` (`0x1006a439..0x1006a44e`); options message 1 only the base handler (`0x100787f0`), its last page stays attached | D |
+| ... the options view kept the speech page when key O was pressed later | GOG `f15_key_O` (after `f15_options_y510` and three more clicks): OPTION_TABS 4 selected, exact 1.00 | M-GOG, high |
+| Start state: every view at sub-tab 0 | `hud_idle_running` player 0 selected (1.00); `r2_tab_help` city 0; `r2_options` options 0; HE 44.5 s player 0 (11.4 vs 31.4), 107.75 s options 0 (11.0 vs 30.8) | M-GOG, M-HE, high |
+| Keys (lower case, the frame's key switch): d -> HUD message 0x10 param 5, s -> 6, c -> 7, o -> 9, b -> 8 | AnnoFrame.dll `0x1000bfc4` (table `0x1000c548` / `0x1000c4e8`): 'd' `0x1000c210`, 's' `0x1000c279`, 'c' `0x1000c29c`, 'o' `0x1000c1ed`, 'b' `0x1000c233` | D |
+| Params 4..7 show the player view and forward the param, which selects sub-tab 0, 1, 3, 2 | HUD `0x10033260` (table `0x10033590`: 4..7 -> `0x10033456`/`0x10033485`: main tab 1, then message 0x10 to the player view); player view `0x1007e9c0`, table `0x1007ea3c`: 4 -> `0x1007e9e6` (0), 5 -> `0x1007e9f1` (1), 6 -> `0x1007e9fc` (3), 7 -> `0x1007ea07` (2), via `0x1007eaf0` (sets `0x1b3`, switches) | D |
+| ... so D = diplomacy status (1), C = city list (2), S = ship list (3) | GOG `f15_player_menu` (D) 1 selected 1.00, `f15_city_list` (C) 2 1.00, `f15_ship_list` (S) 3 1.00; tab order `TOOLTIP:SPIELERINFOMAIN_TAB_ADDON` (`ui-ships-diplomacy.md` 2.9) | D, M-GOG, high |
+| Param 9 (o) shows the options view with its last page; param 3 the "?" view | `0x1003353f`, `0x10033423` | D |
+| Esc (VK 0x1b) sends param 2; with the construction tab showing and no panel flag, nothing selected: param 4 = the player view at sub-tab 0; something selected: param 3 = "?" | AnnoFrame `0x1000bd18..0x1000bd51`; View `0x1003334c..0x100333ed` | D (selection branch not modelled, OQ-643) |
+| Player view pages: 0 overview (`SPIELER_BILANZ_BK` its own: 0.94 exact on `hud_idle_running`, 0.01 on the list shots), 1 diplomacy status, 2 city list, 3 ship list, 4 ships for purchase; the crest is the view's (1.00 on `f15_ship_list`, `f15_city_list`) | GOG shots; `TOOLTIP:SPIELERINFOMAIN_TAB_ADDON` | M-GOG |
+| Options pages 1-4: the main page's icons are page 0's (0.00-0.03 elsewhere); `OPTION_BACKGROUND` 0.18-0.36 exact under them | `f15_options_y360..y510` | M-GOG, medium (OQ-644) |
+| HE: one selected sub-tab at our position in every frame sampled | player 104.5 s -> 3 (14.3 vs 27.1), 139.0 s -> 1, 141.2 s -> 2, 142.5 s -> 4; options 108.9 s -> 1, 110.5 s -> 2, 111.75 s -> 3, 112.3 s -> 4, 113.75 s -> 0 (back to the main page); margin 12-17 per channel at every tab | M-HE, high |
+| HE: the bust at 01:44.25 showed the ship list although the player view last showed the overview | `HE_UI_1.mp4` 44.0-46.0 s (overview), 104.25 s (ship list) | M-HE; contradicts a pure "last sub-tab" rule: OQ-641 |
+| HE: "?" with nothing selected shows only the castle background | `HE_UI_1.mp4` 50.0 s, 142.75 s | M-HE (OQ-642) |
+
+**Rebuild (UI-TABS-1 stage A).** `data/ui/hud.txt`: `view` on the three main tabs, `view`,
+`subtab`, `body`, `frame_idle`, `frame_selected` (and `hotkey` D, C, S) on each sub-tab, `hotkey O`
+on the gears; the counts are the sub-tab elements. `src/app` `hud_tabs.hpp`: the view showing and
+one sub-tab per view; a main-tab press or key O shows a view at its last sub-tab, a sub-tab press
+selects it (on the press), D/C/S show the player view at 1/2/3 (classic surface only), Esc on the
+construction grid (and the right click there) gives the player view at 0. Both UI paths draw the
+selected sub-tab's frame, the others idle, and the selected sub-tab's `body`: player 0 `player`,
+1 `player_list`, city 0 `info`, options 0 `main_menu` (unchanged panels); the other pages are
+named placeholders (column, crest, and in the options view `OPTION_BACKGROUND`; OQ-644). Facts:
+`hud.view`, `hud.subtab`, `ui.tab` (= the body). Checks: `hud_tabs_test.cpp`,
+`tools/test/viewer_wiring/ui_subtabs.script`, `tools/test/ui_subtabs_compare.py` (the GPU layer's
+composer against the GOG shots above, the window's CPU path against the composer, exact). Not
+built: the pages' bodies (the panel packets), tooltips, the header plank with the view's name
+(not drawn on any view's page since R2), the "?" view's selection-dependent content (OQ-642).
+
+### 5.5 The balance pages (UI-TABS-1 stage B, 2026-11-17)
+
+The player view's overview (sub-tab 0, `SPIELER_BILANZ_BK`) and the "?" view's city status page
+(sub-tab 0, `STADT_BILANZ_BK`) print a column of figures. Code: GOG 2.0.0.5 View.dll and
+AnnoWelt.dll, static disassembly (pefile/capstone). Shots: GOG Wine runner (`cache/orig/ui-1/shots`),
+glyph-match = `MainSmall.zei` drawn by the `assets::render_text` advance rule with the info
+panel's level colours (2.5), compared after the RGB565 reduction. History Edition: `HE_UI_1.mp4`
+44.5 s (overview, ship start) and `ui_5.mp4` 405 s = 6:45 (city page, Bad Aussee); the videos are
+0.75 recordings of a 2542 x 1351 client (`ui-warehouse-trade.md` on `task/UI-PANELS-PREP`, section
+3): `x_video = 7 + 0.75 (x + 1518)`, `y_video = 24 + 0.75 y`.
+
+| Fact | Evidence | Confidence |
+|---|---|---|
+| The rows are text gadgets class `0xb1c`, 195 x 15, alignment property `0x1c6` = 1, default text "00", the font the page's `[+0x5c0]` (the same member the info panel's boxes use, `0x100300e5`); city page 8 (`cmp esi, 7; jle` at `0x1006c8e5`), overview 7 (`cmp edi, 6; jle` at `0x100800c8`) | builders city `0x1006c7e0` (`0x1006c855..0x1006c8be`), overview `0x1007ffa0` (`0x10080028..0x10080091`); the info panel's centred boxes set `0x1c6` = 2 (`0x100300ce`) | D |
+| Positions are set by each page's layout function (vtable slot 29), not by the builder: gadget i at (page x + 35, page y + C_i - 244), C = 323, 353, 383, 413, 443, 473, 533 (overview and city), 633 (city row 7); the city page's deny button at (page x + 79, page y + 674 - 244) | city `0x1006c4c0` (`0x1006c557..0x1006c739`), overview `0x1007fcf0` (`0x1007fd87..0x1007fefd`); floats `0x1009e75c` 35, `0x1009c3f0` 244, `0x1009c610` 323, `0x100a0a6c` 353, `0x1009cf70` 383, `0x100a0a68` 413, `0x100a0a64` 443, `0x100a0a60` 473, `0x100a0a5c` 533, `0x1009f478` 633, `0x1009deec` 79, `0x100a0a58` 674; `_ftol` `0x1008c128`, gadget slot `+0x5c` (x, y) | D; answers OQ-651 for these two pages (`task/UI-PANELS-PREP`) |
+| The page origin is (779, 244): the deny button measured at (858, 674) = (779 + 79, 244 + 674 - 244); so the gadgets are at (814, C_i), right edge 1009 | `r2_tab_help`, `f15_kontor` (`hud.txt` `info_build_stop`, sprite-565) | A from D + M-GOG |
+| Text right edge on the gadget's right edge (x = 1009 - text width), top 3 rows above the gadget, pixels above the gadget not drawn | glyph-match, 0 differing pixels on every row: `hud_idle_running` 0, 0, 15, 0, 0, 16, -31; `f15_kontor` 0, 0, 15, 0, 0, 0, -15, 0; `r2_tab_help` row 0. Without the cut the '1' and '5' glyphs' top outline row (glyph row 2) differs by 2 pixels each | M-GOG, high; the vertical rule itself is not read (OQ-692) |
+| The figure is `_itoa(value, buffer, 10)`: '-' and the digits, no thousands separator | `0x1008d919` -> `0x1008d946` (radix 10 and value < 0 set the sign flag) | D |
+| The balance row (row 6 on both pages) gets colour property `0x1c5` = `0xffffff`, or `0xff0000` below 0; the other rows never set it (white) | city `0x1006c32f..0x1006c357`, overview `0x1007fb63..0x1007fb90` (`setge; dec; and 0xffff0001; add 0xffffff`); glyph-match with level 1 = (255, 0, 0): 0 differing pixels on `hud_idle_running` "-31" and `f15_kontor` "-15", 41+ with white | D, M-GOG |
+| City page values (update `0x1006c0f0`, city = `[page+0x634]`): row 0 city `+0x5c` -> `+4` (AnnoWelt `0x1002dfb0` = city+0x2ec, `0x10022df0` sums the five groups' residents); row 1 city `+0x6c(0)`; row 2 `+0x6c(1)` + `+0x6c(2)`; row 3 `+0x6c(4)`; row 4 `+0x6c(5)`; row 5 `+0x6c(2)`; row 6 = row 4 - row 5 - row 3 - row 2 + row 1 (the military bucket counts twice); row 7 city `+0x64` -> `+0x20`, divided by 256 toward zero (`cdq; and edx, 0xff; add; sar 8`) | `0x1006c10c..0x1006c11e`, `0x1006c145..0x1006c167`, `0x1006c1a7`, `0x1006c1e6..0x1006c1fc`, `0x1006c234`, `0x1006c275`, `0x1006c2b4`, `0x1006c2ef..0x1006c2fd` | D; answers OQ-655's signs (`task/UI-PANELS-PREP`) |
+| AnnoWelt's city getter `+0x6c` (`0x1002dc70`): index 0 `+0x60c`, 4 `+0x5fc`, 5 `+0x600` shown as `15 x / 105` (32-bit product, unsigned divide, magic `0x38138139`); 1 `+0x604` and 2 `+0x608` raw. City slot `+0x64` = `0x1002dfd0` (city+0x320) | `0x1002dc84..0x1002dccc`, table `0x1002dd04` | D |
+| Overview values (update `0x1007f8f0`, player = `[page+0x618]`): over the player's cities (player `+0x84(2)`, list loop `0x1007f977..0x1007f9ee`) row 0 sums city `+0x5c` -> `+4`, row 1 city `+0x6c(0)`, row 2 city `+0x6c(1)`; row 3 = player `+0x9c(4)` + the cities' `+0x6c(4)`; row 4 = player `+0x9c(5)` + cities' `+0x6c(5)`; row 5 = player `+0x9c(2)` + `+0x9c(3)` + cities' `+0x6c(2)`; row 6 = row 4 - row 3 - row 5 - row 2 + row 1 | `0x1007f921..0x1007f96d`, `0x1007f9f0..0x1007fa0e`, prints `0x1007fa0a..0x1007fb60` | D |
+| Player getter `+0x9c` (`0x1001c0f0`, table `0x1001c140` from index 2): 2 `+0x88`, 3 `+0x8c` (the unit upkeep sums, `players.md`), 4 `+0x80`, 5 `+0x84` (the decaying statistics), raw | `0x1001c103..0x1001c124` | D |
+| The sum over an empty city list is 0: HE on the ship start shows 0, 0, 0, 0, 0, 17, -17 (17 = the player's own upkeep terms) | `HE_UI_1.mp4` 44.5 s | M-HE, high |
+| HE shows the same layout: digits' white core ends at video x 1900-1901 (predicted 1900.75 for the gadget edge 1009 less the outline column), rows at video y 267, 290, 312, 335, 357, 380, 424 (500 for row 7), predicted 267.0, 289.5, 312.0 ... within 1 px; balance red | `HE_UI_1.mp4` 44.5 s, `ui_5.mp4` 405 s | M-HE (lossy video), medium-high |
+| HE city page values 120, 91, 248, 0, 0, 0, -157, 9: 91 - 248 = -157 with rows 3-5 at 0 | `ui_5.mp4` 405 s | M-HE |
+
+**Rebuild (UI-TABS-1 stage B).** `data/ui/hud.txt` `player_row_0..6` and `city_row_0..7`: the
+gadget rectangles (814, C_i) 195 x 15, `align right`, `text_dy -3`, `clip box`, `value
+player.<k>` / `city.<k>`, `page player` / `info`, `negative_rgb ff0000` on row 6, font
+`toolgfx/mainsmall.zei` (byte-identical to MainMedium and HelpNormal, 2.5). `src/app`
+`balance_rows.hpp` computes the figures from the play snapshot (`PlaySnapshot::cities` with a copy
+of each city's `sim::City::accounts`, `accounts_live` = `Rules::city_booking`, the shown scale
+`SimConfig::upkeep_slices` / `stat_decay_den` = 15 / 105). The sim's names for the original's
+statistics: `sales` = index 0 (`+0x60c`), `trade_sales` = index 4 (`+0x5fc`), `trade_purchases` =
+index 5 (`+0x600`) (HEAD2 0x28 / 0x38 / 0x3c, `scenario_formats.cpp`), `civil_cost` = index 1,
+`military_cost` = index 2 (`city_booking.cpp`); the rows follow the index (OQ-693 for the names).
+Both UI paths draw them (`draw_balance_rows` in `ui_mock.cpp`). Facts `hud.row.<value>` (the text,
+or `empty`).
+
+| Row | Overview (`player.k`) | City page (`city.k`) |
+|---|---|---|
+| 0 | sum of the cities' `World::city_population`: drawn | the city's population: drawn |
+| 1 | sum of `15 sales / 105`: drawn while the accounts are live (always with no city) | `15 sales / 105`: live accounts |
+| 2 | sum of `civil_cost`: as row 1 | `civil_cost + military_cost`: live accounts |
+| 3 | + player `+0x80`: **empty** (OQ-694) | `15 trade_sales / 105`: live accounts |
+| 4 | + player `+0x84`: **empty** (OQ-694) | `15 trade_purchases / 105`: live accounts |
+| 5 | + player `+0x88 + 0x8c`: **empty** (OQ-694) | `military_cost`: live accounts |
+| 6 | balance: **empty** (needs 3-5) | the balance as the original: live accounts |
+| 7 | - | knowledge: **empty** (OQ-695) |
+
+Decisions: (1) the account rows are drawn only while `Rules::city_booking` is on, because only
+then does the sim keep the buckets and statistics (`create.cpp`, `apply.cpp`, `scheduler.cpp`);
+with it off they would show figures the game does not have. (2) The "?" page shows the status
+bar's city (5.2's rule), because the rebuild has no Kontor/marketplace click into this page yet;
+the original shows the city its message `0x1a00` named (`0x1006c030`: `[page+0x634]`) (OQ-691).
+(3) The original's 32-bit products and sums wrap; the rebuild computes in 64 bits and leaves a row
+empty when a figure does not fit (adaptation, no visible difference below 2^31).
 
 ## 6. `data/ui/` layout format
 
@@ -701,7 +970,7 @@ Read-only against `src/sim` at this board (`064b4a2` plus this branch). There is
 
 | UI surface | Original | `src/sim` today |
 |---|---|---|
-| HUD idle, minimap, tabs, status bar | captured | none (no UI library) |
+| HUD idle, minimap, tabs, status bar | captured | none (no UI library); the app draws the minimap since UI-MINIMAP-1 B1 and its controls work since C (section 2.9) |
 | Construction menu, banners, `?` locks | captured | none |
 | Building info panel (name, preview, costs) | captured | none; costs live in `Anlagen.dat` HEAD via `TypeRegistry` |
 | Placement ghost / rotate / cancel-X | captured | `BuildCmd` / `create_building` places; no overlay |

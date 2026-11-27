@@ -202,6 +202,19 @@ struct Compiler {
             e.offset = static_cast<std::uint32_t>(l.offset);
             if (!l.subject.empty()) {
                 const auto query = upper(l.query);
+                if (upper(l.subject) == "OBJECT" && query == "KILLED" && !l.arg && !l.value) {
+                    auto object =
+                        std::find_if(p.city_objects.begin(), p.city_objects.end(),
+                                     [&](const auto& o) { return upper(o.name) == upper(l.name); });
+                    if (object == p.city_objects.end()) {
+                        fail(l.offset, "unknown city object: " + l.name);
+                        return std::nullopt;
+                    }
+                    e.query = ScriptQuery::CityKilled;
+                    e.index = static_cast<std::uint32_t>(object - p.city_objects.begin());
+                    p.expressions.push_back(e);
+                    return static_cast<std::uint32_t>(p.expressions.size() - 1);
+                }
                 if (upper(l.subject) != "AREA" || !l.arg || l.value ||
                     (query != "TOUCHED_BY_SHIP_FROM" && query != "TOUCHED_BY_SOLDIER_FROM")) {
                     fail(l.offset, "unsupported query: " + bb::describe(l));
@@ -320,6 +333,12 @@ Evaluation eval(const ScriptProgram& p, const ScriptState& s, std::uint32_t n, S
             host.touch(p.areas[e.index], e.mapping, e.query == ScriptQuery::ShipTouch, w, result);
         return {result, false, ok};
     }
+    if (e.query == ScriptQuery::CityKilled) {
+        const auto& object = p.city_objects[e.index];
+        bool result = false;
+        const bool ok = host.city_killed(object.island, object.city, result);
+        return {result, false, ok};
+    }
     const std::int32_t value = e.query == ScriptQuery::Signal ? s.signals[e.index]
                                : e.query == ScriptQuery::Playtime
                                    ? std::bit_cast<std::int32_t>(s.last_arg) / 500
@@ -375,7 +394,8 @@ compile_script(std::string source, const ScriptEnvironment& env, ScriptLimits li
         if (!sections.contains(std::string(section.name)))
             return ScriptError{0, "missing required script section: " + std::string(section.name)};
     const formats::ByteBuffer grammar_bytes(grammar.begin(), grammar.end());
-    auto ast = bb::parse(grammar_bytes, {.max_condition_depth = limits.depth});
+    auto ast = bb::parse(
+        grammar_bytes, {.max_condition_depth = limits.depth, .allow_duplicate_object_names = true});
     if (!ast)
         return ScriptError{static_cast<std::uint32_t>(ast.error().offset), ast.error().text()};
     Compiler c{{}, env, {}, 0};
@@ -388,8 +408,20 @@ compile_script(std::string source, const ScriptEnvironment& env, ScriptLimits li
     for (const auto& section : a.sections)
         if (section.kind == bb::SectionKind::Unknown)
             c.fail(0, "unsupported section: " + section.name);
-    if (!a.objects.empty())
-        c.fail(0, "unsupported object definitions");
+    for (const auto& object : a.objects) {
+        if (!c.node(object.offset))
+            break;
+        if (upper(object.kind) != "OBJECT_STADT" || object.numbers.size() != 1) {
+            c.fail(object.offset, "unsupported object definition: " + object.kind);
+            break;
+        }
+        auto value = c.number(object.numbers.front(), object.offset);
+        if (!value)
+            break;
+        // AnnoScene 0x100236b6: low-word store; 0x100118a7/0x100118bc: byte pair.
+        const auto packed = static_cast<std::uint32_t>(*value) & 0xffffu;
+        c.p.city_objects.push_back({object.name, IslandId{packed & 0xffu}, CityNo{packed >> 8}});
+    }
     for (const auto& area : a.areas) {
         if (!c.node(area.offset) || area.corners.size() != 4) {
             c.fail(area.offset, "area requires four signed32 endpoints");

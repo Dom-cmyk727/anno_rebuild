@@ -24,7 +24,9 @@
 #include <anno/app/commands_file.hpp>
 #include <anno/app/dev_tool.hpp>
 #include <anno/app/loader.hpp>
+#include <anno/app/minimap.hpp>
 #include <anno/app/opening_view.hpp>
+#include <anno/app/territory_view.hpp>
 #include <anno/formats/result.hpp>
 #include <anno/sim/world.hpp>
 
@@ -76,6 +78,9 @@ struct FixedPlayOptions {
     /// Default `{}` is the original behaviour (what every start got before this option
     /// existed); `--rules living` gives `cli::apply_rules_profile({}, Living)`.
     sim::Rules rules;
+    /// FISHER-VIEW-1: the persistent extensions the created world uses (--fisher-rules on sets
+    /// `fisher_rules.enabled`). Default `{}`: every extension off, as before this option.
+    sim::ExtensionContext extensions;
 };
 
 /// Registry, `load_scenario_with_links`, `World::create`. The link list names
@@ -119,6 +124,15 @@ struct BuildingInspection {
     /// One line of the kind-specific fields (output/raw/input stock in tons, activity,
     /// workers/animals/carriers out); empty for Inert.
     std::string status;
+    /// FISHER-VIEW-1: a Farm's (the fisherman's hut's) figures as numbers, for a script's
+    /// comparisons: output and raw stock in the payload's 8.8 fixed-point units, workers out.
+    /// nullopt for every other kind.
+    struct FarmFigures {
+        std::uint32_t out_88 = 0;
+        std::uint32_t raw_88 = 0;
+        std::uint32_t workers_out = 0;
+    };
+    std::optional<FarmFigures> farm;
 };
 
 /// `city`'s building at world tile `tile` (World::building_at), formatted for the developer
@@ -142,6 +156,9 @@ struct CityCounters {
     /// The city's goods stock (8.8 tons per goods number) and its population.
     std::vector<std::uint32_t> goods;
     std::optional<std::int64_t> population;
+    /// UI-TABS-1 stage B: a read-only copy of the city's accounts (sim::City::accounts: the
+    /// statistics 0, 4, 5 and the cost buckets 1, 2 the balance pages read; docs/re/ui.md 5.5).
+    sim::CityAccounts accounts;
     [[nodiscard]] bool island_contains(std::int64_t x, std::int64_t y) const {
         return x >= island_x0 && y >= island_y0 && x < std::int64_t{island_x0} + island_w &&
                y < std::int64_t{island_y0} + island_h;
@@ -206,7 +223,51 @@ struct PlaySnapshot {
     /// UI-WINDOW-1 fix round R2: every city of the local player, in (island, city) order. Null
     /// when the player has none.
     std::shared_ptr<const std::vector<CityCounters>> cities;
+    /// UI-MINIMAP-1 B2: every island's tile owners and cities (territory_view.hpp), taken at
+    /// publication from read-only accessors (World::islands, TileLayer::owner, City number, owner
+    /// and player_mask, SimConfig::neutral_owner). The same object is republished while the
+    /// content does not change; its `version` grows when it does. Never null after the runner's
+    /// constructor.
+    std::shared_ptr<const TerritoryView> territory;
+    /// UI-MINIMAP-1 B2: the figures the minimap marks (collect_map_figures), every turn.
+    std::shared_ptr<const std::vector<MapFigure>> map_figures;
+    /// UI-TABS-1 stage B: whether the sim keeps the cities' accounts up to date
+    /// (sim::Rules::city_booking: the cost buckets follow building creation and removal and the
+    /// statistics decay at each booking only while it is on; docs/sim/economy-booking.md). The
+    /// balance pages draw an account row only while this is true (docs/re/ui.md 5.5).
+    bool accounts_live = false;
+    /// UI-TABS-1 stage B: the scale the original shows statistics 0, 4 and 5 at, `x * num / den`
+    /// (AnnoWelt 0x1002dc70: `15 * x / 105`; docs/re/population.md section 8 and 9: the 15
+    /// bookings per game minute and the 105 of the 104/105 decay), copied from
+    /// SimConfig::upkeep_slices and SimConfig::stat_decay_den.
+    std::uint32_t stat_shown_num = 0, stat_shown_den = 0;
 };
+
+/// UI-MINIMAP-1 B2: the minimap's owner rule (minimap.hpp MinimapOwnerRule) for a loaded game,
+/// read before the world moves into the runner.
+/// - viewer: `local` when given (the play runner's local player: a ship start's participant, or
+///   `--player` since UI-MINIMAP-1 C); else the first player in slot order
+///   whose kind is human (8 or 11) and whose index is not SimConfig::neutral_player - the slot a
+///   new single-player game gives the local identity (AnnoFrame 0x10029100, docs/re/annoscene.md
+///   section 9); else developer_player().
+/// - colours: for a scenario file (`load.fixed_map` false), the game start's assignment
+///   (assets::unit::start_colours over `file` with the original's 8 player colours, as the units
+///   are drawn); where that names no colour, the HEAD colour the sim keeps
+///   (sim::Player::default_colour, HEAD +0x4C); a player with neither has none.
+/// The sim's colour_slot is not used: no load path assigns it (UI-MINIMAP-1 B2 report).
+[[nodiscard]] MinimapOwnerRule minimap_owner_rule(const PlayLoad& load,
+                                                  const std::filesystem::path& file,
+                                                  std::optional<sim::PlayerId> local);
+
+/// UI-MINIMAP-1 B2: the territory of `world` (TerritoryView, version 0). Read-only; O(island
+/// tiles + cities).
+[[nodiscard]] TerritoryView collect_territory_view(const sim::World& world);
+
+/// UI-MINIMAP-1 B2: the figures the minimap may mark: every ship (a figure with a navigation
+/// state and no parent, the same set OpeningView::ships lists) as list 1, the original's SCHIFF
+/// list (AnnoWelt 0x1001e06f). Soldiers (list 0) are not figures of the rebuild's sim yet. In
+/// FigureId order. Read-only; O(figures).
+[[nodiscard]] std::vector<MapFigure> collect_map_figures(const sim::World& world);
 
 /// What the window reads for the developer tool's feedback (round ee review, R1): a snapshot and
 /// the outcome of one command, read so that the outcome is never newer than the snapshot. The
@@ -505,6 +566,10 @@ class PlayRunner {
     // The developer player's city (sim thread, found at construction) and the last refusal
     // shown in the title.
     std::optional<sim::CityRef> developer_city_;
+    /// UI-MINIMAP-1 B2: the territory last published (sim thread only).
+    std::shared_ptr<const TerritoryView> territory_;
+    /// Takes the world's territory and keeps territory_ when its content is the same (sim thread).
+    void refresh_territory();
     /// developer_city_ has a value: the window's title reads it, developer_city_ is the sim
     /// thread's.
     std::atomic<bool> has_city_{false};

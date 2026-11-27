@@ -26,6 +26,7 @@ expect fact hud.counters.city == 1:1
 screenshot counters_island
 click_px 870 212
 wait frames 3
-expect fact ui.tab == player_list
+# UI-TABS-1: the bust from the overview stays on the overview (docs/re/ui.md 5.4).
+expect fact ui.tab == player
 expect fact hud.counters == shown
 quit

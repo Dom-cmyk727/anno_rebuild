@@ -2,6 +2,7 @@
 # the window-independent parts (scene loading, PNG output) so tests can use
 # them; the window needs SDL3 (ANNO_BUILD_VIEWER).
 add_library(anno_app_core
+  src/balance_rows.cpp
   src/building_delta.cpp
   src/command_outcome.cpp
   src/commands_file.cpp
@@ -12,7 +13,9 @@ add_library(anno_app_core
   src/dev_input.cpp
   src/dev_tool.cpp
   src/frame_projection.cpp
+  src/hud_tabs.cpp
   src/legal_workload.cpp
+  src/minimap.cpp
   src/cli.cpp
   src/loader.cpp
   src/opening.cpp
@@ -87,7 +90,8 @@ if(ANNO_BUILD_TESTS)
     tests/visibility_test.cpp tests/dev_occupancy_test.cpp tests/dev_visibility_test.cpp
     tests/opening_ui_test.cpp tests/opening_test.cpp tests/ship_motion_test.cpp
     tests/ui_layout_test.cpp tests/ui_transform_test.cpp tests/ui_construction_eligibility_test.cpp
-    tests/construction_menu_test.cpp tests/inspect_building_test.cpp tests/selection_test.cpp)
+    tests/construction_menu_test.cpp tests/inspect_building_test.cpp tests/selection_test.cpp
+    tests/minimap_test.cpp tests/hud_tabs_test.cpp tests/balance_rows_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   target_compile_definitions(anno_app_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic"
@@ -134,7 +138,7 @@ if(ANNO_BUILD_TESTS)
     # The developer tool through the window's own SDL mapping (synthetic SDL events; no window).
     add_executable(anno_app_input_tests tests/main.cpp tests/dev_tool_test.cpp
       tests/dev_feedback_test.cpp tests/dev_tool_mod_test.cpp
-      tests/dev_barrier_test.cpp tests/dev_script_test.cpp)
+      tests/dev_barrier_test.cpp tests/dev_script_test.cpp tests/live_resize_test.cpp)
     target_link_libraries(anno_app_input_tests PRIVATE anno_app_sdl anno_test_support
       doctest::doctest)
     target_compile_definitions(anno_app_input_tests PRIVATE
@@ -210,6 +214,47 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_ui_menu_close_disarms PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # FISHER-VIEW-1: --fisher-rules on|off in --play on a shipped scenario (Tutorial/02Trade01,
+      # player 2), with the hovered hut's readout; `{game}` is ANNO1503_GAME_DIR (viewer_wiring.py).
+      # `closed`: the closed site (242,217) rotation 1 with the switch on (FISHER-1f).
+      foreach(case on off closed)
+        set(fisher_args)
+        if(NOT case STREQUAL "off")
+          set(fisher_args --app-arg --fisher-rules --app-arg on)
+        endif()
+        add_test(NAME viewer_wiring_fisher_view_${case}
+          COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                  $<TARGET_FILE:anno1503> fisher_view_${case}
+                  --app-arg --play --app-arg {game}/Scenes/Tutorial/02Trade01.sze
+                  --app-arg --player --app-arg 2 --app-arg --speed --app-arg 200 ${fisher_args})
+        set_tests_properties(viewer_wiring_fisher_view_${case} PROPERTIES
+          SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      endforeach()
+      # UI-PLACE-1: the pickaxe with nothing armed, a cell chosen while demolishing, the cancel-X.
+      # UI-PLACE-2: ESC and the right click one step back, a right drag still pans.
+      # UI-PAN-1: a click (under the 4 px slop) moves the map not at all, either button.
+      # UI-MINIMAP-1 C: the minimap's controls (a diamond click centres the camera, the zoom
+      # buttons, the magnifier, dead chevrons, the parchment strip left of the chrome).
+      foreach(case ui_place_demolish ui_place_escape ui_click_no_pan ui_minimap_controls)
+        add_test(NAME viewer_wiring_${case}
+          COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                  $<TARGET_FILE:anno1503> ${case}
+                  --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                  --app-arg --construction-menu --app-arg on
+                  --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+        set_tests_properties(viewer_wiring_${case} PROPERTIES
+          SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      endforeach()
+      # UI-MINIMAP-1 C: the minimap's viewer is the runner's local player (--player).
+      add_test(NAME viewer_wiring_ui_minimap_player
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_minimap_player
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --player --app-arg 3
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_minimap_player PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # UI-WINDOW-1 fix round R1 (F6, F7): a chrome drag starts no pan; a lost UI press is dropped.
       add_test(NAME viewer_wiring_ui_chrome_press
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
@@ -227,6 +272,44 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --construction-menu --app-arg on
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_ui_tabs PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-TABS-1: every sub-tab of the three views, the keys S, C, D, O, each view keeping its own.
+      add_test(NAME viewer_wiring_ui_subtabs
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_subtabs
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_subtabs PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-TABS-1 stage B: the balance pages' figures as facts (docs/re/ui.md 5.5): with the
+      # accounts kept (--rules living), under the original rules, and before the first founding.
+      add_test(NAME viewer_wiring_ui_balance_rows
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_balance_rows
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --rules --app-arg living
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_balance_rows PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      add_test(NAME viewer_wiring_ui_balance_rows_original
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_balance_rows_original
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_balance_rows_original PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      add_test(NAME viewer_wiring_ui_balance_rows_no_city
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_balance_rows_no_city
+                --app-arg --ship-start
+                --app-arg ${PROJECT_SOURCE_DIR}/data/maps/candidates/ship-start-v2/lan5-ship-a.json
+                --app-arg --seat --app-arg 0
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_balance_rows_no_city PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # UI-WINDOW-1 fix round R2/R4: the status bar counters (centred city, else the first).
       add_test(NAME viewer_wiring_ui_counters_centred
@@ -339,6 +422,22 @@ if(ANNO_BUILD_TESTS)
       add_test(NAME info_panel_gog_compare
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/info_panel_gog_compare.py)
       set_tests_properties(info_panel_gog_compare PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600)
+      # UI-TABS-1: the sub-tab columns' selected and idle frames, the GPU layer's composer against
+      # the GOG shots (ANNO_UI_ORACLE_SHOTS, never in git; skips without it) and the window's CPU
+      # path against that composer.
+      add_test(NAME ui_subtabs_compare
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/ui_subtabs_compare.py
+                $<TARGET_FILE:anno_ui_mock> $<TARGET_FILE:anno1503>)
+      set_tests_properties(ui_subtabs_compare PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-TABS-1 stage B: the balance rows, the GPU layer's composer against the GOG shots
+      # (ANNO_UI_ORACLE_SHOTS, never in git; skips without it) with four negative controls, and
+      # the window's CPU path against that composer.
+      add_test(NAME ui_balance_rows_compare
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/ui_balance_rows_compare.py
+                $<TARGET_FILE:anno_ui_mock> $<TARGET_FILE:anno1503>)
+      set_tests_properties(ui_balance_rows_compare PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # UI-INFO-2: the preview at rotations 0..3 after clicks on the rotate arrows, through the
       # real window, pixel-exact against compose_info_panel(rotation) (info_panel_rotation_check.py),
       # and that reference against the original's own shots after its arrows and keys

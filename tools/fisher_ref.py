@@ -17,6 +17,10 @@ search_rect: integer farm origin/dimensions, no float position/continuation.
 sea_cell: heights is exactly four unsigned corner-height bytes.
 corner_grid: width*height HEIGHT samples -> logical (width+1)*(height+1) grid,
 copying interior samples and leaving the last row/column zero.
+coast_site: synthetic rotated corner window and entrance TILE offsets; only the
+coast helper, not ownership, materials, occupancy or complete Build acceptance.
+closed_home: all entrance means >=32; outside fails home start, inside bypasses
+search. Reports eventual completion credit or failed-job release, not timing.
 --check-fish-water GAME_DIR is opt-in, reads via insel.py, checks goal plus eight-neighbour water,
 prints EVERY exception and exits1 if any; default expected counts are50 scenarios/2473 placements.
 Explicit --expected-scenarios/--expected-placements support bounded synthetic
@@ -92,6 +96,10 @@ def heights(x):
     return [byte(v) for v in parts]
 
 
+def byte_list(x):
+    return [] if x == '-' else [byte(v) for v in x.split(',')]
+
+
 SCHEMAS = {
     'farm_tick': dict(elapsed=word, stamp=word, switch=boolean, flags=byte,
                       made=word, workers=lambda x: bounded(x, 0, 5), maximum=byte,
@@ -104,6 +112,11 @@ SCHEMAS = {
     'corner_grid': dict(width=positive_word, height=positive_word,
                         heights=lambda x: [] if x == '-' else [byte(v) for v in x.split(',')]),
     'runtime_fish': dict(heights=heights, tile=word, phase=byte),
+    'coast_site': dict(width=positive_word, height=positive_word,
+                       rotation=lambda x: bounded(x, 0, 3),
+                       heights=byte_list, entrances=numbers),
+    'closed_home': dict(inside=boolean, means=byte_list, goods=byte,
+                        cargo=word, raw=word),
     'trip': dict(cargo=word, capacity=word),
     'cut_match': dict(tile=word),
 }
@@ -181,6 +194,44 @@ def evaluate(kind, fields):
     if kind not in SCHEMAS:
         raise Malformed('unknown record type: ' + kind)
     r = Record(fields, SCHEMAS[kind])
+    if kind == 'coast_site':
+        # §10: AnnoGame 0x10008ea0–0x10008f81, flags 0x2087 only.
+        w, h, rot = r['width'], r['height'], r['rotation']
+        fw, fh = (h, w) if rot & 1 else (w, h)
+        grid = r['heights']
+        if len(grid) != (fw + 1) * (fh + 1):
+            raise Malformed('coast_site: corner-window size')
+        points = r['entrances']
+        if not points or len(points) % 2:
+            raise Malformed('coast_site: entrance tile pairs required')
+        def vertex(x, y):
+            return grid[y * (fw + 1) + x]
+        if any(x >= fw or y >= fh for x, y in zip(points[::2], points[1::2])):
+            raise Malformed('coast_site: entrance outside footprint')
+        if rot == 0:
+            shore, opposite = [vertex(x, 0) for x in range(w + 1)], [vertex(x, h) for x in range(w + 1)]
+        elif rot == 1:
+            shore, opposite = [vertex(0, y) for y in range(w + 1)], [vertex(h, y) for y in range(w + 1)]
+        elif rot == 2:
+            shore, opposite = [vertex(x, h) for x in range(w + 1)], [vertex(x, 0) for x in range(w + 1)]
+        else:
+            shore, opposite = [vertex(h, y) for y in range(w + 1)], [vertex(0, y) for y in range(w + 1)]
+        wet = sum(value < 32 for value in opposite)
+        passed = int(w <= 1 or h <= 1 or
+                     (max(grid) & 0xf0 == 48 and all(value == 48 for value in shore)
+                      and wet >= (w + 1) // 2))
+        means = [sum(vertex(x + dx, y + dy) for dx, dy in ((0, 0), (1, 0), (0, 1), (1, 1))) // 4
+                 for x, y in zip(points[::2], points[1::2])]
+        return r.result(coast_pass=passed, wet_vertices=wet, means=means,
+                        open_entrances=sum(mean < 32 for mean in means))
+    if kind == 'closed_home':
+        # §10: mode-3 code 7 cannot be entered; 0x10057b68 bypasses search inside.
+        if not r['means'] or any(mean < 32 for mean in r['means']):
+            raise Malformed('closed_home requires all entrance means >=32')
+        started = r['inside']
+        credit = r['cargo'] if started and r['goods'] else 0
+        return r.result(started=started, failed=1 - started, credit=credit,
+                        raw=(r['raw'] + credit) & 65535, released=1)
     if kind == 'runtime_fish':
         # §6, AnnoWelt 0x10092976 / 0x10092a61-0x10092ade; shipped defaults.
         mean = sum(r['heights']) // 4
@@ -455,19 +506,84 @@ def runtime_fish_census(root, output=None, expected_scenarios=50, layouts=()):
           'failed=0 empty=0 skipped=0')
     return 0
 
+def fisher_entrance_census(root, expected_scenarios=50):
+    """Raw saved geometry, including maps refused by the gameplay loader (§10)."""
+    import math
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import insel
+    import anlagen_roads
+    entries = {}
+    for entry in anlagen_roads.parse_anlagen(root):
+        if anlagen_roads.record_of(entry, 'PRODTYPE').split(b'\0')[0] != b'FISCHER':
+            continue
+        head = anlagen_roads.record_of(entry, 'HEAD')
+        data = anlagen_roads.record_of(entry, 'ENTRANCE')
+        if len(head) < 2 or not data or len(data) % 8:
+            raise Malformed('short fisher HEAD or invalid ENTRANCE')
+        points = list(struct.iter_unpack('<ff', data))
+        if any(not math.isfinite(v) for point in points for v in point):
+            raise Malformed('nonfinite fisher entrance')
+        entries[entry['id']] = (*head[:2], points)
+    paths = sorted((root / 'Scenes').rglob('*.sze'))
+    if expected_scenarios <= 0 or len(paths) != expected_scenarios:
+        raise Malformed(f'expected {expected_scenarios} scenarios, found {len(paths)}')
+    seen, records, closed = set(), 0, 0
+    for path in paths:
+        label = path.relative_to(root).as_posix()
+        for island in insel.islands(path.read_bytes()):
+            width, height = island['width'], island['height']
+            grid = corner_grid(width, height, insel.grid(island, 'HEIGHT', 1))
+            stride = width + 1
+            for bx, by, _, _, data in insel.blocks(island, 'PROD2'):
+                if len(data) % 6:
+                    raise Malformed('partial PROD2 record')
+                for at in range(0, len(data), 6):
+                    raw, _, dx, dy = struct.unpack_from('<HHbb', data, at)
+                    ident, rotation = raw & 0x3fff, raw >> 14
+                    if ident not in entries:
+                        continue
+                    records += 1
+                    x, y = bx + dx, by + dy
+                    key = (label, island['number'], ident, x, y, rotation)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    w, h, points = entries[ident]
+                    means = []
+                    for ex, ey in points:
+                        ex, ey = ((ex, ey), (ey, w - ex),
+                                  (w - ex, h - ey), (h - ey, ex))[rotation]
+                        tx, ty = x + math.floor(ex), y + math.floor(ey)
+                        if not 0 <= tx < width or not 0 <= ty < height:
+                            raise Malformed('saved fisher entrance outside island')
+                        means.append(sum(grid[(ty + cy) * stride + tx + cx]
+                                         for cx, cy in ((0, 0), (1, 0), (0, 1), (1, 1))) // 4)
+                    opened = sum(mean < 32 for mean in means)
+                    closed += int(opened == 0)
+                    print(f'{label} island={island["number"]} type={ident} '
+                          f'x={x + island["x"]} y={y + island["y"]} rotation={rotation} '
+                          f'means={",".join(map(str, means))} open={opened}/{len(means)}')
+    print(f'fisher entrance census: scenarios={len(paths)} records={records} '
+          f'unique={len(seen)} duplicates={records - len(seen)} '
+          f'all_closed={closed} at_least_one_open={len(seen) - closed}')
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('vectors', nargs='?', type=Path)
     parser.add_argument('--check-fish-water', type=Path, metavar='GAME_DIR')
     parser.add_argument('--runtime-fish', type=Path, metavar='GAME_DIR')
+    parser.add_argument('--fisher-entrances', type=Path, metavar='GAME_DIR')
     parser.add_argument('--output', type=Path, help='runtime census JSON, exact half-open cell runs')
     parser.add_argument('--layout', type=Path, action='append', default=[],
                         help='also census the original templates placed by this repository layout')
     parser.add_argument('--expected-scenarios', type=int)
     parser.add_argument('--expected-placements', type=int)
     args = parser.parse_args()
-    if sum(v is not None for v in (args.vectors, args.check_fish_water, args.runtime_fish)) != 1:
-        parser.error('choose VECTORS, --check-fish-water or --runtime-fish GAME_DIR')
+    if sum(v is not None for v in (args.vectors, args.check_fish_water, args.runtime_fish,
+                                   args.fisher_entrances)) != 1:
+        parser.error('choose VECTORS, --check-fish-water, --runtime-fish or --fisher-entrances GAME_DIR')
     if (args.output is not None or args.layout) and args.runtime_fish is None:
         parser.error('--output requires --runtime-fish')
     if args.vectors and (args.expected_scenarios is not None or
@@ -476,6 +592,18 @@ def main():
     try:
         if args.vectors:
             return check(args.vectors)
+        if args.fisher_entrances:
+            if args.expected_placements is not None:
+                raise Malformed('expected placements belongs to the embedded fish census')
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            import insel
+            import figuren
+            try:
+                return fisher_entrance_census(args.fisher_entrances,
+                                              50 if args.expected_scenarios is None
+                                              else args.expected_scenarios)
+            except (insel.Bad, figuren.Bad, KeyError, TypeError, ValueError, struct.error) as error:
+                raise Malformed(str(error)) from error
         if args.runtime_fish:
             sys.path.insert(0, str(Path(__file__).resolve().parent))
             import insel

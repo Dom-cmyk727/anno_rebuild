@@ -164,6 +164,21 @@ Loaded load_scene(const std::filesystem::path& dir, const char* name,
 
 /// A device, or nullopt (skip) when there is none; with ANNO_REQUIRE_GPU
 /// set a missing device fails the test instead.
+// GATE-MAC-1: on Apple M5 Max / Metal (wgpu-native 29.0.1.1), raw end ticks
+// precede begin ticks even in an independent WebGPU triangle probe (27/30).
+// Missing is honest; zero/negative timing is not. Limit this exception to Apple
+// Metal: Vulkan/D3D12 and Intel/AMD Metal keep their reading requirements.
+// Raw evidence and the upstream context are in docs/render/gpu-timestamp-evidence.md.
+bool apple_metal_may_miss_timestamps(const gpu::Context& ctx) {
+    WGPUAdapterInfo info = WGPU_ADAPTER_INFO_INIT;
+    const auto status = wgpuAdapterGetInfo(ctx.adapter.get(), &info);
+    const bool allowed = status == WGPUStatus_Success &&
+                         info.backendType == WGPUBackendType_Metal &&
+                         gpu::str(info.device).starts_with("Apple ");
+    wgpuAdapterInfoFreeMembers(info);
+    return allowed;
+}
+
 std::optional<gpu::Context> device_or_skip() {
     auto ctx = gpu::headless_context();
     if (ctx) {
@@ -2370,6 +2385,10 @@ TEST_CASE("river flow on the GPU: the cost is measured per tier, GPU timestamps 
     REQUIRE(made);
     const auto costs = made.value()->measure_river_cost(3);
     REQUIRE(costs.size() == 4);
+    if (ctx->timestamps) {
+        // Missing individual spans must not excuse failure to map the timing record.
+        REQUIRE(made.value()->pass_gpu_ms().has_value());
+    }
     CHECK_FALSE(costs[0].quality.has_value());
     CHECK(costs[1].quality == render::RiverQuality::Low);
     CHECK(costs[2].quality == render::RiverQuality::Medium);
@@ -2382,7 +2401,15 @@ TEST_CASE("river flow on the GPU: the cost is measured per tier, GPU timestamps 
         CHECK(c.ms > 0.0);
         CHECK(c.megapixels == doctest::Approx(1.048576));
         CHECK(c.ms_per_mpx == doctest::Approx(c.ms / c.megapixels));
-        CHECK(c.gpu_timestamps == ctx->timestamps);
+        if (apple_metal_may_miss_timestamps(*ctx)) {
+            if (c.gpu_timestamps) {
+                CHECK(ctx->timestamps);
+            }
+            MESSAGE(
+                "cost source: " << (c.gpu_timestamps ? "GPU timestamps" : "wall-clock fallback"));
+        } else {
+            CHECK(c.gpu_timestamps == ctx->timestamps);
+        }
     }
     // With a gate only what the choice needs is measured: the dearest tier first, stopping
     // at the first that fits, and no Low after a failed Medium (the floor).
@@ -2503,6 +2530,7 @@ TEST_CASE("the sea pass is timed with GPU timestamps when asked and the device c
     // second frame on there is one.
     const auto first = g.sea_pass_ms();
     if (first) {
+        CHECK(std::isfinite(*first));
         CHECK(*first > 0.0);
     }
     std::optional<double> ms;
@@ -2512,9 +2540,15 @@ TEST_CASE("the sea pass is timed with GPU timestamps when asked and the device c
         ms = g.sea_pass_ms();
     }
     if (ctx->timestamps) {
-        REQUIRE(ms.has_value());
-        CHECK(*ms > 0.0);
-        CHECK(*ms < 1000.0);
+        REQUIRE(g.pass_gpu_ms().has_value());
+        if (!apple_metal_may_miss_timestamps(*ctx)) {
+            REQUIRE(ms.has_value());
+        }
+        if (ms) {
+            CHECK(std::isfinite(*ms));
+            CHECK(*ms > 0.0);
+            CHECK(*ms < 1000.0);
+        }
         // Read once: asking again without a new frame gives nothing.
         CHECK_FALSE(g.sea_pass_ms().has_value());
     } else {
@@ -2857,17 +2891,31 @@ TEST_CASE("every pass of a frame is timed, and the timed frame is the untimed pi
     REQUIRE(timed_passes.has_value());
     const gpu::GpuPassTimes& p = *timed_passes;
     // 16 ms of animation per frame is one or two steps of 1/120 s: the simulation ran.
+    const bool allow_missing = apple_metal_may_miss_timestamps(*ctx);
     for (const auto& pass : {p.fluid, p.terrain, p.under, p.sea, p.objects, p.resample}) {
-        REQUIRE(pass.has_value());
-        CHECK(*pass >= 0.0);
+        if (!allow_missing) {
+            REQUIRE(pass.has_value());
+        }
+        if (pass) {
+            CHECK(std::isfinite(*pass));
+            CHECK(*pass > 0.0);
+        }
     }
-    REQUIRE(p.frame.has_value());
+    if (!allow_missing) {
+        REQUIRE(p.frame.has_value());
+    }
     // The frame spans every pass (the driver may overlap passes that share nothing, so
     // the sum of the passes can exceed it).
-    for (const auto& pass : {p.fluid, p.terrain, p.under, p.sea, p.objects, p.resample}) {
-        CHECK(*p.frame >= *pass);
+    if (p.frame) {
+        CHECK(std::isfinite(*p.frame));
+        CHECK(*p.frame > 0.0);
+        for (const auto& pass : {p.fluid, p.terrain, p.under, p.sea, p.objects, p.resample}) {
+            if (pass) {
+                CHECK(*p.frame >= *pass);
+            }
+        }
+        CHECK(*p.frame < 1000.0);
     }
-    CHECK(*p.frame < 1000.0);
     CHECK(timed.value()->frame_gpu_ms() == p.frame);
     CHECK(timed.value()->errors() == 0);
     CHECK(plain.value()->errors() == 0);
@@ -3929,6 +3977,57 @@ TEST_CASE("prefetch: built chunks of the neighbouring groups are uploaded when n
     // The cap of two resident chunks of other groups holds although three are built.
     CHECK(total == 2);
     CHECK(g.errors() == 0);
+}
+
+TEST_CASE("prefetch gets a time share while a visible chunk still waits, only when "
+          "GpuLimits::prefetch_budget_ms > 0 (ZOOM-SMOOTH-1d, replacing the old gate !waiting "
+          "&& uploads == 0)") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    render::FrameRenderer fr(1, false);
+    // Two visible chunks, uploads_per_frame left at its default (1): within one render call, the
+    // first of the two (keys is a sorted std::set, so iteration order is deterministic) uploads
+    // and the second does not (frame.cpp's `room` needs `uploads < limits.uploads_per_frame`), so
+    // `waiting` is true and `uploads` is 1 - the exact condition (a visible chunk still waiting)
+    // the old gate's `!waiting && uploads == 0` closed the prefetch block on, reproduced
+    // deterministically without depending on how trivially fast the scene's own content uploads.
+    // Deliberately not test_hold_uploads: the prefetch block's own gate also checks
+    // `!test_hold_uploads`, which would close prefetch too and defeat the point of this test.
+    const render::Rect two{0, 0, 2 * render::kChunk, render::kChunk};
+    const auto w = static_cast<std::uint32_t>(2 * render::kChunk);
+    const auto h = static_cast<std::uint32_t>(render::kChunk);
+    fr.update_chunks(*es.scene, two, 1); // populates margin_keys()/adjacent_keys() (plan_margin)
+    const std::vector<render::ChunkKey> margin = fr.margin_keys();
+    REQUIRE(!margin.empty());
+    fr.insert_chunk(margin[0], noise_land_chunk(std::get<0>(margin[0]), std::get<1>(margin[0]),
+                                                std::get<2>(margin[0])));
+    auto render_with = [&](double prefetch_budget_ms) {
+        gpu::GpuLimits limits;
+        limits.wave_simulation = false;
+        limits.uploads_per_frame = 1; // the default (6) would upload both visible chunks at once
+        limits.prefetch_chunks = 2;
+        limits.prefetch_per_frame = 1;
+        limits.prefetch_budget_ms = prefetch_budget_ms;
+        auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+        REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+        const auto target = made.value()->offscreen_target(w, h);
+        const auto st = made.value()->render(fr, *es.scene, two, 1, 0, render::WaterStyle::Original,
+                                             target.second.get());
+        CHECK(made.value()->errors() == 0);
+        return st;
+    };
+    // 0 (the field's own default, and the pre-ZOOM-SMOOTH-1d gate's exact behaviour): one visible
+    // chunk still waits, so prefetch never runs - the margin chunk stays un-prefetched.
+    const auto off = render_with(0.0);
+    CHECK(off.chunks_uploaded == 1);
+    CHECK(off.chunks_prefetched == 0);
+    // > 0: the margin chunk is prefetched although a visible one still waits.
+    const auto on = render_with(1.0);
+    CHECK(on.chunks_uploaded == 1);
+    CHECK(on.chunks_prefetched == 1);
 }
 
 TEST_CASE("a chunk that replaces the open sea it was shown as dissolves in over chunk_fade_ms of "

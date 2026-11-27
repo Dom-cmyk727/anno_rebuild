@@ -192,6 +192,33 @@ TEST_CASE("dev script: a click step's events land on the tile it names, at densi
     CHECK(off.value().failed());
 }
 
+TEST_CASE("dev script: wheel N is centred, wheel N X Y lands at the raw position (ZOOM-SMOOTH-1e, "
+          "like click_px)" *
+          doctest::test_suite("dev_script")) {
+    Driver d;
+    auto script = app::DevScript::parse("wheel -1\nwheel 1 200 300\n");
+    REQUIRE(script.ok());
+    const auto st = d.state();
+    const app::DevScriptAction centred = script.value().step(st);
+    REQUIRE(centred.events.size() == 1);
+    CHECK(centred.events[0].wheel.y == doctest::Approx(-1.0F));
+    CHECK(centred.events[0].wheel.mouse_x ==
+          doctest::Approx(static_cast<float>(st.window_w) / 2.0F));
+    CHECK(centred.events[0].wheel.mouse_y ==
+          doctest::Approx(static_cast<float>(st.window_h) / 2.0F));
+    const app::DevScriptAction off_centre = script.value().step(st);
+    REQUIRE(off_centre.events.size() == 1);
+    CHECK(off_centre.events[0].wheel.y == doctest::Approx(1.0F));
+    CHECK(off_centre.events[0].wheel.mouse_x == doctest::Approx(200.0F));
+    CHECK(off_centre.events[0].wheel.mouse_y == doctest::Approx(300.0F));
+    // Exactly 1 or 3 arguments: 2 parses (arity() only bounds "at least 1") but fails to step, the
+    // same pattern click_px's own x/y nullable check already uses.
+    auto two = app::DevScript::parse("wheel 1 2\n");
+    REQUIRE(two.ok());
+    CHECK(two.value().step(st).events.empty());
+    CHECK(two.value().failed());
+}
+
 TEST_CASE("dev session: the replay agrees with a recorded run, and a moved command or a changed "
           "refusal does not (game files)" *
           doctest::test_suite("dev_script")) {

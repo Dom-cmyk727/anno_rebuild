@@ -163,7 +163,7 @@ UiPlacement place_hud(const HudLayout& hud, int ui_w, int ui_h) {
 }
 
 UiHit ui_hit(const HudLayout& hud, const UiPlacement& placement, int ux, int uy, bool paused,
-             const std::string& shown_panel) {
+             const std::string& shown_panel, const std::optional<UiRect>& minimap) {
     UiHit hit;
     if (ux < 0 || uy < 0 || ux >= placement.ui_w || uy >= placement.ui_h)
         return hit;
@@ -194,6 +194,26 @@ UiHit ui_hit(const HudLayout& hud, const UiPlacement& placement, int ux, int uy,
                 hit.ref = std::pair{ux - (x - e.pos_x), uy - (y - e.pos_y)};
                 return hit;
             }
+        }
+    }
+    // UI-MINIMAP-1 C: the minimap's click area (right-anchored, its parchment reaches left of the
+    // column).
+    if (minimap && inside(ux, uy, minimap->x, minimap->y, minimap->w, minimap->h)) {
+        hit.chrome = true;
+        if (uy < placement.ref_h)
+            hit.ref = std::pair{ux - placement.dx, uy};
+        return hit;
+    }
+    // UI-MINIMAP-1 fix F1: the scroll's rolled left end hangs left of the column; drawn chrome,
+    // so a press on its rectangle is the UI's and does nothing (step C's rule for the parchment
+    // outside the diamond; what the original does there: OQ-640).
+    if (const UiElement* curl = hud.element("minimap_curl");
+        curl != nullptr && curl->has_pos && curl->has_size) {
+        const auto [x, y] = placement.place(curl->anchor, curl->pos_x, curl->pos_y);
+        if (inside(ux, uy, x, y, static_cast<int>(curl->size_w), static_cast<int>(curl->size_h))) {
+            hit.chrome = true;
+            hit.ref = std::pair{ux - (x - curl->pos_x), uy - (y - curl->pos_y)};
+            return hit;
         }
     }
     // The right chrome column: the panel's x and width, from the panel's top to the layer's
@@ -365,8 +385,8 @@ formats::Result<HudLayout, std::string> parse_hud_layout(const std::string& text
                     if (!tok.more())
                         return fail(line_no, "align: missing value");
                     e.align = tok.take();
-                    if (e.align != "centre")
-                        return fail(line_no, "align: only 'centre' is defined");
+                    if (e.align != "centre" && e.align != "right")
+                        return fail(line_no, "align: only 'centre' and 'right' are defined");
                 } else if (key == "anchor") {
                     if (!tok.more())
                         return fail(line_no, "anchor: missing value");
@@ -400,6 +420,41 @@ formats::Result<HudLayout, std::string> parse_hud_layout(const std::string& text
                     if (!v || *v == 0)
                         return fail(line_no, "turn: not a non-zero integer");
                     e.turn = v;
+                } else if (key == "view" || key == "body") {
+                    if (!tok.more())
+                        return fail(line_no, key + ": missing value");
+                    (key == "view" ? e.view : e.body) = tok.take();
+                } else if (key == "subtab") {
+                    if (!tok.more())
+                        return fail(line_no, "subtab: missing value");
+                    const auto v = to_int(tok.take());
+                    if (!v || *v < 0)
+                        return fail(line_no, "subtab: not a non-negative integer");
+                    e.subtab = v;
+                } else if (key == "value" || key == "page") {
+                    if (!tok.more())
+                        return fail(line_no, key + ": missing value");
+                    (key == "value" ? e.value : e.page) = tok.take();
+                } else if (key == "text_dy") {
+                    if (!tok.more())
+                        return fail(line_no, "text_dy: missing value");
+                    const auto v = to_int(tok.take());
+                    if (!v)
+                        return fail(line_no, "text_dy: not an integer");
+                    e.text_dy = *v;
+                } else if (key == "clip") {
+                    if (!tok.more() || tok.take() != "box")
+                        return fail(line_no, "clip: only 'box' is defined");
+                    e.clip_box = true;
+                } else if (key == "negative_rgb") {
+                    if (!tok.more())
+                        return fail(line_no, "negative_rgb: missing value");
+                    const std::string v = tok.take();
+                    std::uint32_t rgb = 0;
+                    const auto res = std::from_chars(v.data(), v.data() + v.size(), rgb, 16);
+                    if (v.size() != 6 || res.ec != std::errc{} || res.ptr != v.data() + v.size())
+                        return fail(line_no, "negative_rgb: not six hex digits RRGGBB");
+                    e.negative_rgb = rgb;
                 } else {
                     return fail(line_no, "element: unknown key '" + key + "'");
                 }

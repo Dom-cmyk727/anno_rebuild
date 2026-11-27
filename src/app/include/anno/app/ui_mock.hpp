@@ -6,14 +6,17 @@
 // opinion to reconcile.
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <anno/app/minimap.hpp>
 #include <anno/app/ui_layout.hpp>
 #include <anno/assets/texture.hpp>
 #include <anno/formats/anlagen.hpp>
@@ -39,6 +42,10 @@ class UiTexCache {
     UiTexCache(const UiTexCache&) = delete;
     UiTexCache& operator=(const UiTexCache&) = delete;
 
+    /// The decoded texture `tex_id` of `rel_path` (game-dir-relative), kept for the session; null
+    /// when the file or the id is missing (UI-MINIMAP-1: the minimap's parchment).
+    [[nodiscard]] const assets::Rgba* decode(const std::string& rel_path, int tex_id);
+
     struct Impl;
     /// For ui_mock.cpp's own use (`draw_live_screen_xrgb`'s implementation) - not part of this
     /// class's public contract, but `Impl` stays opaque to every other translation unit, so there
@@ -52,25 +59,33 @@ class UiTexCache {
 /// Which chrome the construction tab frames show: `kHud` draws the idle HUD's frames
 /// (construction 8, military 13 selected); `kConstruction` draws a construction-menu category's
 /// frames (construction 12 selected, military 9) - `compose_screen`'s `spec["kind"]` branch.
-/// UI-WINDOW-1 fix round R2: `Hud` is the idle HUD with the player tab's own panel
-/// (hud_idle_running); `PlayerList` the player tab after its click or key D (r2_player_menu);
-/// `Info` the "?" tab (r2_tab_help); `MainMenu` the gears tab or key O (r2_options).
-enum class UiMockScreen { Hud, Construction, PlayerList, Info, MainMenu };
+/// UI-TABS-1: `Hud` is the HUD with one of the right panel's views (`UiMockSpec::view` at
+/// `subtab`; hud.txt `view`/`subtab`, docs/re/ui.md 5.4); `Construction` the construction menu.
+enum class UiMockScreen { Hud, Construction };
 
 /// One of the UI.1 oracle's nine named screens (`tools/ui_layout.py SCREENS`): `hud_idle`, or
-/// `construction_<category>` for each of the eight categories.
+/// `construction_<category>` for each of the eight categories; and (UI-TABS-1) any view and
+/// sub-tab of the right panel.
 struct UiMockSpec {
     UiMockScreen kind = UiMockScreen::Hud;
     /// Empty for `kHud`; one of hud.txt/construction.txt's eight category names otherwise.
     std::string category;
+    /// UI-TABS-1, for `kHud`: the view the right panel shows (hud.txt `view`; empty = the first
+    /// view, the start state) and its sub-tab.
+    std::string view;
+    int subtab = 0;
 };
 
-/// The hud.txt `panel` group a screen's right chrome draws ("player", "player_list", "info",
-/// "main_menu"), or nullptr for the construction menu.
-[[nodiscard]] const char* ui_panel_group(UiMockScreen kind);
+/// The hud.txt `panel` group a screen's right chrome draws (the `body` of its view's sub-tab:
+/// "player", "player_list", "info", "main_menu", or a placeholder's name), or empty for the
+/// construction menu or a view/sub-tab hud.txt does not have.
+[[nodiscard]] std::string ui_panel_group(const HudLayout& hud, const UiMockSpec& screen);
 
 /// Parses `screen` into a UiMockSpec (e.g. "hud_idle" -> {Hud, ""}, "construction_public" ->
-/// {Construction, "public"}); nullopt for any other name.
+/// {Construction, "public"}); the R2 panel names "player_list" (player view, sub-tab 1), "info"
+/// (info view, sub-tab 0), "main_menu" (options view, sub-tab 0); and (UI-TABS-1) "<view>.<k>"
+/// for sub-tab k of a view, e.g. "options.3" (the view is checked against hud.txt when drawn).
+/// nullopt for any other name.
 [[nodiscard]] std::optional<UiMockSpec> parse_screen_name(const std::string& screen);
 
 /// The live numbers `draw_live_screen_xrgb` draws over the HUD/construction chrome (H2), already
@@ -89,6 +104,9 @@ struct HudCounters {
     std::optional<std::int64_t> gold;
     std::optional<std::uint32_t> tools, wood, bricks, marble;
     std::optional<std::int64_t> residents;
+    /// UI-TABS-1 stage B: the balance pages' figures by hud.txt `value` name
+    /// (balance_rows.hpp balance_row_values); a row whose name is absent draws nothing.
+    std::map<std::string, std::int64_t> rows;
 };
 
 /// UI-INFO-1: what the building info panel shows for the armed type, already in displayed units
@@ -113,6 +131,21 @@ struct InfoPanelContent {
     /// animation step (render::frame_index at time 0; docs/re/ui.md section 2.5). 0 draws what
     /// UI-INFO-1 drew.
     std::uint8_t rotation = 0;
+};
+
+/// UI-MINIMAP-1 step B1: what the HUD draws for the minimap, under the `WELTKARTE` chrome
+/// (docs/re/ui.md 2.9: AnnoFrame draws it before the HUD, the chrome's diamond hole shows it).
+/// `raster` (minimap.hpp compose_minimap: the parchment and the world image, straight alpha) is
+/// drawn at (x, y), its transparent pixels left out; then every pixel of `box` (the view box,
+/// minimap_line_pixels) in `box_rgb`; then (B2) every pixel of `marks` (the markers,
+/// minimap_marker_pixels) in its own colour, over the box (the original draws the markers after
+/// the renderer's box, AnnoFrame 0x100030f0). The caller keeps `raster` alive for the call.
+struct MinimapOverlay {
+    const assets::Rgba* raster = nullptr;
+    int x = 0, y = 0;
+    std::vector<std::pair<int, int>> box;
+    std::array<std::uint8_t, 3> box_rgb{255, 255, 255};
+    std::vector<MinimapPixel> marks;
 };
 
 /// The x at which a centred text box draws a text image `text_w` pixels wide: `box_x +
@@ -190,13 +223,17 @@ compose_screen(const HudLayout& hud, const ConstructionLayout& construction,
 /// building answers `BuildingInspection::kind == "House"` - never a guess ahead of the sim's own
 /// answer. The row's other two need icons and its tab are not measured yet (OQ-569/OQ-570) and
 /// are not drawn; there is no close button to draw (OQ-570: none exists in the capture).
+///
+/// `minimap` (UI-MINIMAP-1 B1): drawn first, under every chrome element (MinimapOverlay); null
+/// leaves the chrome's diamond hole showing what is under it, as before.
 [[nodiscard]] std::string draw_live_screen_xrgb(
     std::uint32_t* dst, int dst_w, int dst_h, const HudLayout& hud,
     const ConstructionLayout& construction, const MaskLayout& masks, const UiMockSpec& screen,
     UiTexCache& cache, const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
     const HudCounters& counters = {}, bool placement_open = false, bool demolish_mode = false,
     bool paused = false, bool selected_house = false, const InfoPanelContent* info = nullptr,
-    const formats::anlagen::AnlagenFile* anlagen = nullptr);
+    const formats::anlagen::AnlagenFile* anlagen = nullptr,
+    const MinimapOverlay* minimap = nullptr);
 
 /// `draw_live_screen_xrgb`'s own state and arguments, composed instead into a fresh RGBA canvas
 /// that starts fully transparent (every byte 0, not the oracle's own alpha-255 convention) - the
@@ -217,7 +254,8 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
                       const HudCounters& counters = {}, bool placement_open = false,
                       bool demolish_mode = false, bool paused = false, bool selected_house = false,
                       const InfoPanelContent* info = nullptr,
-                      const formats::anlagen::AnlagenFile* anlagen = nullptr);
+                      const formats::anlagen::AnlagenFile* anlagen = nullptr,
+                      const MinimapOverlay* minimap = nullptr);
 
 /// `draw_live_screen_rgba` into a caller-owned `canvas`, whose pixel storage is reused between
 /// calls (UI-WINDOW-1 fix round R1: the window's GPU path no longer allocates a window-sized image
@@ -228,6 +266,7 @@ draw_live_screen_rgba(int w, int h, const HudLayout& hud, const ConstructionLayo
     UiTexCache& cache, const std::vector<std::pair<sim::TypeId, bool>>* eligibility,
     const HudCounters& counters = {}, bool placement_open = false, bool demolish_mode = false,
     bool paused = false, bool selected_house = false, const InfoPanelContent* info = nullptr,
-    const formats::anlagen::AnlagenFile* anlagen = nullptr);
+    const formats::anlagen::AnlagenFile* anlagen = nullptr,
+    const MinimapOverlay* minimap = nullptr);
 
 } // namespace anno::app

@@ -979,3 +979,491 @@ canary is changed in FISHER-1d. OQ-625 remains open for normal-session acceptanc
 with the owner's scope choice recorded; OQ-603's float/Y continuation and other
 maps' complete gameplay paths remain outside this proof. Original live-game,
 HE, Windows and WSL runs are NOT_RUN on this Mac.
+
+## 9. Selected normal-map canaries (FISHER-1e, 2026-11-15)
+
+**P/T — scope and setup.** The owner's selected maps are the first two in
+[fisher-canary-maps.md](fisher-canary-maps.md). The tests use the normal
+`load_scenario_file`, `World::create` and `Recorder::start` paths, original
+actors, positions, stocks, terrain and scripts. Only existing header tag 1's
+`fisher_rules` is enabled. Venice receives no command. The human tutorial gets
+exactly one Build: issuer 2, island 3/city 0, type 810 at (243,216), rotation 0.
+No projection, actor removal, script substitution, inventory injection or
+production implementation change is involved. Original mechanism evidence is
+§§1–3 and 6–7; this is a rebuild execution proof, not a new original-runtime read.
+
+| Acceptance requirement | Positive proof | Counterexample / control | Review |
+|---|---|---|---|
+| Original complete trips | Per-hut departure, three claimed cuts, raw receipt and exact conversion | Disabled original worlds have no worker/raw/food progression | pending orchestrator |
+| Deterministic continuation | Independent starts and a native pending-cut continuation agree every turn and in final bytes | Enabled hash differs from disabled hash; no enabled/off equality is assumed | pending orchestrator |
+| Default compatibility | Default-only driver reproduces disabled start/end/trace; pins and fixture bytes unchanged | Explicit zero extension equals omitted/default extension | pending orchestrator |
+
+**T — finite workload.** Each turn advances 20 game milliseconds, or 10 world
+ticks. The watchdog was fixed before execution at 60,000 ticks (120 game seconds),
+below the first u16 tick wrap. Both maps complete before it. Observed trip time
+runs from the first visible spawn to the raw receipt; times have the 20 ms turn
+resolution. No timing constant was changed to obtain a pass.
+
+| Map / hut | Spawn | Open entrance / departure | First catch | Raw receipt | First food | Trip ticks / game seconds |
+|---|---|---|---|---|---|---|
+| Venice 3978, (217,326) | 810 | 810 / 910 | 6810 | 20660 | 20810 | 19850 / 39.70 |
+| Venice 3978, (212,314) | 850 | 850 / 910 | 6860 | 20660 | 20850 | 19810 / 39.62 |
+| Venice 3978, (216,301) | 890 | 890 / 960 | 6910 | 20760 | 20890 | 19870 / 39.74 |
+| Human 810, (243,216) | 690 | 690 / 770 | 7520 | 22240 | 22290 | 21550 / 43.10 |
+
+**T — actual state assertions.** Each figure is kind 142/job 45, starts at the
+original first entrance, is observed on an open entrance tile, and then outside
+the rotated footprint. Catch evidence is a claimed mature tile 11 at the worker's
+position during Cut, followed by that tile becoming 10, its claim clearing and
+cargo rising by 256. Each worker makes three cuts, returns with 768 raw, ends
+with an expiry stamp inside its home footprint, and raises that hut's raw stock.
+Food then rises by 51 while raw falls by 128 for Venice type 3978; the human
+hut consumes 69 and produces 17. All four chains finish without a world fault.
+The asserted output is the hut's food stock, not delivery into a warehouse or
+consumption by residents.
+
+**T — determinism and native cuts.** Each map has two independent normal
+creations. Their whole-world hashes agree after every turn through completion:
+2,089 turns for Venice, 2,229 for the human map. A third continuation is loaded
+from a native save during a real claimed cut, at tick 1,210 (Venice, remaining
+wait 5,597) or 1,920 (human, wait 5,600). Reload preserves the enabled header,
+initial hash and save bytes, then matches the uninterrupted hash after all
+1,968 / 2,037 remaining turns. Final native saves agree byte for byte. These
+are independent logical runs in one process, not a cross-process/platform proof.
+
+**T — default-off compatibility.** Explicit disabled-extension worlds and worlds
+created with the existing default arguments agree after every corresponding turn
+and in native bytes at start/end. No active worker of kind 142/job 45 appears;
+workers_out, raw and food remain zero in the watched huts. Flag-off dispatch
+may still consume its existing discarded attempt draw; this does not assert
+whole enabled/disabled PRNG trajectories are equal. A separate default-only
+measurement driver, linked to production sources verified identical to accepted
+main 816c6352, independently reproduces the initial, final and rolling per-turn
+flag-off digests below. It is not a separate build of another engine revision.
+
+| Map / end tick | Initial disabled hash | Final disabled hash | Disabled per-turn trace digest |
+|---|---|---|---|
+| Venice / 20890 | c44b7be385cc4747 | 38b1627adcca2430 | d5811ae9c021508c |
+| Human / 22290 | ccd55f2fa14ec44a | 2cbca03efb4875f7 | af9aa0674ef513ec |
+
+**T — evidence and boundary.**
+[fisher_map_canary_test.cpp](../../src/sim/tests/fisher_map_canary_test.cpp)
+contains the two original-file heavy cases; they print an explicit prerequisite
+skip when `ANNO1503_GAME_DIR` is unset. Gate receipts and source identities are
+in `cache/fisher-1e/`, with exact classified lines in
+[REPORTS.md](../orchestration/REPORTS.md). Existing fisher regressions and reference
+vectors are retained; no pin or fixture is edited. The census's F1 correction is
+13 empty kernels: Tutorial/03T_Combat_01 has an empty kernel but still refuses
+its unsupported object declarations.
+
+**NOT_RUN / U.** All-closed entrances remain FISHER-RE-3. Original float/vertical
+continuation (OQ-603), the transitive original draw inventory (OQ-604), other
+maps' full trips, long-running town balance, original live gameplay, separate
+processes and target-host game-file runs are not established here. No existing
+state number, section version, extension schema or default rule changes.
+
+## 10. All entrances on land (FISHER-RE-3, 2026-11-16)
+
+GOG 2.0.0.5 static read; **D/P/A/T/U** retain the legend above. AnnoGame
+addresses below are in **AnnoGame.dll**; all other original addresses are in
+**AnnoWelt.dll**. **History Edition NOT_RUN**: no HE AnnoWelt.dll or
+AnnoWeltAddOn.dll was available in the Mac's game/cache roots. The edition
+comparison's [class labels](../research/he-vs-gog-comparison.md)
+do not establish code equality. Pixel/frame parity is expressly unclaimed.
+
+### 10.1 Placement does not guarantee an open entrance
+
+**P/D — the three types must not be conflated.** Parsed Anlagen.dat HEAD,
+ENTRANCE and PROD3 records, interpreted by AnnoGame's type getters
+`0x100084c0`–`0x1000861c` and height analysis `0x10008f90`–`0x100091d1`:
+
+| Type | Footprint | Flags | Worker / route | Unrotated entrance tiles |
+|---|---|---|---|---|
+| 810 | 3 × 4 | `0x2087` | 142 / 45 | (1,3), (1,0) |
+| 3978 | 3 × 4 | `0x2087` | 142 / 45 | (1,3), (1,0) |
+| 3510 | 4 × 3 | `0x2087` | 393 / 44 | (0,0), (1,1) |
+
+**P/D — 3510 is a separate worker case.** FigurenHeader.dat gives 393
+BEWOHNTYPE `MAEHER`, ROUTETYPE `STEINMETZ`; 142 is `FISCHER` in both fields.
+Route 44 selects byte 5 / arm `0x1003b1f6`–`0x1003b250`, constructor
+`0x1005d450`, route table `0x100c44e8`; route 45 selects byte 6 / the
+already read §3 arm. The ordinary worker table `0x100c4950` uses search
+`0x1003acc0` (mode 0), whereas 142's `0x100cb4d8` uses `0x10038ad0`
+(mode 3). A mode-3 closed entrance therefore does **not** establish that
+3510's land worker fails to return. The boat/closed-return conclusions below
+are for 810/3978 and figure 142, not an invented ice-fishing implementation.
+
+**D — coast predicate.** In AnnoGame `0x10008f90`–`0x100091d1`, flags
+`0x2087` take the coast helper at `0x10009184`. Complete helper
+`0x10008ea0`–`0x10008f81` uses unrotated `n = width + 1`,
+`m = height + 1`; with n and m above 2 it requires:
+
+- the maximum corner height rounded down to a multiple of 16 is 48;
+- every vertex of the shore edge is exactly 48;
+- at least `floor(n/2)` vertices of the opposite edge are strictly below 32.
+
+**D — rotation and scope.** The shore edge is top / left / bottom / right
+for rotation 0 / 1 / 2 / 3 respectively; the opposite edge has n vertices.
+The helper accepts immediately when either n or m is at most 2. It reads
+neither ENTRANCE nor any entrance's four-corner mean. The enclosing island
+predicate `0x1007c790`–`0x1007cc29` additionally checks bounds and existing
+objects, calls type height analysis at `0x1007cb91`, and accepts the coast
+class at `0x1007cbc8`–`0x1007cbd6`. This is a placement predicate, not proof
+of ownership, funds, build-menu permissions or a live HE build. See also
+[ship-placement.md §3](ship-placement.md).
+
+**A — distinguishing counterexample from that read.** A synthetic 3 × 4
+footprint has a 4 × 5 corner window. Set every corner to 48 except the two
+endpoints of the bottom edge, which are 0. At rotation 0 the coast passes:
+shore 4 × 48, maximum 48, opposite wet count 2. Both entrance tiles in the
+table still have mean 48. Replacing the bottom middle pair by 16 gives a
+first-entrance mean of exactly 32, still closed; replacing the entire bottom
+edge by 0 gives mean 24, the open control. These are authored arithmetic
+vectors, not extracted original windows. Consequently coastal placement does
+not imply a mode-3 water entrance. No placement prohibition closes this issue.
+
+**P/A/T — real build candidate, no edited inputs.** Tutorial/02Trade01.sze,
+player 2, island 3/city 0, type 810 at world (242,217), rotation 1, has
+entrance tiles **(245,218), mean 32**, and **(242,218), mean 48**. Raw HEIGHT
+uses §5's proved load mapping; rotated entrance coordinates use AnnoGame
+`0x10008523`–`0x10008571`. The existing placement reference accepts its
+terrain/object window. A private measurement linked to a freshly checked
+`anno_sim_load` build at base `67a960c9` ran the normal scenario loader,
+World::create, original INIT and exactly one successful public Build command,
+then measured those two closed means. No projection, actor deletion, injected
+stock, terrain edit or script substitution was used. Log:
+`cache/fisher-re-3/build-site-current.log`. **U:** a live original build of this
+site and any HE-specific placement difference are not yet measured. Ordinary
+placement's inspected writers do not lower the corner grid (§5/§6);
+[OQ-610](../open-questions.md)
+continues to bound the wider writer/caller closure.
+
+**P/A — correct the earlier census's scope.** The four huts in
+[fisher-canary-maps.md](fisher-canary-maps.md) were in the maps which passed
+that compiler/normal-create selection, not an exhaustive raw-file inventory.
+`tools/fisher_ref.py --fisher-entrances GAME_DIR` now reads all 50 .sze files:
+95 PROD2 records, **92 unique geometrical placements**, 3 repeated keys;
+87 have one open entrance, 5 have none. The unique key is map/island/type/
+origin/rotation, not a claim that every saved city/actor can be imported.
+There are 73 type 810, 13 type 3978 and 6 type 3510 placements. The five
+all-closed placements are **3510**, so do not contradict the route-45 canary:
+
+| Map under Scenes | Island / world origin / rotation | Entrance means |
+|---|---|---|
+| 0011SingleEndlosAddon/endless02.sze | 7 / (180,73) / 2 | 44,46 |
+| 0201SingleAddOn/single33.sze | 11 / (79,74) / 0 | 48,43 |
+| 0201SingleAddOn/single34.sze | 8 / (63,58) / 0 | 48,43 |
+| 0201SingleAddOn/single36.sze | 1 / (369,156) / 2 | 48,43 |
+| 0201SingleAddOn/single41.sze | 10 / (153,76) / 2 | 48,43 |
+
+### 10.2 What the sea worker does
+
+**D — dispatch is allowed.** Reuse §2's complete Farm tick
+`0x1006ea90`–`0x1006ee5f` and special creator `0x10067e60`–`0x10067f61`.
+Eligibility does not inspect open water. The eligible attempt draws once at
+`0x1006ee06`, then the special creator uses the first rotated entrance;
+it does not call the ordinary reachable-entrance gate `0x10072b50`.
+Creation failure remains possible; no statement here guarantees every send
+succeeds. The first job starts after creation, not during the send.
+
+**D/A — a closed start is not a closed destination.** Figure 142's
+`0x10038ad0`–`0x10038cc5` supplies the home entrances as starts when inside
+the footprint. Search setup `0x10003d90`, start store `0x10003f73`, seeds
+the start nodes and ORs the position's edge keys from `0x10003aa0`.
+A closed start can therefore expand **out** to an admitted neighbouring water
+cell; it need not first enter itself. This permits departure but does not
+promise a route through arbitrary surrounding land. Resource search, limit 20,
+claim and cuts are unchanged from §3: `0x10059210`–`0x10059398`,
+`0x100553e0`, `0x10054530`; three successful cuts normally give 768 cargo.
+The inherited finer-route/float qualification remains [OQ-603](../open-questions.md).
+
+**D — paired-subcell refinement, 2026-11-16 (FISHER-1f).** The point flood
+`0x10003aa0` reads the configured coarse mode at `0x10003b07`, increments
+it at `0x10003b0f`, and calls island `+0x128` at `0x10003b17`. The ordinary
+land pair is modes 0/1; the fisher pair is **3/4**. Dispatcher table
+`0x10092190`, entry 4, selects `0x1009215e`–`0x10092187`: stores at
+`0x10092166`–`0x10092181` write nine bytes of value 8, the free-subcell
+value. Thus the fisher point flood's blocked bitmap is **zero even on a
+closed coarse cell**. All four edge keys can be reached from its seed.
+Neither mode 3's blocked bitmap nor the object's mode-1 WALKMASK is the
+correct point-flood input. This explains the real site's departure toward
+adjacent water; it does not admit a closed destination. The coast, coarse
+cell and goal-mask rules above are unchanged. Original listings remain in
+`cache/fisher-1f/point-mode-original.txt`, outside git.
+
+**D/A — closed home goals cannot be entered.** The home start
+`0x10057ae0`–`0x10057bbe` bypasses search only if already inside the home
+footprint (`0x10057b68`–`0x10057b73`). Otherwise it uses the fisher's mode-3
+setup, adds the home's explicit entrance points (`0x10072be0`–`0x10072ca6`),
+and calls figure `+0xcc` at `0x10057bb1`. Goal marking at `0x10004068` /
+`0x1000414b` adds the goal flag and low-word geometry keys, as decoded in
+[population.md §19](population.md#19-map-pop-close-2-k2-reads-how-the-original-reaches-a-goal-on-a-mapper-0-tile-2026-11-04-annowelt-f220a878).
+It does **not** replace the admission code. The independent layer test masks
+that code with `0x3ff` (`0x10006aab`–`0x10006ab3`, other directions
+`0x10006c9c`, `0x10006df7`, `0x10006f30`–`0x10006f64`). Mode-3 land has
+code 7 and layer 2's entry 7 is zero (table `0x100d4940`, entry
+`0x100d4947`, **P**). Even an explicit home goal with geometry bits cannot
+be entered from another tile. If every entrance is closed and the worker is
+outside, the home search fails; no walk home is installed. The last reached
+position stays the last catch/search position, not an entrance or teleport.
+
+**D — failed home means no raw credit.** `0x10034e06`–`0x10034e1b`
+returns 0 when the search failed. Route run `0x1005b6c0`–`0x1005b707`
+then takes fallback `0x1005e280`–`0x1005e2a8`: only failed kind 7 retries
+the home node; other failed kinds return null. **Dated correction to §3's
+job table:** the home job's kind getter `0x10057ad0` returns **4**, not 8.
+Its failed start does not call completion `0x10057bd0`–`0x10057c27`.
+Consequently the Farm receiver `0x1006ee70` is not called and raw stock does
+not rise. A worker already inside is the counterexample: it can complete
+without a search and credit cargo (nonzero goods), with u16 addition.
+
+**D — release and disappearance are distinct.** `0x10034380`–`0x100343ae`
+deletes the failed job. The inherited tick eventually takes end
+`0x1003af00`–`0x1003afda`, zeroes velocity at `0x1003af69`–`0x1003af6f`,
+and immediately calls release at `0x1003af96`. Release
+`0x1003b6e0`–`0x1003b717` clears the home pointer and the Farm's worker
+slot (`0x1006f070`); it does not call the raw receiver or transfer cargo.
+Cargo is not delivered or dropped into a new resource. The outside wait is
+15.0 at rate 0.01; the inside wait is 0.0. The old unknown footprint scale
+is narrowed here: initializer `0x1003aa20`–`0x1003aa32` writes 1.0 / 1.0
+to `0x100e0f58`. Thus outside waiting is nominally 7,500 ticks before Remove,
+subject to the existing float/visit boundary qualification. The registered
+unit's further expiry delay is separate ([annowelt.md](annowelt.md#the-carrier-worker-and-animal-class));
+release does not mean immediate disappearance or immediate registry-slot reuse.
+
+**D/U — state and save boundary.** The read exposes ordinary current-job,
+position, cargo, home link, end flags/rate/remaining state; no separate
+“all entrances closed” latch is written. The Farm saver `0x1006f010`–
+`0x1006f060` writes its 10-byte record: switch at byte 1, output at 2,
+raw at 4, activity at 8; loader `0x1006ef70`–`0x1006f009` restores these.
+It writes no worker pointer or failed-home result. Generic job saver
+`0x1005b9a0`–`0x1005bb9b` serializes step kind/variant, each step's private
+payload and a u16 current-node index; it is not a new closed-home format.
+The worker's common root saver `0x10031b20`–`0x10031d86` uses a zero-size
+HEAD getter (`+0x144=0x100a3930`) and empty private writer
+(`+0x130=0x10064a10`). **U:** the complete original temporary-worker save
+caller/round-trip closure is not proved here; do not infer that a live failed
+trip survives an original save, or that the rebuild's stronger native
+continuation proof establishes original/HE save parity.
+
+| Draw position | Modulus | What it selects | Condition / read range |
+|---|---|---|---|
+| One, before creation | none; discarded | nothing | Eligible Farm attempt, `0x1006ee06`, §2 |
+| None directly | none | none | Coast helper AnnoGame `0x10008ea0`–`0x10008f81`; creator §2; search setup §3 |
+| None directly | none | none | Home `0x10057ae0`–`0x10057c27`, fallback `0x1005e280`–`0x1005e2a8`, end/release ranges above |
+
+**D/U — draw scope.** This does not close [OQ-604](../open-questions.md)
+for arbitrary indirect callees. The fisher display pass `0x100384d0`–
+`0x10038689` calls CRT random `0x100b68a9` at `0x10038604` / `0x1003861d`
+for sound selection; these are not world `+0xb4` draws or sim selections.
+No CRT generator is reproduced in the integer reference.
+
+### 10.3 Reference and the later Windows capture
+
+| Requirement | Read-backed positive / boundary | Distinguishing negative control | Review |
+|---|---|---|---|
+| Coast does not promise a water entrance | `closed_810`, `closed_equality`; §10.1 helper | `coast_requires_open_entrance` mutant fails; `open_control` remains legal | orchestrator pending |
+| Failed home does not deliver | `outside_cargo`; §10.2 admission and fallback | `inside_bypass` credits 768; failed-credit/admission/release mutants fail | orchestrator pending |
+| Census keeps its actual scope | 50 raw maps; repeated geometry counted separately | Authored duplicate/equality-32 versus 31 chunk controls | orchestrator pending |
+| HE pixel acceptance | Fixed site/control capture card below | No original/HE capture is counted as passed | NOT_RUN |
+
+**A — reference contract.** `coast_site` in `tools/fisher_ref.py` takes an
+explicit rotated integer corner window and entrance **tile offsets**. It
+models the coast helper only, not the full Build predicate. `closed_home`
+is restricted to means at least 32 and an existing unchanged home; it models
+the outside-failure / inside-bypass branch and eventual raw credit/release,
+not float movement, pixel positions, elapsed time or original save survival.
+The separate authored `fisher_entrance_vectors.txt` has 8 coast and 5 home
+vectors, including a rotated window, insufficient wet count, exact shore
+height, mean 32, wet-vertex 32, inside bypass and u16 wrap. The contract runs
+both fixture files and kills applied mutants for a fictitious open-entrance
+placement prerequisite, equality-as-water, closed-goal admission, failed
+credit and absent release. Keeping it separate preserves the C++ geometry
+reader's existing accepted record types; no engine/test/pin changes are needed.
+
+**P/A — capture card for FISHER-HE-1, not an executed comparison:**
+
+1. Fresh `Tutorial/02Trade01.sze`: GOG path `Scenes/Tutorial/02Trade01.sze`;
+   HE path `Languages/Eng/Scenes/Tutorial/02Trade01.sze`. Select human player 2,
+   its city 0 on island 3. Keep original actors, INIT, terrain, inventory and
+   resources. Use normal game speed, pause before building; no editor, cheat,
+   stock injection or deleted script. If the selected edition refuses this
+   start or build, retain that refusal and stop; do not move the hut to fit.
+2. Build **810 at (242,217), rotation 1**, footprint 4 × 3. Verify the entrance
+   arrows occupy (245,218) and (242,218), respectively means 32 and 48 in the
+   GOG source geometry. This is the all-closed case. In a separate fresh start,
+   build the open control **810 at (243,216), rotation 0** (§9); its first
+   entrance (244,219) has mean 30. Do not build both in one run: their footprints
+   overlap. No other construction or movement command is required.
+3. Fix the same viewport, camera rotation, zoom/art group and client dimensions
+   for both editions. Record those values, game speed, presentation frame
+   numbers and world/game time; a video-frame number alone is not a sim tick.
+   Begin before Build confirmation and retain 120 game seconds after it,
+   including idle/no-dispatch intervals. Do not accelerate. Record each boat's
+   tile positions, headings, first appearance, turns, catches, stationary end
+   and disappearance frame. Record the hut's stock display before dispatch,
+   after each catch, at attempted return and at disappearance; distinguish
+   displayed food from internal raw fish. Keep captures outside git.
+4. For the rebuild repeat the exact fresh load and Build with only the existing
+   `fisher_rules` extension enabled, recording workers_out, cargo, raw and food
+   alongside the rendered frames. Match time-labelled event frames before
+   pixel comparison. The GOG read predicts failure to credit a return from
+   outside an all-closed hut; it does not supply HE frames or a pixel tolerance.
+
+**T/U — executable-capture prerequisite / QUESTION.** At this base,
+`src/app/src/play.cpp`'s normal scenario World::create call supplies default
+extensions; it offers no fisher_rules switch. The existing headless sim can
+set the flag and perform the Build (the measurement above), but that is not
+a rendered HE/rebuild comparison. FISHER-HE-1 needs an explicit enabled
+capture-session entry point and stock/time instrumentation before this card
+can run in the rebuild viewer. It must also verify the HE build/entrance
+means, rather than assume GOG equality. No viewer wiring, original live run,
+HE code read, pixel capture or new rule is smuggled into this read packet.
+The remaining save-caller closure and OQ-603 likewise remain unproved.
+
+## 11. Closed fisher runtime and native proof (FISHER-1f, 2026-11-16)
+
+**T — measured base before edits.** Normal Tutorial/02Trade01 loading,
+World::create, original INIT and one player-2 Build of 810 at (242,217),
+rotation 1, reproduced the two entrance means 32/48. At base `5901b846`,
+worker 16 spawned at tick 690, ended at 720 without leaving or catching,
+released its slot and entered expiry immediately. Worker 44 spawned at 1090;
+the first registry slot disappeared at 8220. Raw and food stayed zero.
+`cache/fisher-1f/baseline-site-01.log` records the stages. This did not meet
+§10.2's point-flood rule or outside end wait. The new real-site test linked
+to preserved base production archives fails `REQUIRE(left)`; the two new
+synthetic cases also fail on the base. These are negative proofs, not passes.
+
+**D/T — only two behavioral corrections.** The paired-mode read in §10.2
+makes `WalkCells::point_mask` return the free mode-4 bitmap for FisherSea,
+while coarse cells and layer admission retain their mode-3 values. Land
+point floods are unchanged. Start, explicit-goal and route-validation keys
+all use the paired bitmap. In the harvest body's Done state, an enabled
+fisher ending outside releases its home once, starts the nominal 7,500 ticks
+in its existing `wait`, and consumes elapsed/surplus time without movement.
+Only after that does `end_figure` start registry expiry. A forced end cancels
+the pending wait. Inside completion, raw receipt, harvest and eligible-attempt
+draw order retain their existing rules. Types 810/3978 use this route-45 path;
+3510/route 44 is untouched. The duration is the original timed rule, not a
+capacity limit, and is separate from the configurable registry-expiry delay.
+
+**T — state/validation.** Done with a positive wait is allowed only for an
+enabled fisher with no home and no expiry stamp. The existing authoritative
+step, wait, position, cargo and home/expiry fields suffice; no field, enum,
+tag, payload, state number or section version changes. The native loader
+accepts this valid continuation and still refuses unresolved Done with zero
+wait. The disabled-state refusal wording is retained.
+
+| Stage | Base | Corrected real-site measurement |
+|---|---|---|
+| Spawn | 690, first entrance | 690, same first entrance |
+| First movement / footprint exit | none | 720 / 1170, normal sea walk |
+| Catch | none | 7370 / 13580 / 19720, cargo 256 / 512 / 768 |
+| Failed home / release | 720, empty cargo | 19720, cargo 768, raw 0, workers_out 0 |
+| Second dispatch | 1090 | 19890, while the first worker still waits |
+| Begin registry expiry | 720 | 27230 |
+| Registry removal | 8220 | 34730 |
+
+**T/A — time qualification.** The measurement above uses 10-tick turns;
+the exact departure/catch/release observations and remaining-wait values are
+in the canary log. The private production driver observes 7,480 ticks left
+on release, because that visit already carried surplus time into the new
+wait. Registry visits determine when an expired remainder is next observed.
+The integer transition is tested at zero elapsed, one tick, a partitioned
+wait ending with one tick owed, and a final tick plus surplus; a saved wait
+resumes without re-arming or losing whole ticks. This does not assert x87,
+vertical, frame-time or HE equality (OQ-603).
+
+**T — proof scope.** All five `closed_home` reference records drive the C++
+runtime, including inside bypass, no goods, empty cargo and u16 raw wrap.
+A separate paired-mode control departs from a closed coarse cell even when
+the object's raw mask is fully blocked, and cannot enter that cell as a goal.
+The real canary retains original actors, terrain, stocks, resources and INIT:
+no projection, actor deletion, inventory injection or relocation. Its two
+independent starts compare every turn; native continuations are captured both
+mid-cut and mid-released-wait. The two old open canaries remain controls.
+Exact gate outcomes, including unsuccessful Debug timeouts and their targeted
+Release retries, belong to the package entry in [REPORTS.md](../orchestration/REPORTS.md).
+
+| Requirement | Positive proof | Counterexample / boundary | Review |
+|---|---|---|---|
+| Paired start flood, closed goals | Coarse mode 3 / point mode 4; real departure | Closed destination still refused | orchestrator pending |
+| Failed home never credits or drops cargo | Three claimed cuts, raw/food 0, fixed position/cargo | Inside reference records do credit, with u16 wrap | orchestrator pending |
+| Separate release, wait and expiry | Slot free and second worker sent before first expiry | Zero/one tick, native remainder, surplus and forced end | orchestrator pending |
+| Disabled compatibility | Disabled/default runs plus preserved-base trace | No update mode or pin/recording edits | orchestrator pending |
+
+**T — compatibility measurements.** At tick 60,000 the closed-site disabled
+world is `da38267a8c04253f`, with per-turn trace `cf34641133b002cb`, exactly
+matching the preserved base-engine driver. Explicit off and omitted/default
+extensions also agree every turn and in native bytes. The two existing open
+canaries retain their earlier enabled traces (`2550a07bc1a58b` for Venice,
+`cfe100edcf0f7bfc` for the human hut) and their disabled traces from §9.
+The scoped pin check covers touched lanes; all pin values and existing fixture
+bytes remain unchanged. It is not a claim that the full game-file suite ran.
+
+**NOT_RUN / U.** HE/live-original captures, original temporary-worker save
+survival and float/Y parity remain unproved. This is the GOG-read integer sim
+slice. The enabled viewer entry point, stock/time readout and picture comparison
+remain the UI lane's FISHER-HE-1 work; no app wiring is included here.
+
+
+## 12. Released fisher visibility (FISHER-RE-4, 2026-11-16)
+
+**D/P — answer: figure 142 is not drawn after the normal release.** The
+registry can still hold and visit it during the end wait. Its absence from the
+picture follows from its selected animation and the shipped figure data, not
+from deleting the figure or a universal hide-on-release flag. Addresses below
+are GOG 2.0.0.5; D = disassembled control/data flow, P = parsed original file.
+
+**D — end flags are behavioral.** AnnoWelt `0x1003af80`–`0x1003af96`
+updates the u16 at figure +6 to `(old & 0xfffe) | 0x202` before releasing:
+bit 0 (value 1) is cleared; bit 1 (2) and bit 9 (512) are set. Bit 0 gates
+active route processing (`0x10033cba`–`0x10033cc7`) and the active-rate
+getter (`0x10035bc0`–`0x10035bd0`). Bit 1 is the terminal-step marker:
+when the remaining step expires, the tick removes the figure from its sector
+and starts registry expiry (`0x1003481a`–`0x10034844`, already read in
+[annowelt.md](annowelt.md#the-carrier-worker-and-animal-class)). Bit 9 is
+also an end marker: other end/restart handlers test it to avoid installing a
+fresh short delay (`0x100518b4`–`0x100518d2`, `0x10045c4e`–`0x10045c60`).
+These consumers establish their effects, not original symbolic bit names.
+Neither the fisher display routine nor the sector draw loop tests bit 9 to hide it.
+
+**D — the sector pass still calls display.** AnnoWelt
+`0x1009ffc2`–`0x1009ffdb` obtains the sector list through registry slot +0x30;
+`0x1009ffde`–`0x100a0004` walks its records (+0xc figure, +4 next) and calls
+figure slot +0x7c. The subsequent bit-1 test at `0x100a000d`–`0x100a0052`
+is after display and conditionally deletes class codes 162/163, not FISCHER 4.
+Figure 142 uses table `0x100cb4d8`, whose +0x7c is `0x100384d0`.
+
+**D/P — why that call emits no fisher sprite.** End sets animation byte +0x10
+to 17 and its stamp at `0x1003af9c`–`0x1003afce`; the normal fisher branch
+passes this code unchanged. The notification at +0x150 is the no-op
+`0x10099840`. With home cleared, display skips its owner-visibility branch
+(`0x100384db`–`0x10038526`), then queries animation at `0x10038530`.
+Shared `0x100330e0`–`0x1003315b` passes that byte to the type's +0x78;
+AnnoGame's graphics-enabled tables `0x10021e8c`/`0x10021f58` use
+`0x100113a0`. Its missing-set branch `0x100113e2`–`0x100113ff` returns -1.
+The fisher exits at `0x10038537`–`0x10038539` when that result is negative.
+Even at zero animation elapsed, its later piece lookup is decisive:
+AnnoGame `0x1001137d`–`0x1001139a` returns false for an absent set, and
+AnnoWelt `0x10038583`–`0x10038588` exits before the sprite submission
+`0x100385a5`. The loader attaches each set by its prefix's low u16
+(AnnoGame `0x10011818`–`0x10011836`, `0x10011af7`–`0x10011b04`).
+FigurenHeader.dat figure 142 has exactly four HAEUSER sets, keys 4, 7, 8, 9;
+17 is absent. No fallback boat sprite should be invented for that missing set.
+
+**D/P — not a blanket rule for released workers.** The same end selects 17
+for the ordinary carrier/hunter classes, and their common display wrapper
+AnnoWelt `0x1003ab20`–`0x1003ab7a` delegates to `0x100332b0`, using the
+same animation/piece lookup. Parsed figures 108 and 203 *do* contain set 17;
+figures 102 and 106 do not. Thus release flags alone cannot mean invisible
+for every worker. Visibility remains dependent on its selected set, frame,
+normal view admission and eventual sector removal, not just a null home.
+
+**Viewer rule:** a released figure-142 fisher in its end wait emits no sprite;
+retain its sim continuation and honor the absent animation 17, without a fallback.
+
+**U / NOT_RUN.** HE binaries, live GOG/HE captures, pixel comparison and other
+workers' complete animation timelines were not run. The GOG read already
+explains the owner's observed disappearance; it establishes no HE code parity
+and no need to remove the saved waiting figure. No engine state or pin changed.

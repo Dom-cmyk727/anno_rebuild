@@ -100,9 +100,17 @@ and `bench_picture --aggregate` reads its event file.
   - `batch_published`, `batch_taken`, `frame_submitted`, `drawn`, `frame_presented`, `frame_failed` and
     `presented`;
   - `run_end`, written only when the recording is complete.
-- **`frames.tsv`:** one row per attempted GPU frame. Columns, in order:
+- **`frames.tsv`:** one row per attempted GPU frame. Columns, in order (TRACE-COLS-1: this is
+  `window_trace.cpp`'s own writer order - `window_table.py`'s `COLUMNS` must list them the same
+  way, checked by `window_trace_columns_test.py`, CTest `window_trace_columns_contract`):
   - identity: `frame`, `epoch`, `generation`;
-  - view: `view_x`, `view_y`, `view_w`, `view_h`, `group`, `scale`, `drawable_w`, `drawable_h`;
+  - view: `view_x`, `view_y`, `view_w`, `view_h`, `group`, `scale`;
+  - resample (ZOOM-BOUNCE-2, `gpu::Resample`'s own scale/offset for the frame, read when a
+    `Resample*` was passed to this frame's render; `0.0` for all three otherwise - what the
+    renderer actually used, to catch a bug that changes this but not `scale` above, or the two
+    together, which the view state alone would not show): `resample_scale`, `resample_offset_x`,
+    `resample_offset_y`;
+  - `drawable_w`, `drawable_h`;
   - timing: `t_start_ms`, `picture_ms`, `acquire_start_ms`, `acquire_end_ms`, `acquire_status`, `texture`,
     `submit_ms`, `present_start_ms`, `present_end_ms`, `present_status`;
   - result: `outcome`, which is `presented`, `present_failed`, `acquire_skipped`, `acquire_retry` or
@@ -111,7 +119,35 @@ and `bench_picture --aggregate` reads its event file.
 - **`sim.tsv`:** one row per turn. Columns: `turn`, `t_ms` (the publication), `applied`, `rejected`,
   `outcome` (`accepted`, `rejected`, `ambiguous` or `none`), `reasons`, `batch` (1 when a batch was
   pushed), `deltas`.
+- **`wheel.tsv`** (ZOOM-BOUNCE-3): one row per real `SDL_EVENT_MOUSE_WHEEL` event the continuous-zoom
+  path handles (`Viewer::handle`, `continuous_` true). Columns, in order: `t_ms`; `raw_y` (the event's
+  own `float` y) and `integer_y` (SDL's own accumulated-whole-tick integer for the same notch) -
+  not the same number twice: a precision wheel's own fractional `raw_y` can round to 0 in
+  `integer_y`; `flipped` (1 for `SDL_MOUSEWHEEL_FLIPPED` - `raw_y`/`integer_y` are already
+  sign-corrected for it, this is kept only as a flag, never applied again by a reader); `mouse_x`, `mouse_y`
+  (the event's own pointer position, the anchor `zoom_by` uses); `target_before`, `target_after`
+  (`Viewer::zoom_target_` immediately before and after this event's own `zoom_by` call - the discrete
+  jump one notch asked for, not the eased value `zoom_advance` approaches it with over following
+  frames). Written only when `continuous_` is true (`ZoomMode::Continuous`, the default on GPU); the
+  discrete `zoom()`/`pending_zoom_` path records nothing here.
 - **`manifest.txt`, `summary.txt`:** saved through `app::finalize_evidence`; the event file is saved last.
+
+## Zoom groups and their tile widths
+
+The tile width in pixels at each zoom group (`frames.tsv`'s own `group` column), from `kTile`
+(`src/render/include/anno/render/iso.hpp`) and `ZoomLevels::with_derived`
+(`zoom_levels.hpp`, "after the last built level... tile size halved"):
+
+| group | 0 | 1 | 2 | 3 | 4 |
+|---|---|---|---|---|---|
+| tile width (px) | 84 | 42 | 20 | 10 | 5 |
+
+Groups 0-2 are the original's own three built groups (`kTile`'s literal values); groups 3 and up
+are derived, each a clean halving of the one before (20 to 10 to 5). **Group 1 to group 2 is the
+one exception**: 42 to 20 is a factor of 2.1, not 2 - `kTile`'s own built widths do not halve
+cleanly there, unlike every other adjacent pair. A reader of `group`/`scale` that assumes a factor
+of 2 between every pair of adjacent groups reports a false jump at the group-1-to-2 switch that is
+not there at any other switch.
 
 ## Validity, completeness, scenario, target: four separate answers
 

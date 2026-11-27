@@ -3,10 +3,12 @@
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <deque>
 #include <filesystem>
 #include <map>
 #include <optional>
@@ -15,11 +17,15 @@
 #include <thread>
 #include <vector>
 
+#include <anno/app/balance_rows.hpp>
 #include <anno/app/dev_feedback.hpp>
 #include <anno/app/dev_script.hpp>
 #include <anno/app/frame_projection.hpp>
+#include <anno/app/hud_tabs.hpp>
+#include <anno/app/live_resize.hpp>
 #include <anno/app/png.hpp>
 #include <anno/app/sdl_input.hpp>
+#include <anno/app/section_overlap.hpp>
 #include <anno/app/selection.hpp>
 #include <anno/app/ship_motion.hpp>
 #include <anno/app/ui_mock.hpp>
@@ -34,6 +40,20 @@
 #include <anno/render/gpu.hpp>
 
 #include "gpu_surface.hpp"
+#endif
+
+#ifdef _WIN32
+// ZOOM-SMOOTH-2d: ANNO_VIEW_LIVE_RESIZE_TRACE's own Windows message hook needs the real message
+// constants and the complete tagMSG (SDL3/SDL_system.h only forward-declares it) - same guard
+// convention as window_capture.cpp and thread_priority.hpp.
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <SDL3/SDL_system.h>
+#include <windows.h>
 #endif
 
 namespace anno::app {
@@ -55,6 +75,43 @@ double hitch_ms() {
     }();
     return v;
 }
+/// ZOOM-SMOOTH-2d: ANNO_VIEW_LIVE_RESIZE_TRACE=1 turns on a diagnostic trace of the live-resize
+/// watch and, on Windows, the native modal move/resize loop's own messages - off by default and
+/// read once, so every call site below only pays for a single bool read.
+bool live_resize_trace() {
+    static const bool v = [] {
+        const char* e = std::getenv("ANNO_VIEW_LIVE_RESIZE_TRACE");
+        return e != nullptr && *e != 0 && e[0] != '0';
+    }();
+    return v;
+}
+/// A monotonic seconds timestamp for the trace above, relative to this process' own first call
+/// (not wall-clock, not comparable across runs - the trace is read alongside itself, per run).
+double trace_now_s() {
+    static const Clock::time_point epoch = Clock::now();
+    return std::chrono::duration<double>(Clock::now() - epoch).count();
+}
+/// ZOOM-SMOOTH-2e: the live-resize watch's WINDOW_MOVED fallback (live_resize.hpp's own
+/// should_draw_from_move) only engages once this long has passed since the watch's last tick.
+/// 16 ms - one frame at 60 Hz, the packet's own target gap - not the display's refresh rate:
+/// while WM_TIMER ticks at its normal ~10 ms cadence the predicate almost never passes (every
+/// tick resets the clock it reads), so this never duplicates a healthy live-resize stream; once
+/// WM_TIMER is starved, WINDOW_MOVED (2d's own trace: arriving every 1-2 ms throughout the
+/// worst 526 ms gap) closes the gap at roughly 60 draws/s instead of waiting for the timer to
+/// resume.
+constexpr auto kMoveFallbackInterval = std::chrono::milliseconds(16);
+#ifdef ANNO_VIEWER_GPU
+/// ZOOM-SMOOTH-3c F3: whether to read the window thread's CPU use around the finish call this
+/// frame (a real syscall) - only while ANNO_VIEW_HITCH_MS is explicitly set, the signal that
+/// hitch diagnostics are being watched closely, not on every ordinary run at the 30 ms default.
+/// GPU-only (its one call site, draw_gpu's own render() call, is): unused and -Werror on the CPU
+/// path otherwise (GCC/Clang -Wunused-function; MSVC does not report it, docs/orchestration's
+/// own note on this check).
+bool hitch_tracking_enabled() {
+    static const bool v = std::getenv("ANNO_VIEW_HITCH_MS") != nullptr;
+    return v;
+}
+#endif
 /// One step of a frame on the window thread: the steps of a frame, laid end to
 /// end, add up to its busy time (see Viewer::measure).
 struct Step {
@@ -347,9 +404,33 @@ class Viewer {
         }
         if (construction_menu_ != nullptr) {
             construction_tex_cache_.emplace(construction_game_dir_);
+            if (auto views = hud_views(construction_menu_->hud()); views.ok()) {
+                hud_tabs_.emplace(std::move(views.value()));
+            } else {
+                std::fprintf(stderr, "[ui] %s\n", views.error().c_str());
+            }
             ui_scale_ = hooks->ui_scale;
             ui_rule_.ref_w = construction_menu_->hud().resolution_w;
             ui_rule_.ref_h = construction_menu_->hud().resolution_h;
+            if (hooks->minimap_config != nullptr && hooks->minimap_world != nullptr) {
+                // UI-MINIMAP-1 B1: the world image, once (docs/re/ui.md 2.9 Q2; OQ-634 for when
+                // the original refreshes it).
+                const auto start = Clock::now();
+                MinimapState m;
+                m.cfg = hooks->minimap_config;
+                m.world = hooks->minimap_world;
+                m.rule = hooks->minimap_rule;
+                m.world_w = hooks->minimap_world->w;
+                m.world_h = hooks->minimap_world->h;
+                m.image = build_minimap_image(*m.cfg, *hooks->minimap_world);
+                m.palette = minimap_palette(*m.cfg);
+                m.zoom = m.cfg->zoom_start;
+                m.image_ms =
+                    std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+                std::fprintf(stderr, "[minimap] image %ux%u of a %ux%u world built in %.2f ms\n",
+                             m.cfg->image_w, m.cfg->image_h, m.world_w, m.world_h, m.image_ms);
+                minimap_ = std::move(m);
+            }
             if (dev_ != nullptr && dev_->setup().registry) {
                 const auto& registry = *dev_->setup().registry;
                 goods_tools_ = registry.goods_by_name("WERKZEUG");
@@ -400,6 +481,30 @@ class Viewer {
   private:
     void handle(const SDL_Event& e);
     void draw();
+    /// The main loop's own draw decision (pending zoom, script tick, draw), extracted so an
+    /// event watch (ZOOM-SMOOTH-2, the live-resize/move redraw) can run exactly the same
+    /// order, not a second drawing path. Guarded by live_resize_'s reentrancy check. Does not
+    /// poll or wait for events: that stays the main loop's own job.
+    void frame_step();
+    /// The SDL event watch (ZOOM-SMOOTH-2): registered with SDL_AddEventWatch so it runs
+    /// synchronously from inside SDL_PushEvent, which the native Windows modal move/resize
+    /// loop calls on every WM_TIMER tick (live_resize.hpp's own doc comment cites the SDL
+    /// source) - the one way to draw while the ordinary SDL_PollEvent loop is blocked by that
+    /// modal loop. Also draws from SDL_EVENT_WINDOW_MOVED when WM_TIMER itself is starved
+    /// (ZOOM-SMOOTH-2e, live_resize.hpp's should_draw_from_move) - never more often than
+    /// kMoveFallbackInterval. Never filters an event out (always returns true).
+    static bool live_resize_watch(void* userdata, SDL_Event* event);
+#ifdef _WIN32
+    /// ZOOM-SMOOTH-2d, ANNO_VIEW_LIVE_RESIZE_TRACE only: every Windows message, registered with
+    /// SDL_SetWindowsMessageHook so it also sees messages dispatched from inside the native
+    /// modal move/resize loop itself (confirmed in the pinned SDL 3.4.18 source -
+    /// WIN_WindowProc's own DispatchModalLoopMessageHook call, guarded on data->in_modal_loop).
+    /// Also logs WM_NCLBUTTONDOWN/UP, WM_LBUTTONUP, WM_SYSCOMMAND and WM_CAPTURECHANGED
+    /// unconditionally (review: hypothesis (a) is about the title-bar press *before*
+    /// WM_ENTERSIZEMOVE, so these cannot wait on the in-modal flag). Never drops a message
+    /// (always returns true).
+    static bool live_resize_windows_hook(void* userdata, MSG* msg);
+#endif
     /// The frame boundary of play (PlayFollower::follow): takes the sim's batches, applies them and
     /// commits what is ready, before the frame takes its scene handle. Never waits for a build.
     void follow_picture();
@@ -452,11 +557,54 @@ class Viewer {
     void toggle_pause();
     [[nodiscard]] std::uint64_t time_ms() const;
     [[nodiscard]] std::pair<int, int> view_size() const;
-    void measure(double chunks_ms, const std::array<double, 4>& stages);
+    /// ZOOM-SMOOTH-3: the counts the hitch line's own frame steps say nothing about (how much
+    /// content, not how long it took) - chunks built/missing/drawn, stand-in parts, open-sea
+    /// chunks, chunks dropped, planes freed, sprites decoded, draws and bind-group sets this
+    /// frame (ZOOM-SMOOTH-3b item 2), and finish's own wall/CPU time (item 3) - gpu::GpuStats's
+    /// own fields, so this is appended only from the GPU path; the CPU path's own measure() call
+    /// passes no counts.
+    ///
+    /// ZOOM-SMOOTH-3b item 1 (review F1): chunks_built + chunks_missing (the old "visible chunks")
+    /// is 0 at rest, since neither counts a chunk already cached from an earlier frame - it
+    /// measures new work this frame, not what is drawn. chunks_drawn (GpuStats::chunks_visible,
+    /// visible_chunks(view).size() - every chunk the view covers, cached or not) is the real count.
+    struct FrameCounts {
+        std::size_t chunks_built = 0, chunks_missing = 0, chunks_drawn = 0, stand_in_parts = 0,
+                    open_sea_chunks = 0, chunks_dropped = 0, planes_freed = 0, sprites_decoded = 0,
+                    draw_calls = 0, bind_group_sets = 0;
+        double finish_ms = 0, finish_cpu_ms = 0;
+        /// ZOOM-SMOOTH-3c: cycles (Windows; 0 off it) and the absolute start of the finish call
+        /// (steady_clock ticks), plus the background sections' own last few instances (3d item 3,
+        /// a ring - a single pair could miss one between two reads) and the per-frame fluid/
+        /// pre-creation counts (item 3). sections_read_at_ns is when these were read, after the
+        /// finish call returned (3d item 1) - anno::app::overlap_ms's own read_time_ns.
+        std::uint64_t finish_cpu_cycles = 0;
+        std::int64_t finish_at_ns = 0;
+        SectionSnapshot prewarm_sections, fluid_build_sections, fluid_release_sections;
+        std::int64_t sections_read_at_ns = 0;
+        std::size_t fluid_windows_new = 0, planes_prewarmed = 0;
+    };
+    void measure(double chunks_ms, const std::array<double, 4>& stages,
+                 const FrameCounts* counts = nullptr);
     /// The steps of the frame being drawn (filled by draw_gpu / draw_cpu), the
     /// end of the last one, and the previous frame's.
     std::vector<Step> steps_, last_steps_, worst_steps_;
     Clock::time_point steps_end_ = Clock::now();
+    /// The previous frame's own counts (measure()'s own counts parameter, carried over the way
+    /// last_steps_ is) - std::nullopt for the CPU path, which passes none.
+    std::optional<FrameCounts> last_counts_;
+    /// The kLookback frames before the one just measured (ZOOM-SMOOTH-3b item 4): whether a slow
+    /// finish follows unusually heavy plane-freeing/chunk-dropping/sprite-decoding just before it
+    /// (deferred destruction, upload catch-up) or none of that, for a given spike.
+    static constexpr std::size_t kLookback = 8;
+    std::deque<FrameCounts> counts_history_;
+    /// ZOOM-SMOOTH-3c F2: cycles per millisecond of wall time, from this run's own ordinary
+    /// (not-slow) finish calls - the yardstick a slow call's own ratio is compared against,
+    /// since cycles do not convert to time reliably. Capped so a long run does not grow this
+    /// without bound; a slow call's own cycles/ms is never added (it would skew the yardstick
+    /// toward whatever it is being judged against).
+    static constexpr std::size_t kYardstickCap = 500;
+    std::deque<double> cycles_per_ms_samples_;
 
     /// The scene of --view (null in play: the frames draw the picture's generations).
     std::shared_ptr<const render::Scene> fixed_;
@@ -499,6 +647,32 @@ class Viewer {
     render::WaterStyle water_ = render::WaterStyle::Original;
     const ViewerHooks* hooks_ = nullptr;
     bool running_ = true, dirty_ = true, drag_ = false;
+    /// The live-resize watch's own reentrancy/wake-defer state (ZOOM-SMOOTH-2/2b/2c,
+    /// anno::app::LiveResizeState, live_resize.hpp - its own class comment has the full
+    /// reasoning, including the one residual, bounded race ZOOM-SMOOTH-2c's own review accepted
+    /// rather than fixed).
+    anno::app::LiveResizeState live_resize_;
+    /// ZOOM-SMOOTH-2f: the window thread's id, set once where the watch is installed (run(),
+    /// SDL_AddEventWatch's own call site - not the constructor, which may run on another thread
+    /// before run() ever starts the window). The watch checks every call against this instead of
+    /// arguing the property from the SDL source alone (the comments at live_resize_watch's own
+    /// WINDOW_MOVED case already did; this makes it hold rather than be argued).
+    std::thread::id window_thread_id_;
+    /// Calls to live_resize_watch, of the two trigger types, that were not on window_thread_id_
+    /// (ZOOM-SMOOTH-2f item 1): expected to stay 0 on every platform this engine runs on; printed
+    /// once at exit (ClearWatch's own destructor, run()) only when it is not 0.
+    std::atomic<std::uint64_t> watch_off_thread_calls_{0};
+#ifdef _WIN32
+    /// ZOOM-SMOOTH-2d, ANNO_VIEW_LIVE_RESIZE_TRACE only: live_resize_windows_hook's own state,
+    /// touched only from that hook, which SDL_SetWindowsMessageHook's own doc says runs only on
+    /// the thread handling the Windows event loop (this Viewer's one window thread). Tracks
+    /// WM_ENTERSIZEMOVE/WM_EXITSIZEMOVE so WM_TIMER/WM_MOVING/mouse-move counts below are
+    /// attributed to the modal loop they happened inside, not misread from an ordinary message.
+    bool live_resize_trace_in_modal_ = false;
+    double live_resize_trace_bucket_start_s_ = 0;
+    int live_resize_trace_timer_n_ = 0, live_resize_trace_moving_n_ = 0,
+        live_resize_trace_mousemove_n_ = 0;
+#endif
     /// A zoom step waiting for the sea pattern of its group (only while the
     /// patterns are still being rendered after the start).
     struct PendingZoom {
@@ -548,6 +722,54 @@ class Viewer {
     /// texture off disk each frame; this is the fix). Constructed once, in the constructor body,
     /// only when construction_menu_ is set (needs construction_game_dir_, itself conditional).
     std::optional<UiTexCache> construction_tex_cache_;
+    /// UI-MINIMAP-1 B1: the minimap (minimap.hpp, docs/re/ui.md 2.9). Its image is built once in
+    /// the constructor from the hooks' world (`image_ms` measured); its composed raster (the
+    /// parchment and the image) is kept until the UI layer's width or the minimap window changes,
+    /// as the original rebuilds its texture only when the world image changed (AnnoFrame
+    /// 0x100030f9..0x10003125). Only the view box follows the camera every frame. Unset without
+    /// the construction menu or without the hooks' minimap data.
+    /// B2: the image is rebuilt when the snapshot's territory has a new version (the original's
+    /// counter test, OQ-634), `owners_ms` measured; the markers are taken every frame.
+    struct MinimapState {
+        const MinimapConfig* cfg = nullptr;
+        const MinimapWorld* world = nullptr;
+        const MinimapOwnerRule* rule = nullptr;
+        std::uint64_t territory_version = 0;
+        std::uint64_t owner_builds = 0;
+        double owners_ms = 0;
+        std::uint32_t world_w = 0, world_h = 0;
+        std::vector<std::uint16_t> image;
+        std::vector<std::array<std::uint8_t, 4>> palette;
+        double zoom = 1.0;
+        assets::Rgba raster;
+        int raster_ui_w = -1;
+        MinimapWindow raster_window;
+        std::uint64_t composes = 0;
+        double image_ms = 0, compose_ms = 0;
+    };
+    std::optional<MinimapState> minimap_;
+    MinimapOverlay minimap_frame_;
+    /// The minimap for the frame about to be drawn into a UI layer `ui_w` pixels wide; null when
+    /// there is none.
+    const MinimapOverlay* minimap_overlay(int ui_w);
+    /// The world point (tiles, at sea level) under the view's centre: the camera the minimap
+    /// follows (cam_x_, cam_y_ are the centre's scene pixels of group_; picking.hpp corner_point
+    /// inverted).
+    [[nodiscard]] std::pair<double, double> camera_tile() const;
+    /// The minimap's window now (minimap.hpp minimap_window around camera_tile(), u = world y).
+    [[nodiscard]] MinimapWindow minimap_window_now() const;
+    /// UI-MINIMAP-1 C: a left press at reference-frame point (`px`, `py`) (UiHit::ref) on the
+    /// minimap's controls (docs/re/ui.md 2.9 Q6): whether it was one of them. The diamond centres
+    /// the camera (0x100029f0), the top-right + and - zoom the minimap (command 0x1b), the
+    /// magnifier's + and - step the main zoom one level (commands 0xa / 9); the chevrons
+    /// (commands 0xc / 0xd, the view turn) are taken and do nothing until the render lane's
+    /// VIEW-TURN-1.
+    bool minimap_press(double px, double py);
+    /// Centres the camera on world tile (`wx`, `wy`) at sea level (the original puts the camera
+    /// at the tile's integer position, AnnoFrame 0x10006d53..0x10006d8a -> 0x100040f0).
+    void centre_on_tile(double wx, double wy);
+    /// Camera moves by a minimap click (the `minimap.clicks` fact).
+    std::uint64_t minimap_clicks_ = 0;
     /// H2: the four build-material goods, resolved by name once (registry lookup, never a
     /// hardcoded number - synthetic.cpp's own "never hardcode the goods number" convention) so
     /// draw_cpu's HudCounters can read the right slot of PlaySnapshot::goods every frame. Null
@@ -563,19 +785,46 @@ class Viewer {
     /// pan, no selection, no tool action). The construction tab opens the menu (as key B does)
     /// and closes it (as Esc does).
     bool construction_handle(const SDL_Event& e);
-    /// Closes the menu (the tab or Esc) and turns an armed building tool off with it.
+    /// Closes the menu (the tab, or Esc / a right click on the grid) and turns an armed building
+    /// tool off with it.
     void construction_close();
-    /// UI-WINDOW-1 fix round R2: the panel the right chrome shows while the construction menu is
-    /// closed (UiMockScreen: Hud = the player overview, the start state; PlayerList; Info;
-    /// MainMenu), and the switch to one of them (closing the construction menu first).
-    UiMockScreen hud_screen_ = UiMockScreen::Hud;
+    /// UI-PLACE-2: Esc and a right click go one step back, as the original's (GOG Wine runner,
+    /// docs/re/ui.md 2.6): the info panel open -> the grid, nothing armed; else the demolish mode
+    /// on -> off, the grid stays; else -> the menu closes (an armed building with it).
+    void construction_step_back();
+    /// UI-PLACE-2: a right click while the menu is open, as the original's (docs/re/ui.md 2.6):
+    /// on the map or the info panel it puts away what the pointer carries and shows the grid; on
+    /// the grid's chrome it closes the menu. `on_chrome` says it hit drawn chrome.
+    void construction_right_click(bool on_chrome);
+    /// Turns the developer tool off (nothing armed, no demolish) if it is on.
+    void disarm_tool();
+    /// UI-PLACE-2: where the right button went down while the menu was open (drawable pixels);
+    /// its release there (within kClickSlop) is a right click, anything else the window's pan.
+    std::optional<std::pair<double, double>> construction_right_press_;
+    /// UI-PLACE-2: the held Esc whose first press the menu took: its auto-repeats are swallowed,
+    /// so holding Esc never steps further back, nor quits the window once the menu has closed.
+    bool construction_escape_held_ = false;
+    /// UI-TABS-1: the view the right chrome shows while the construction menu is closed and the
+    /// sub-tab each view shows (hud_tabs.hpp; docs/re/ui.md 5.4), built from hud.txt; empty when
+    /// there is no HUD layout or its views do not parse (the error is printed once).
+    std::optional<HudTabs> hud_tabs_;
     /// Whether the last frame drew the status bar's city counters (the `hud.counters` fact, R2).
     bool hud_counters_shown_ = false;
     /// And which city they showed (the `hud.counters.city` fact, fix round R4).
     std::optional<sim::CityRef> hud_counters_city_;
     /// Whether any frame drew the HUD yet (the fact says "not drawn" until then, R4).
     bool hud_counters_drawn_ = false;
-    void select_hud_tab(UiMockScreen screen);
+    /// UI-TABS-1 stage B: the balance pages' figures the last frame had (HudCounters::rows; the
+    /// `hud.row.<value>` facts).
+    std::map<std::string, std::int64_t> hud_rows_;
+    /// Shows view `view` at the sub-tab it showed last (a main-tab press), closing the
+    /// construction menu first.
+    void select_hud_view(const std::string& view);
+    /// UI-TABS-1: a key press in the classic surface: a sub-tab key (D, S, C) or a view key (O)
+    /// from hud.txt; closes the construction menu first. Whether it was one.
+    bool hud_key(char c);
+    /// The sub-tab of the showing view under reference pixel (px, py), if any.
+    [[nodiscard]] std::optional<int> hud_subtab_at(double px, double py) const;
     /// UI-WINDOW-1: the UI scale setting (ViewerHooks::ui_scale; nullopt = the original 1:1) and
     /// the layer's placement for the current drawable size (ui_transform.hpp).
     std::optional<float> ui_scale_;
@@ -733,6 +982,12 @@ class Viewer {
     /// A fatal error that ended the loop.
     std::string error_;
     std::optional<std::pair<double, double>> cursor_;
+    /// UI-PAN-1 (owner, 2026-11-16: "no click pan"): where the panning button went down
+    /// (drawable pixels), and whether the pointer has since left kClickSlop of it. A press that
+    /// stays within the slop is a click and moves nothing; once it leaves, the pan catches up with
+    /// the whole way from the press, so the point under the pointer still follows it.
+    std::optional<std::pair<double, double>> drag_origin_;
+    bool drag_panning_ = false;
     double scroll_ = 0;
     // Test hook (not documented for players): ANNO_VIEW_ZOOM_SCRIPT=<frames>,<seconds>
     // zooms one group step every <frames> drawn frames (2, 1, 0, 1, 2, ... like
@@ -814,6 +1069,43 @@ std::string Viewer::run() {
         SDL_Quit();
         return err;
     }
+    // ZOOM-SMOOTH-2f: the window thread's id, read here rather than assumed - run() (and so this
+    // point) always executes on the thread that owns window_ (SDL_CreateWindow just above), which
+    // is also the one thread SDL_PushEvent ever calls an event watch's callback synchronously
+    // from (the watch's own thread-id guard checks every call against this).
+    window_thread_id_ = std::this_thread::get_id();
+    // ZOOM-SMOOTH-2: draws during the native Windows modal move/resize loop, which otherwise
+    // blocks the ordinary SDL_PollEvent loop for its whole duration (ZOOM-MEASURE-1 measured a
+    // 106 ms hitch). Harmless to register on every platform: live_resize_watch's own guard
+    // (should_draw_from_watch, live_resize.hpp) only ever fires true for the Windows-only
+    // signal (SDL_EVENT_WINDOW_EXPOSED, data1 == 1); X11, Wayland and Cocoa never send it.
+    SDL_AddEventWatch(&live_resize_watch, this);
+#ifdef _WIN32
+    // ZOOM-SMOOTH-2d: only while the trace is on - SDL_SetWindowsMessageHook is a single
+    // process-wide hook (one callback, not per-window), so it stays off unless asked for.
+    if (live_resize_trace()) {
+        SDL_SetWindowsMessageHook(&Viewer::live_resize_windows_hook, this);
+    }
+#endif
+    struct ClearWatch {
+        Viewer* self;
+        ~ClearWatch() {
+            SDL_RemoveEventWatch(&Viewer::live_resize_watch, self);
+#ifdef _WIN32
+            if (live_resize_trace()) {
+                SDL_SetWindowsMessageHook(nullptr, nullptr);
+            }
+#endif
+            // ZOOM-SMOOTH-2f item 1: 0 on every platform this has been run on so far; printed
+            // only when it is not, so an ordinary run stays silent.
+            if (const auto off = self->watch_off_thread_calls_.load(); off != 0) {
+                std::fprintf(stderr,
+                             "live_resize_watch: %llu call(s) from a thread other than the "
+                             "window thread were skipped\n",
+                             static_cast<unsigned long long>(off));
+            }
+        }
+    } clear_watch{this};
     // Test hook (not documented for players): ANNO_VIEW_SIZE=<w>x<h> asks for a drawable of that
     // many pixels (the window's size in points is that over the pixel density). The size the
     // window gets is the one reported: a screen smaller than the request gives a smaller one.
@@ -1007,7 +1299,25 @@ std::string Viewer::run() {
     if (play_ != nullptr) {
         wake_event_ = SDL_RegisterEvents(1);
         if (wake_event_ != 0) {
-            play_->runner().set_wake_listener([type = wake_event_] {
+            // ZOOM-SMOOTH-2b F2, narrowed in 2c F3: SDL's watch-list lock is held for the whole
+            // dispatch of a push, a watch's own draw included (live_resize_watch), and this
+            // listener runs on the sim thread while it holds PlayRunner::listener_mu_
+            // (play.cpp) - so an ordinary push here would make a sim turn wait for however long
+            // a live-resize draw takes. live_resize_.defer_wake() only defers while a WATCH
+            // draw is in progress (not an ordinary main-loop one, which holds no SDL lock at
+            // all and would gain nothing from deferring - 2c F3); frame_step()'s own
+            // take_pending() picks a deferred wake up on its very next call (a later watch tick
+            // during a continued drag, or the main loop's own call once it resumes) - not lost,
+            // only possibly delayed by one frame step, which demand()'s existing
+            // batches_waiting_ signal already tolerates for a batch-carrying wake;
+            // live_resize_'s own pending flag additionally covers a wake with no batch (a
+            // command outcome, an opening's ships moving) that batches_waiting_ alone would
+            // miss. A residual, bounded race (not "never") is documented on LiveResizeState
+            // itself.
+            play_->runner().set_wake_listener([this, type = wake_event_] {
+                if (live_resize_.defer_wake()) {
+                    return;
+                }
                 SDL_Event e{};
                 e.type = type;
                 SDL_PushEvent(&e);
@@ -1070,6 +1380,14 @@ std::string Viewer::run() {
                              s);
             }
         }
+        // ANNO_VIEW_ZOOM_RING=on enables the zoom-out ring (ZOOM-SMOOTH-1c2 step 4); off by
+        // default since ZOOM-SMOOTH-1d measured a net regression on zoompan once it shares the
+        // GPU's prefetch budget with margin/adjacent (FrameRenderer::zoom_ring_enabled's own
+        // comment). Any other value, or unset, leaves it off.
+        if (const char* s = std::getenv("ANNO_VIEW_ZOOM_RING");
+            s != nullptr && std::string(s) == "on") {
+            cfg.zoom_ring_enabled = true;
+        }
         render::apply_frame_config(frames_, cfg);
     }
     while (running_) {
@@ -1115,7 +1433,18 @@ std::string Viewer::run() {
         while (running_ && SDL_PollEvent(&e)) {
             handle(e);
         }
-        events_ms_ = std::chrono::duration<double, std::milli>(Clock::now() - events_start).count();
+        // ZOOM-SMOOTH-2d: a watch-triggered frame_step() can run many times inside this one
+        // SDL_PollEvent call, on the native Windows modal move/resize loop's own WM_TIMER ticks
+        // (~10 ms apart) - events_start above predates all of them, so counting from there would
+        // call that whole blocked span "handling window events" when almost all of it was
+        // genuine drawing (the owner's own trace: 5763 ms reported here against an 18 ms real
+        // gap). Count from the watch's last tick instead, whenever one happened after
+        // events_start; outside live-resize, where none ever does, this is events_start itself.
+        auto events_from = events_start;
+        if (const auto tick = live_resize_.last_watch_tick(); tick > events_from) {
+            events_from = tick;
+        }
+        events_ms_ = std::chrono::duration<double, std::milli>(Clock::now() - events_from).count();
         if (selection_.pending && running_) {
             // A click waits for its inspection answer; a paused runner publishes it without a
             // wake event, so look every pass of the loop (at most 100 ms apart) until it is in.
@@ -1126,31 +1455,7 @@ std::string Viewer::run() {
                 dirty_ = true;
             }
         }
-        script_tick();
-        if (running_ && can_draw && (animating || dirty_)) {
-            dirty_ = false;
-            if (pending_zoom_) {
-                const PendingZoom p = *pending_zoom_;
-                pending_zoom_.reset();
-                zoom(p.step, p.anchor);
-            }
-            frame_animating_ = animating;
-            draw();
-            last_end_ = Clock::now();
-            if (script_every_ > 0) {
-                if (++script_frames_ % script_every_ == 0) {
-                    const auto next = static_cast<std::ptrdiff_t>(group_) + script_dir_;
-                    if (next < 0 || next >= static_cast<std::ptrdiff_t>(levels().size())) {
-                        script_dir_ = -script_dir_;
-                    }
-                    zoom(script_dir_, std::nullopt);
-                }
-                if (std::chrono::duration<double>(Clock::now() - script_start_).count() >
-                    script_seconds_) {
-                    running_ = false;
-                }
-            }
-        }
+        frame_step();
     }
     // Teardown (docs/app/gpu-handoff.md): the window stops calling into the picture here (its
     // owner destroys it after run_viewer returns). The chunk workers are joined (at most one
@@ -1378,12 +1683,23 @@ void Viewer::handle(const SDL_Event& e) {
         // right button pans too (round ee: the tool's pan).
         if (e.button.button == SDL_BUTTON_LEFT || e.button.button == SDL_BUTTON_RIGHT) {
             drag_ = e.type == SDL_EVENT_MOUSE_BUTTON_DOWN;
+            drag_panning_ = false;
+            drag_origin_ = drag_ ? std::optional(std::pair<double, double>{e.button.x * density,
+                                                                           e.button.y * density})
+                                 : std::nullopt;
         }
         break;
     case SDL_EVENT_MOUSE_MOTION: {
         const std::pair<double, double> now{e.motion.x * density, e.motion.y * density};
         if (drag_ && cursor_) {
-            pan(cursor_->first - now.first, cursor_->second - now.second);
+            if (drag_panning_ || !drag_origin_) {
+                pan(cursor_->first - now.first, cursor_->second - now.second);
+            } else if (!is_click(now.first - drag_origin_->first, now.second - drag_origin_->second,
+                                 kClickSlop)) {
+                // UI-PAN-1: the press has become a drag: pan the whole way from the press at once.
+                drag_panning_ = true;
+                pan(drag_origin_->first - now.first, drag_origin_->second - now.second);
+            }
         }
         cursor_ = now;
         break;
@@ -1395,9 +1711,19 @@ void Viewer::handle(const SDL_Event& e) {
         if (continuous_) {
             // Every notch, also a fraction of one (a precision wheel), is a
             // factor of zoom_opt_.step; wheel up = closer.
+            // ZOOM-BOUNCE-3: the event exactly as SDL and this call see it, into the window
+            // trace already running (ANNO_VIEW_TRACE) if there is one - a lead synthetic dev-
+            // script notches cannot exercise (two real opposite ticks closer together than a
+            // captured frame).
+            const double target_before = zoom_target_;
             zoom_by(
                 std::pow(zoom_opt_.step, static_cast<double>(e.wheel.y)),
                 std::pair<double, double>{e.wheel.mouse_x * density, e.wheel.mouse_y * density});
+            if (trace_ != nullptr) {
+                trace_->wheel({trace_->now_ms(), e.wheel.y, e.wheel.integer_y,
+                               e.wheel.direction == SDL_MOUSEWHEEL_FLIPPED, e.wheel.mouse_x,
+                               e.wheel.mouse_y, target_before, zoom_target_});
+            }
             break;
         }
         scroll_ += e.wheel.y;
@@ -1518,20 +1844,51 @@ void Viewer::opening_apply(const UiResult& result) {
     dirty_ = true;
 }
 
-void Viewer::select_hud_tab(UiMockScreen screen) {
+void Viewer::select_hud_view(const std::string& view) {
     if (construction_menu_open_) {
         construction_close();
     }
-    hud_screen_ = screen;
+    if (hud_tabs_) {
+        hud_tabs_->show(view);
+    }
 }
 
-void Viewer::construction_close() {
-    construction_menu_open_ = false;
-    construction_open_category_.clear();
-    construction_placement_open_ = false;
-    // UI-WINDOW-1 fix round R1 (F2): an armed cell (DevTool::arm sets the tool on, dev_tool.cpp)
-    // must not outlive the menu, or a map click after closing it still builds. The tool's own
-    // Toggle cancels what is armed and turns it off, as a second B does.
+bool Viewer::hud_key(char c) {
+    if (!hud_tabs_) {
+        return false;
+    }
+    // A key changes the state only when hud.txt binds it; the construction menu closes then, as
+    // a main-tab switch closes it (View.dll 0x100335d0 hides every main view first).
+    HudTabs next = *hud_tabs_;
+    if (!next.key(c)) {
+        return false;
+    }
+    if (construction_menu_open_) {
+        construction_close();
+    }
+    hud_tabs_ = std::move(next);
+    return true;
+}
+
+std::optional<int> Viewer::hud_subtab_at(double px, double py) const {
+    if (!hud_tabs_ || construction_menu_ == nullptr) {
+        return std::nullopt;
+    }
+    const auto& subtabs = hud_tabs_->view().subtabs;
+    for (std::size_t k = 0; k < subtabs.size(); ++k) {
+        const UiElement* e = construction_menu_->hud().element(subtabs[k].element);
+        if (e != nullptr && e->has_pos && e->has_size && px >= e->pos_x &&
+            px < e->pos_x + static_cast<double>(e->size_w) && py >= e->pos_y &&
+            py < e->pos_y + static_cast<double>(e->size_h)) {
+            return static_cast<int>(k);
+        }
+    }
+    return std::nullopt;
+}
+
+void Viewer::disarm_tool() {
+    // The tool's own Toggle cancels what is armed (and the demolish mode) and turns it off, as a
+    // second B does.
     if (dev_ != nullptr && dev_->enabled()) {
         for (sim::Command& c : dev_->handle({ToolInput::Kind::Toggle, 0, 0},
                                             pointer_frame_ ? &*pointer_frame_ : nullptr)) {
@@ -1541,6 +1898,58 @@ void Viewer::construction_close() {
     }
 }
 
+void Viewer::construction_close() {
+    construction_menu_open_ = false;
+    construction_open_category_.clear();
+    construction_placement_open_ = false;
+    // UI-WINDOW-1 fix round R1 (F2): an armed cell (DevTool::arm sets the tool on, dev_tool.cpp)
+    // must not outlive the menu, or a map click after closing it still builds.
+    disarm_tool();
+}
+
+void Viewer::construction_step_back() {
+    if (construction_placement_open_) {
+        // The info panel open: back to the grid, nothing armed (p1_c_after_esc, p2_esc1,
+        // p1_d_after_right; a right click on the panel itself too, p3_panel_right).
+        construction_placement_open_ = false;
+        disarm_tool();
+        return;
+    }
+    if (dev_ != nullptr && dev_->enabled() && dev_->input().demolish_mode()) {
+        // The demolish mode on the grid: off, the grid stays (p2_demolish_esc, p3_demolish_right).
+        static_cast<void>(dev_->toggle_demolish());
+        return;
+    }
+    // The grid, with a building armed after the cancel-X or nothing armed: the menu closes and
+    // the building is put away with it (p3_after_x_esc, p4_armed_demolish_esc2, p2_esc2); the
+    // panel shows the player overview, also when the menu was opened from another tab
+    // (p4_help_b_esc). UI-TABS-1: the overview is the player view at sub-tab 0 whatever it
+    // showed before (AnnoFrame.dll 0x1000bd43 -> View.dll 0x100333e3, docs/re/ui.md 5.4).
+    construction_close();
+    if (hud_tabs_) {
+        hud_tabs_->overview();
+    }
+}
+
+void Viewer::construction_right_click(bool on_chrome) {
+    if (on_chrome && !construction_placement_open_) {
+        // On the grid (the panel's chrome, no info panel open): the menu closes (p5_right_on_cell,
+        // nothing armed; with a building armed or the demolish mode on it is put away with it -
+        // not captured, the same as ESC on the grid), to the player overview (p5_right_on_cell).
+        construction_close();
+        if (hud_tabs_) {
+            hud_tabs_->overview();
+        }
+        return;
+    }
+    // On the map, or on the info panel: whatever the pointer carries is put away at once (an
+    // armed building and the demolish mode), the panel goes back to the grid, the menu stays
+    // open (p1_d_after_right, p3_panel_right, p3_demolish_right, p4_armed_demolish_right,
+    // p5_after_x_right; with nothing armed nothing changes, p4_grid_right).
+    construction_placement_open_ = false;
+    disarm_tool();
+}
+
 bool Viewer::construction_handle(const SDL_Event& e) {
     if (e.type == SDL_EVENT_KEY_DOWN) {
         // data/ui/construction.txt: `open_key B`, `leave_key ESC`. Both collide with an existing
@@ -1548,32 +1957,64 @@ bool Viewer::construction_handle(const SDL_Event& e) {
         // by state, not by picking a winner once and for all: B is the menu's own key only to
         // open it (closed -> open; already open, a category click or ESC is how it's used, so B
         // while open is left to the developer tool, consistent with ADR 0004 R1 "the developer
-        // tool keeps its own key"); Esc is the menu's only while it is open (closes it, consuming
-        // the event before the window's own Esc-quits binding sees it).
+        // tool keeps its own key"); Esc is the menu's only while it is open (one step back,
+        // UI-PLACE-2: construction_step_back), consuming the event before the window's own
+        // Esc-quits binding sees it.
+        if (e.key.key == SDLK_ESCAPE) {
+            if (e.key.repeat) {
+                // A held Esc: its first press decided (one press at a time, as the selection's
+                // Escape). Without this a held Esc would step back, close the menu and then quit.
+                if (construction_escape_held_ || construction_menu_open_) {
+                    return true;
+                }
+            } else if (construction_menu_open_) {
+                construction_step_back();
+                construction_escape_held_ = true;
+                return true;
+            } else {
+                construction_escape_held_ = false;
+            }
+        }
         if (e.key.key == SDLK_B && !construction_menu_open_) {
             construction_menu_open_ = true;
             construction_open_category_ = "public";
             construction_placement_open_ = false;
             return true;
         }
-        if ((e.key.key == SDLK_ESCAPE) && construction_menu_open_) {
-            construction_close();
-            return true;
-        }
-        // UI-WINDOW-1 fix round R2: key D opens the player tab's list and key O the main menu,
-        // as their tabs do (docs/re/ui.md section 1 rows 8 and 9: r2_player_menu and the
-        // military tab show the same panel; key O and the gears tab the same options).
-        // Only in the classic surface: `--ui dev` keeps D as a pan key (ADR 0004 R2).
+        // UI-TABS-1: the keys hud.txt binds to a view or a sub-tab (D the player view's diplomacy
+        // status, C its city list, S its ship list, O the options view; AnnoFrame.dll key switch
+        // 0x1000bfc4, docs/re/ui.md 5.4). Only in the classic surface: `--ui dev` keeps D and S
+        // as pan keys (ADR 0004 R2).
         const bool classic = hooks_ != nullptr && hooks_->ui == UiSurface::Classic;
-        if (classic && e.key.key == SDLK_D) {
-            select_hud_tab(UiMockScreen::PlayerList);
-            return true;
-        }
-        if (classic && e.key.key == SDLK_O) {
-            select_hud_tab(UiMockScreen::MainMenu);
+        if (classic && e.key.key >= SDLK_A && e.key.key <= SDLK_Z &&
+            hud_key(static_cast<char>('A' + (e.key.key - SDLK_A)))) {
             return true;
         }
         return false;
+    }
+    if ((e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP) &&
+        e.button.button == SDL_BUTTON_RIGHT) {
+        // UI-PLACE-2: a right click (press and release within kClickSlop) while the menu is open
+        // is one step back, as the original's, on the map or on the panel (p1_d_after_right,
+        // p3_panel_right). The right button keeps panning the map (the window's own handling
+        // below sees both events): a drag is a pan, not a click.
+        const float density = SDL_GetWindowPixelDensity(window_);
+        const double d = density > 0.0F ? static_cast<double>(density) : 1.0;
+        const std::pair<double, double> at{static_cast<double>(e.button.x) * d,
+                                           static_cast<double>(e.button.y) * d};
+        if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+            construction_right_press_ = construction_menu_open_ ? std::optional(at) : std::nullopt;
+            return false;
+        }
+        const auto press = construction_right_press_;
+        construction_right_press_.reset();
+        if (press && construction_menu_open_ &&
+            is_click(at.first - press->first, at.second - press->second, kClickSlop)) {
+            construction_right_click(ui_hit_at(at.first, at.second).chrome);
+            update_title();
+            dirty_ = true;
+        }
+        return false; // the window ends its pan
     }
     if (e.type == SDL_EVENT_MOUSE_BUTTON_UP && e.button.button == SDL_BUTTON_LEFT) {
         // UI-WINDOW-1: the release of a press the UI took is the UI's as well, wherever it ends
@@ -1587,7 +2028,8 @@ bool Viewer::construction_handle(const SDL_Event& e) {
     }
     if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST || e.type == SDL_EVENT_WINDOW_MOUSE_LEAVE) {
         ui_press_ = false; // the release of a UI press may never come (fix round R1, F6)
-        return false;      // the window's own handling of these stays
+        construction_right_press_.reset();
+        return false; // the window's own handling of these stays
     }
     if (e.type != SDL_EVENT_MOUSE_BUTTON_DOWN || e.button.button != SDL_BUTTON_LEFT) {
         return false; // only a left click resolves against the UI; everything else is dev_'s
@@ -1611,12 +2053,16 @@ bool Viewer::construction_handle(const SDL_Event& e) {
         return true; // the parts a larger layer adds (filler, the bar's added span): no buttons
     }
     const double px = hit.ref->first, py = hit.ref->second;
+    // UI-MINIMAP-1 C: the minimap's buttons and its diamond act on the press, as the original's
+    // (frame events 1 and 3, AnnoFrame 0x10006c60; the release only ends the capture).
+    if (minimap_press(px, py)) {
+        return true;
+    }
     // UI-WINDOW-1 fix round R2: the four tabs are switches (docs/re/ui.md 5.3): construction
-    // opens the construction menu (as key B), the bust the player list (as key D), "?" the info
-    // panel, the gears the main menu (as key O). A click on the tab already selected changes
-    // nothing, except the bust from the overview, which opens the list (shot r2_player_menu); a
-    // second bust click is OQ-621. Leaving the construction menu for another tab turns an armed
-    // tool off.
+    // opens the construction menu (as key B). UI-TABS-1 (docs/re/ui.md 5.4): the bust, "?" and
+    // the gears show their view (hud.txt `view`) at the sub-tab it showed last (View.dll
+    // 0x10034ab0 -> 0x100335d0); a press on the tab already selected changes nothing. Leaving
+    // the construction menu for another tab turns an armed tool off.
     const auto inside_tab = [&](const char* name) {
         const UiElement* tab = construction_menu_->hud().element(name);
         return tab != nullptr && tab->has_pos && tab->has_size && px >= tab->pos_x &&
@@ -1631,20 +2077,21 @@ bool Viewer::construction_handle(const SDL_Event& e) {
         }
         return true;
     }
-    if (inside_tab("tab_military")) {
-        select_hud_tab(UiMockScreen::PlayerList);
-        return true;
-    }
-    if (inside_tab("tab_help")) {
-        select_hud_tab(UiMockScreen::Info);
-        return true;
-    }
-    if (inside_tab("tab_options")) {
-        select_hud_tab(UiMockScreen::MainMenu);
-        return true;
+    if (hud_tabs_) {
+        for (const HudView& v : hud_tabs_->views()) {
+            if (inside_tab(v.main_tab.c_str())) {
+                select_hud_view(v.name);
+                return true;
+            }
+        }
     }
     if (!construction_menu_open_) {
-        return true; // chrome without the menu showing: taken, nothing to resolve
+        // UI-TABS-1: a press on a sub-tab of the showing view selects it, on the press as the
+        // main tabs (handlers View.dll 0x1007f730, 0x1006b070, 0x100786a0; docs/re/ui.md 5.4).
+        if (const auto k = hud_subtab_at(px, py)) {
+            hud_tabs_->select(*k);
+        }
+        return true; // chrome without the menu showing: taken, nothing more to resolve
     }
     const auto snapshot = play_->runner().snapshot();
     const auto result =
@@ -1665,11 +2112,10 @@ bool Viewer::construction_handle(const SDL_Event& e) {
         }
         return true;
     case ConstructionClickKind::ToggleDemolish:
+        // UI-PLACE-1: the pickaxe works with nothing armed and, turned off again, leaves nothing
+        // armed, as the original's (DevTool::toggle_demolish; it sends no command).
         if (dev_ != nullptr) {
-            for (sim::Command& c : dev_->handle({ToolInput::Kind::ToggleDemolish, 0, 0},
-                                                pointer_frame_ ? &*pointer_frame_ : nullptr)) {
-                latest_receipt_ = play_->runner().post_command(std::move(c));
-            }
+            static_cast<void>(dev_->toggle_demolish());
         }
         return true;
     case ConstructionClickKind::Cancel:
@@ -1698,6 +2144,161 @@ bool Viewer::construction_handle(const SDL_Event& e) {
     return false;
 }
 
+std::pair<double, double> Viewer::camera_tile() const {
+    const auto g = render::pick_geometry_of(levels().tile_w(group_), levels().tile_h(group_));
+    return render::screen_tile(cam_x_, cam_y_ + g.lift * static_cast<double>(render::kSeaLevel),
+                               g.tile_w, g.tile_h);
+}
+
+MinimapWindow Viewer::minimap_window_now() const {
+    if (!minimap_) {
+        return {};
+    }
+    const MinimapState& m = *minimap_;
+    const auto [wx, wy] = camera_tile();
+    // u is the world's y (minimap.hpp, "Axes"); the window follows the camera (0x10033ad0).
+    const double cu = m.world_h > 0 ? wy / static_cast<double>(m.world_h) : 0.5;
+    const double cv = m.world_w > 0 ? wx / static_cast<double>(m.world_w) : 0.5;
+    return minimap_window(m.zoom, cu, cv);
+}
+
+void Viewer::centre_on_tile(double wx, double wy) {
+    const auto g = render::pick_geometry_of(levels().tile_w(group_), levels().tile_h(group_));
+    const auto [sx, sy] = render::corner_point(wx, wy, static_cast<double>(render::kSeaLevel), g);
+    cam_x_ = sx;
+    cam_y_ = sy;
+    clamp();
+    dirty_ = true;
+}
+
+bool Viewer::minimap_press(double px, double py) {
+    const HudLayout& hud = construction_menu_->hud();
+    const auto on = [&](const char* name) {
+        const UiElement* e = hud.element(name);
+        return e != nullptr && e->has_pos && e->has_size && px >= e->pos_x &&
+               px < e->pos_x + static_cast<double>(e->size_w) && py >= e->pos_y &&
+               py < e->pos_y + static_cast<double>(e->size_h);
+    };
+    // The magnifier's + and - (gadgets 1 and 2, commands 0xa and 9): the main view one level
+    // closer / farther, clamped to the original's levels 0..2 (AnnoFrame 0x10007710,
+    // 0x10007692). The stepped zoom has exactly those levels; the continuous zoom goes to the
+    // next built level in that direction (magnifier_target), easing there as a key press does.
+    if (on("lupe_plus") || on("lupe_minus")) {
+        const bool closer = on("lupe_plus");
+        if (continuous_) {
+            std::vector<double> level_w;
+            for (std::size_t k = 0; k < levels().built_count(); ++k) {
+                level_w.push_back(levels().tile_w(k));
+            }
+            if (const auto target = magnifier_target(level_w, zoom_target_, closer)) {
+                zoom_to(*target);
+            }
+        } else {
+            zoom(closer ? -1 : 1, std::nullopt);
+        }
+        update_title();
+        dirty_ = true;
+        return true;
+    }
+    // The chevrons (gadgets 5 and 6, commands 0xc and 0xd) turn the whole view: the render
+    // lane's packet VIEW-TURN-1. Until it lands they are taken and do nothing.
+    if (on("compass_w") || on("compass_e")) {
+        return true;
+    }
+    if (!minimap_) {
+        return false;
+    }
+    MinimapState& m = *minimap_;
+    // The top-right + and - (gadgets 3 and 4, command 0x1b with param 1 / 0): the minimap's zoom;
+    // the window then follows the camera (0x10033710) and the raster is recomposed.
+    if (on("zoom_plus") || on("zoom_minus")) {
+        m.zoom = minimap_zoom_step(*m.cfg, m.zoom, on("zoom_plus"));
+        dirty_ = true;
+        return true;
+    }
+    // The diamond: centre the camera on the clicked world point (0x10006d19..0x10006d9d). The
+    // reference frame is hud.txt's resolution, where the minimap's rectangle is minimap_rect's.
+    const MinimapRect rect = minimap_rect(*m.cfg, hud.resolution_w);
+    const auto tile =
+        minimap_world_at(*m.cfg, rect, minimap_window_now(), m.world_w, m.world_h,
+                         static_cast<int>(std::floor(px)), static_cast<int>(std::floor(py)));
+    if (!tile) {
+        return false;
+    }
+    centre_on_tile(static_cast<double>(tile->first), static_cast<double>(tile->second));
+    ++minimap_clicks_;
+    return true;
+}
+
+const MinimapOverlay* Viewer::minimap_overlay(int ui_w) {
+    if (!minimap_ || construction_tex_cache_ == std::nullopt) {
+        return nullptr;
+    }
+    MinimapState& m = *minimap_;
+    const MinimapConfig& cfg = *m.cfg;
+    const MinimapRect rect = minimap_rect(cfg, ui_w);
+    // The camera: the world point at sea level under the view's centre, in tiles.
+    const auto [wx, wy] = camera_tile();
+    const MinimapWindow window = minimap_window_now();
+    // B2: the owners from the snapshot (PlaySnapshot::territory), only when they changed.
+    const auto snap = play_ != nullptr ? play_->runner().snapshot() : nullptr;
+    if (snap && snap->territory && m.rule != nullptr && m.world != nullptr &&
+        snap->territory->version != m.territory_version) {
+        const auto start = Clock::now();
+        const std::vector<MinimapOwnerLayer> layers =
+            minimap_owner_layers(cfg, *snap->territory, *m.rule);
+        m.image = build_minimap_image(cfg, *m.world, &layers);
+        m.territory_version = snap->territory->version;
+        ++m.owner_builds;
+        m.raster_ui_w = -1; // recompose
+        m.owners_ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+        std::fprintf(stderr, "[minimap] owners v%llu: image rebuilt in %.2f ms (build %llu)\n",
+                     static_cast<unsigned long long>(m.territory_version), m.owners_ms,
+                     static_cast<unsigned long long>(m.owner_builds));
+    }
+    const bool same_window = window.u0 == m.raster_window.u0 && window.v0 == m.raster_window.v0 &&
+                             window.u1 == m.raster_window.u1 && window.v1 == m.raster_window.v1;
+    if (m.raster_ui_w != ui_w || !same_window) {
+        const auto start = Clock::now();
+        m.raster =
+            compose_minimap(cfg, rect, window, m.image, m.palette,
+                            construction_tex_cache_->decode(cfg.parchment_file, cfg.parchment_id));
+        m.raster_ui_w = ui_w;
+        m.raster_window = window;
+        ++m.composes;
+        m.compose_ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+        std::fprintf(stderr, "[minimap] raster %ux%u composed in %.2f ms (compose %llu)\n",
+                     m.raster.width, m.raster.height, m.compose_ms,
+                     static_cast<unsigned long long>(m.composes));
+    }
+    // The box's size follows the main view's zoom level (2^level, 0x1002ff5b); the continuous
+    // zoom passes the closest level's tile width over the shown one (minimap_view_box).
+    // B2 fix: 2^level exactly at the built levels (84 / 20 = 4.2 was used at group 2 before).
+    const double shown_w = continuous_ ? zoom_now_ : levels().tile_w(group_);
+    std::vector<double> level_w;
+    for (std::size_t k = 0; k < levels().built_count(); ++k) {
+        level_w.push_back(levels().tile_w(k));
+    }
+    const double level_factor = minimap_level_factor(level_w, shown_w);
+    minimap_frame_.raster = &m.raster;
+    minimap_frame_.x = rect.x;
+    minimap_frame_.y = rect.y;
+    minimap_frame_.box = minimap_line_pixels(
+        minimap_view_box(cfg, rect, window, wx, wy, m.world_w, m.world_h, level_factor));
+    minimap_frame_.box_rgb = {static_cast<std::uint8_t>((cfg.box_colour >> 16) & 0xffU),
+                              static_cast<std::uint8_t>((cfg.box_colour >> 8) & 0xffU),
+                              static_cast<std::uint8_t>(cfg.box_colour & 0xffU)};
+    // B2: the markers, from the snapshot's figures every frame (the original rebuilds its list
+    // in every update, AnnoFrame 0x10002e43).
+    minimap_frame_.marks.clear();
+    if (snap && snap->map_figures && m.rule != nullptr) {
+        minimap_frame_.marks =
+            minimap_marker_pixels(cfg, minimap_markers(cfg, rect, window, *snap->map_figures,
+                                                       m.world_w, m.world_h, m.rule->viewer));
+    }
+    return &minimap_frame_;
+}
+
 UiTransform Viewer::ui_transform_now() const {
     const auto [w, h] = view_size();
     return ui_transform(w, h, ui_scale_, ui_rule_);
@@ -1713,9 +2314,15 @@ UiHit Viewer::ui_hit_at(double px, double py) const {
         return {};
     }
     const HudLayout& hud = construction_menu_->hud();
-    const char* panel = construction_menu_open_ ? nullptr : ui_panel_group(hud_screen_);
+    const char* panel = construction_menu_open_ || !hud_tabs_ ? nullptr : hud_tabs_->body().c_str();
+    // UI-MINIMAP-1 C: the minimap's click area, where the minimap is drawn (minimap_overlay).
+    std::optional<UiRect> minimap;
+    if (minimap_ && construction_tex_cache_ != std::nullopt) {
+        const MinimapRect a = minimap_click_area(*minimap_->cfg, t.ui_w);
+        minimap = UiRect{a.x, a.y, a.w, a.h};
+    }
     return ui_hit(hud, place_hud(hud, t.ui_w, t.ui_h), u->first, u->second, paused_at_.has_value(),
-                  panel != nullptr ? std::string(panel) : std::string());
+                  panel != nullptr ? std::string(panel) : std::string(), minimap);
 }
 
 bool Viewer::selection_active() const {
@@ -2425,7 +3032,15 @@ void Viewer::script_tick() {
             st.facts["inspection.prodtype"] = std::to_string(insp->prodtype);
             st.facts["inspection.tile.x"] = std::to_string(insp->tile.x);
             st.facts["inspection.tile.y"] = std::to_string(insp->tile.y);
+            // FISHER-VIEW-1: a Farm's (fisherman's hut's) stock and workers as numbers (8.8).
+            if (insp->farm) {
+                st.facts["inspection.out_88"] = std::to_string(insp->farm->out_88);
+                st.facts["inspection.raw_88"] = std::to_string(insp->farm->raw_88);
+                st.facts["inspection.workers_out"] = std::to_string(insp->farm->workers_out);
+            }
         }
+        // FISHER-VIEW-1: the game time the facts above belong to (the snapshot's clock).
+        st.facts["game.ms"] = std::to_string(st.snapshot->game_ms);
     }
     // Row 18's selection (W4-NEXT-2 F1/G1, finding 1 of the 2026-11-11 fix review): a script that
     // waits on a fixed frame count to know a click's selection resolved races the sim thread's
@@ -2459,11 +3074,26 @@ void Viewer::script_tick() {
                                         ? std::to_string(hud_counters_city_->island.v) + ":" +
                                               std::to_string(hud_counters_city_->city.v)
                                         : std::string("none");
-    st.facts["ui.tab"] = construction_menu_open_                   ? "construction"
-                         : hud_screen_ == UiMockScreen::PlayerList ? "player_list"
-                         : hud_screen_ == UiMockScreen::Info       ? "info"
-                         : hud_screen_ == UiMockScreen::MainMenu   ? "main_menu"
-                                                                   : "player";
+    // UI-TABS-1: `ui.tab` is the construction menu or the panel the showing sub-tab draws
+    // (hud.txt `body`: player, player_list, info, main_menu, or a placeholder's name); `hud.view`
+    // and `hud.subtab` the view showing and its sub-tab (also behind the construction menu;
+    // "none" without a HUD layout).
+    st.facts["ui.tab"] = construction_menu_open_ ? std::string("construction")
+                         : hud_tabs_             ? hud_tabs_->body()
+                                                 : std::string("none");
+    st.facts["hud.view"] = hud_tabs_ ? hud_tabs_->view().name : std::string("none");
+    st.facts["hud.subtab"] = hud_tabs_ ? std::to_string(hud_tabs_->subtab()) : std::string("none");
+    // UI-TABS-1 stage B: each balance row's figure as drawn (balance_text) while its page shows,
+    // or "empty" (no source), for every hud.txt element with a `value` (docs/re/ui.md 5.5).
+    if (construction_menu_ != nullptr) {
+        for (const UiElement& el : construction_menu_->hud().elements) {
+            if (el.value.empty())
+                continue;
+            const auto it = hud_rows_.find(el.value);
+            st.facts["hud.row." + el.value] =
+                it != hud_rows_.end() ? balance_text(it->second) : std::string("empty");
+        }
+    }
     // UI-INFO-2: the rotation the info panel's preview shows (DevInput's, the one the keys and
     // the rotate arrows turn), and the turn the map ghost is drawn and a click builds at
     // (DevTool::turn: the same, or the coast's turn for a coast kind such as the Kontor).
@@ -2472,7 +3102,40 @@ void Viewer::script_tick() {
                                        ? std::to_string(dev_->input().rotation())
                                        : std::string("none");
     st.facts["tool.turn"] = tool_armed ? std::to_string(dev_->turn()) : std::string("none");
+    // UI-PLACE-1: what a map click does now - nothing, build the armed type, or demolish.
+    st.facts["tool.mode"] = dev_ == nullptr || !dev_->enabled() ? "off"
+                            : dev_->input().demolish_mode()     ? "demolish"
+                                                                : "build";
     st.facts["camera.pans"] = std::to_string(pans_);
+    // UI-MINIMAP-1 C: the world tile under the view's centre (the camera the minimap follows),
+    // the minimap's zoom in hundredths, the view box's drawn extent in pixels, the main zoom's
+    // tile width (the target while the continuous zoom eases) and the minimap's camera moves.
+    {
+        const auto [cx, cy] = camera_tile();
+        st.facts["camera.tile.x"] = std::to_string(std::llround(cx));
+        st.facts["camera.tile.y"] = std::to_string(std::llround(cy));
+        st.facts["view.tile_w"] =
+            std::to_string(std::llround(continuous_ ? zoom_target_ : levels().tile_w(group_)));
+        st.facts["minimap.clicks"] = std::to_string(minimap_clicks_);
+        if (minimap_) {
+            st.facts["minimap.zoom"] = std::to_string(std::llround(minimap_->zoom * 100.0));
+            st.facts["minimap.viewer"] =
+                minimap_->rule != nullptr ? std::to_string(minimap_->rule->viewer) : "none";
+            int x0 = 0, x1 = -1, y0 = 0, y1 = -1;
+            for (const auto& [x, y] : minimap_frame_.box) {
+                if (x1 < x0) {
+                    x0 = x1 = x;
+                    y0 = y1 = y;
+                }
+                x0 = std::min(x0, x);
+                x1 = std::max(x1, x);
+                y0 = std::min(y0, y);
+                y1 = std::max(y1, y);
+            }
+            st.facts["minimap.box.w"] = std::to_string(x1 - x0 + 1);
+            st.facts["minimap.box.h"] = std::to_string(y1 - y0 + 1);
+        }
+    }
     st.facts["selection.pending"] = selection_.pending ? "1" : "0";
     st.facts["selection.selected"] = selection_.selected ? "1" : "0";
     st.facts["selection.kind"] = "";
@@ -2686,6 +3349,214 @@ void Viewer::script_tick() {
     }
 }
 
+bool Viewer::live_resize_watch(void* userdata, SDL_Event* event) {
+    // ZOOM-SMOOTH-2d, trace only: reads only the event struct itself and a read-only static
+    // flag (live_resize_trace()), so this never touches Viewer's own shared state either - the
+    // property the comments below are about stays true regardless of whether tracing is on.
+    if (live_resize_trace()) {
+        if (event->type == SDL_EVENT_WINDOW_MOVED) {
+            std::fprintf(stderr, "[live-resize-trace] %.4f watch: WINDOW_MOVED x=%d y=%d\n",
+                         trace_now_s(), event->window.data1, event->window.data2);
+        } else if (event->type == SDL_EVENT_WINDOW_RESIZED) {
+            std::fprintf(stderr, "[live-resize-trace] %.4f watch: WINDOW_RESIZED w=%d h=%d\n",
+                         trace_now_s(), event->window.data1, event->window.data2);
+        }
+    }
+    // ZOOM-SMOOTH-2b F1: the event's own type is read first, from the event struct itself
+    // (local to this call, never shared, never racy) - live_resize_ (shared, read from
+    // whichever thread calls SDL_PushEvent, the sim's own wake push included) is touched only
+    // once one of these two checks already confirms this is an event type that can ever
+    // actually matter here, so a push of any other event type never reads shared Viewer state
+    // at all, from any thread.
+    const bool is_timer_tick = is_live_resize_expose(*event);
+    const bool is_move = event->type == SDL_EVENT_WINDOW_MOVED;
+    if (!is_timer_tick && !is_move) {
+        return true;
+    }
+    auto* self = static_cast<Viewer*>(userdata);
+    // ZOOM-SMOOTH-2f: a guard, not an argument from the SDL source alone. SDL calls an event
+    // watch on whichever thread pushes the event (every platform, not just the Windows one the
+    // comments below argue from); this makes "the window thread, always" hold instead of being
+    // assumed for every read of live_resize_ that follows. Checked for both triggers, after the
+    // event-type test above and before the first read of self->live_resize_ below.
+    if (!should_draw_from_thread(std::this_thread::get_id(), self->window_thread_id_)) {
+        self->watch_off_thread_calls_.fetch_add(1, std::memory_order_relaxed);
+        return true;
+    }
+    const char* trigger = nullptr;
+    if (is_timer_tick) {
+        trigger = "timer";
+    } else {
+        // ZOOM-SMOOTH-2e: WM_TIMER is a documented low-priority Windows message
+        // (learn.microsoft.com/windows/win32/winmsg/wm-timer), starved for up to 526 ms by a
+        // sustained WM_MOVING/mouse-move stream during a fast drag (2d's own trace), while
+        // WINDOW_MOVED itself kept arriving every 1-2 ms throughout - the fallback trigger.
+        // should_draw_from_move is a pure predicate (no clock read inside it); only this call
+        // site decides what "now" is, and only this site is reached for a WINDOW_MOVED event,
+        // so a plain move the window system sends for any other reason (a shortcut, a snap, an
+        // SDL_SetWindowSize call from this engine's own code - never from another thread; both
+        // are confirmed below) is harmless either way: outside a live-resize session the watch
+        // would otherwise be idle, so at most this adds one extra, correctly-guarded
+        // frame_step() call no different from one the main loop would have made anyway - it can
+        // still draw nothing if frame_step()'s own can_draw/dirty_/animating() checks say so.
+        //
+        // Thread safety: WINDOW_MOVED, like EXPOSED(1), is sent only from WIN_WindowProc's own
+        // WM_WINDOWPOSCHANGED handling (SDL_windowsevents.c) - the window-owning thread, always,
+        // because Win32 delivers a window's messages only on the thread that owns it (SendMessage
+        // marshals a cross-thread call back there), regardless of what triggered the move. This
+        // engine's own code never calls a window-moving/resizing SDL function off that thread
+        // either (SDL_SetWindowSize/SDL_SyncWindow, viewer.cpp's run()/handle(), both already on
+        // it) - no new cross-thread case from this trigger beyond what EXPOSED(1) already is.
+        if (!self->live_resize_.should_draw_from_move(Clock::now(), kMoveFallbackInterval)) {
+            return true;
+        }
+        trigger = "move";
+    }
+    // ZOOM-SMOOTH-2d: every pass of either check above, drawn or guard-skipped alike, so the
+    // main loop's own events_ms_ fix (below) always has this watch's most recent tick to read,
+    // and so the move fallback's own predicate never fires again until the next real gap.
+    self->live_resize_.mark_watch_tick();
+    if (live_resize_trace()) {
+        std::fprintf(stderr, "[live-resize-trace] %.4f watch: type test passed (trigger=%s)\n",
+                     trace_now_s(), trigger);
+    }
+    if (self->live_resize_.frame_in_progress()) {
+        if (live_resize_trace()) {
+            std::fprintf(stderr,
+                         "[live-resize-trace] %.4f watch: draw skipped (reentrancy, trigger=%s)\n",
+                         trace_now_s(), trigger);
+        }
+        return true; // the reentrancy guard: never nest a frame step inside one already running
+    }
+    // ZOOM-SMOOTH-2c F3: marks a WATCH draw specifically, set first (before frame_step() is even
+    // called) so the window in which defer_wake() could still read it as clear is as small as
+    // possible (LiveResizeState's own class comment has the full reasoning for the residual,
+    // bounded race this does not eliminate). Unchanged by the move fallback: it is the same
+    // begin_watch_draw/frame_step/end_watch_draw sequence either trigger reaches, so F2/F3's own
+    // guarantees need no new reasoning for the new trigger.
+    self->live_resize_.begin_watch_draw();
+    if (live_resize_trace()) {
+        std::fprintf(stderr, "[live-resize-trace] %.4f watch: draw begin (trigger=%s)\n",
+                     trace_now_s(), trigger);
+    }
+    self->frame_step();
+    if (live_resize_trace()) {
+        std::fprintf(stderr, "[live-resize-trace] %.4f watch: draw end (trigger=%s)\n",
+                     trace_now_s(), trigger);
+    }
+    self->live_resize_.end_watch_draw();
+    return true;
+}
+
+#ifdef _WIN32
+bool Viewer::live_resize_windows_hook(void* userdata, MSG* msg) {
+    auto* self = static_cast<Viewer*>(userdata);
+    const double now = trace_now_s();
+    switch (msg->message) {
+    case WM_ENTERSIZEMOVE:
+        self->live_resize_trace_in_modal_ = true;
+        self->live_resize_trace_bucket_start_s_ = now;
+        self->live_resize_trace_timer_n_ = 0;
+        self->live_resize_trace_moving_n_ = 0;
+        self->live_resize_trace_mousemove_n_ = 0;
+        std::fprintf(stderr, "[live-resize-trace] %.4f hook: WM_ENTERSIZEMOVE\n", now);
+        break;
+    case WM_EXITSIZEMOVE:
+        std::fprintf(stderr, "[live-resize-trace] %.4f hook: WM_EXITSIZEMOVE\n", now);
+        self->live_resize_trace_in_modal_ = false;
+        break;
+    // ZOOM-SMOOTH-2d review: hypothesis (a) is about the time *before* WM_ENTERSIZEMOVE (the
+    // title-bar press Windows holds before it decides to enter the move loop at all), so these
+    // log unconditionally - never gated on live_resize_trace_in_modal_, unlike the bucketed
+    // counts below, which only make sense once the modal loop is confirmed running.
+    case WM_NCLBUTTONDOWN:
+        std::fprintf(stderr, "[live-resize-trace] %.4f hook: WM_NCLBUTTONDOWN hittest=%lld\n", now,
+                     static_cast<long long>(msg->wParam));
+        break;
+    case WM_NCLBUTTONUP:
+        std::fprintf(stderr, "[live-resize-trace] %.4f hook: WM_NCLBUTTONUP hittest=%lld\n", now,
+                     static_cast<long long>(msg->wParam));
+        break;
+    case WM_LBUTTONUP:
+        std::fprintf(stderr, "[live-resize-trace] %.4f hook: WM_LBUTTONUP\n", now);
+        break;
+    case WM_SYSCOMMAND:
+        std::fprintf(stderr, "[live-resize-trace] %.4f hook: WM_SYSCOMMAND sc=0x%04llx\n", now,
+                     static_cast<unsigned long long>(msg->wParam) & 0xFFF0ULL);
+        break;
+    case WM_CAPTURECHANGED:
+        std::fprintf(stderr, "[live-resize-trace] %.4f hook: WM_CAPTURECHANGED\n", now);
+        break;
+    default:
+        if (self->live_resize_trace_in_modal_) {
+            if (msg->message == WM_TIMER) {
+                ++self->live_resize_trace_timer_n_;
+            } else if (msg->message == WM_MOVING) {
+                ++self->live_resize_trace_moving_n_;
+            } else if (msg->message == WM_MOUSEMOVE) {
+                ++self->live_resize_trace_mousemove_n_;
+            }
+            if (now - self->live_resize_trace_bucket_start_s_ >= 0.1) {
+                std::fprintf(stderr,
+                             "[live-resize-trace] %.4f hook: per 100ms timer=%d moving=%d "
+                             "mousemove=%d\n",
+                             now, self->live_resize_trace_timer_n_,
+                             self->live_resize_trace_moving_n_,
+                             self->live_resize_trace_mousemove_n_);
+                self->live_resize_trace_bucket_start_s_ = now;
+                self->live_resize_trace_timer_n_ = 0;
+                self->live_resize_trace_moving_n_ = 0;
+                self->live_resize_trace_mousemove_n_ = 0;
+            }
+        }
+        break;
+    }
+    return true; // never drop a message
+}
+#endif
+
+void Viewer::frame_step() {
+    if (live_resize_.frame_in_progress()) {
+        return; // the reentrancy guard: never nest a frame step inside one already running
+    }
+    // A wake the sim thread deferred while a watch draw was in progress (2b F2, narrowed by 2c
+    // F3 to watch draws only): pick it up before frame_in_progress goes true again, exactly as
+    // the real wake event's own handler would (dirty_ = true; update_title();).
+    if (live_resize_.take_pending()) {
+        dirty_ = true;
+        update_title();
+    }
+    live_resize_.begin_frame();
+    const bool can_draw = !hidden_ && !retry_at_;
+    const bool animating = demand(can_draw).animating();
+    script_tick();
+    if (running_ && can_draw && (animating || dirty_)) {
+        dirty_ = false;
+        if (pending_zoom_) {
+            const PendingZoom p = *pending_zoom_;
+            pending_zoom_.reset();
+            zoom(p.step, p.anchor);
+        }
+        frame_animating_ = animating;
+        draw();
+        last_end_ = Clock::now();
+        if (script_every_ > 0) {
+            if (++script_frames_ % script_every_ == 0) {
+                const auto next = static_cast<std::ptrdiff_t>(group_) + script_dir_;
+                if (next < 0 || next >= static_cast<std::ptrdiff_t>(levels().size())) {
+                    script_dir_ = -script_dir_;
+                }
+                zoom(script_dir_, std::nullopt);
+            }
+            if (std::chrono::duration<double>(Clock::now() - script_start_).count() >
+                script_seconds_) {
+                running_ = false;
+            }
+        }
+    }
+    live_resize_.end_frame();
+}
+
 void Viewer::draw() {
     ++drawn_frames_;
     draw_start_ = Clock::now();
@@ -2726,6 +3597,11 @@ void Viewer::draw() {
     } else {
         frames_.zoom_anchor.reset();
     }
+    // The zoom's own direction (ZOOM-SMOOTH-1c2 step 1), kept apart from velocity() (pan
+    // only, by design: motion_centre's comment above says why). Negative while zoom_now_ is
+    // shrinking toward zoom_target_ (zooming out), positive while growing toward it (in), 0 at
+    // rest.
+    frames_.zoom_direction = zoom_target_ - zoom_now_;
 #ifdef ANNO_VIEWER_GPU
     if (gpu_) {
         if (continuous_) {
@@ -2772,6 +3648,14 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
         rec.view_h = view.h;
         rec.group = group_;
         rec.scale = scale();
+        // ZOOM-BOUNCE-2: what this frame actually handed to the renderer (view's own scale
+        // above, resample's own below) - a bug that changes one but not the other, or changes
+        // them together the view state alone would not report, shows up by comparing them.
+        if (resample != nullptr) {
+            rec.resample_scale = resample->scale;
+            rec.resample_offset_x = resample->offset_x;
+            rec.resample_offset_y = resample->offset_y;
+        }
         rec.drawable_w = w;
         rec.drawable_h = h;
         rec.t_start_ms = trace_->ms_at(draw_start_);
@@ -2901,6 +3785,7 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
         const auto in = construction_hud_inputs();
         hud_counters_shown_ = in.counters.tools.has_value() || in.counters.residents.has_value();
         hud_counters_city_ = in.counters_city;
+        hud_rows_ = in.counters.rows;
         hud_counters_drawn_ = true;
         // UI-INFO-1: the armed type's name, preview, costs and upkeep (live registry).
         auto info = construction_placement_open_ && dev_ != nullptr && dev_->setup().registry &&
@@ -2919,7 +3804,8 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
                 *construction_tex_cache_, in.snapshot ? in.snapshot->eligibility.get() : nullptr,
                 in.counters, construction_placement_open_,
                 dev_ != nullptr && dev_->input().demolish_mode(), paused_at_.has_value(),
-                in.selected_house, info ? &*info : nullptr, &gen->anlagen)
+                in.selected_house, info ? &*info : nullptr, &gen->anlagen,
+                minimap_overlay(ui_t.ui_w))
                 .empty();
         steps_.push_back({"construction ui", since_ms(ui_start, Clock::now())});
     }
@@ -2933,16 +3819,22 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
             steps_.push_back({"ui scale", since_ms(scale_start, Clock::now())});
         }
     }
-    const auto s = g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(),
-                                   resample, overlay, live_units_, ui_overlay_ptr);
+    const auto s =
+        g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(), resample,
+                        overlay, live_units_, ui_overlay_ptr, hitch_tracking_enabled());
     fluid_windows_ = s.fluid_windows;
     fluid_resamples_ = s.fluid_resamples;
+    // ZOOM-SMOOTH-3c item 3: this frame's own new-window count, saved before windows_seen_ is
+    // updated below (the hitch line's own FrameCounts wants the per-frame delta, not the
+    // cumulative windows_new_ this block also maintains).
+    std::size_t fluid_windows_new_this_frame = 0;
     if (s.wave_simulation) {
         wave_centre_ = {s.fluid_centre.first, s.fluid_centre.second};
         const auto grown = [](std::uint64_t now, std::uint64_t seen) {
             return now >= seen ? now - seen : now; // smaller: a new compositor's count
         };
-        windows_new_ += grown(s.fluid_windows, windows_seen_);
+        fluid_windows_new_this_frame = grown(s.fluid_windows, windows_seen_);
+        windows_new_ += fluid_windows_new_this_frame;
         resamples_new_ += grown(s.fluid_resamples, resamples_seen_);
         windows_seen_ = s.fluid_windows;
         resamples_seen_ = s.fluid_resamples;
@@ -3019,7 +3911,39 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     chunks_received_ += s.chunks_built; // reported with the periodic line, not per frame
     tex_w_ = out_w;
     tex_h_ = out_h;
-    measure(s.chunks_ms, {s.upload_ms, s.sprites_ms, s.encode_ms, present});
+    // ZOOM-SMOOTH-3d: GpuStats' own SectionRing::Snapshot (render layer) copied field by field
+    // into FrameCounts' own SectionSnapshot (app layer, section_overlap.hpp) - same shape, kept
+    // as separate types so section_overlap.hpp has no render-layer dependency (its own doc
+    // comment). The sizes must agree; a mismatch here is a build error, not a silent truncation.
+    static_assert(render::gpu::kSectionRingSize == kSectionRingSize);
+    auto to_app_snapshot = [](const render::gpu::SectionRing::Snapshot& r) {
+        SectionSnapshot a;
+        a.begin_ns = r.begin_ns;
+        a.end_ns = r.end_ns;
+        return a;
+    };
+    FrameCounts counts;
+    counts.chunks_built = s.chunks_built;
+    counts.chunks_missing = s.chunks_missing;
+    counts.chunks_drawn = s.chunks_visible;
+    counts.stand_in_parts = s.stand_in_parts;
+    counts.open_sea_chunks = s.open_sea_chunks;
+    counts.chunks_dropped = s.chunks_dropped;
+    counts.planes_freed = s.planes_freed;
+    counts.sprites_decoded = s.sprites_new;
+    counts.draw_calls = s.draw_calls;
+    counts.bind_group_sets = s.bind_group_sets;
+    counts.finish_ms = s.finish_ms;
+    counts.finish_cpu_ms = s.finish_cpu_ms;
+    counts.finish_cpu_cycles = s.finish_cpu_cycles;
+    counts.finish_at_ns = s.finish_at_ns;
+    counts.prewarm_sections = to_app_snapshot(s.prewarm_sections);
+    counts.fluid_build_sections = to_app_snapshot(s.fluid_build_sections);
+    counts.fluid_release_sections = to_app_snapshot(s.fluid_release_sections);
+    counts.sections_read_at_ns = s.sections_read_at_ns;
+    counts.fluid_windows_new = fluid_windows_new_this_frame;
+    counts.planes_prewarmed = s.planes_prewarmed;
+    measure(s.chunks_ms, {s.upload_ms, s.sprites_ms, s.encode_ms, present}, &counts);
 }
 #endif
 
@@ -3045,9 +3969,12 @@ std::optional<sim::TileXY> Viewer::centre_tile() const {
 }
 
 Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
-    const UiMockSpec spec = construction_menu_open_ ? UiMockSpec{UiMockScreen::Construction,
-                                                                 construction_open_category_}
-                                                    : UiMockSpec{hud_screen_, ""};
+    UiMockSpec spec;
+    if (construction_menu_open_) {
+        spec = UiMockSpec{UiMockScreen::Construction, construction_open_category_, "", 0};
+    } else if (hud_tabs_) {
+        spec = UiMockSpec{UiMockScreen::Hud, "", hud_tabs_->view().name, hud_tabs_->subtab()};
+    }
     const auto snapshot = play_ != nullptr ? play_->runner().snapshot() : nullptr;
     // H2: the live numbers (goods_tools_ etc. resolved once, constructor; this file's own member
     // comment). Goods are 8.8 fixed-point tons (PlaySnapshot::goods's own doc comment) - sim::kTon
@@ -3087,7 +4014,18 @@ Viewer::ConstructionHudInputs Viewer::construction_hud_inputs() const {
                          whole_tons(goods_wood_),
                          whole_tons(goods_bricks_),
                          whole_tons(goods_marble_),
-                         centred != nullptr ? centred->population : std::nullopt};
+                         centred != nullptr ? centred->population : std::nullopt,
+                         {}};
+    // UI-TABS-1 stage B (docs/re/ui.md 5.5): the balance pages' figures. The player overview sums
+    // over every city of the local player (none yet: the sums are 0, as the original's loop over
+    // an empty list); the "?" view's city page shows the status bar's city (`centred`, the
+    // owner's R4 rule) - the original shows the city whose Kontor or marketplace was clicked,
+    // which the rebuild does not open yet (OQ-691).
+    if (snapshot != nullptr) {
+        counters.rows = balance_row_values(
+            BalanceInputs{snapshot->cities.get(), centred, snapshot->accounts_live,
+                          snapshot->stat_shown_num, snapshot->stat_shown_den});
+    }
     // ADR 0004 row 18 (W4-NEXT-2 K): draw only once the sim's own answer for the selected
     // building, not the click itself, confirms it is a house - selection.hpp's own doc comment
     // ("the answer selects it... every later answer re-checks the building's id").
@@ -3159,6 +4097,7 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         const auto in = construction_hud_inputs();
         hud_counters_shown_ = in.counters.tools.has_value() || in.counters.residents.has_value();
         hud_counters_city_ = in.counters_city;
+        hud_rows_ = in.counters.rows;
         hud_counters_drawn_ = true;
         // UI-INFO-1: the armed type's name, preview, costs and upkeep (live registry).
         auto info = construction_placement_open_ && dev_ != nullptr && dev_->setup().registry &&
@@ -3171,18 +4110,19 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         }
         const auto* eligibility = in.snapshot ? in.snapshot->eligibility.get() : nullptr;
         const bool demolishing = dev_ != nullptr && dev_->input().demolish_mode();
+        const MinimapOverlay* minimap = minimap_overlay(ui_t.ui_w);
         if (ui_t.identity()) {
             static_cast<void>(draw_live_screen_xrgb(
                 buffer_.data(), w, h, construction_menu_->hud(), construction_menu_->construction(),
                 *construction_masks_, in.spec, *construction_tex_cache_, eligibility, in.counters,
                 construction_placement_open_, demolishing, paused_at_.has_value(),
-                in.selected_house, info ? &*info : nullptr, &gen->anlagen));
+                in.selected_house, info ? &*info : nullptr, &gen->anlagen, minimap));
         } else if (auto layer = draw_live_screen_rgba(
                        ui_t.ui_w, ui_t.ui_h, construction_menu_->hud(),
                        construction_menu_->construction(), *construction_masks_, in.spec,
                        *construction_tex_cache_, eligibility, in.counters,
                        construction_placement_open_, demolishing, paused_at_.has_value(),
-                       in.selected_house, info ? &*info : nullptr, &gen->anlagen);
+                       in.selected_house, info ? &*info : nullptr, &gen->anlagen, minimap);
                    layer.ok()) {
             blend_over_xrgb(buffer_.data(), w, h, ui_scaler_.scale(layer.value(), ui_t));
         }
@@ -3267,7 +4207,8 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
     measure(s.chunks_ms, {s.ground_ms, s.water_objects_ms, s.sea_ms, s.objects_ms});
 }
 
-void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
+void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages,
+                     const FrameCounts* counts) {
     // The window thread's busy time: all of draw() (events excluded) from
     // its start to the end of the present call, minus the wait for the
     // display. Not just the compositor's own timer: acquiring the surface
@@ -3284,6 +4225,46 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
     // Gap between the starts of two frames of the continuous animation: the
     // true hitch (the vsync wait is in it, so it is one display interval
     // when all is well).
+    // ZOOM-SMOOTH-3: how much content a frame handled, not how long it took - the previous
+    // frame's own counts are what the PREVIOUS line's own busy time (the spike, if any) is
+    // about; nullopt (the CPU path, which passes no counts) prints as "n/a", told apart from a
+    // real, all-zero GPU frame.
+    auto describe_counts = [](const std::optional<FrameCounts>& c) {
+        if (!c) {
+            return std::string("n/a");
+        }
+        char buf[400];
+        std::snprintf(buf, sizeof buf,
+                      "chunks built %zu, missing %zu, drawn %zu, stand-in parts %zu, open sea "
+                      "chunks %zu, dropped %zu, planes freed %zu, sprites decoded %zu, draws %zu, "
+                      "bind groups set %zu, finish %.2f ms (cpu %.2f ms, %llu cycles), fluid "
+                      "windows new %zu, planes pre-created %zu",
+                      c->chunks_built, c->chunks_missing, c->chunks_drawn, c->stand_in_parts,
+                      c->open_sea_chunks, c->chunks_dropped, c->planes_freed, c->sprites_decoded,
+                      c->draw_calls, c->bind_group_sets, c->finish_ms, c->finish_cpu_ms,
+                      static_cast<unsigned long long>(c->finish_cpu_cycles), c->fluid_windows_new,
+                      c->planes_prewarmed);
+        return std::string(buf);
+    };
+    // ZOOM-SMOOTH-3b item 4: a slow finish this frame (same 2 ms line as ZOOM-MEASURE-1's
+    // control-sweep criterion, not yet classified past 3.1 ms, review F4) prints the sums of
+    // the kLookback frames just before it - unusually heavy freeing/dropping/decoding there
+    // would support deferred destruction or upload catch-up; all quiet there rules it out for
+    // that spike.
+    constexpr double kSlowFinishMs = 2.0;
+    const bool slow_finish = counts != nullptr && counts->finish_ms > kSlowFinishMs;
+    // ZOOM-SMOOTH-3c F2: every ordinary call (not itself slow) with usable cycle data feeds the
+    // yardstick, whether or not this particular frame ends up printing a hitch line - the
+    // yardstick has to be built from the run's own history before a slow call can be judged
+    // against it, not only from frames that happen to coincide with a hitch.
+    if (!slow_finish && counts != nullptr && counts->finish_cpu_cycles > 0 &&
+        counts->finish_ms > 0.0) {
+        cycles_per_ms_samples_.push_back(static_cast<double>(counts->finish_cpu_cycles) /
+                                         counts->finish_ms);
+        if (cycles_per_ms_samples_.size() > kYardstickCap) {
+            cycles_per_ms_samples_.pop_front();
+        }
+    }
     if (last_start_ && last_animating_ && frame_animating_) {
         const double gap =
             std::chrono::duration<double, std::milli>(draw_start_ - *last_start_).count();
@@ -3294,13 +4275,115 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
                          "%.1f ms, waiting for the display %.1f ms; previous frame: busy %.1f ms, "
                          "waiting %.1f ms; %.1f ms from the end of that frame to the start of "
                          "this one, of which %.1f ms handling window events); zoom group %zu\n"
-                         "  previous frame steps (ms): %s\n  this frame steps (ms): %s\n",
+                         "  previous frame steps (ms): %s\n  this frame steps (ms): %s\n"
+                         "  previous frame counts: %s\n  this frame counts: %s\n",
                          gap, total_ms, display_wait_ms_, last_busy_ms_, last_wait_ms_,
                          std::chrono::duration<double, std::milli>(draw_start_ - last_end_).count(),
                          events_ms_, group_, describe(last_steps_, last_busy_ms_).c_str(),
-                         describe(steps_, total_ms).c_str());
+                         describe(steps_, total_ms).c_str(), describe_counts(last_counts_).c_str(),
+                         describe_counts(counts ? std::optional(*counts) : std::nullopt).c_str());
+#ifdef ANNO_VIEWER_GPU
+            // Only reachable with a real counts (slow_finish already requires counts !=
+            // nullptr): the CPU path's own measure() call always passes none, so counts (and
+            // counts_history_'s own per-frame contents) are provably unused in a build without
+            // this macro, and GCC/Clang's own unused-variable/-Wnull-dereference checks (-O3,
+            // the viewer-without-GPU WSL check) flagged this dead code directly - this guard
+            // removes it instead of arguing with the warnings about it.
+            //
+            // ZOOM-SMOOTH-3b item 4: a slow finish this frame (same 2 ms line as
+            // ZOOM-MEASURE-1's control-sweep criterion, not yet classified past 3.1 ms, review
+            // F4) prints the sums of the kLookback frames just before it - unusually heavy
+            // freeing/dropping/decoding there would support deferred destruction or upload
+            // catch-up; all quiet there rules it out for that spike.
+            auto describe_lookback = [this] {
+                std::size_t planes = 0, dropped = 0, sprites = 0;
+                for (const FrameCounts& c : counts_history_) {
+                    planes += c.planes_freed;
+                    dropped += c.chunks_dropped;
+                    sprites += c.sprites_decoded;
+                }
+                char buf[160];
+                std::snprintf(buf, sizeof buf,
+                              "planes freed %zu, chunks dropped %zu, sprites decoded %zu, over "
+                              "%zu frame(s)",
+                              planes, dropped, sprites, counts_history_.size());
+                return std::string(buf);
+            };
+            // ZOOM-SMOOTH-3d: a section's own overlap with the finish call's own span, across
+            // its ring's kSectionRingSize instances (any one of which may be in progress -
+            // anno::app::overlap_ms's own read_time_ns, c.sections_read_at_ns here, handles that
+            // per 3c's review F1); the largest single instance's own overlap is what is reported
+            // (a benign race against the background thread's own writes is still possible, so
+            // this is "worth a look", not a certainty).
+            auto section_overlap_ms = [](const FrameCounts& c, const SectionSnapshot& section) {
+                std::optional<double> best;
+                for (std::size_t i = 0; i < kSectionRingSize; ++i) {
+                    const auto ms = overlap_ms(c.finish_at_ns, c.finish_ms, section.begin_ns[i],
+                                               section.end_ns[i], c.sections_read_at_ns);
+                    if (ms && (!best || *ms > *best)) {
+                        best = ms;
+                    }
+                }
+                return best;
+            };
+            if (slow_finish) {
+                const FrameCounts& fc = *counts;
+                // ZOOM-SMOOTH-3c F2: this call's own cycles per ms against the run's own
+                // yardstick (median over ordinary calls so far) - far fewer than the yardstick
+                // means waiting, not computing; the same order of magnitude means computing.
+                std::string cycles_line = "no cycle data";
+                if (fc.finish_cpu_cycles > 0 && !cycles_per_ms_samples_.empty()) {
+                    std::vector<double> sorted(cycles_per_ms_samples_.begin(),
+                                               cycles_per_ms_samples_.end());
+                    std::sort(sorted.begin(), sorted.end());
+                    const double yardstick = sorted[sorted.size() / 2];
+                    const double this_call =
+                        static_cast<double>(fc.finish_cpu_cycles) / fc.finish_ms;
+                    char buf[160];
+                    std::snprintf(buf, sizeof buf,
+                                  "%.0f cycles/ms against a yardstick of %.0f (%zu ordinary "
+                                  "calls, %.0f%% of the yardstick)",
+                                  this_call, yardstick, sorted.size(),
+                                  yardstick > 0 ? 100.0 * this_call / yardstick : 0.0);
+                    cycles_line = buf;
+                }
+                // ZOOM-SMOOTH-3d: which of the three background sections overlap this call's own
+                // span (any instance in its ring, in-progress ones included), and by how much.
+                std::string overlaps = "none";
+                {
+                    const std::array<std::pair<const char*, std::optional<double>>, 3> sections{
+                        {{"pre-creation", section_overlap_ms(fc, fc.prewarm_sections)},
+                         {"fluid build", section_overlap_ms(fc, fc.fluid_build_sections)},
+                         {"fluid release", section_overlap_ms(fc, fc.fluid_release_sections)}}};
+                    std::string joined;
+                    for (const auto& [name, ms] : sections) {
+                        if (ms) {
+                            char piece[64];
+                            std::snprintf(piece, sizeof piece, "%s%s %.2f ms",
+                                          joined.empty() ? "" : ", ", name, *ms);
+                            joined += piece;
+                        }
+                    }
+                    if (!joined.empty()) {
+                        overlaps = joined;
+                    }
+                }
+                std::fprintf(stderr,
+                             "  finish %.2f ms (cpu %.2f ms) over %.1f ms: %s; overlapping "
+                             "background sections: %s; look-back - %s\n",
+                             fc.finish_ms, fc.finish_cpu_ms, kSlowFinishMs, cycles_line.c_str(),
+                             overlaps.c_str(), describe_lookback().c_str());
+            }
+#endif
         }
     }
+    if (counts != nullptr) {
+        counts_history_.push_back(*counts);
+        if (counts_history_.size() > kLookback) {
+            counts_history_.pop_front();
+        }
+    }
+    last_counts_ = counts ? std::optional(*counts) : std::nullopt;
     last_busy_ms_ = total_ms;
     last_steps_ = steps_;
     last_wait_ms_ = display_wait_ms_;

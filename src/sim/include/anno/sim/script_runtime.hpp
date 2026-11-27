@@ -2,6 +2,7 @@
 #include <memory>
 
 #include <anno/sim/figure.hpp>
+#include <anno/sim/island.hpp>
 #include <anno/sim/permissions.hpp>
 #include <anno/sim/settings.hpp>
 #include <anno/sim/tick.hpp>
@@ -34,5 +35,6 @@ prepare_script(std::string source, const TypeRegistry&, const PlayerTable&, cons
                                           const PlayerTable&, const SimConfig&);
 bool advance_script(ScriptRuntime&, PlayerTable&, ScriptTimers&, const TypeRegistry&, std::uint32_t,
                     const FigureRegistry* = nullptr, const WorldSettings* = nullptr,
-                    std::vector<SimEvent>* output = nullptr, std::uint64_t event_tick = 0);
+                    std::vector<SimEvent>* output = nullptr, std::uint64_t event_tick = 0,
+                    std::span<const std::optional<Island>> islands = {});
 } // namespace anno::sim

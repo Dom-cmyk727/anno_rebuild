@@ -119,7 +119,7 @@ Order: islands in layout order, tiles in `draw_ground_grids`' order `(x + y, x)`
 3. **LRU at layer granularity.** Each layer has `last_used` = the frame counter of the last pass or sprite draw that read a frame in it. When an upload does not fit the budget, the least recently used layer of the class that is not pinned is emptied: its frames are marked non-resident in the frame table, its shelf cursor reset. No repacking, no copies.
 4. **Pinning.** Layers holding frames of chunk passes recorded this frame and of this frame's sprite draws are pinned for the frame. A baked chunk does not pin anything: once its planes are written, its frames are only needed again for a rebuild.
 5. **Budget overflow.** If a single chunk's frame set does not fit the budget after evicting every unpinned static layer (cannot happen at the defaults: 7.8 MiB per chunk at most, M), that chunk is built on the CPU (section 8) and a counter (`GpuStats::chunks_cpu_fallback`) says so.
-6. **Budget**: `GpuLimits::atlas_budget_mb` (section 9). Default from the adapter: 512 MiB on a discrete adapter, 256 MiB otherwise, clamped to `maxTextureArrayLayers · atlas_size² · 4` and to `maxBufferSize`. Reason: WebGPU reports no memory size; the largest original scenario needs 197 MiB for all groups (330 MiB E with enhanced water's smoothed copies), so the discrete default never evicts original content and the integrated default only evicts other groups' frames. **? C3** (a limit default: owner).
+6. **Budget**: `GpuLimits::atlas_budget_mb` (section 9). Default from the adapter: 512 MiB on a discrete adapter, **384 MiB** otherwise, clamped to `maxTextureArrayLayers · atlas_size² · 4` and to `maxBufferSize`. Reason: WebGPU reports no memory size; the largest original scenario needs 197 MiB for all groups (330 MiB E with enhanced water's smoothed copies). **Decided by the owner 2026-11-17 (OQ-096, OQ-096b):** the integrated default was raised from a 256 MiB proposal to 384 MiB so the direct-rendering path's resident static+water atlas (RENDER-DIRECT-1a, `docs/render/atlas.md` §4) can hold the adjacent zoom-group pair with one mip level (340 MiB worst measured, 44 MiB headroom) rather than drop mips on that adapter; the discrete default (512 MiB) and its own headroom (152 MiB worst measured, all three groups with one level) were kept.
 
 ### 4.4 Where the bytes go per frame
 
@@ -211,7 +211,7 @@ Expected values come from the CPU replay (7.1) of the same records; for 1-2 also
 |---|---|---|---|
 | `atlas_size` | `GpuLimits` (exists) | 2048 | WebGPU guarantees 8192 (`maxTextureDimension2D`); 2048 holds the largest frame (682 × 651, P) and keeps a layer at 16 MiB, the LRU unit |
 | `max_atlas_layers` | `GpuLimits` (exists) | 0 = device `maxTextureArrayLayers` | device limit |
-| `atlas_budget_mb` | `GpuLimits` (new) | 512 discrete / 256 other (4.3 rule 6) | holds every original scenario's frames for all groups (197 MiB, M); **? C3** |
+| `atlas_budget_mb` | `GpuLimits` (new) | 512 discrete / **384** other (4.3 rule 6) | holds every original scenario's frames for all groups (197 MiB, M); **decided by the owner 2026-11-17, OQ-096/OQ-096b** |
 | `atlas_upload_bytes_per_frame` | `GpuLimits` (new) | 16 MiB | the wave window's per-frame upload bound; above the largest per-chunk set (7.8 MiB, M) |
 | `gpu_chunks_per_frame` | `GpuLimits` (new) | 6 | as `uploads_per_frame`: bounds what changes on screen per frame and the encoder's size |
 | `bin_px` | `FrameRenderer` (new) | 32 | T: 256 bins per chunk; smaller bins shorten the per-pixel lists and lengthen the index list; measured in stage 2 |
@@ -314,7 +314,7 @@ more than 1); the three mutations above were applied locally and each failed its
   the grow's transient old+new peak stays within budget** (G3), copies counted in
   `GpuStats::chunk_atlas_grows`. The **OQ-096 budget covers BOTH atlases together** (G3): the chunk
   atlas budget subtracts the per-frame sprite atlas's current footprint each frame
-  (`AtlasResidency::set_budget`), so the two never exceed 512 MiB discrete / 256 MiB other. `ensure()`
+  (`AtlasResidency::set_budget`), so the two never exceed 512 MiB discrete / 384 MiB other. `ensure()`
   Overflow builds that chunk **on the CPU** (`cb_cpu_fallback`: the draw list replayed on the window
   thread, `GpuStats::chunks_cpu_fallback`), not a placeholder. A scene-wide GPU frame table (32
   bytes/id) and an append-once keel buffer carry what the pass reads; **only the dirty frame-table
@@ -362,7 +362,7 @@ more than 1); the three mutations above were applied locally and each failed its
 
 - **C1 DECIDED (orchestrator): the exact binned compute pass** for objects and base (5.1): tolerance 0, the per-island composite and the `base` reset repeated. The blending render pass stays the documented fallback only (fixed-function blending rounds where the CPU floors; compounding shadows and the per-island local canvas cannot be repeated by a blend state). Conditions: the per-pixel walk is measured on the Radeon iGPU as well as on the RTX 4090 in stage 2a with GPU timestamps, and `bin_px` is tuned from that measurement, not guessed.
 - **C2 DECIDED (orchestrator): objects first (stage 2a).** The ground pass (2b) follows T1f item 2, unless the T1f profile shows the ground stage above 20 % of the chunk time on its own (it was 14-16 %).
-- **C3 = OQ-096 (owner, a limit default, `docs/open-questions.md`):** `atlas_budget_mb` 512 discrete / 256 integrated, or another rule (4.3 rule 6). Decided after the stage 2a owner check, when the resident MiB are in the perf README.
+- **C3 = OQ-096 (owner, a limit default, `docs/open-questions.md`):** `atlas_budget_mb` 512 discrete / **384** integrated (4.3 rule 6). **Decided by the owner 2026-11-17**, together with OQ-096b's mip-level question (RENDER-DIRECT-1a, `docs/render/atlas.md` §4).
 - **C4 DECIDED (orchestrator): `--chunk-build cpu|gpu`** in the viewer and the bench, `ANNO_VIEW_GPU_CHUNKS` as the interim switch; the default flips to `gpu` with the GPU renderer only after the stage 2a owner check.
 - **C5 DECIDED (orchestrator): measure** whether WGSL compilers contract the ground's edge functions (FMA) on the 4090 (Vulkan) and the iGPU; a counted edge-pixel tolerance on the ground is acceptable only with the count in the test and in the README, otherwise 0.
 - **Stage 0 additions** (review of 2026-10-21): (1) frame decoding on the workers (done in stage 1); (2) the initial atlas layer count is sized from the scene's frame set at load, so the doubling copy of a large atlas rarely happens in a frame, and if it does it is recorded in `GpuStats` (stage 2a); (3) the stand-in CPU reference and the GPU = CPU stand-in tests run with both builders; with `GpuList` the CPU cache holds lists, not pixels, so the stand-in source for the CPU reference comes from a read-back or the test runs the CPU builder, and the test says which (stage 2a); (4) this section (done).

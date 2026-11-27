@@ -395,6 +395,13 @@ class FrameRenderer {
     /// visible ones (the margin, grown in the direction of motion), the ones the
     /// motion brings into view first at the front. Not necessarily built yet.
     [[nodiscard]] const std::vector<ChunkKey>& margin_keys() const { return margin_; }
+    /// The zoom-out ring's own chunks (ZOOM-SMOOTH-1c2 step 4, same group as the
+    /// view, rank 3 in plan_margin): only present while actually zooming out
+    /// with an anchor set. Not necessarily built yet. Kept apart from
+    /// margin_keys()/adjacent_keys() (rank 1/2) so a consumer that must never
+    /// starve the pan lookahead or the neighbouring groups (the GPU compositor's
+    /// prefetch, ZOOM-SMOOTH-1d) can give it strictly lower priority than both.
+    [[nodiscard]] const std::vector<ChunkKey>& ring_keys() const { return ring_; }
     /// The cached chunk, if built.
     [[nodiscard]] const Chunk* chunk(const ChunkKey& key) const;
     /// The same chunk with shared ownership (null if not cached): a consumer that
@@ -534,6 +541,31 @@ class FrameRenderer {
     /// Owner playtest 2026-11-04: zooming in over an island off the centre landed on chunks
     /// nobody had built, and stand-ins dissolved in (up to 77 at once).
     std::optional<std::pair<double, double>> zoom_anchor;
+    /// The zoom's own direction this frame, set by the caller from its own zoom state (a
+    /// ZoomState's now vs target, or equivalent): negative while zooming out, positive while
+    /// zooming in, 0 while at rest or when the caller has no zoom state (headless renders,
+    /// tests). Kept apart from velocity() (ZOOM-SMOOTH-1c2 step 1): velocity is pan only by
+    /// design (motion_centre's own doc: "the viewer sets the camera minus the zoom's own
+    /// displacement... before each update", so a pure zoom never moves it) and the
+    /// zoom-out ring (below) needs to tell "the camera is panning" apart from "the camera is
+    /// zooming out", which a single combined signal could not.
+    double zoom_direction = 0;
+    /// Enables the zoom-out ring (ZOOM-SMOOTH-1c2 step 4). **Default off since
+    /// ZOOM-SMOOTH-1d**, measured: once routed into the GPU's prefetch
+    /// (gpu.cpp sync_chunks), it gives a modest readiness gain on wheel and
+    /// pan but a real, repeatable regression on zoompan (stand-in draws about
+    /// 21.9k vs 14.9k, dissolves about 10.1k vs 7.0k, frames over 2 ms about
+    /// 237 vs 197, three runs each, non-overlapping) - sharing the same
+    /// GpuLimits::prefetch_chunks/prefetch_budget_ms budget as margin/adjacent
+    /// costs zoompan exactly the mode that needed that budget most. Step 5's
+    /// own gate fix (prefetch_budget_ms, margin/adjacent prefetched even
+    /// while a visible chunk waits) is a clear win on its own (zoompan 173
+    /// frames over 2 ms against the ring's 240, and against 1c2's own 226
+    /// with the old gate and the ring both). Kept, not deleted, as a switch
+    /// (`bench_frame --zoom-ring on|off`, the viewer's `ANNO_VIEW_ZOOM_RING`
+    /// debug env var) for a future packet that gives the ring its own,
+    /// separate budget share instead of sharing margin/adjacent's.
+    bool zoom_ring_enabled = false;
     /// The smoothed velocity of the view centre that sizes the margin, in scene
     /// pixels per second of the group shown (x, y).
     [[nodiscard]] std::pair<double, double> velocity() const { return {vx_, vy_}; }
@@ -543,7 +575,7 @@ class FrameRenderer {
     };
 
   private:
-    std::vector<ChunkKey> adjacent_, margin_;
+    std::vector<ChunkKey> adjacent_, margin_, ring_;
     /// Velocity of the view centre in scene pixels per second of the group shown
     /// (smoothed), the centre and time of the last update_chunks, and its group.
     double vx_ = 0, vy_ = 0;
@@ -633,6 +665,9 @@ struct FrameConfig {
     /// FrameRenderer::budget (ZOOM-SMOOTH-1b step 2): default-constructed (total_bytes = 0,
     /// unbudgeted) unless the caller fills it in, typically from default_chunk_budget.
     ChunkMemoryBudget budget;
+    /// FrameRenderer::zoom_ring_enabled (ZOOM-SMOOTH-1d's on/off switch for measurement; off by
+    /// default since 1d - see FrameRenderer::zoom_ring_enabled's own comment).
+    bool zoom_ring_enabled = false;
 };
 
 /// Applies `cfg` to `fr`.
@@ -659,6 +694,25 @@ Rect zoomed_view(Rect view, std::size_t from, std::size_t to,
 /// shows. The anchor is rounded to the pixel and scaled as zoomed_view scales the centre.
 Rect zoomed_view_at(Rect view, std::pair<double, double> anchor, std::size_t from, std::size_t to,
                     const ZoomLevels& levels = ZoomLevels::original());
+
+/// The fraction of the next coarser level's tile width at which it takes over (zoom.hpp
+/// kLevelCoarseMargin, restated here since frame.hpp has no app dependency): ring_view_at's
+/// own default margin.
+inline constexpr double kRingCoarseMargin = 0.95;
+
+/// `view` scaled about `anchor` within the SAME group, to the area the continuous zoom's own
+/// composed grid would grow to show just before the next coarser level takes over
+/// (ZOOM-SMOOTH-1c2 step 4.2, the zoom-out ring): a real zoom-about-anchor, but within one
+/// level rather than zoomed_view_at's jump between levels. Derived from the level ratios and
+/// `coarse_margin`, not a literal grid-growth factor ("how far" depends on how much smaller
+/// the next level's tiles are, which is data, not a constant): the scale factor is
+/// tile_w(group) / (coarse_margin * tile_w(group + 1)), always > 1 (growing out), applied to
+/// both axes independently (tile_h for y). `anchor`'s own fractional position within `view`
+/// is kept (the same window-relative position a real zoom keeps fixed), generalizing
+/// zoomed_view_at's pixel-offset rule to a view whose size itself changes. Returns `view`
+/// unchanged when `group` is already the coarsest level (nothing coarser to ring toward).
+Rect ring_view_at(Rect view, std::pair<double, double> anchor, std::size_t group,
+                  const ZoomLevels& levels, double coarse_margin = kRingCoarseMargin);
 
 /// The area whose chunks are kept built around `view`: a ring of one chunk, and
 /// where the view is moving (velocity vx, vy in scene pixels per second) the

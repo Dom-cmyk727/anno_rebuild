@@ -31,12 +31,14 @@ testing-only knobs, not a normal launch option).
 | Do | Effect |
 |---|---|
 | `B` | opens the menu on the "public" category (only while it is not already open - `B` while open is the developer tool's own cycle key, unchanged) |
-| `Esc` | closes the menu (only while it is open - otherwise quits the window, unchanged) |
+| `Esc` | one step back, as the original's (UI-PLACE-2): with the info panel open, back to the grid with nothing armed; in demolish mode, demolish off; on the grid, the menu closes to the player overview (an armed building is put away with it). A held `Esc` acts once. With the menu closed it quits the window, unchanged |
+| Right click (no drag) | on the map or the info panel: puts away the armed building and the demolish mode, back to the grid; on the grid: closes the menu. A right drag still pans the map (UI-PLACE-2) |
 | Click a category tab (right-hand column) | switches to that category's grid |
 | Click an unlocked grid cell | arms that type for placement - the usual click-to-build on the map follows, unchanged from the developer picker |
 | Click a locked grid cell (greyed/padlocked) | nothing happens - no type is armed, no command is sent |
-| Click the pickaxe (bottom-right of the grid) | toggles demolish mode (same `X` key the developer tool already has) |
-| Click the X (bottom-right of the info/placement panel) | closes the panel / cancels demolish mode (shares the pickaxe's own pixel rectangle - the two are never shown together, so a click there resolves to whichever one currently applies) |
+| Click the pickaxe (bottom-right of the grid) | toggles demolish mode, also with nothing armed (same `X` key the developer tool already has); turned off again it leaves nothing armed, or the building armed before (UI-PLACE-1) |
+| Click the X (bottom-right of the info/placement panel) | closes the panel; the building stays armed, as the original's cancel-X keeps it (shares the pickaxe's own pixel rectangle - the two are never shown together, so a click there resolves to whichever one currently applies) |
+| Click a grid cell while demolishing | arms that building and ends the demolish mode, as the original does (UI-PLACE-1) |
 
 ## A walk-through
 
@@ -47,7 +49,9 @@ testing-only knobs, not a normal launch option).
    is gone until the panel closes.
 3. Click a buildable spot on the map: the usual placement preview and commit, unchanged. The
    panel stays open.
-4. Click the X: the panel closes, back to the grid.
+4. Click the X: the panel closes, back to the grid; the building stays armed (a map click still
+   builds it), as in the original. A right click on the map puts it away and keeps the grid;
+   `Esc` instead closes the menu and puts it away with it.
 5. Click the pickaxe, then click the building you just placed: it is demolished (the usual
    confirmation/feedback, unchanged).
 6. Click a different category tab: its own grid draws (thumbnails, locks, the same as step 1).

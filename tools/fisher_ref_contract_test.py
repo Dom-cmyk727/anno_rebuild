@@ -58,6 +58,25 @@ def contract(ref, vectors, root):
     require(ref, vectors, 0, f'{len(rows)} vectors, 0 disagreements')
     checks = 1
 
+    # Separate fixture: the C++ geometry reader's accepted type set stays intact.
+    entrances = vectors.with_name('fisher_entrance_vectors.txt')
+    entrance_text = entrances.read_text(encoding='utf-8')
+    entrance_rows = []
+    previous = ''
+    for line in entrance_text.splitlines():
+        stripped = line.split('#', 1)[0].strip()
+        if stripped:
+            if not previous.startswith('#'):
+                raise AssertionError('entrance vectors need hand-derivation comments')
+            entrance_rows.append(stripped)
+        if line.strip():
+            previous = line.strip()
+    entrance_counts = Counter(line.split()[0] for line in entrance_rows)
+    if set(entrance_counts) != {'coast_site', 'closed_home'} or any(n < 2 for n in entrance_counts.values()):
+        raise AssertionError('entrance fixture needs coast_site and closed_home controls')
+    require(ref, entrances, 0, f'{len(entrance_rows)} vectors, 0 disagreements')
+    checks += 1
+
     def case(name, body, code, diagnostic=''):
         nonlocal checks
         path = root / (name + '.txt')
@@ -86,6 +105,19 @@ def contract(ref, vectors, root):
     case('bad_list', good.replace('draws=-', 'draws=1,,2'), 2, 'integer')
     case('extra_draws_unused', good.replace('draws=-', 'draws=0,4294967295'), 0)
     case('unknown_type', good.replace('sea_cell ', 'unknown '), 2, 'unknown record type')
+    closed = next(row for row in entrance_rows if row.startswith('closed_home outside_cargo '))
+    case('open_home_outside_domain', closed.replace('means=32,48', 'means=31,48'),
+         2, 'all entrance means >=32')
+    case('missing_home_means', closed.replace('means=32,48', 'means=-'),
+         2, 'all entrance means >=32')
+    coast = next(row for row in entrance_rows if row.startswith('coast_site closed_810 '))
+    case('bad_coast_window', coast.replace('heights=48,', 'heights=', 1),
+         2, 'corner-window size')
+    case('bad_coast_rotation', coast.replace('rotation=0', 'rotation=4'), 2, 'out of range')
+    case('odd_entrances', coast.replace('entrances=1,3,1,0', 'entrances=1'),
+         2, 'entrance tile pairs')
+    case('out_of_bounds_entrances', coast.replace('entrances=1,3,1,0', 'entrances=3,3'),
+         2, 'outside footprint')
     case('missing_label', good.replace(' control', ''), 2, 'TYPE LABEL')
     case('two_arrows', good.rstrip() + ' =>\n', 2, '=>')
     case('mixed_malformed', good.replace('open=1', 'open=0') + 'bad\n', 2, '=>')
@@ -225,6 +257,30 @@ def contract(ref, vectors, root):
     mini(0, with_height=False)
     runtime_case(2, 'tile not covered')
 
+    # The entrance census must parse real chunk structure, deduplicate geometry
+    # and distinguish equality 32 from 31 without a scenario gameplay projection.
+    (corpus / 'Anlagen.dat').write_bytes(chunk('ANNO', chunk('ANLAGEN',
+        chunk('ENTRY', struct.pack('<II', 0, 810) + chunk('HEAD', bytes([1, 1]))
+              + chunk('PRODTYPE', b'FISCHER\0')
+              + chunk('ENTRANCE', struct.pack('<ff', 0.5, 0.5))))))
+    def entrance_corpus_case(first_height, closed_count):
+        nonlocal checks
+        block = struct.pack('<HHBB', 0, 0, 2, 2)
+        data = struct.pack('<HHHHI', 0, 0, 2, 2, 7)
+        data += chunk('HEIGHT', block + bytes([first_height, 0, 0, 0]))
+        data += chunk('PROD2', block + struct.pack('<HHbb', 810, 0, 0, 0) * 2)
+        sample.write_bytes(chunk('ANNO', chunk('SCENE', chunk('INSEL5', data))))
+        result = subprocess.run([sys.executable, '-I', str(ref), '--fisher-entrances',
+                                 str(corpus), '--expected-scenarios', '1'],
+                                capture_output=True, text=True, timeout=5)
+        diagnostic = ('scenarios=1 records=2 unique=1 duplicates=1 '
+                      f'all_closed={closed_count} at_least_one_open={1 - closed_count}')
+        if result.returncode != 0 or diagnostic not in result.stdout:
+            raise AssertionError('entrance census: ' + result.stdout + result.stderr)
+        checks += 1
+    entrance_corpus_case(128, 1)
+    entrance_corpus_case(124, 0)
+
     # Every replacement is proved applied once before running the mutant. A
     # syntax error, exception or malformed-input exit2 is not a killed mutant.
     source = ref.read_text(encoding='utf-8')
@@ -235,13 +291,13 @@ def contract(ref, vectors, root):
          "1 and mean < 16"),
         ('invert_blocked_mask', 'blocked=511 * (1 - opened)', 'blocked=511 * opened'),
         ('invert_usable_mask', 'usable=511 * opened', 'usable=511 * (1 - opened)'),
-        ('replicate_right_border', '    return grid',
+        ('replicate_right_border', '    return grid\n',
          '    for y in range(height):\n'
          '        grid[y * stride + width] = grid[y * stride + width - 1]\n'
-         '    return grid'),
-        ('replicate_bottom_border', '    return grid',
+         '    return grid\n'),
+        ('replicate_bottom_border', '    return grid\n',
          '    grid[height * stride:] = grid[(height - 1) * stride:height * stride]\n'
-         '    return grid'),
+         '    return grid\n'),
         ('no_full_output_draw', "and r['workers'] < r['maximum']",
          "and r['workers'] < r['maximum'] and output < r['capacity']"),
         ('clamp_output', 'output = (output + added) & 65535',
@@ -261,6 +317,24 @@ def contract(ref, vectors, root):
         mutant = root / (name + '.py')
         mutant.write_text(replace_once(source, old, new), encoding='utf-8')
         require(mutant, vectors, 1, 'disagreements')
+        checks += 1
+        print('mutant ' + name + ': replacement applied once; exit1 disagreement')
+    entrance_mutants = [
+        ('coast_requires_open_entrance', 'coast_pass=passed,',
+         'coast_pass=passed * int(any(mean < 32 for mean in means)),'),
+        ('coast_inclusive_water', 'wet = sum(value < 32 for value in opposite)',
+         'wet = sum(value <= 32 for value in opposite)'),
+        ('entrance_equality_open', 'open_entrances=sum(mean < 32 for mean in means)',
+         'open_entrances=sum(mean <= 32 for mean in means)'),
+        ('closed_goal_bypasses_admission', "started = r['inside']", 'started = 1'),
+        ('failed_home_credits_cargo', "credit = r['cargo'] if started and r['goods'] else 0",
+         "credit = r['cargo'] if r['goods'] else 0"),
+        ('failed_worker_never_releases', 'released=1)', 'released=0)'),
+    ]
+    for name, old, new in entrance_mutants:
+        mutant = root / (name + '.py')
+        mutant.write_text(replace_once(source, old, new), encoding='utf-8')
+        require(mutant, entrances, 1, 'disagreements')
         checks += 1
         print('mutant ' + name + ': replacement applied once; exit1 disagreement')
     echo = root / 'success_only.py'
@@ -283,6 +357,8 @@ def contract(ref, vectors, root):
         raise AssertionError('contract accepted hanging stand-in')
     print(f'fisher reference contract: {checks} checks passed; {len(rows)} bundled vectors; '
           + ', '.join(f'{k}={counts[k]}' for k in sorted(counts)))
+    print(f'entrance fixture: {len(entrance_rows)} vectors; '
+          + ', '.join(f'{k}={entrance_counts[k]}' for k in sorted(entrance_counts)))
 
 
 def main():

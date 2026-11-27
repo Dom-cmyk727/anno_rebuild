@@ -106,6 +106,20 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
             } else {
                 return std::nullopt;
             }
+        } else if (a == "--fisher-rules") {
+            if (v == "on") {
+                out.fisher_rules = true;
+            } else if (v == "off") {
+                out.fisher_rules = false;
+            } else {
+                return std::nullopt;
+            }
+        } else if (a == "--player") {
+            const auto player = number<std::uint32_t>(v);
+            if (!player) {
+                return std::nullopt;
+            }
+            out.play_player = *player;
         } else if (a == "--speed") {
             const auto speed = number<unsigned>(v);
             if (!speed || (*speed != 50 && *speed != 100 && *speed != 200)) {
@@ -323,6 +337,11 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
     }
     if (out.rules_given && !out.play) {
         return std::nullopt; // no sim to apply it to (--view, or --png without --play)
+    }
+    // FISHER-VIEW-1: --fisher-rules and --player are --play developer switches; the ship-start
+    // opening has its own seat and its own manifest rules.
+    if ((out.fisher_rules || out.play_player) && (!out.play || out.ship_start)) {
+        return std::nullopt;
     }
     return out;
 }

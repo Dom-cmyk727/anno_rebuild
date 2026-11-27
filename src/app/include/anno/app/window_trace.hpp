@@ -61,6 +61,11 @@ struct FrameRecord {
     int view_x = 0, view_y = 0, view_w = 0, view_h = 0;
     std::size_t group = 0;
     double scale = 1.0;
+    /// ZOOM-BOUNCE-2: the resample pass actually handed to the frame renderer (gpu::Resample,
+    /// null when the view draws at scale 1 with no resample) - 0/0/0 then, told apart from a
+    /// real resample by `scale` above never legitimately being 0. Compared against `scale`
+    /// (the view state's own) to catch the two disagreeing for one frame.
+    double resample_scale = 0.0, resample_offset_x = 0.0, resample_offset_y = 0.0;
     std::uint32_t drawable_w = 0, drawable_h = 0;
     double t_start_ms = -1, picture_ms = -1, acquire_start_ms = -1, acquire_end_ms = -1;
     std::uint32_t acquire_status = 0;
@@ -105,6 +110,26 @@ observe_keys(const std::vector<render::ChunkKey>& keys, const std::set<render::C
              const std::function<bool(const render::ChunkKey&)>& fresh,
              const std::function<bool(const render::ChunkKey&)>& usable);
 
+/// ZOOM-BOUNCE-3: one SDL mouse-wheel event reaching the continuous zoom, exactly as SDL and
+/// Viewer::handle see it - a lead the dev script's own synthetic notches cannot exercise (two
+/// opposite real ticks closer together than this trace's own timestamp resolution would show as
+/// a captured frame between them). Recorded only when a window trace is already running
+/// (ANNO_VIEW_TRACE): no second switch to turn on.
+struct WheelRecord {
+    double t_ms = 0;
+    /// The raw float and the accumulated-whole-tick integer SDL gives for the same notch
+    /// (SDL_MouseWheelEvent::y / integer_y) - a precision wheel's own fractional y rounds to 0
+    /// in integer_y, so the two are not the same number read twice.
+    float raw_y = 0;
+    std::int32_t integer_y = 0;
+    /// SDL_MOUSEWHEEL_FLIPPED: raw_y/integer_y are already sign-corrected for it (Viewer::handle
+    /// reads e.wheel.y as SDL hands it, never raw hardware units), kept here only as a flag.
+    bool flipped = false;
+    float mouse_x = 0, mouse_y = 0;
+    /// zoom_target_ just before and just after this one event's own zoom_by() call.
+    double target_before = 0, target_after = 0;
+};
+
 class WindowTrace {
   public:
     /// `max_events` and `max_frames` (> 0) bound what is kept; memory for them is reserved here.
@@ -123,6 +148,9 @@ class WindowTrace {
     }
     void frame(FrameRecord record);
     void turn(TurnRecord record);
+    /// ZOOM-BOUNCE-3: bounded by max_events (wheel events are far fewer than those; no separate
+    /// bound was added rather than change this constructor's own signature for one more count).
+    void wheel(WheelRecord record);
     /// A line for manifest.txt (the adapter, the drawable size): a handful per session.
     void note(std::string line);
     [[nodiscard]] std::uint64_t dropped() const;
@@ -146,6 +174,7 @@ class WindowTrace {
     std::vector<TraceEvent> events_;
     std::vector<FrameRecord> frames_;
     std::vector<TurnRecord> turns_;
+    std::vector<WheelRecord> wheel_;
     std::vector<std::string> notes_;
     std::uint64_t dropped_ = 0;
 };

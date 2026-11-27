@@ -1,0 +1,8 @@
+# UI-MINIMAP-1 C (scope item 6): the minimap follows the play runner's local player. With
+# --player 3 (FISHER-VIEW-1) on lan5 the minimap's owner colours and markers are player 3's, not the
+# first human slot's (ui_minimap_controls shows the default without --player).
+# Launch: --play data/maps/lan5.txt --player 3 --construction-menu on --layout data/ui
+resize 1024 768
+wait frames 5
+expect fact minimap.viewer == 3
+quit

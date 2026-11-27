@@ -76,9 +76,13 @@
 //   ldown_px X Y          a left press at drawable pixel (X, Y) with no release (a release lost
 //                         outside the window); ldrag_px X0 Y0 X1 Y1: press at (X0, Y0), move to
 //                         (X1, Y1) with the button held, release there (UI-WINDOW-1 fix round R1)
+//   rclick_px X Y         a right click (press and release) at drawable pixel (X, Y);
+//                         rdrag_px X0 Y0 X1 Y1: the same right-button press, a motion to (X1, Y1)
+//                         with the button held and the release there (UI-PLACE-2)
 //   focus-lost            the window loses focus (SDL_EVENT_WINDOW_FOCUS_LOST)
 //   key f|u|h|tab|enter|lbracket|rbracket|f5|t|esc|b|n|p|x|d|o   (the opening's keys, the tool's,
-//                         and the HUD tabs' D and O)
+//                         and the HUD tabs' D and O); key-held NAME: the same key held - the
+//                         press, two auto-repeats and the release (UI-PLACE-2)
 //   wait fact KEY OP VALUE | expect fact KEY OP VALUE   the window's named facts (the opening view,
 //                         the controls and the latest command's state): OP is ==, !=, >=, <=, >, <
 //                         (integers when both sides are) or `contains`. Facts: cities, gold, mode,

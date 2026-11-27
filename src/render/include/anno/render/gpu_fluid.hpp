@@ -19,6 +19,52 @@
 
 namespace anno::render::gpu {
 
+/// ZOOM-SMOOTH-3d item 3: how many of a background section's own most recent instances
+/// SectionRing keeps. Generous given how rare these events are: at most one plane is
+/// pre-created per quiet frame (GpuFrame::Impl's own warm_thread), and the fluid job/release
+/// threads fire only on a window switch - a window-thread stall that missed more instances than
+/// this between two reads would itself be the finding, not a gap in this ring's own size.
+inline constexpr std::size_t kSectionRingSize = 4;
+
+/// The last kSectionRingSize instances of a background section's own begin/end (steady_clock
+/// ticks since the epoch; 0 = unused slot), so two runs of a section close together between two
+/// reads are both visible to an overlap check - a single pair (ZOOM-SMOOTH-3b/3c) only ever
+/// showed the most recent one. A slot's `end` is 0 from the moment `begin` claims it until `end`
+/// is called: a reader (anno::app::overlap_ms) treats that as still running, not as ended at
+/// time 0 (the fix for ZOOM-SMOOTH-3c's own review F1).
+class SectionRing {
+  public:
+    /// Claims the next slot and records its begin; returns the slot for the matching end().
+    std::size_t begin(std::int64_t now_ns) {
+        const std::size_t slot = next_.fetch_add(1, std::memory_order_relaxed) % kSectionRingSize;
+        // Cleared before begin is published (release) so a concurrent reader never sees a new
+        // begin paired with a previous instance's stale, already-ended end.
+        end_[slot].store(0, std::memory_order_relaxed);
+        begin_[slot].store(now_ns, std::memory_order_release);
+        return slot;
+    }
+    void end(std::size_t slot, std::int64_t now_ns) {
+        end_[slot].store(now_ns, std::memory_order_release);
+    }
+    struct Snapshot {
+        std::array<std::int64_t, kSectionRingSize> begin_ns{};
+        std::array<std::int64_t, kSectionRingSize> end_ns{};
+    };
+    [[nodiscard]] Snapshot snapshot() const {
+        Snapshot s;
+        for (std::size_t i = 0; i < kSectionRingSize; ++i) {
+            s.begin_ns[i] = begin_[i].load(std::memory_order_acquire);
+            s.end_ns[i] = end_[i].load(std::memory_order_acquire);
+        }
+        return s;
+    }
+
+  private:
+    std::atomic<std::size_t> next_{0};
+    std::array<std::atomic<std::int64_t>, kSectionRingSize> begin_{};
+    std::array<std::atomic<std::int64_t>, kSectionRingSize> end_{};
+};
+
 class FluidGpu {
   public:
     ~FluidGpu();
@@ -51,6 +97,15 @@ class FluidGpu {
     /// Time steps the last update() recorded (0 when none was due).
     [[nodiscard]] std::uint32_t last_steps() const { return last_steps_; }
     [[nodiscard]] const fluid::FluidConfig& config() const { return cfg_; }
+
+    /// ZOOM-SMOOTH-3c item 3 / 3d item 3: the background job thread's own last few whole-grid
+    /// builds (prepare_window's make_grid call) and the background free thread's own last few
+    /// releases of an unapplied grid (free_job_in_background), so a caller can check whether any
+    /// overlapped a slow finish_ms, without reaching into Job/the free thread directly.
+    [[nodiscard]] SectionRing::Snapshot build_snapshot() const { return build_ring_->snapshot(); }
+    [[nodiscard]] SectionRing::Snapshot release_snapshot() const {
+        return release_ring_->snapshot();
+    }
 
     /// Background setup: update() no longer fills a new or moved window in
     /// the frame. The cells' depth and initial state are computed on a
@@ -173,6 +228,14 @@ class FluidGpu {
     std::vector<std::unique_ptr<Job>> retired_;
     /// Background frees still running (free_job_in_background); the destructor waits for 0.
     std::shared_ptr<std::atomic<int>> freeing_ = std::make_shared<std::atomic<int>>(0);
+    /// ZOOM-SMOOTH-3c item 3 / 3d item 3: see the accessors above. Both shared_ptr, not plain
+    /// members - SectionRing holds std::atomic, neither copyable nor movable, and FluidGpu's own
+    /// move constructor is defaulted (MSVC's own C2280, hit by 3c's own plain atomics);
+    /// release_ring_ is written from free_job_in_background's own detached thread, which does
+    /// not otherwise capture `this`, so the shared_ptr also lets that thread hold its own
+    /// reference, independent of this object's lifetime (the same reason freeing_ above does).
+    std::shared_ptr<SectionRing> build_ring_ = std::make_shared<SectionRing>();
+    std::shared_ptr<SectionRing> release_ring_ = std::make_shared<SectionRing>();
 };
 
 } // namespace anno::render::gpu

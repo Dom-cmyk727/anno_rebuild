@@ -56,6 +56,13 @@ class UiTexCache {
     std::unique_ptr<Impl> impl_;
 };
 
+/// UI-PLANK-1 (docs/re/ui.md 2.4, "Banner text"): the text the construction panel's plank shows
+/// for the open `category`: line (category index - 1) of the hud.txt `plank_text` element's
+/// `text_section` in Texte.dat; empty when any of them is missing.
+[[nodiscard]] std::string construction_plank_text(UiTexCache& cache, const HudLayout& hud,
+                                                  const ConstructionLayout& construction,
+                                                  const std::string& category);
+
 /// Which chrome the construction tab frames show: `kHud` draws the idle HUD's frames
 /// (construction 8, military 13 selected); `kConstruction` draws a construction-menu category's
 /// frames (construction 12 selected, military 9) - `compose_screen`'s `spec["kind"]` branch.

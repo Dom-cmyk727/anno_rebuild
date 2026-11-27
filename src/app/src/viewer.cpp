@@ -3670,6 +3670,17 @@ void Viewer::script_tick() {
         }
         st.facts["ui.category"] = category;
         st.facts["ui.category_tab"] = category_tab;
+        // UI-PLANK-1: the text the plank shows (construction_plank_text), spaces as '_' so a
+        // script can compare it; "none" with the menu closed or no text.
+        std::string plank;
+        if (construction_menu_open_ && construction_menu_ != nullptr &&
+            construction_tex_cache_ != std::nullopt) {
+            plank = construction_plank_text(*construction_tex_cache_, construction_menu_->hud(),
+                                            construction_menu_->construction(),
+                                            construction_open_category_);
+            std::replace(plank.begin(), plank.end(), ' ', '_');
+        }
+        st.facts["ui.plank_text"] = plank.empty() ? std::string("none") : plank;
     }
     // UI-CATNAV-1: the panel the open menu shows (grid / info), and the armed type (tool.armed:
     // the Anlagen id, or none) - the two are independent, as the original's.

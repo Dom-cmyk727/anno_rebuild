@@ -3,6 +3,7 @@
 // float32 values (an independent Python float32 model of the HE disassembly, kept with the
 // packet's evidence in cache/, not in git) and the project's real data/ui files. The pixel cases
 // at the end need the original files (ANNO1503_GAME_DIR) and skip without them.
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstdint>
@@ -392,4 +393,68 @@ TEST_CASE("ui layer: the right chrome at 2542 x 1351 is the 1024 x 768 chrome sh
         }
     }
     CHECK(filler_opaque == 245U * 256U);
+}
+
+TEST_CASE("plank text: the open category's TOOLTIP:BAUMENU_EX line, by tab (UI-PLANK-1)") {
+    const auto game = anno::test::game_dir();
+    if (!game) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR is not set");
+        return;
+    }
+    const Layouts l = load();
+    const auto* el = l.hud.element("plank_text");
+    REQUIRE(el != nullptr);
+    CHECK(el->text_section == "TOOLTIP:BAUMENU_EX");
+    app::UiTexCache cache(*game);
+    // GOG Texte.dat [TOOLTIP:BAUMENU_EX], lines 0..7 = tabs 0..7 (docs/re/ui.md 2.4).
+    struct Want {
+        const char* category;
+        const char* text;
+    };
+    for (const Want& w :
+         {Want{"public", "Public buildings"}, Want{"roads", "Squares, Streets"},
+          Want{"farms", "Farms, Plantations"}, Want{"workshops", "Workshops"},
+          Want{"coastal", "Coastal buildings"}, Want{"mines", "Pits, Mines"},
+          Want{"military", "Military installations"}, Want{"ornamental", "Ornamentals"}}) {
+        CHECK(app::construction_plank_text(cache, l.hud, l.construction, w.category) == w.text);
+    }
+    CHECK(app::construction_plank_text(cache, l.hud, l.construction, "no such category").empty());
+}
+
+TEST_CASE("plank text: the live public screen's glyphs are where the GOG shot has them "
+          "(UI-PLANK-1)") {
+    const auto game = anno::test::game_dir();
+    if (!game) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR is not set");
+        return;
+    }
+    const Layouts l = load();
+    app::UiTexCache cache(*game);
+    const app::UiMockSpec screen{app::UiMockScreen::Construction, "public", "", 0};
+    const auto img = app::draw_live_screen_rgba(1024, 768, l.hud, l.construction, l.masks, screen,
+                                                cache, nullptr);
+    REQUIRE(img.ok());
+    const auto& im = img.value();
+    // The font's level 1 (pure white) inside the plank (783..1023 x 250..301): GOG
+    // r2_construction_public has 441 such pixels in the box x 843..962, y 264..277
+    // ("Public buildings"; measured 2026-11-27, docs/re/ui.md 2.4).
+    int count = 0, x0 = 1024, x1 = -1, y0 = 768, y1 = -1;
+    for (int y = 250; y < 302; ++y) {
+        for (int x = 783; x < 1024; ++x) {
+            const std::size_t i =
+                (static_cast<std::size_t>(y) * im.width + static_cast<std::size_t>(x)) * 4;
+            if (im.pixels[i] == 255 && im.pixels[i + 1] == 255 && im.pixels[i + 2] == 255) {
+                ++count;
+                x0 = std::min(x0, x);
+                x1 = std::max(x1, x);
+                y0 = std::min(y0, y);
+                y1 = std::max(y1, y);
+            }
+        }
+    }
+    CHECK(count == 441);
+    CHECK(x0 == 843);
+    CHECK(x1 == 962);
+    CHECK(y0 == 264);
+    CHECK(y1 == 277);
 }

@@ -123,6 +123,7 @@ turn 8 found <issuer> <ship> <type> <rot> <x> <y> <click x> <click y>
 turn 9 move <issuer> <ship> <target x Q24.8> <target y Q24.8>     turn 10 stop <issuer> <ship>
 turn 11 unload <issuer> <ship> <warehouse> <hold> <goods> <tons>
 turn 14 buildc <issuer> <island> <city> <type> <x> <y> <rot> ...  turn 15 demolishc <issuer> <island> <city> <x> <y> ...
+turn 16 speed <issuer> <percent>
 ```
 
 `anno1503 --ship-start M --seat N [--resume S] --commands commands.txt --replay-hashes hashes.txt` replays them in a

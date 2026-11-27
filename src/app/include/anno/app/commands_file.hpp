@@ -36,7 +36,7 @@ parse_commands(std::string_view text, const sim::World& world, sim::PlayerId pla
 /// The text of `commands`, one line per command, in the file's format: the inverse
 /// of parse_commands, so a recorded session (PlayRunner::applied_commands) can be
 /// replayed through --commands. A command the format cannot carry (a body other than
-/// Build or Demolish, or a placement with byte7/byte8 set) is an error.
+/// Build, Demolish or SetSpeed, or a placement with byte7/byte8 set) is an error.
 /// The reason a command has no line form (a struct, so the error is not the value's type).
 struct FormatError {
     std::string message;
@@ -52,7 +52,8 @@ struct FormatError {
 /// `unload <issuer> <ship> <warehouse> <hold> <goods> <tons>` and
 /// `load <issuer> <ship> <warehouse> <hold> <goods> <tons>` (W4-EXPAND-LIVE-1 D1, the developer
 /// Load adapter). For fixed-map sessions, uniform builds use `build <type> <x> <y> <rot> ...` and
-/// multi-type builds use `buildv <type> <x> <y> <rot> ...`. parse_commands reads all forms.
+/// multi-type builds use `buildv <type> <x> <y> <rot> ...`. Both forms write the speed keys'
+/// command as `speed <issuer> <percent>` (UI-KEYS-1). parse_commands reads all forms.
 [[nodiscard]] formats::Result<std::string, FormatError>
 format_commands(const std::vector<ScriptedCommand>& commands, bool ship_start = false);
 

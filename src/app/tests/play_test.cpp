@@ -19,6 +19,7 @@
 #include <doctest/doctest.h>
 
 #include <anno/app/cli.hpp>
+#include <anno/app/commands_file.hpp>
 #include <anno/app/construction_menu.hpp>
 #include <anno/app/play.hpp>
 #include <anno/app/ui_layout.hpp>
@@ -1582,4 +1583,27 @@ TEST_CASE("play: UI-KEYS-1, a non-host seat's speed key is refused in a multi-se
     host.run_n(2);
     CHECK(host.step_ms() == 20);
     CHECK(host.snapshot()->speed_percent == 200);
+}
+
+TEST_CASE("play: UI-KEYS-1, a recorded session carries the speed keys' command in both forms") {
+    // The runner's turn length follows SetSpeedCmd, so a session record must keep it for its
+    // replay.
+    const anno::sim::World world = speed_world(false);
+    const std::vector<anno::app::ScriptedCommand> cmds{{3, speed_cmd(anno::sim::PlayerId{0}, 50)},
+                                                       {9, speed_cmd(anno::sim::PlayerId{1}, 400)}};
+    for (const bool ship_start : {false, true}) {
+        const auto text = anno::app::format_commands(cmds, ship_start);
+        REQUIRE(text.ok());
+        CHECK(text.value() == "turn 3 speed 0 50\nturn 9 speed 1 400\n");
+        const auto parsed = anno::app::parse_commands(text.value(), world, anno::sim::PlayerId{1});
+        REQUIRE(parsed.ok());
+        REQUIRE(parsed.value().size() == 2);
+        for (std::size_t i = 0; i < cmds.size(); ++i) {
+            CHECK(parsed.value()[i].turn == cmds[i].turn);
+            CHECK(parsed.value()[i].command == cmds[i].command);
+        }
+    }
+    CHECK_FALSE(anno::app::parse_commands("turn 1 speed 0\n", world, anno::sim::PlayerId{1}).ok());
+    CHECK_FALSE(
+        anno::app::parse_commands("turn 1 speed 0 fast\n", world, anno::sim::PlayerId{1}).ok());
 }

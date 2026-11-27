@@ -3992,3 +3992,13 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **What we know:** the handler `0x1002bf90` has no comparison with the stored index `[this+0x5f0]` (read), so the second click takes the same path as any other. HE was only observed switching to another category.
 - **Rebuild:** the grid shows (the same path), the type stays armed.
 - **How to resolve:** a HE or GOG capture of that click.
+
+## OQ-777: patch_chunk_instances' cost (RENDER-DIRECT-2c, 2026-11-27; OPEN)
+- **Question:** is `patch_chunk_instances`' measured cost (one building change) acceptable once it is on the viewer's frame path?
+- **What we know:** 5.7 ms, provisional (owner's viewer open at measurement time, not a quiet PC), on Single_01.sze island 0 group 1 (23,706 objects) - dominated by re-sorting the whole `other` list twice (both `std::set_difference` calls' own sort, `sorted_keys`), not by resolving the one changed object. A patch runs once per building change, not once per frame, so this was accepted as-is for RENDER-DIRECT-2c (orchestrator ORCH III, 2026-11-27).
+- **Option, not built:** a maintained key-sorted index (kept sorted incrementally as changes land, instead of re-sorting the whole list fresh per patch) would turn the cost into roughly the size of the change, not the size of the island.
+- **How to resolve:** decided when RENDER-DIRECT-3 hooks the patch into the viewer and measures its real frame-time impact (a building change mid-frame, not a synthetic call).
+
+Note (OQ-775/OQ-776 numbering): CAND12-PATCH-SUB-1 and PICTURE-IDS-1 each already used OQ-775/OQ-776
+on their own branches (neither merged into this one yet) - used OQ-777 here instead of OQ-776 to
+avoid a collision once all three stack.

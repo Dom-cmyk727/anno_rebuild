@@ -14,6 +14,12 @@ says who is doing what, where the work is, and what it waits on.
 - **The owner, 2026-11-27:** asked whether one full game-file run on this PC (with GATE-2a's retry of refused
   tests) may stand in for the Mac's run so this bundle lands, the owner answered "Yes, PC run lands it" (bundle B0
   only).
+- **Candidate 13 `refs/candidates/cand13` = `aeb65424`** holds every accepted packet (candidate 12, UI-CATNAV-1,
+  UI-HARVEST-ICON-1 B/C + R1, UI-RANGE-1 A + B1, ROADS-2a + 2b, CAND12-PATCH-SUB-1, RENDER-DIRECT-2a, PICTURE-IDS-1).
+  The owner, asked whether all of it lands with one PC run: "All in one PC run"; the forester check: "Yes, passed".
+  Full PC run 2,892 executed, 0 failed after the F4 coordinator-staging flake (20/20 alone), GOG compares 5/5, WSL
+  clean; advisor bundle review done ([review](reviews/2026-11-27-candidate-13-review.md)). Landing through `land.py`.
+  Accepted after it, for the next bundle: RENDER-DIRECT-2c, UI-PLANK-1 A.
 - **Owner rules of 2026-11-27** (ponytail for everyone, heavy tests per bundle by hardware, advisor reviews bundles
   only) are in TASKS.md and on `main` `2bba18e3`.
 

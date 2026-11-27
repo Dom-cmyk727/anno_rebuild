@@ -76,7 +76,7 @@ TEST_CASE("resolve_static_instances: a static entry's draw is the same at a non-
         list, file, 0, render::kHeightLift, 123456, [](int, int, int, int) { return true; },
         at_time);
     REQUIRE(at_time.size() == 1);
-    CHECK(statics[0].draw.anchor == at_time[0].draw.anchor);
+    CHECK(statics[0].draw.anchor == at_time[0].anchor);
     CHECK(statics[0].draw.frame == at_time[0].frame);
 }
 

@@ -17619,3 +17619,20 @@ re-measure before this is accepted as a performance claim, not a correctness one
   per frame, which is exactly how `resolve_static_instances` and the corpus test both use it.
 
 READY FOR REVIEW.
+
+## RENDER-DIRECT-2a — addendum: both gaps fixed, verified (task/RENDER-DIRECT-2a, head f26201eb)
+
+Both corrections built and run (advisor-caught, see commit f26201eb):
+- `bucket_by_chunk`: new synthetic test (a frame wider than `kChunk`, reach spans two chunks) -
+  **15/15 assertions**, the returned chunk keys match `visible_chunks` of the global reach rect exactly,
+  with the right anchor and `list_index`.
+- Time-invariance, synthetic: a static entry's draw at `time_ms` 123456 equals its resolved-at-load draw
+  - **4/4 assertions**.
+- Time-invariance, at corpus scale (every static instance re-resolved at `time_ms` 999999 against its
+  own time-0 draw, added to `chunk_instances_check.hpp`): the two scenes' corpus test went from
+  398,761 to **1,516,669/1,516,669 assertions**; `lan5.txt`'s from 531,549 to **2,069,613/2,069,613**.
+  Combined with the unchanged mutation control and predicate tests: **3,586,282 total assertions
+  across both test binaries, 0 failures.**
+- `check_unix_warnings.sh`: clean, all 4 configs, re-run after the fix.
+
+READY FOR REVIEW (accepted pending this addendum and CI on f26201eb).

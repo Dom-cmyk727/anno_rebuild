@@ -17553,3 +17553,31 @@ READY FOR REVIEW.
 NOT_RUN: GPU window live, Linux/Mac CI.
 
 READY FOR REVIEW.
+
+## ROADS-2a — the road reshaper as pure sim functions — READY FOR REVIEW
+
+UI lane, 2026-11-27. Branch `task/ROADS-2` on cand12 `c5af390c`; draft `docs/orchestration/tasks/roads-2-draft.md`
+(approved as split). Not wired (ROADS-2b).
+
+- **The read (D, the bounded 1-1.5 h step ORCH III approved):** `AnnoWelt 0x1007ef60` counts only road ids 0x9c4-0x9f5
+  (2500-2549) as neighbours (every other record zeroed at `0x1007f177`); ramps cut one orientation; the piece is
+  **the original's own table at `0x100c9d90`** (id, rotation per mask), equal piece for piece to the scenario-derived
+  one, with the open rotations filled (lone tile and N-S straight 3, cross 3); **a road end is an end cap**. Recorded in
+  `docs/re/annowelt.md` ("The road reshaper's classifier"), `BUILDINGSOBJECTS.md` part B 10.1 item 8, OQ-764 (narrowed).
+- **Code:** sim `road_shape.hpp/.cpp`: `RoadShapeTable` (data, the binary's values as defaults), `road_connects`,
+  `road_shaped_base`, `road_shape`, `reshape_road_path(table, path, ids, RoadAt)` (path tiles shaped, then the changed
+  existing neighbours in first-touch order, OQ-900; a straight keeps its cosmetic variant, OQ-901). Pure, no state.
+- **Oracle and corpus:** `tools/road_shape.py` (selftest, corpus); `fixtures/synthetic/sim/road_shape_corpus.txt`
+  (per-island counts only). **Agreement 94.4 %** (38,635 of 40,939 shaped tiles), below the 97 % target; the table
+  follows the binary, not the corpus. The gap by class (OQ-764): road ends shipped straight 1,060 (1,046 in line with the
+  neighbour), T without a third road arm 824, straight->T 126, straight->corner 57, cross->T 51, T->corner 50, about 90
+  others; most likely editor-placed data (L).
+- **Tests:** six hand-derived cases (table and folding; the owner's L; a T and a cross; a lone tile and the variant;
+  laying beside an existing road; cobblestone beside a ramp) and the heavy corpus case (C++ = digest = oracle), plus the
+  ctests `road_shape_reference_selftest` and `road_shape_corpus_reference_agrees`.
+- **Gates (this PC):** msvc build clean; `run_selected` over road_shape, road and placement: 98 selected, 98 executed,
+  0 failed, 0 skipped (the corpus case among them: "38635 of 40939 shaped tiles agree"). WSL: see the push note. The gate's
+  name check refused one test name with a semicolon first; renamed.
+- **NOT_RUN:** a GOG capture of a freshly laid road end (pre-authorized; it would confirm the end cap visually); macOS.
+- **Decisions:** the table comes from the binary, not tuned to the corpus (ORCH III's rule); the neighbour order and the
+  straight variant are named as OQ-900/901 rather than guessed silently.

@@ -259,6 +259,190 @@ class Contract(unittest.TestCase):
             if kind == "other":
                 self.assertIn(text, allowed_other, "%s: %r is classed 'other'" % (where, text))
 
+    def test_refused_only_failure_is_classified_as_refused_exit_10(self):
+        for msg in [
+            "/src/t.cpp(1): ERROR: test case THREW exception: [anno-test memory] refused estimate=1073741824 reason=low-memory stop",
+            "/src/t.cpp(1): ERROR: test case THREW exception: [anno-test memory] refused estimate=5867270656 reason=low-memory stop available=0",
+            "/src/t.cpp(1): ERROR: test case THREW exception: [anno-test memory] refused estimate=1073741824 reason=wait deadline",
+        ]:
+            lines = PRE + [
+                "  1/1 Test #10: t.corpus ........   ***Failed    0.2 sec",
+                "10: [anno-test memory] refuse estimate=1073741824 available=0 free=100 headroom=200 pending=0 resident=0 private=50 reason=low-memory stop t=1",
+                "10: " + msg,
+                "10: [doctest] test cases: 1 | 0 passed | 1 failed | 80 skipped",
+                "10: [doctest] assertions: 5 | 5 passed | 0 failed |",
+            ]
+            code, out = cv.verdict(lines)
+            self.assertEqual(code, 10, msg)
+            self.assertIn("REFUSED: t.corpus", out)
+            self.assertIn("failed=0 refused=1", self.counts(out))
+            self.assertIn("executed=0", self.counts(out))
+            self.assertIn("VERDICT: FAIL refused tests (not run)", out)
+
+    def test_real_failure_beats_refusal_on_same_test(self):
+        base_refusal = "10: /src/t.cpp:1: ERROR: test case THREW exception: [anno-test memory] refused estimate=1073741824 reason=low-memory stop"
+        # Failed CHECK + refusal line -> failed (exit 1)
+        lines = PRE + [
+            "  1/1 Test #10: t.check ........   ***Failed    0.2 sec",
+            "10: /src/t.cpp:2: ERROR: CHECK( false ) is NOT correct!",
+            base_refusal,
+            "10: [doctest] test cases: 1 | 0 passed | 1 failed | 80 skipped",
+            "10: [doctest] assertions: 1 | 0 passed | 1 failed |",
+        ]
+        code, out = cv.verdict(lines)
+        self.assertEqual(code, 1)
+        self.assertIn("FAILED: t.check Failed", out)
+        self.assertIn("failed=1 refused=0", self.counts(out))
+
+        # Failed REQUIRE_EQ (underscore macro name) + refusal line -> failed (exit 1)
+        lines_req = PRE + [
+            "  1/1 Test #10: t.req ........   ***Failed    0.2 sec",
+            "10: /src/t.cpp:2: FATAL ERROR: REQUIRE_EQ( 1, 2 ) is NOT correct!",
+            base_refusal,
+            "10: [doctest] test cases: 1 | 0 passed | 1 failed | 80 skipped",
+            "10: [doctest] assertions: 1 | 0 passed | 1 failed |",
+        ]
+        self.assertEqual(cv.verdict(lines_req)[0], 1)
+
+        # Crash / Timeout / SEGFAULT CTest statuses with refusal line -> failed (exit 1)
+        for status in ["Timeout", "SEGFAULT", "Exception", "Child aborted"]:
+            lines_stat = PRE + [
+                "  1/1 Test #10: t.crash ........   ***%s    0.2 sec" % status,
+                base_refusal,
+                "10: [doctest] test cases: 1 | 0 passed | 1 failed | 80 skipped",
+                "10: [doctest] assertions: 0 | 0 passed | 0 failed |",
+            ]
+            code, out = cv.verdict(lines_stat)
+            self.assertEqual(code, 1, status)
+            self.assertIn("failed=1 refused=0", self.counts(out), status)
+
+        # Sanitizer line in same refused test -> stays failed (exit 1, not refused)
+        lines_asan = PRE + [
+            "  1/1 Test #10: t.asan ........   ***Failed    0.2 sec",
+            base_refusal,
+            "10: ==1234==ERROR: AddressSanitizer: heap-use-after-free",
+            "10: [doctest] test cases: 1 | 0 passed | 1 failed | 80 skipped",
+            "10: [doctest] assertions: 0 | 0 passed | 0 failed |",
+        ]
+        code, out = cv.verdict(lines_asan)
+        self.assertEqual(code, 1)
+        self.assertIn("failed=1 refused=0", self.counts(out))
+        self.assertIn("sanitizer_lines=1", self.counts(out))
+
+        # Non-refusal exception + refusal line -> failed (exit 1)
+        lines_other_exc = PRE + [
+            "  1/1 Test #10: t.exc ........   ***Failed    0.2 sec",
+            base_refusal,
+            "10: /src/t.cpp:2: ERROR: test case THREW exception: real bug",
+            "10: [doctest] test cases: 1 | 0 passed | 1 failed | 80 skipped",
+            "10: [doctest] assertions: 0 | 0 passed | 0 failed |",
+        ]
+        self.assertEqual(cv.verdict(lines_other_exc)[0], 1)
+
+        # Missing doctest summary after refusal (crashed before doctest finished) -> failed (exit 1)
+        lines_no_sum = PRE + [
+            "  1/1 Test #10: t.nosum ........   ***Failed    0.2 sec",
+            base_refusal,
+        ]
+        self.assertEqual(cv.verdict(lines_no_sum)[0], 1)
+
+        # Gameplay/generic "refused" failure -> failed (exit 1), NOT refused
+        lines_gameplay = PRE + [
+            "  1/1 Test #10: t.replay_refused ........   ***Failed    0.2 sec",
+            "10: /src/t.cpp:2: ERROR: test case THREW exception: command refused",
+            "10: [doctest] test cases: 1 | 0 passed | 1 failed | 80 skipped",
+            "10: [doctest] assertions: 0 | 0 passed | 0 failed |",
+        ]
+        code, out = cv.verdict(lines_gameplay)
+        self.assertEqual(code, 1)
+        self.assertIn("failed=1 refused=0", self.counts(out))
+
+    def test_refusal_precedence_and_old_recorded_verdict(self):
+        refused_line = "11: /src/t.cpp:1: ERROR: test case THREW exception: [anno-test memory] refused estimate=10 reason=low-memory stop"
+        # Failed test (1) beats refused (10)
+        lines = PRE + [
+            "  1/2 Test #10: t.fail ........   ***Failed    0.1 sec",
+            "10: [doctest] test cases: 1 | 0 passed | 1 failed | 80 skipped",
+            "  2/2 Test #11: t.ref ........   ***Failed    0.1 sec",
+            refused_line,
+            "11: [doctest] test cases: 1 | 0 passed | 1 failed | 80 skipped",
+        ]
+        code, out = cv.verdict(lines)
+        self.assertEqual(code, 1)
+        self.assertIn("failed=1 refused=1", self.counts(out))
+
+        # Sanitizer (4) beats refused (10)
+        lines_san = PRE + [
+            "  1/2 Test #10: t.pass ........   Passed    0.1 sec",
+            "10: x.cpp:3:5: runtime error: signed integer overflow",
+            "10: [doctest] test cases: 1 | 1 passed | 0 failed | 80 skipped",
+            "  2/2 Test #11: t.ref ........   ***Failed    0.1 sec",
+            refused_line,
+            "11: [doctest] test cases: 1 | 0 passed | 1 failed | 80 skipped",
+        ]
+        self.assertEqual(cv.verdict(lines_san)[0], 4)
+
+        # Refused (10) beats disallowed skip (6) and empty (7) and no-execution (8)
+        lines_skip = PRE + [
+            "  1/2 Test #10: t.asset ........   Passed    0.1 sec",
+            "10: /src/t.cpp:1: MESSAGE: skipping: ANNO1503_GAME_DIR not set",
+            "10: [doctest] test cases: 1 | 1 passed | 0 failed | 80 skipped",
+            "  2/2 Test #11: t.ref ........   ***Failed    0.1 sec",
+            refused_line,
+            "11: [doctest] test cases: 1 | 0 passed | 1 failed | 80 skipped",
+        ]
+        self.assertEqual(cv.verdict(lines_skip)[0], 10)
+
+        # Old canonical log re-read: adds REFUSED rows, preserves recorded status=1
+        old_canonical = ["== provenance {}"] + PRE + [
+            "  1/1 Test #11: t.ref ........   ***Failed    0.1 sec",
+            refused_line,
+            "11: [doctest] test cases: 1 | 0 passed | 1 failed | 80 skipped",
+            "11: [doctest] assertions: 0 | 0 passed | 0 failed |",
+            'GATE_END {"status":1,"ctest_rc":8}',
+        ]
+        code, out = cv.recorded_verdict(old_canonical)
+        self.assertEqual(code, 1)
+        self.assertIn("REFUSED: t.ref", out)
+        self.assertIn("failed=0 refused=1", self.counts(out))
+        self.assertIn("VERDICT: FAIL recorded gate status=1", out)
+
+    def test_recorded_verdict_handles_retry_sections(self):
+        refused_line = "11: /src/t.cpp:1: ERROR: test case THREW exception: [anno-test memory] refused estimate=10 reason=low-memory stop"
+        log_lines = [
+            "== provenance {}",
+            "== selection",
+            "  1/1 Test #11: t.ref ........   ***Failed    0.1 sec",
+            refused_line,
+            "11: [doctest] test cases: 1 | 0 passed | 1 failed | 80 skipped",
+            "11: [doctest] assertions: 0 | 0 passed | 0 failed |",
+            "== retry refused t.ref",
+            "  1/1 Test #11: t.ref ........   Passed    0.1 sec",
+            "11: [doctest] test cases: 1 | 1 passed | 0 failed | 80 skipped",
+            "== recording_after {}",
+            'GATE_END {"status":0,"ctest_rc":0}',
+        ]
+        code, out = cv.recorded_verdict(log_lines)
+        self.assertEqual(code, 0)
+        self.assertIn("RETRIED: t.ref passed", out)
+        self.assertIn("COUNTS (after retry): selected=1 executed=1 failed=0 refused=0", self.counts(out))
+        self.assertIn("VERDICT: PASS", out)
+
+        # Forged GATE_END status=0 when retry failed still fails re-read
+        forged = [
+            "== provenance {}",
+            "== selection",
+            "  1/1 Test #11: t.ref ........   ***Failed    0.1 sec",
+            refused_line,
+            "11: [doctest] test cases: 1 | 0 passed | 1 failed | 80 skipped",
+            "== retry refused t.ref",
+            "  1/1 Test #11: t.ref ........   ***Failed    0.1 sec",
+            "11: [doctest] test cases: 1 | 0 passed | 1 failed | 80 skipped",
+            "== recording_after {}",
+            'GATE_END {"status":0,"ctest_rc":0}',
+        ]
+        self.assertEqual(cv.recorded_verdict(forged)[0], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -17300,3 +17300,64 @@ Linux/macOS test runs (WSL compiled all C++ sources with `-Werror` only); `game/
   - Hygiene: `clang-format --dry-run --Werror` on 19 C++ files (exit 0); `CheckTestNames.cmake` (`-- test names ok`); `tools/check_unix_warnings.sh` (`gate-unix-warnings-clean.log`, sha `b31889efe327`): GCC 13.3 + Clang 18.1.3 (442 + 97 files, negative controls caught) clean.
 - **Decisions and reasoning:** Ephemeral `ObjectsPatch` keeps `Scene` immutable and avoids 512x512 chunk rebuilds on hover, updating a small screen-space patch cached by `(scene, group, island, excluded_indices)`; on GPU, keeping `frame_layout` at 6 textures and running `patch_*_pipe` with a slim Group 0 (`{frame, sampler}`) keeps pipeline bindings at 14/16 sampled textures; `--occupied-outline` defaults `off` per GOG `0x10048450` evidence.
 - **NOT_RUN:** Two `6.84 GiB` (`10.84 GiB` w/ headroom) `anno_render_tests` digest corpus cases (`scene renders match the recorded digests`, `legacy river shading reproduces the previous enhanced digests` excluded on host with 5.65 GiB free RAM; covered in CI), full sim corpus (0 `src/sim/` edits), macOS, desktop `BitBlt` GPU PNG capture (`NOT_RUN (the desktop copy failed)`; GPU `ObjectsPatch` pixels verified via offscreen readback).
+## GATE-2a — READY FOR REVIEW (Windows, 2026-11-21)
+
+- Branch `task/GATE-2a` from `origin/main` `a6468efd`, code commit `7d2797a1` (`tools/test/ctest_verdict.py`,
+  `tools/test/run_selected.py`, `tools/test/wsl_gate.sh`, `tools/test/ctest_verdict_test.py`,
+  `tools/test/workflow_test.py`, `docs/testing/README.md`). No `src/` changes.
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Reviewer disposition |
+|---|---|---|---|---|
+| Refused class (exit 10) | `REFUSED: <name>`, `refused=<n>`, `VERDICT: FAIL refused tests (not run)`, exit `10` | `"command refused"`, missing doctest summary, non-refusal throw -> `FAILED`, exit `1` | `ctest_verdict_test.py`, `canonical-gate.log`, `live-refusal-no-retry.log` (`rc=10`) | pending |
+| Real failure wins | `CHECK`/`REQUIRE*`/crash/timeout/sanitizer/non-refusal -> `FAILED`; `1 > 4 > 10 > 6/7/8` | Refusal-only test never triggers exit `1` alone or masks sanitizer `4` | `ctest_verdict_test.py`, `workflow_test.py` (`rc=1`), `delib-failure-precedence.txt` (`1`,`4`) | pending |
+| Serial `-j 1` retry | Sorted `-R <anchored> -j 1` under `== retry refused <name>`, preserves 1st run, `COUNTS (after retry)`, `RETRIED:` | `--no-retry-refused` skips retry (`10`); retry refused again -> `10`; retry fails -> `1` | `workflow_test.py` (6 retry tests), `live-refusal-retry.log` (`rc=10`), `live-normal-pass.log` (`0`) | pending |
+| `wsl_gate.sh` & re-read | `lane_summary()` reads last `COUNTS`/`VERDICT`; `recorded_verdict` handles old & retry logs | Forged `GATE_END status=0` after retry failure fails; old `status=1` preserved | `wsl-lane-summary-proof.txt` (`LF_OK`), `ctest_verdict_test.py`, `reread-*.txt` | pending |
+
+- **Refusal texts matched (`ctest_verdict.py:42`):** `REFUSAL = re.compile(r"\[anno-test memory\] refused estimate=\d+ reason=\S")`:
+  - `src/test_support/src/budget.cpp:710` (`reserve_bytes`, called by `reserve_cpu_render` `721` and `reserve_cpu_setup` `725`):
+    `"[anno-test memory] refused estimate=" + std::to_string(bytes) + " reason=" + info.reason + " available=" + std::to_string(info.available)`
+  - `src/test_support/include/anno/test/parallel.hpp:247` (`parallel_indexed`):
+    `"[anno-test memory] refused estimate=" + std::to_string(opt.budget) + " reason=" + info.reason`
+  - `src/render/tests/render_corpus_test.cpp:260` (`reserve_picture`): `Budget::process().reserve` throw with `reason=... available=...`
+  - Audited non-matched forms: `budget.cpp:72` `admit_line("refuse", ...)` stderr line; `budget.cpp:590-607` `acquire_cpu` returns
+    empty `CpuToken{}` silently; `coord.cpp:699,764` timeout surfaces inside `reserve_bytes` as `reason=wait deadline` /
+    `wait deadline, no server reply`; `budget.cpp:238` (`coord.cpp:874,894,911,980` coordinator startup/compat failures) stays `failed`.
+- **Verdict & retry behaviour:** `is_refused_failure()` (`ctest_verdict.py:106-114`) requires `status == "Failed"`, `refused=True`,
+  zero `sanitizer`/`real_failure`/`failed_asserts`, and `cases > 0` when doctest ran; `DOCTEST_THREW` checks refusal regex inside
+  exception text. Exit precedence `9 > 8(zero) > 1 > 4 > 10 > 6 > 7 > 8(no exec) > 0`. `run_selected.py` keeps the initial run
+  intact, retries refused tests once (`-R <anchored> -j 1`) unless `--no-retry-refused`, emits `COUNTS (after retry)`,
+  `RETRIED: <name> passed`, updates effective `GATE_END ctest_rc` when retries clear all refusals, and `docs/testing/README.md`
+  adds exit `10` + one retry sentence. `wsl_gate.sh` `lane_summary()` reads the final `COUNTS` and `VERDICT` from `.out`.
+- **Contracts & WSL:** `python -I tools/test/ctest_verdict_test.py`: `Ran 29 tests in 0.051s` `OK` (`ctest_verdict_test.out` sha256 `1d36afd306cd`).
+  `python -I tools/test/workflow_test.py`: `Ran 35 tests in 24.884s` `OK` (`workflow_test.out` sha256 `fcd64b7aa3e9`).
+  `run_selected.py --preflight-only`: `PREFLIGHT: PASS` (`preflight-only.txt` sha256 `44e6dad9edc4`).
+  WSL `bash -n tools/test/wsl_gate.sh`, LF check (`18905` bytes), `lane_summary` retry smoke test (`wsl-lane-summary-proof.txt` sha256 `428dc319befa`).
+- **Real-log re-reads (`cache/gate-2a/`):**
+  - `canonical-gate.log`: `rc=1` (`VERDICT: FAIL recorded gate status=1`), 6 `REFUSED:` (`anno_render_tests.chunk draw lists...`,
+    `render_chunk...`, `legacy river shading...`, `water field...`, `river flow corpus...`, `scene renders match...`),
+    `COUNTS: selected=2564 executed=2532 failed=0 refused=6 empty=0 skipped=26 (required-asset=0 platform=3 opt-in=20 gpu=0 other=3) incomplete=0 sanitizer_lines=0`,
+    `VERDICT: FAIL refused tests (not run)` (`reread-canonical-gate.txt` sha256 `63ded87996a0`).
+  - `wsl-play-live-1a-sim.log`: `rc=1` (`VERDICT: FAIL recorded gate status=1`), 3 `REFUSED:` (`anno_sim_tests.population A...`,
+    `scenario corpus ... five minutes`, `scenario corpus ... 20000 ticks more`),
+    `COUNTS: selected=1609 executed=1588 failed=0 refused=3 empty=0 skipped=18 (required-asset=0 platform=0 opt-in=18 gpu=0 other=0) incomplete=0 sanitizer_lines=0`,
+    `VERDICT: FAIL refused tests (not run)` (`reread-wsl-play-live-1a-sim.txt` sha256 `7f1ab5618329`).
+- **Live MSVC Release & precedence (`cache/gate-2a/`, `ANNO1503_GAME_DIR=E:\anno1503\game\app`):**
+  Target `^anno_sim_tests\.population A original-data components: created players carry every independent shipped mask$`:
+  - `ANNO_TEST_STOP_MB=999999 --no-retry-refused`: `rc=10`, `REFUSED: ...`, `COUNTS: selected=1 executed=0 failed=0 refused=1 ...`, no retry
+    (`live-refusal-no-retry.log` sha256 `7a8c56fb8354`, re-read `rc=10`).
+  - `ANNO_TEST_STOP_MB=999999` (default retry): `rc=10`, `== retry refused ...` (`-j 1`), `COUNTS (after retry): selected=1 executed=0 failed=0 refused=1 ...`,
+    `VERDICT: FAIL refused tests (not run)`, `GATE_END {"status": 10, "ctest_rc": 8}` (`live-refusal-retry.log` sha256 `b504810d8bff`, re-read `rc=10`).
+  - `ANNO_TEST_STOP_MB` unset: `rc=0`, `COUNTS: selected=1 executed=1 failed=0 refused=0 ...`, `VERDICT: PASS`, no retry (`live-normal-pass.log` sha256 `ecbbd343d817`).
+  - Live contracts `--asset-policy unavailable` (`test_verdict_contract|test_workflow_contract|test_names_are_selectable`): `rc=0`, `executed=3`, `VERDICT: PASS` (`live-contracts.log` sha256 `8082ca6799bb`).
+  - Deliberate precedence (`delib-failure-precedence.txt` sha256 `248a378b9b71`): `fail_and_refused` `rc=1` (`failed=1 refused=1`); `sanitizer_and_refused` `rc=4` (`failed=0 refused=1`, `sanitizer_lines=2`).
+- **CI:** hosted CI (`gate` included) run on push of `task/GATE-2a` and verified green on pushed `HEAD` at handover.
+- **NOT_RUN:** full WSL `-O1` sanitizer gate and full MSVC Release game-file run (per `gate-2a.md`, orchestrator at merge); macOS local.
+- **Decisions and reasoning:**
+  - Require `REFUSAL` regex + `cases > 0` (when doctest ran) + zero `failed_asserts`/`DOCTEST_REAL_FAIL`/crash/non-refusal throw/sanitizer
+    so startup/assert/crash failures never hide behind `refused`.
+  - Split `== retry refused <name>` sections cleanly in `recorded_verdict` rather than rewriting initial log rows, keeping `canonical-gate.log`
+    historical failure intact while validating retried gates end-to-end.
+  - Update post-retry effective `ctest_rc` only when initial selection has zero non-refusal failures/incomplete/problems, keeping `GATE_END` consistent.
+- **QUESTIONs:** None.
+
+READY FOR REVIEW.

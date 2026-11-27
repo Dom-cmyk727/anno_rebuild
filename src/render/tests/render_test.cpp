@@ -8,6 +8,7 @@
 #include <doctest/doctest.h>
 
 #include <anno/render/frame.hpp>
+#include <anno/render/frame_table.hpp>
 #include <anno/render/iso.hpp>
 #include <anno/render/profile.hpp>
 #include <anno/render/river_window.hpp>
@@ -1154,4 +1155,140 @@ TEST_CASE("bounded river blend: the seam between river and sea, at the window bo
             }
         }
     }
+}
+
+TEST_CASE("ObjectsPatch suppression hides excluded objects and restores when cleared") {
+    namespace fig = anno::formats::figuren;
+    auto make_scene = [](bool include_tree) {
+        auto backing = std::make_shared<std::vector<std::vector<std::uint8_t>>>();
+        backing->reserve(4);
+        backing->push_back(std::vector<std::uint8_t>(64, 0));
+        // 8x8 HEIGHT (value 24) and GFXID (value 0) blocks so depth_test and ground probes work.
+        std::vector<std::uint8_t> h_block(6U + 64U, 24);
+        h_block[0] = h_block[1] = h_block[2] = h_block[3] = 0;
+        h_block[4] = h_block[5] = 8;
+        backing->push_back(std::move(h_block));
+        std::vector<std::uint8_t> g_block(6U + 128U, 0);
+        g_block[4] = g_block[5] = 8;
+        backing->push_back(std::move(g_block));
+
+        std::vector<std::uint8_t> gel;
+        auto push_item = [&](std::uint16_t id, std::uint8_t x, std::uint8_t y) {
+            gel.push_back(static_cast<std::uint8_t>(id & 0xFFU));
+            gel.push_back(static_cast<std::uint8_t>(id >> 8U));
+            gel.push_back(0);
+            gel.push_back(0x18);
+            gel.push_back(x);
+            gel.push_back(y);
+        };
+        gel = {0, 0, 0, 0, 8, 8};
+        if (include_tree) {
+            push_item(1, 2, 2);
+        }
+        push_item(2, 5, 2);
+        backing->push_back(std::move(gel));
+
+        anno::formats::insel::Island island;
+        island.head = (*backing)[0];
+        island.number = 0;
+        island.x = 0;
+        island.y = 0;
+        island.width = 8;
+        island.height = 8;
+        auto add_rec = [&](const char* name, std::size_t buf_idx) {
+            anno::formats::chunk::Chunk c;
+            for (std::size_t i = 0; i < c.name_field.size() && name[i] != '\0'; ++i) {
+                c.name_field[i] = static_cast<std::uint8_t>(name[i]);
+            }
+            c.payload = (*backing)[buf_idx];
+            island.records.push_back(c);
+        };
+        add_rec("HEIGHT", 1);
+        add_rec("GFXID", 2);
+        add_rec("GELAENDE", 3);
+
+        anno::formats::anlagen::AnlagenFile anlagen;
+        for (std::uint32_t id : {1U, 2U}) {
+            fig::Entry e;
+            e.id = id;
+            fig::GfxSet set;
+            fig::FrameSet fs;
+            fs.group = 0;
+            fig::Frame f;
+            f.width = 16;
+            f.height = 12;
+            f.anchor_x = 8;
+            f.anchor_y = 6;
+            fs.frames.push_back(f);
+            set.frame_sets.push_back(std::move(fs));
+            e.gfx.push_back(std::move(set));
+            anlagen.entries.push_back(std::move(e));
+        }
+
+        auto scene =
+            render::Scene::create("patch-synth", {island}, anno::assets::island::GroundTextures{},
+                                  std::move(anlagen), render::kHeightLift, backing);
+        auto pre_intern = [&](std::uint32_t id, render::Px colour) {
+            fig::Frame fh;
+            fh.width = 16;
+            fh.height = 12;
+            fh.anchor_x = 8;
+            fh.anchor_y = 6;
+            auto img = std::make_shared<render::Rgba>();
+            img->width = 16;
+            img->height = 12;
+            img->pixels.resize(16U * 12U * 4U);
+            for (std::size_t i = 0; i < 16U * 12U; ++i) {
+                img->pixels[i * 4 + 0] = colour[0];
+                img->pixels[i * 4 + 1] = colour[1];
+                img->pixels[i * 4 + 2] = colour[2];
+                img->pixels[i * 4 + 3] = 255;
+            }
+            REQUIRE(scene->frame_table
+                        .intern(render::FrameKey::building({id, 0, false, 0, 0}),
+                                [&] { return std::pair{fh, img}; })
+                        .has_value());
+        };
+        pre_intern(1, render::Px{220, 40, 30, 255});
+        pre_intern(2, render::Px{30, 80, 230, 255});
+        return scene;
+    };
+
+    const auto with_tree = make_scene(true);
+    const auto without_tree = make_scene(false);
+    REQUIRE(with_tree->island_lists(0).other.size() == 2);
+    REQUIRE(without_tree->island_lists(0).other.size() == 1);
+
+    std::size_t tree_idx = 0;
+    for (std::size_t i = 0; i < with_tree->island_lists(0).other.size(); ++i) {
+        if (with_tree->island_lists(0).other[i].first.anlage == 1) {
+            tree_idx = i;
+        }
+    }
+
+    const auto bounds = *with_tree->bounds(0);
+    const render::Rect view = bounds;
+    const auto n_px = static_cast<std::size_t>(view.w) * static_cast<std::size_t>(view.h);
+    render::FrameRenderer fr(1), fr_ref(1);
+    std::vector<std::uint32_t> base(n_px), ref(n_px), suppressed(n_px), restored(n_px);
+    fr.render(*with_tree, view, 0, 0, render::WaterStyle::Original, base.data());
+    fr_ref.render(*without_tree, view, 0, 0, render::WaterStyle::Original, ref.data());
+    CHECK(base != ref);
+
+    // Edge cases returning nullopt cleanly.
+    CHECK_FALSE(render::build_objects_patch(*with_tree, render::kGroups, {0, {tree_idx}}));
+    CHECK_FALSE(render::build_objects_patch(*with_tree, 0, {1, {tree_idx}}));
+    CHECK_FALSE(render::build_objects_patch(*with_tree, 0, {0, {}}));
+
+    auto patch_val = render::build_objects_patch(*with_tree, 0, {0, {tree_idx}}, false, true);
+    REQUIRE(patch_val.has_value());
+    CHECK(patch_val->rect.w > 0);
+    CHECK(patch_val->rect.h > 0);
+    fr.set_objects_patch(std::make_shared<const render::ObjectsPatch>(std::move(*patch_val)));
+    fr.render(*with_tree, view, 0, 0, render::WaterStyle::Original, suppressed.data());
+    CHECK(suppressed == ref);
+
+    fr.set_objects_patch({});
+    fr.render(*with_tree, view, 0, 0, render::WaterStyle::Original, restored.data());
+    CHECK(restored == base);
 }

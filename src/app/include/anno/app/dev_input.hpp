@@ -12,10 +12,13 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
+#include <anno/app/road_drag_ui.hpp>
 #include <anno/sim/command.hpp>
+#include <anno/sim/extension_context.hpp>
 #include <anno/sim/ids.hpp>
 #include <anno/sim/types.hpp>
 
@@ -60,9 +63,10 @@ struct DevEvent {
 class DevInput {
   public:
     /// `types` are the buildable types the picker cycles (data, from the registry).
-    /// `city` is the developer player's city; `issuer` stamps the commands.
+    /// `city` is the developer player's city; `issuer` stamps the commands. `road_rules` configures
+    /// ROADS-1/ROADS-3 L-path, drag cap and UI variant behavior when `enabled == 1`.
     DevInput(std::shared_ptr<const sim::TypeRegistry> registry, std::vector<sim::TypeId> types,
-             sim::CityRef city, sim::PlayerId issuer);
+             sim::CityRef city, sim::PlayerId issuer, sim::RoadRules road_rules = {});
 
     /// The commands this event produces, in order (none, or one). A drag that cannot
     /// be sent (over the wire limit, or a non-road type dragged) sets message(). `turn`: on a
@@ -122,6 +126,22 @@ class DevInput {
     [[nodiscard]] static std::uint64_t line_length(sim::TileXY from, sim::TileXY to);
     /// Whether a press is in progress (a release would send a command).
     [[nodiscard]] bool pressed() const { return press_.has_value(); }
+    /// Data-driven check via `sim::is_land_road(*selected_type())`.
+    [[nodiscard]] bool land_road_selected() const;
+    /// True when `road_rules_.enabled != 0` and a land road is selected (ROADS-3 L-drag +
+    /// variants).
+    [[nodiscard]] bool road_drag_active() const {
+        return road_rules_.enabled != 0 && land_road_selected();
+    }
+    [[nodiscard]] const sim::RoadRules& road_rules() const { return road_rules_; }
+    /// ROADS-3: preview/commit placements from `press_` (or `{hover}` when not pressed) to
+    /// `hover`, using `sim::road_path(..., road_rules_.drag_cap)` and deterministic UI-side
+    /// variant ids when `road_rules_.enabled != 0`. Empty if no land road is selected.
+    [[nodiscard]] std::vector<sim::PlacementWire> road_preview_placements(sim::TileXY hover) const;
+    [[nodiscard]] std::span<const sim::TypeId> last_commit_variants() const {
+        return last_commit_variants_;
+    }
+    [[nodiscard]] std::uint64_t variant_generation() const { return variant_deck_.generation(); }
 
   private:
     [[nodiscard]] bool road_like() const;
@@ -133,12 +153,15 @@ class DevInput {
     std::vector<sim::TypeId> types_;
     sim::CityRef city_;
     sim::PlayerId issuer_;
+    sim::RoadRules road_rules_;
     std::size_t index_ = 0;
     std::uint8_t rotation_ = 0;
     bool demolish_ = false;
     std::optional<sim::TileXY> press_;
     std::optional<sim::TileXY> hover_;
     std::string message_;
+    mutable RoadVariantDeck variant_deck_;
+    std::vector<sim::TypeId> last_commit_variants_;
 };
 
 } // namespace anno::app

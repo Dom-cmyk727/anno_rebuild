@@ -24,7 +24,9 @@
 #include <anno/app/frame_projection.hpp>
 #include <anno/app/hud_tabs.hpp>
 #include <anno/app/live_resize.hpp>
+#include <anno/app/placement_ghost.hpp>
 #include <anno/app/png.hpp>
+#include <anno/app/road_drag_ui.hpp>
 #include <anno/app/sdl_input.hpp>
 #include <anno/app/section_overlap.hpp>
 #include <anno/app/selection.hpp>
@@ -38,6 +40,7 @@
 #include <anno/render/iso.hpp>
 #include <anno/render/picking.hpp>
 #include <anno/sim/production.hpp>
+#include <anno/sim/reject.hpp>
 #ifdef ANNO_VIEWER_GPU
 #include <anno/render/gpu.hpp>
 
@@ -397,6 +400,7 @@ class Viewer {
           construction_game_dir_(construction_menu_ != nullptr ? hooks->construction_game_dir
                                                                : std::filesystem::path{}),
           construction_masks_(construction_menu_ != nullptr ? hooks->construction_masks : nullptr),
+          occupied_outline_(hooks != nullptr && hooks->occupied_outline),
           script_(dev_ != nullptr ? hooks->script : nullptr),
           hold_(dev_ != nullptr && hooks->script != nullptr ? hooks->hold : nullptr),
           opening_(hooks != nullptr && play != nullptr ? hooks->opening : nullptr) {
@@ -447,6 +451,19 @@ class Viewer {
         cam_x_ = b.x + b.w / 2.0;
         cam_y_ = b.y + b.h / 2.0;
         zoom_now_ = zoom_target_ = levels().tile_w(group);
+        // UI-GHOST-1 R2, the owner's decision of 2026-11-17 ("Start at my city"; the original
+        // starts the player at his own ship or settlement): a play session with a developer city
+        // opens on that city's home tile (DevToolSetup::home: its Kontor). Without one (a scene
+        // view, a session with no city yet) the camera stays on the scene's middle.
+        if (dev_ != nullptr && dev_->setup().city && dev_->setup().home) {
+            const auto g = render::pick_geometry_of(levels().tile_w(group), levels().tile_h(group));
+            const auto [sx, sy] =
+                render::corner_point(static_cast<double>(dev_->setup().home->x) + 0.5,
+                                     static_cast<double>(dev_->setup().home->y) + 0.5,
+                                     static_cast<double>(render::kSeaLevel), g);
+            cam_x_ = sx;
+            cam_y_ = sy;
+        }
         if (play_ == nullptr) {
             fixed_ = std::move(scene);
         }
@@ -858,6 +875,58 @@ class Viewer {
     UiLayerScaler ui_scaler_;
     /// The GPU path's UI layer, composed in place every frame (its storage is reused).
     assets::Rgba ui_canvas_;
+    /// UI-GHOST-1 (placement_ghost.hpp): the placement ghost's state, its blink on the window's
+    /// own clock (never game time, never sim state), the clock's last tick, the pointer's last
+    /// drawable position (the chrome test) and the GPU path's line layer when the frame has no 1:1
+    /// UI canvas to draw the outline into. `ghost_pixels_`: the outline pixels of the last frame.
+    GhostState ghost_ = GhostState::Hidden;
+    std::optional<sim::Reject> ghost_verdict_;
+    bool occupied_outline_ = false;
+    GhostBlink ghost_blink_;
+    std::optional<Clock::time_point> ghost_tick_at_;
+    std::optional<std::pair<double, double>> ghost_pointer_;
+    assets::Rgba ghost_canvas_;
+    std::uint64_t ghost_pixels_ = 0;
+    std::uint64_t ghost_occupied_pixels_ = 0;
+    std::size_t ghost_suppressed_ = 0;
+    const render::Scene* patch_scene_ = nullptr;
+    std::size_t patch_group_ = SIZE_MAX;
+    std::uint64_t patch_serial_ = 0;
+    std::size_t patch_island_ = 0;
+    std::vector<std::size_t> patch_indices_;
+    std::shared_ptr<const render::ObjectsPatch> cached_patch_;
+    /// ROADS-3: live road ghost path, plan, probe match state and drawn sprite count.
+    std::vector<sim::PlacementWire> road_ghost_path_;
+    RoadGhostPlan road_ghost_plan_;
+    bool road_probe_matched_ = false;
+    std::size_t road_ghost_drawn_ = 0;
+    bool last_road_commit_matched_preview_ = false;
+    [[nodiscard]] std::vector<Preview> road_ghost_previews(const render::Scene& scene,
+                                                           std::uint64_t time) const;
+    /// Asks the sim about the record a click would send (PlayRunner::request_build_probe) and
+    /// chooses the state from the latest published answer. True when what is shown changed.
+    bool ghost_refresh();
+    /// Updates `frames_.objects_patch()` so static flag-0x20 objects under an active valid /
+    /// phase-0 unaffordable ghost are suppressed without mutating `Scene` (UI-GHOST-2).
+    void ghost_update_patch(const render::Scene& scene);
+    /// Advances the blink by the window milliseconds since the last tick and refreshes the state;
+    /// marks the frame dirty when what the ghost shows changed.
+    void ghost_tick();
+    /// The building's sprites are drawn: valid, or unaffordable in the shown phase.
+    [[nodiscard]] bool ghost_building_shown() const;
+    /// The outline the state draws (refused: the footprint; valid, unaffordable: the radius) and
+    /// where its corners land in frame `pf`; nullopt when none is drawn.
+    struct GhostLines {
+        std::vector<CornerEdge> edges;
+        OutlineProjection projection;
+    };
+    [[nodiscard]] OutlineProjection ghost_projection(const render::Scene& scene,
+                                                     const PointerFrame& pf) const;
+    [[nodiscard]] std::optional<GhostLines> ghost_lines(const render::Scene& scene,
+                                                        const PointerFrame& pf) const;
+    /// UI-GHOST-2 ADAPTATION (default off): blocking footprint(s) on Reject::Occupied.
+    [[nodiscard]] std::optional<GhostLines> ghost_occupied_lines(const render::Scene& scene,
+                                                                 const PointerFrame& pf) const;
     /// The selected building (ADR 0004 "Selection", W4-NEXT-2 K, row 18): viewer UI state only.
     /// Active in `--play` with the classic surface, outside the ship-start opening, while the
     /// developer/construction tool is off (a tool's click stays the tool's).
@@ -1425,9 +1494,15 @@ std::string Viewer::run() {
         // A batch waiting in the mailbox, a change not committed yet, chunk builds and the
         // compositor's uploads and dissolves keep the frames coming, also while paused (round eb,
         // 1A): they finish without a new turn or an input event.
+        ghost_tick(); // UI-GHOST-1: the blink runs on the window's clock
         const bool animating = demand(can_draw).animating();
         if (!animating && !(dirty_ && can_draw)) {
             int wait_ms = 100;
+            if (ghost_ == GhostState::Unaffordable) {
+                // Wake for the next flip of the blink (at most 100 ms anyway).
+                wait_ms =
+                    static_cast<int>(std::clamp<std::uint64_t>(ghost_blink_.ms_to_flip(), 1, 100));
+            }
             if (retry_at_) {
                 const auto left =
                     std::chrono::duration_cast<std::chrono::milliseconds>(*retry_at_ - Clock::now())
@@ -1505,6 +1580,14 @@ void Viewer::handle(const SDL_Event& e) {
     if (script_ != nullptr && foreign_input(e)) {
         return; // a scripted session takes only its own input (dev_script.hpp, kScriptDevice)
     }
+    if (e.type == SDL_EVENT_MOUSE_MOTION) {
+        // UI-GHOST-1: where the pointer is, whoever takes the motion (the chrome test).
+        const double density = SDL_GetWindowPixelDensity(window_);
+        ghost_pointer_ = std::pair{static_cast<double>(e.motion.x) * density,
+                                   static_cast<double>(e.motion.y) * density};
+    } else if (e.type == SDL_EVENT_WINDOW_MOUSE_LEAVE) {
+        ghost_pointer_.reset();
+    }
     if (wake_event_ != 0 && e.type == wake_event_) {
         dirty_ = true; // a building batch or a command outcome (the runner's wake): draw it now
         update_title();
@@ -1525,8 +1608,26 @@ void Viewer::handle(const SDL_Event& e) {
         // receipts are kept for the feedback.
         const bool was_on = dev_->enabled();
         const auto hovered = dev_->hover();
+        const auto ghost_hovered = dev_->ghost_hover();
+        const bool check_road_commit = e.type == SDL_EVENT_MOUSE_BUTTON_UP &&
+                                       e.button.button == SDL_BUTTON_LEFT &&
+                                       dev_->land_road_armed();
+        std::vector<sim::TypeId> expected_road_variants;
+        if (check_road_commit && !road_ghost_path_.empty()) {
+            expected_road_variants.reserve(road_ghost_path_.size());
+            for (const sim::PlacementWire& w : road_ghost_path_) {
+                expected_road_variants.push_back(w.type);
+            }
+        }
         ToolStep step = dev_tool_step(*dev_, e, SDL_GetWindowPixelDensity(window_),
                                       pointer_frame_ ? &*pointer_frame_ : nullptr);
+        if (check_road_commit && !step.commands.empty() &&
+            !dev_->input().last_commit_variants().empty()) {
+            const auto committed = dev_->input().last_commit_variants();
+            last_road_commit_matched_preview_ =
+                committed.size() == expected_road_variants.size() &&
+                std::equal(committed.begin(), committed.end(), expected_road_variants.begin());
+        }
         for (sim::Command& command : step.commands) {
             latest_receipt_ = play_->runner().post_command(std::move(command));
         }
@@ -1544,7 +1645,9 @@ void Viewer::handle(const SDL_Event& e) {
                 }
             }
             // A motion within the same tile changes nothing shown: no redraw, no new title.
-            if (e.type != SDL_EVENT_MOUSE_MOTION || dev_->hover() != hovered) {
+            if (e.type != SDL_EVENT_MOUSE_MOTION || dev_->hover() != hovered ||
+                dev_->ghost_hover() != ghost_hovered) {
+                static_cast<void>(ghost_refresh());
                 update_title();
                 dirty_ = true;
             }
@@ -1926,6 +2029,7 @@ void Viewer::disarm_tool() {
         }
         drag_ = false;
     }
+    static_cast<void>(ghost_refresh());
 }
 
 void Viewer::construction_close() {
@@ -2863,6 +2967,331 @@ void Viewer::refresh_visibility_title() {
     }
 }
 
+std::vector<Preview> Viewer::road_ghost_previews(const render::Scene& scene,
+                                                 std::uint64_t time) const {
+    std::vector<Preview> out;
+    if (dev_ == nullptr || !dev_->land_road_armed()) {
+        return out;
+    }
+    const std::size_t n = std::min(road_ghost_plan_.draw_count, road_ghost_path_.size());
+    out.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        const sim::PlacementWire& rec = road_ghost_path_[i];
+        if (auto p =
+                make_type_preview(scene, rec.type, rec.rotation, {rec.x, rec.y}, group_, time)) {
+            out.push_back(std::move(*p));
+        }
+    }
+    // Painter's order so isometric depth overlaps consistently across multi-tile road ghosts.
+    std::sort(out.begin(), out.end(), [](const Preview& a, const Preview& b) {
+        const std::uint32_t da = static_cast<std::uint32_t>(a.object.first.x) +
+                                 static_cast<std::uint32_t>(a.object.first.y);
+        const std::uint32_t db = static_cast<std::uint32_t>(b.object.first.x) +
+                                 static_cast<std::uint32_t>(b.object.first.y);
+        return da != db ? da < db : a.object.first.x < b.object.first.x;
+    });
+    return out;
+}
+
+bool Viewer::ghost_refresh() {
+    const GhostState before = ghost_;
+    const std::size_t prev_draw = road_ghost_plan_.draw_count;
+    const std::size_t prev_path_size = road_ghost_path_.size();
+    const bool pointer_on_chrome = construction_menu_ != nullptr && ghost_pointer_ &&
+                                   ui_hit_at(ghost_pointer_->first, ghost_pointer_->second).chrome;
+    const std::optional<sim::TileXY> hover =
+        dev_ != nullptr ? dev_->ghost_hover() : std::optional<sim::TileXY>{};
+    if (dev_ != nullptr && dev_->land_road_armed() && hover && dev_->setup().city) {
+        if (play_ != nullptr) {
+            play_->runner().request_build_probe(std::nullopt);
+        }
+        road_ghost_path_ = dev_->input().road_preview_placements(*hover);
+        RoadPathProbe probe{*dev_->setup().city, road_ghost_path_};
+        std::optional<sim::RoadPathCheck> verdict;
+        if (play_ != nullptr) {
+            play_->runner().request_road_probe(probe);
+            const auto snap = play_->runner().snapshot();
+            if (snap && snap->road_probe && snap->road_probe->probe == probe) {
+                verdict = snap->road_probe->check;
+            }
+        }
+        const auto verdict_before = ghost_verdict_;
+        road_probe_matched_ = verdict.has_value();
+        road_ghost_plan_ =
+            plan_road_ghost(RoadGhostInputs{true, pointer_on_chrome, road_ghost_path_.size(),
+                                            verdict, ghost_, ghost_blink_.hidden()});
+        if (!road_probe_matched_ && road_ghost_plan_.state != GhostState::Hidden) {
+            road_ghost_plan_.draw_count = std::min(prev_draw, road_ghost_path_.size());
+            road_ghost_plan_.draw_refusal_box = (road_ghost_plan_.state == GhostState::Refused);
+        }
+        ghost_ = road_ghost_plan_.state;
+        if (ghost_ == GhostState::Hidden) {
+            ghost_verdict_.reset();
+        } else if (verdict) {
+            ghost_verdict_ = (verdict->valid_prefix < road_ghost_path_.size())
+                                 ? verdict->first_refusal
+                                 : sim::Reject::None;
+        }
+        return ghost_ != before || ghost_verdict_ != verdict_before ||
+               road_ghost_plan_.draw_count != prev_draw ||
+               road_ghost_path_.size() != prev_path_size;
+    }
+
+    road_ghost_path_.clear();
+    road_ghost_plan_ = {};
+    road_probe_matched_ = false;
+    GhostInputs in;
+    in.pointer_on_chrome = pointer_on_chrome;
+    std::optional<BuildProbe> probe;
+    const sim::BuildingType* type = dev_ != nullptr ? dev_->input().selected_type() : nullptr;
+    if (dev_ != nullptr && dev_->enabled() && !dev_->input().demolish_mode() && type != nullptr &&
+        hover && dev_->setup().city) {
+        in.armed = true;
+        const auto extent = dev_->input().footprint_extent(*hover, dev_->turn());
+        in.footprint_empty = !extent || extent->w == 0 || extent->h == 0;
+        // The record a click here sends (DevInput::build_command with DevTool::turn).
+        const sim::TileXY o = dev_->input().origin(*hover);
+        probe = BuildProbe{*dev_->setup().city,
+                           sim::PlacementWire{type->id, o.x, o.y, dev_->turn(), 0, 0}};
+    }
+    if (play_ != nullptr) {
+        play_->runner().request_road_probe(std::nullopt);
+        play_->runner().request_build_probe(probe);
+        if (probe) {
+            const auto snap = play_->runner().snapshot();
+            if (snap && snap->build_probe && snap->build_probe->probe == *probe) {
+                in.verdict = snap->build_probe->verdict;
+            }
+        }
+    }
+    const auto verdict_before = ghost_verdict_;
+    ghost_ = ghost_state(in, ghost_);
+    if (ghost_ == GhostState::Hidden) {
+        ghost_verdict_.reset();
+    } else if (in.verdict) {
+        ghost_verdict_ = in.verdict;
+    }
+    return ghost_ != before || ghost_verdict_ != verdict_before || prev_draw != 0 ||
+           prev_path_size != 0;
+}
+
+void Viewer::ghost_update_patch(const render::Scene& scene) {
+    auto clear_patch = [&]() {
+        frames_.set_objects_patch({});
+        ghost_suppressed_ = 0;
+    };
+    if (dev_ == nullptr || !dev_->enabled() || dev_->input().demolish_mode() ||
+        ghost_ == GhostState::Hidden || group_ >= render::kGroups) {
+        clear_patch();
+        return;
+    }
+    std::optional<std::size_t> island_idx;
+    for (std::size_t k = 0; k < scene.islands.size(); ++k) {
+        if (scene.islands[k].x == dev_->setup().island.x0 &&
+            scene.islands[k].y == dev_->setup().island.y0) {
+            island_idx = k;
+            break;
+        }
+    }
+    if (!island_idx) {
+        clear_patch();
+        return;
+    }
+    std::vector<Cover> covers;
+    const auto ix0 = std::int64_t{dev_->setup().island.x0};
+    const auto iy0 = std::int64_t{dev_->setup().island.y0};
+    if (dev_->land_road_armed()) {
+        const std::size_t drawn = std::min(road_ghost_plan_.draw_count, road_ghost_path_.size());
+        covers.reserve(drawn);
+        for (std::size_t i = 0; i < drawn; ++i) {
+            const sim::PlacementWire& w = road_ghost_path_[i];
+            if (const auto c = cover_of(scene.anlagen, w.type.v, std::int64_t{w.x} - ix0,
+                                        std::int64_t{w.y} - iy0, w.rotation)) {
+                covers.push_back(*c);
+            }
+        }
+    } else if (ghost_building_shown()) {
+        if (const auto hover = dev_->ghost_hover(); hover) {
+            if (const sim::BuildingType* type = dev_->input().selected_type(); type != nullptr) {
+                const sim::TileXY o = dev_->input().origin(*hover);
+                if (const auto c = cover_of(scene.anlagen, type->id.v, std::int64_t{o.x} - ix0,
+                                            std::int64_t{o.y} - iy0, dev_->turn())) {
+                    covers.push_back(*c);
+                }
+            }
+        }
+    }
+    if (covers.empty()) {
+        clear_patch();
+        return;
+    }
+    std::vector<std::size_t> indices =
+        collect_suppressed_object_indices(scene, *island_idx, covers);
+    if (indices.empty()) {
+        clear_patch();
+        return;
+    }
+    if (cached_patch_ && patch_scene_ == &scene && patch_group_ == group_ &&
+        patch_island_ == *island_idx && patch_indices_ == indices) {
+        frames_.set_objects_patch(cached_patch_);
+        ghost_suppressed_ = indices.size();
+        return;
+    }
+    render::ObjectsExclusion excl{*island_idx, indices};
+    auto built = render::build_objects_patch(scene, group_, excl, false, true);
+    if (!built) {
+        clear_patch();
+        return;
+    }
+    built->serial = ++patch_serial_;
+    cached_patch_ = std::make_shared<const render::ObjectsPatch>(std::move(*built));
+    patch_scene_ = &scene;
+    patch_group_ = group_;
+    patch_island_ = *island_idx;
+    patch_indices_ = std::move(indices);
+    frames_.set_objects_patch(cached_patch_);
+    ghost_suppressed_ = patch_indices_.size();
+}
+
+void Viewer::ghost_tick() {
+    // Whole window milliseconds since the last tick; the fraction stays for the next one.
+    const auto now = Clock::now();
+    std::uint64_t dt = 0;
+    if (ghost_tick_at_) {
+        const auto ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - *ghost_tick_at_);
+        if (ms.count() > 0) {
+            dt = static_cast<std::uint64_t>(ms.count());
+            *ghost_tick_at_ += ms;
+        }
+    } else {
+        ghost_tick_at_ = now;
+    }
+    const bool shown_before = ghost_building_shown();
+    const std::size_t road_before = road_ghost_plan_.draw_count;
+    static_cast<void>(ghost_blink_.advance(dt));
+    const bool changed = ghost_refresh();
+    if (changed || ghost_building_shown() != shown_before ||
+        road_ghost_plan_.draw_count != road_before) {
+        dirty_ = true;
+    }
+}
+
+bool Viewer::ghost_building_shown() const {
+    return ghost_ == GhostState::Valid ||
+           (ghost_ == GhostState::Unaffordable && !ghost_blink_.hidden());
+}
+
+OutlineProjection Viewer::ghost_projection(const render::Scene& scene,
+                                           const PointerFrame& pf) const {
+    OutlineProjection projection;
+    projection.geometry = pf.geometry;
+    projection.map = pf.map;
+    // The city island's drawn rounding, as the pick undoes it (DevTool::pick).
+    for (std::size_t k = 0; k < scene.islands.size(); ++k) {
+        if (scene.islands[k].x == dev_->setup().island.x0 &&
+            scene.islands[k].y == dev_->setup().island.y0) {
+            projection.rounding = placement_rounding(scene, k, pf.group, pf.geometry.tile_w);
+            break;
+        }
+    }
+    // The ground, never below the sea surface the whole-map pick reads open water at (R1).
+    projection.height = [&scene](double u, double v) {
+        const double sea = static_cast<double>(render::kSeaLevel);
+        return std::max(
+            sea,
+            static_cast<double>(
+                scene.ground_height(static_cast<float>(u), static_cast<float>(v)).value_or(0.0F)));
+    };
+    return projection;
+}
+
+std::optional<Viewer::GhostLines> Viewer::ghost_lines(const render::Scene& scene,
+                                                      const PointerFrame& pf) const {
+    if (dev_ == nullptr || ghost_ == GhostState::Hidden) {
+        return std::nullopt;
+    }
+    const auto hover = dev_->ghost_hover();
+    const sim::BuildingType* type = dev_->input().selected_type();
+    if (!hover || type == nullptr) {
+        return std::nullopt;
+    }
+    if (dev_->land_road_armed() && !road_ghost_plan_.draw_refusal_box) {
+        return std::nullopt; // Roads draw no radius outline; only the yellow refusal rectangle.
+    }
+    const auto extent = dev_->input().footprint_extent(*hover, dev_->turn());
+    if (!extent || extent->w == 0 || extent->h == 0) {
+        return std::nullopt;
+    }
+    const GhostBox box{extent->x0, extent->y0, extent->w, extent->h};
+    GhostLines out;
+    // Refused: the footprint only (0x1004846b); valid and unaffordable: the radius (0x10048491).
+    out.edges = (ghost_ == GhostState::Refused || dev_->land_road_armed())
+                    ? footprint_outline(box)
+                    : radius_outline(box, type->action_radius);
+    if (out.edges.empty()) {
+        return std::nullopt;
+    }
+    out.projection = ghost_projection(scene, pf);
+    return out;
+}
+
+std::optional<Viewer::GhostLines> Viewer::ghost_occupied_lines(const render::Scene& scene,
+                                                               const PointerFrame& pf) const {
+    if (!occupied_outline_ || dev_ == nullptr || play_ == nullptr || !dev_->enabled() ||
+        dev_->input().demolish_mode() || ghost_ != GhostState::Refused ||
+        ghost_verdict_ != sim::Reject::Occupied) {
+        return std::nullopt;
+    }
+    const auto hover = dev_->ghost_hover();
+    if (!hover) {
+        return std::nullopt;
+    }
+    std::optional<GhostBox> target;
+    if (dev_->land_road_armed()) {
+        target = GhostBox{hover->x, hover->y, 1, 1};
+    } else if (const auto extent = dev_->input().footprint_extent(*hover, dev_->turn());
+               extent && extent->w > 0 && extent->h > 0) {
+        target = GhostBox{extent->x0, extent->y0, extent->w, extent->h};
+    }
+    if (!target) {
+        return std::nullopt;
+    }
+    std::optional<std::size_t> island_idx;
+    for (std::size_t k = 0; k < scene.islands.size(); ++k) {
+        if (scene.islands[k].x == dev_->setup().island.x0 &&
+            scene.islands[k].y == dev_->setup().island.y0) {
+            island_idx = k;
+            break;
+        }
+    }
+    if (!island_idx) {
+        return std::nullopt;
+    }
+    const std::uint32_t island_no = scene.islands[*island_idx].number;
+    const BlockingQuery query{
+        *target,
+        dev_->setup().island.x0,
+        dev_->setup().island.y0,
+        play_->picture().island_buildings(island_no),
+        dev_->setup().registry.get(),
+        &scene.anlagen,
+        play_->picture().island_tile_objects(island_no),
+        scene.island_lists(*island_idx).other,
+    };
+    const auto boxes = occupied_blocking_boxes(query);
+    if (boxes.empty()) {
+        return std::nullopt;
+    }
+    GhostLines out;
+    out.edges = blocking_footprint_outline(boxes);
+    if (out.edges.empty()) {
+        return std::nullopt;
+    }
+    out.projection = ghost_projection(scene, pf);
+    return out;
+}
+
 void Viewer::update_title() {
     // Whatever stage the title is about to show is the stage refresh_visibility_title compares to.
     if (dev_ != nullptr && play_ != nullptr && latest_receipt_) {
@@ -2937,6 +3366,7 @@ void Viewer::update_title() {
         // now, shown from `snap->inspection` next time (same one-turn-lag pattern as the founding
         // probe below — this frame's title still reads what the previous request answered).
         play_->runner().request_inspect(dev_->hover());
+        static_cast<void>(ghost_refresh()); // UI-GHOST-1: and the ghost's record
         // Why there is no preview, from the frame the pointer is over (its scene and zoom level).
         std::string note = pointer_frame_ && pointer_frame_->scene
                                ? preview_note(*dev_, *pointer_frame_->scene, pointer_frame_->group)
@@ -3165,19 +3595,45 @@ void Viewer::script_tick() {
     // the rotate arrows turn), and the turn the map ghost is drawn and a click builds at
     // (DevTool::turn: the same, or the coast's turn for a coast kind such as the Kontor).
     const bool tool_armed = dev_ != nullptr && dev_->enabled() && dev_->input().selected();
+    st.facts["tool.armed"] = tool_armed && !dev_->input().demolish_mode()
+                                 ? std::to_string(dev_->input().selected()->v)
+                                 : std::string("none");
     st.facts["ui.info.rotation"] = construction_placement_open_ && tool_armed
                                        ? std::to_string(dev_->input().rotation())
                                        : std::string("none");
     st.facts["tool.turn"] = tool_armed ? std::to_string(dev_->turn()) : std::string("none");
+    // UI-GHOST-1: the ghost's state, the blink's phase (1: the unaffordable building hidden), its
+    // flips so far and the outline pixels the last frame drew.
+    st.facts["tool.ghost"] = std::string(ghost_state_name(ghost_));
+    st.facts["tool.ghost.phase"] = ghost_blink_.hidden() ? "1" : "0";
+    st.facts["tool.ghost.flips"] = std::to_string(ghost_blink_.flips());
+    st.facts["tool.ghost.pixels"] = std::to_string(ghost_pixels_);
+    st.facts["tool.ghost.verdict"] =
+        ghost_verdict_ ? std::string(sim::reject_name(*ghost_verdict_)) : std::string("none");
+    st.facts["tool.ghost.suppressed"] = std::to_string(ghost_suppressed_);
+    st.facts["tool.ghost.occupied_pixels"] = std::to_string(ghost_occupied_pixels_);
+    // ROADS-3: road drag path, sim prefix verdict, drawn sprites and preview/commit parity.
+    const bool road_armed = dev_ != nullptr && dev_->land_road_armed();
+    st.facts["tool.road.dragging"] = (road_armed && dev_->input().pressed()) ? "1" : "0";
+    st.facts["tool.road.path"] = std::to_string(road_ghost_path_.size());
+    st.facts["tool.road.ready"] = (road_armed && road_probe_matched_) ? "1" : "0";
+    st.facts["tool.road.valid"] = (road_armed && road_probe_matched_)
+                                      ? std::to_string(road_ghost_plan_.valid_count)
+                                      : std::string("pending");
+    st.facts["tool.road.affordable"] = (road_armed && road_probe_matched_)
+                                           ? std::to_string(road_ghost_plan_.affordable_count)
+                                           : std::string("pending");
+    st.facts["tool.road.unaffordable"] =
+        (road_armed && road_probe_matched_)
+            ? std::to_string(road_ghost_plan_.valid_count - road_ghost_plan_.affordable_count)
+            : std::string("pending");
+    st.facts["tool.road.drawn"] = std::to_string(road_ghost_drawn_);
+    st.facts["tool.road.commit_matched_preview"] = last_road_commit_matched_preview_ ? "1" : "0";
     // UI-PRODBAR-1 B1: the fertility indicator over the ghost (fertility_indicator.hpp,
-    // docs/re/ui.md 4.1). Named placeholder `fertility-indicator-needs-sim` (OQ-715): the window
-    // has no FertilityTileSource until the sim answers the crop test and the tile-object
-    // placement, so the decision stops there and no bar is drawn. The gates as this window knows
-    // them: a preview the window's own knowledge does not refuse, one ghost (always the last), a
-    // footprint with tiles, the armed type in the registry; the projection is the frame drawn.
+    // docs/re/ui.md 4.1). Roads never show a fertility bar (`BUILDINGSOBJECTS.md` §10.1 item 9).
     {
         std::string fertility = "none";
-        if (tool_armed && !dev_->input().demolish_mode() && dev_->hover()) {
+        if (tool_armed && !dev_->input().demolish_mode() && !road_armed && dev_->hover()) {
             const sim::TileXY fert_hover = *dev_->hover();
             const auto fert_extent = dev_->input().footprint_extent(fert_hover);
             const auto fert_snap = play_ != nullptr ? play_->runner().snapshot() : nullptr;
@@ -3245,6 +3701,11 @@ void Viewer::script_tick() {
     if (selection_.selected && st.snapshot != nullptr && st.snapshot->inspection != nullptr &&
         st.snapshot->inspection->id == selection_.selected->id) {
         st.facts["selection.kind"] = st.snapshot->inspection->kind;
+    }
+    if (play_ != nullptr) {
+        st.facts["picture.tile_objects"] =
+            std::to_string(play_->picture().live_tile_object_count());
+        st.facts["picture.cleared_tiles"] = std::to_string(play_->picture().cleared_tile_count());
     }
     if (opening_ != nullptr) {
         for (auto& [key, value] : opening_facts()) {
@@ -3686,6 +4147,7 @@ void Viewer::draw() {
         back_off();
         return;
     }
+    ghost_update_patch(*gen);
     const auto [w, h] = view_size();
     // Scene screen position of the window's top-left pixel.
     const render::Rect view{static_cast<int>(std::lround(cam_x_ - w / 2.0)),
@@ -3858,9 +4320,17 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     // indicator over it (UI-PRODBAR-1, figure 1557) is the named placeholder
     // `fertility-indicator-needs-sim` until a FertilityTileSource exists (OQ-715): nothing drawn.
     std::vector<render::SpriteDraw> overlay;
+    road_ghost_drawn_ = 0;
     if (dev_ != nullptr) {
-        if (auto p = make_preview(*dev_, *gen, group_, time_ms())) {
-            overlay = std::move(p->sprites);
+        if (dev_->land_road_armed()) {
+            for (Preview& p : road_ghost_previews(*gen, time_ms())) {
+                overlay.insert(overlay.end(), p.sprites.begin(), p.sprites.end());
+                ++road_ghost_drawn_;
+            }
+        } else if (ghost_building_shown()) {
+            if (auto p = make_preview(*dev_, *gen, group_, time_ms())) {
+                overlay = std::move(p->sprites);
+            }
         }
     }
     if (opening_ != nullptr) {
@@ -3926,6 +4396,42 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
             const auto scale_start = Clock::now();
             ui_overlay_ptr = &ui_scaler_.scale(ui_canvas_, ui_t);
             steps_.push_back({"ui scale", since_ms(scale_start, Clock::now())});
+        }
+    }
+    // UI-GHOST-1 & UI-GHOST-2: the ghost's outline (0xffff00) and optional ADAPTATION blocking
+    // footprint outline (0xff4040), drawn into the frame-sized UI layer where it is transparent
+    // (chrome stays on top). Draw yellow first so chrome and the cursor's yellow box win over red
+    // on shared edges (`draw_outline_rgba_under` preserves non-zero alpha), matching CPU order.
+    ghost_pixels_ = 0;
+    ghost_occupied_pixels_ = 0;
+    if (dev_ != nullptr) {
+        const PointerFrame pf = pointer_frame(view, resample, group_, levels().tile_w(group_),
+                                              levels().tile_h(group_), gen, out_w, out_h);
+        auto ensure_layer = [&]() -> assets::Rgba* {
+            if (ui_overlay_ptr == &ui_canvas_) {
+                return &ui_canvas_;
+            }
+            if (ui_overlay_ptr == &ghost_canvas_) {
+                return &ghost_canvas_;
+            }
+            if (ui_overlay_ptr != nullptr) {
+                ghost_canvas_ = *ui_overlay_ptr;
+            } else {
+                ghost_canvas_.width = static_cast<std::uint16_t>(out_w);
+                ghost_canvas_.height = static_cast<std::uint16_t>(out_h);
+                ghost_canvas_.pixels.assign(
+                    static_cast<std::size_t>(out_w) * static_cast<std::size_t>(out_h) * 4, 0);
+            }
+            ui_overlay_ptr = &ghost_canvas_;
+            return &ghost_canvas_;
+        };
+        if (const auto lines = ghost_lines(*gen, pf)) {
+            ghost_pixels_ = draw_outline_rgba_under(lines->edges, lines->projection,
+                                                    *ensure_layer(), kGhostOutlineRgb);
+        }
+        if (const auto occ = ghost_occupied_lines(*gen, pf)) {
+            ghost_occupied_pixels_ = draw_outline_rgba_under(occ->edges, occ->projection,
+                                                             *ensure_layer(), kOccupiedOutlineRgb);
         }
     }
     const auto s =
@@ -4228,12 +4734,36 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
             }
         }
     }
+    ghost_pixels_ = 0;
+    ghost_occupied_pixels_ = 0;
+    road_ghost_drawn_ = 0;
     if (dev_ != nullptr) {
-        if (const auto p = make_preview(*dev_, *gen, group_, time_ms())) {
-            blend_preview(*gen, *p, group_, time_ms(), view, buffer_.data());
-            // UI-PRODBAR-1: the fertility indicator (blend_fertility_frame, figure 1557) goes
-            // here once a FertilityTileSource exists; until then the named placeholder
-            // `fertility-indicator-needs-sim` (OQ-715, the `tool.fertility` fact) draws nothing.
+        if (dev_->land_road_armed()) {
+            const auto previews = road_ghost_previews(*gen, time_ms());
+            for (const Preview& p : previews) {
+                blend_preview(*gen, p, group_, time_ms(), view, buffer_.data());
+            }
+            road_ghost_drawn_ = previews.size();
+        } else if (ghost_building_shown()) {
+            if (const auto p = make_preview(*dev_, *gen, group_, time_ms())) {
+                blend_preview(*gen, *p, group_, time_ms(), view, buffer_.data());
+                // UI-PRODBAR-1: the fertility indicator (blend_fertility_frame, figure 1557) goes
+                // here once a FertilityTileSource exists; until then the named placeholder
+                // `fertility-indicator-needs-sim` (OQ-715, the `tool.fertility` fact) draws
+                // nothing.
+            }
+        }
+        // UI-GHOST-1 & UI-GHOST-2: outlines over the world, under the chrome drawn next (occupied
+        // blocking footprint drawn first so the cursor's yellow outline wins on shared edges).
+        const PointerFrame pf = pointer_frame(view, nullptr, group_, levels().tile_w(group_),
+                                              levels().tile_h(group_), gen, w, h);
+        if (const auto occ = ghost_occupied_lines(*gen, pf)) {
+            ghost_occupied_pixels_ = draw_outline_xrgb(occ->edges, occ->projection, buffer_.data(),
+                                                       w, h, kOccupiedOutlineRgb);
+        }
+        if (const auto lines = ghost_lines(*gen, pf)) {
+            ghost_pixels_ = draw_outline_xrgb(lines->edges, lines->projection, buffer_.data(), w, h,
+                                              kGhostOutlineRgb);
         }
     }
     double construction_ui_ms = 0.0;

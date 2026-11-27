@@ -248,8 +248,10 @@ TEST_CASE("the frame uniform matches struct Frame in gpu.wgsl") {
     f.river_flow = true;
     f.river_lambda = 2.059F;
     f.fluid_fade = 0.375F;
+    f.patch_origin = {12, -4};
+    f.patch_size = {64, 48};
     const auto b = gpu::frame_uniform_bytes(f);
-    REQUIRE(b.size() == 96);
+    REQUIRE(b.size() == 112);
     auto u32_at = [&](std::size_t o) {
         return std::uint32_t{b[o]} | std::uint32_t{b[o + 1]} << 8 | std::uint32_t{b[o + 2]} << 16 |
                std::uint32_t{b[o + 3]} << 24;
@@ -285,6 +287,10 @@ TEST_CASE("the frame uniform matches struct Frame in gpu.wgsl") {
     CHECK(f32_at(84) == 1.0F);
     CHECK(f32_at(88) == 2.059F);
     CHECK(f32_at(92) == 0.375F); // fluid_fade
+    CHECK(i32_at(96) == 12);     // patch_origin.x
+    CHECK(i32_at(100) == -4);    // patch_origin.y
+    CHECK(i32_at(104) == 64);    // patch_size.x
+    CHECK(i32_at(108) == 48);    // patch_size.y
     f.river_flow = false;
     CHECK(gpu::frame_uniform_bytes(f)[84 + 3] == 0);
     // A zero-sized view is sent as 1 × 1 (the shader divides by it).
@@ -6420,4 +6426,88 @@ TEST_CASE("the GPU wave carry over a window switch matches the CPU reference") {
         CHECK(worst < 1e-5F); // measured: 7e-7 and 3e-8 (MSVC, RTX 4090)
     }
     CHECK(ctx->errors->load() == 0);
+}
+
+TEST_CASE("GPU ObjectsPatch suppression matches the CPU path (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const Loaded loaded = load_scene(*dir, "Single_24.sze");
+    const auto& scene = loaded.scene;
+    constexpr std::size_t kGroup = 1;
+    constexpr int kW = 1024, kH = 768;
+    const render::Rect view = digest_view(*scene, "Single_24.sze", kGroup, kW, kH);
+
+    // Find an island static object whose screen box lies well inside `view` and renders pixels.
+    std::optional<std::pair<std::size_t, std::size_t>> target;
+    for (std::size_t k = 0; k < scene->islands.size() && !target; ++k) {
+        const auto& list = scene->island_lists(k).other;
+        for (std::size_t idx = 0; idx < list.size(); ++idx) {
+            const auto flags_entry = scene->anlagen.entry(list[idx].first.anlage);
+            if (flags_entry == nullptr || flags_entry->gfx.empty()) {
+                continue;
+            }
+            const auto r = scene->object_bounds(k, list[idx], kGroup);
+            if (!r || r->w < 12 || r->h < 12) {
+                continue;
+            }
+            const auto clipped = r->intersect(view);
+            if (!clipped || clipped->w != r->w || clipped->h != r->h) {
+                continue;
+            }
+            target = std::pair{k, idx};
+            break;
+        }
+    }
+    REQUIRE(target.has_value());
+    render::ObjectsExclusion excl{target->first, {target->second}};
+    auto patch_val = render::build_objects_patch(*scene, kGroup, excl, false, true);
+    REQUIRE(patch_val.has_value());
+    patch_val->serial = 1;
+    const auto patch = std::make_shared<const render::ObjectsPatch>(std::move(*patch_val));
+
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = SIZE_MAX;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE_MESSAGE(made, (made ? "" : made.error()));
+    gpu::GpuFrame& g = *made.value();
+    const auto rt = g.offscreen_target(kW, kH);
+
+    render::FrameRenderer cpu(4), on_gpu(4, false);
+    std::vector<std::uint32_t> cpu_base(std::size_t{kW} * kH);
+    cpu.render(*scene, view, kGroup, 0, render::WaterStyle::Original, cpu_base.data());
+    static_cast<void>(
+        g.render(on_gpu, *scene, view, kGroup, 0, render::WaterStyle::Original, rt.second.get()));
+    const auto gpu_base = g.read_back(rt.first.get(), kW, kH);
+    CHECK(difference(cpu_base, gpu_base).first <= 1);
+
+    // Activate ephemeral suppression patch: both CPU and GPU must hide the object identically.
+    cpu.set_objects_patch(patch);
+    on_gpu.set_objects_patch(patch);
+    std::vector<std::uint32_t> cpu_sup(std::size_t{kW} * kH);
+    cpu.render(*scene, view, kGroup, 0, render::WaterStyle::Original, cpu_sup.data());
+    static_cast<void>(
+        g.render(on_gpu, *scene, view, kGroup, 0, render::WaterStyle::Original, rt.second.get()));
+    const auto gpu_sup = g.read_back(rt.first.get(), kW, kH);
+    CHECK(difference(cpu_sup, gpu_sup).first <= 1);
+    CHECK(cpu_sup != cpu_base);
+    CHECK(gpu_sup != gpu_base);
+
+    // Clear suppression patch: both CPU and GPU must restore exact baseline pixels.
+    cpu.set_objects_patch({});
+    on_gpu.set_objects_patch({});
+    std::vector<std::uint32_t> cpu_restored(std::size_t{kW} * kH);
+    cpu.render(*scene, view, kGroup, 0, render::WaterStyle::Original, cpu_restored.data());
+    static_cast<void>(
+        g.render(on_gpu, *scene, view, kGroup, 0, render::WaterStyle::Original, rt.second.get()));
+    const auto gpu_restored = g.read_back(rt.first.get(), kW, kH);
+    CHECK(cpu_restored == cpu_base);
+    CHECK(gpu_restored == gpu_base);
+    CHECK(g.errors() == 0);
 }

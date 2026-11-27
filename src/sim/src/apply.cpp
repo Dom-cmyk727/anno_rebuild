@@ -22,6 +22,7 @@
 #include <anno/sim/freight.hpp>
 #include <anno/sim/mine_source.hpp>
 #include <anno/sim/placement.hpp>
+#include <anno/sim/road_drag.hpp>
 #include <anno/sim/ship_cargo.hpp>
 #include <anno/sim/ship_orders.hpp>
 #include <anno/sim/site_checks.hpp>
@@ -286,6 +287,7 @@ struct Checked {
     bool free = false;
     /// A tile object (a land road): no building record, no serial (MAP-ROAD-1).
     bool tile_object = false;
+    bool is_road = false;
     std::optional<CityAccounts> accounts_after;
 };
 
@@ -309,11 +311,26 @@ bool same_record(const PlacementRecord& a, const PlacementRecord& b) {
            a.byte0f == b.byte0f;
 }
 
+/// What check_record reads: const views only, so World::check_build_record can run it on a
+/// const world (UI-GHOST-1) and apply runs it on the same members.
+struct CheckEnv {
+    const World& w;
+    const SimConfig& cfg;
+    const Rules& rules;
+    const Seams& seams;
+    const TypeRegistry& types;
+};
+
+CheckEnv check_env(const Env& env) {
+    return CheckEnv{env.w, env.cfg, env.rules, env.seams, env.types};
+}
+
 /// Steps 1-6 of §8.4 for one record, read-only. With `budget` (the atomic dry run) the
 /// earlier records of the command count as placed: their gold, goods and serials are
-/// spent and their tiles taken.
-Checked check_record(const Env& env, const Island& is, const City& city, const Player& owner,
-                     const PlacementWire& p, const Budget* budget) {
+/// spent and their tiles taken. When `check_cost` is false (path tail past first refusal),
+/// affordability and city-booking budget checks are skipped so pure site validity is tested.
+Checked check_record(const CheckEnv& env, const Island& is, const City& city, const Player& owner,
+                     const PlacementWire& p, const Budget* budget, bool check_cost = true) {
     Checked out;
     // 1. Type id 0 is skipped (D, §8.4).
     if (p.type.v == 0) {
@@ -332,6 +349,7 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
             out.status = Reject::UnknownType; // F4
             return out;
         }
+        out.is_road = is_land_road(*type);
         if (rec.rotation > 3) {
             out.status = Reject::BadRotation; // F4
             return out;
@@ -340,15 +358,20 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
         // skips Create for the blocks above 0xa0). The ordinary land roads are ported as tile
         // objects (MAP-ROAD-1); every other such class is not (O-4).
         const bool tile_object = !env.cfg.layout.list_for(type->prodtype).has_value();
-        if (tile_object && !is_land_road(*type)) {
+        if (tile_object && !out.is_road) {
             out.status = Reject::Unsupported;
             return out;
         }
         out.tile_object = tile_object;
         // 2. The footprint on the island, on the city's tiles (D 0x10058890).
-        if (const Reject r = footprint_owner_rule(is, env.cfg, *type, rec, city.number);
-            r != Reject::None) {
-            out.status = r;
+        // With road_rules enabled, road drags require every tile to be owned by `city`.
+        const Reject owner_reject =
+            (out.tile_object && out.is_road && env.w.road_drag_enabled() &&
+             env.w.road_rules().every_tile_territory != 0)
+                ? footprint_all_owned_rule(is, env.cfg, *type, rec, city.number)
+                : footprint_owner_rule(is, env.cfg, *type, rec, city.number);
+        if (owner_reject != Reject::None) {
+            out.status = owner_reject;
             return out;
         }
         // Buildings first: a tile a building stands on (live) or an earlier record of the
@@ -365,6 +388,28 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
         if (taken) {
             out.status = Reject::Occupied;
             return out;
+        }
+        // ROADS-1: no downgrade (AnnoFrame 0x1004b11b-0x1004b141: dirt over cobblestone refused).
+        if (out.tile_object && out.is_road && env.w.road_drag_enabled() &&
+            env.w.road_rules().no_downgrade != 0) {
+            bool downgrade = false;
+            for_each_footprint_tile(is, *type, rec, [&](std::uint64_t idx) {
+                std::uint32_t existing_id = is.tiles.object(idx);
+                if (budget != nullptr) {
+                    if (const auto it = budget->objects.find(idx); it != budget->objects.end()) {
+                        existing_id = it->second.v;
+                    }
+                }
+                const BuildingType* existing =
+                    existing_id != 0 ? env.types.find(TypeId{existing_id}) : nullptr;
+                if (existing != nullptr && is_road_downgrade(*existing, *type)) {
+                    downgrade = true;
+                }
+            });
+            if (downgrade) {
+                out.status = Reject::Occupied;
+                return out;
+            }
         }
         // The default rule reads the latest objects through PlacementParams::object_overlay (one
         // view: an earlier record's road supersedes the physical object). A placement seam takes no
@@ -430,6 +475,18 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
         if (p.type == rec.type)
             break;
     }
+    // ROADS-1: figure veto per road tile (AnnoFrame 0x1004af90 -> 0x10045080), after
+    // City::Build / eligibility (BUILDINGSOBJECTS §10.1 4e-f).
+    // footprint() swaps width/height on odd rotation, matching veto::scan_extents.
+    if (out.tile_object && out.is_road && env.w.road_drag_enabled() &&
+        env.w.road_rules().figure_veto != 0) {
+        const auto [fw, fh] = footprint(*type, rec.rotation);
+        if (const Reject vr = check_road_figure_veto(env.w, city.owner, rec.x, rec.y, fw, fh);
+            vr != Reject::None) {
+            out.status = vr;
+            return out;
+        }
+    }
     // 5. Research (Rules::enforce_research, O-30; default off: the original has no
     // sim-side research gate on Build).
     if (env.rules.enforce_research && type->research_id != 0 &&
@@ -455,8 +512,29 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
     // by Rules::free_build_cheat (F13: the original's free-build flag 0x2000000 came from
     // the payload; here it is a hashed session rule, never a wire field; OQ-125). A waiver
     // skips the check and the charge (I: "cost waiver"; OQ-126).
-    out.free = env.rules.free_build_cheat || owner.free_build;
-    if (!out.free) {
+    bool same_family_free = false;
+    if (check_cost && out.tile_object && out.is_road && env.w.road_drag_enabled() &&
+        env.w.road_rules().free_same_family != 0) {
+        bool any_tile = false;
+        bool all_same_family = true;
+        for_each_footprint_tile(is, *type, rec, [&](std::uint64_t idx) {
+            any_tile = true;
+            std::uint32_t existing_id = is.tiles.object(idx);
+            if (budget != nullptr) {
+                if (const auto it = budget->objects.find(idx); it != budget->objects.end()) {
+                    existing_id = it->second.v;
+                }
+            }
+            const BuildingType* existing =
+                existing_id != 0 ? env.types.find(TypeId{existing_id}) : nullptr;
+            if (existing == nullptr || !same_road_family(*existing, *type)) {
+                all_same_family = false;
+            }
+        });
+        same_family_free = any_tile && all_same_family;
+    }
+    out.free = env.rules.free_build_cheat || owner.free_build || same_family_free;
+    if (check_cost && !out.free) {
         const std::int64_t gold_before = budget != nullptr ? budget->money : 0;
         if (owner.money < gold_before + std::int64_t{type->cost_gold}) {
             out.status = Reject::CannotAfford;
@@ -496,7 +574,7 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
         out.status = h;
         return out;
     }
-    if (env.rules.city_booking && !out.tile_object) {
+    if (check_cost && env.rules.city_booking && !out.tile_object) {
         Building prototype;
         prototype.payload =
             make_payload(*type, env.types.class_info(type->cls), env.cfg, env.types);
@@ -518,6 +596,18 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
     return out;
 }
 
+/// Records the tiles/objects/serials of a validated placement in the scratch budget.
+void record_budget_footprint(Budget& budget, const Island& is, const Checked& c) {
+    if (c.tile_object) {
+        for_each_footprint_tile(is, *c.type, c.rec,
+                                [&](std::uint64_t idx) { budget.objects[idx] = c.type->id; });
+        return;
+    }
+    ++budget.serials;
+    for_each_footprint_tile(is, *c.type, c.rec,
+                            [&](std::uint64_t idx) { budget.tiles.insert(idx); });
+}
+
 /// Adds a validated record to the dry run's budget.
 void spend(Budget& budget, const Island& is, const Checked& c) {
     if (c.accounts_after)
@@ -528,14 +618,7 @@ void spend(Budget& budget, const Island& is, const Checked& c) {
             budget.goods[cost.goods] += cost.amount_88;
         }
     }
-    if (c.tile_object) {
-        for_each_footprint_tile(is, *c.type, c.rec,
-                                [&](std::uint64_t idx) { budget.objects[idx] = c.type->id; });
-        return;
-    }
-    ++budget.serials;
-    for_each_footprint_tile(is, *c.type, c.rec,
-                            [&](std::uint64_t idx) { budget.tiles.insert(idx); });
+    record_budget_footprint(budget, is, c);
 }
 
 /// Step 7 (D 0x100279a0): create, charge, run the Place seam. The original charges
@@ -624,7 +707,8 @@ ApplyResult build(Env& env, const Command& c, const BuildCmd& cmd) {
         budget.accounts = city.accounts;
         bool all_pass = true;
         for (std::size_t i = 0; i < cmd.placements.size(); ++i) {
-            const Checked chk = check_record(env, is, city, *owner, cmd.placements[i], &budget);
+            const Checked chk =
+                check_record(check_env(env), is, city, *owner, cmd.placements[i], &budget);
             if (chk.skip) {
                 continue;
             }
@@ -653,10 +737,29 @@ ApplyResult build(Env& env, const Command& c, const BuildCmd& cmd) {
     // checks, so a validated record is created).
     bool placed_any = false;
     Reject first_failure = Reject::None;
+    std::uint32_t road_count = 0;
+    const bool road_drag = env.w.road_drag_enabled();
+    const std::uint32_t drag_cap = env.w.road_rules().drag_cap;
+    const bool stop_on_refusal = road_drag && env.w.road_rules().stop_at_first_refusal != 0;
     for (std::size_t i = 0; i < cmd.placements.size(); ++i) {
-        const Checked chk = check_record(env, is, city, *owner, cmd.placements[i], nullptr);
+        const Checked chk =
+            check_record(check_env(env), is, city, *owner, cmd.placements[i], nullptr);
         if (chk.skip) {
             continue;
+        }
+        if (road_drag && chk.is_road) {
+            if (road_count >= drag_cap) {
+                for (std::size_t j = i; j < cmd.placements.size(); ++j) {
+                    if (cmd.placements[j].type.v != 0) {
+                        result.records[j].status = Reject::PrefixStopped;
+                    }
+                }
+                if (first_failure == Reject::None) {
+                    first_failure = Reject::PrefixStopped;
+                }
+                break;
+            }
+            ++road_count;
         }
         if (chk.status == Reject::None) {
             result.records[i] = place(env, is, city, *owner, chk);
@@ -665,8 +768,20 @@ ApplyResult build(Env& env, const Command& c, const BuildCmd& cmd) {
         }
         if (result.records[i].status == Reject::None) {
             placed_any = true;
-        } else if (first_failure == Reject::None) {
-            first_failure = result.records[i].status;
+        } else {
+            if (first_failure == Reject::None) {
+                first_failure = result.records[i].status;
+            }
+            // Kind-9 prefix commit (AnnoFrame 0x1004b5c7, OQ-043): stop at first refusal
+            // for road placements (never stopping ordinary multi-building BuildCmds).
+            if (stop_on_refusal && (chk.is_road || road_count > 0)) {
+                for (std::size_t j = i + 1; j < cmd.placements.size(); ++j) {
+                    if (cmd.placements[j].type.v != 0) {
+                        result.records[j].status = Reject::PrefixStopped;
+                    }
+                }
+                break;
+            }
         }
     }
     // The command is rejected only when it changed nothing: no record placed and at
@@ -974,6 +1089,105 @@ ApplyResult Commands::apply(World& w, const Command& command, const InAdvance* i
 
 ApplyResult World::apply(const Command& command) {
     return Commands::apply(*this, command, nullptr);
+}
+
+Reject Commands::check_build(const World& w, CityRef ref, const PlacementWire& record) {
+    if (!ref.island.valid() || ref.island.v >= w.islands_.size() ||
+        !w.islands_[ref.island.v].has_value()) {
+        return Reject::UnknownIsland;
+    }
+    const Island& is = *w.islands_[ref.island.v];
+    const City* city = is.city(ref.city);
+    if (city == nullptr) {
+        return Reject::UnknownCity;
+    }
+    const Player* owner = w.players_.find(city->owner);
+    if (owner == nullptr) {
+        return Reject::UnknownIssuer;
+    }
+    const CheckEnv env{w, w.config_, w.rules_, w.seams_, *w.types_};
+    const Checked chk = check_record(env, is, *city, *owner, record, nullptr);
+    return chk.skip ? Reject::None : chk.status;
+}
+
+Reject World::check_build_record(CityRef city, const PlacementWire& record) const {
+    return Commands::check_build(*this, city, record);
+}
+
+RoadPathCheck Commands::check_build_path(const World& w, CityRef ref,
+                                         std::span<const PlacementWire> records) {
+    RoadPathCheck out;
+    if (!ref.island.valid() || ref.island.v >= w.islands_.size() ||
+        !w.islands_[ref.island.v].has_value()) {
+        out.first_refusal = Reject::UnknownIsland;
+        return out;
+    }
+    const Island& is = *w.islands_[ref.island.v];
+    const City* city = is.city(ref.city);
+    if (city == nullptr) {
+        out.first_refusal = Reject::UnknownCity;
+        return out;
+    }
+    const Player* owner = w.players_.find(city->owner);
+    if (owner == nullptr) {
+        out.first_refusal = Reject::UnknownIssuer;
+        return out;
+    }
+    const CheckEnv env{w, w.config_, w.rules_, w.seams_, *w.types_};
+    Budget budget;
+    budget.accounts = city->accounts;
+    bool still_affordable = true;
+    std::uint32_t road_count = 0;
+    const bool road_drag = w.road_drag_enabled();
+    const std::uint32_t drag_cap = w.road_rules().drag_cap;
+    for (const PlacementWire& p : records) {
+        Checked chk = check_record(env, is, *city, *owner, p, &budget, still_affordable);
+        if (chk.skip) {
+            continue;
+        }
+        if (road_drag && chk.is_road && road_count >= drag_cap) {
+            if (out.first_refusal == Reject::None) {
+                out.first_refusal = Reject::PrefixStopped;
+            }
+            break;
+        }
+        if (chk.status == Reject::None) {
+            ++out.valid_prefix;
+            if (chk.is_road) {
+                ++road_count;
+            }
+            if (still_affordable) {
+                ++out.affordable_prefix;
+                spend(budget, is, chk);
+            } else {
+                record_budget_footprint(budget, is, chk);
+            }
+            continue;
+        }
+        if (still_affordable && chk.status == Reject::CannotAfford) {
+            const Checked site_chk = check_record(env, is, *city, *owner, p, &budget, false);
+            if (site_chk.status == Reject::None) {
+                still_affordable = false;
+                out.first_refusal = Reject::CannotAfford;
+                ++out.valid_prefix;
+                if (site_chk.is_road) {
+                    ++road_count;
+                }
+                record_budget_footprint(budget, is, site_chk);
+                continue;
+            }
+            chk = site_chk;
+        }
+        if (out.first_refusal == Reject::None) {
+            out.first_refusal = chk.status;
+        }
+        break;
+    }
+    return out;
+}
+
+RoadPathCheck World::check_build_path(CityRef city, std::span<const PlacementWire> records) const {
+    return Commands::check_build_path(*this, city, records);
 }
 
 } // namespace anno::sim

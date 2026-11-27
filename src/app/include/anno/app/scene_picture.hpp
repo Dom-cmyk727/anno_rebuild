@@ -113,9 +113,17 @@ class ScenePicture {
     /// (render::Scene::Backing), so the picture needs no other owner. `buildings` are the sim's
     /// buildings at load, sorted by building_before. `is_building` is the loader's classification
     /// of Anlagen ids (asked once per id below kPictureAnlageIds). `threads` (at least 1) build
-    /// object lists.
+    /// object lists. Derives tracked tile-object classification (`kRoadFlag`) and initial tile
+    /// objects from `base`.
     ScenePicture(std::shared_ptr<const render::Scene> base, std::vector<SceneBuilding> buildings,
                  const std::function<bool(std::uint16_t)>& is_building, std::size_t threads = 1,
+                 Limits limits = {});
+    /// Full form accepting the initial `tile_objects` (sorted by tile_object_before) and
+    /// `is_tile_object` predicate from the sim/play load alongside `buildings`.
+    ScenePicture(std::shared_ptr<const render::Scene> base, std::vector<SceneBuilding> buildings,
+                 std::vector<SceneTileObject> tile_objects,
+                 const std::function<bool(std::uint16_t)>& is_building,
+                 const std::function<bool(std::uint16_t)>& is_tile_object, std::size_t threads = 1,
                  Limits limits = {});
     /// Stops the workers; the jobs, results and generation still held are released on the
     /// reclaimer.
@@ -127,10 +135,22 @@ class ScenePicture {
     [[nodiscard]] std::shared_ptr<const render::Scene> scene() const { return current_; }
     /// The picture's buildings (the desired state), sorted by building_before. Window thread.
     [[nodiscard]] const std::vector<SceneBuilding>& buildings() const { return picture_; }
+    /// The picture's tracked and cleared tile objects (the desired state), sorted by
+    /// tile_object_before. Window thread.
+    [[nodiscard]] const std::vector<SceneTileObject>& tile_objects() const { return tile_objects_; }
     /// The picture's buildings of island `number` (the desired state, in batch order), from the
     /// per-island index; empty for an island without any. O(1): no scan of buildings() (round ee
     /// review, R4). Window thread; valid until the next apply().
     [[nodiscard]] const std::vector<SceneBuilding>& island_buildings(std::uint32_t number) const;
+    /// The picture's tile objects of island `number` (desired state, in batch order). Window
+    /// thread; valid until the next apply().
+    [[nodiscard]] const std::vector<SceneTileObject>&
+    island_tile_objects(std::uint32_t number) const;
+    /// Number of live (non-zero `type`) tracked tile objects in the desired state. Window thread.
+    [[nodiscard]] std::size_t live_tile_object_count() const;
+    /// Number of cleared-tile suppression markers (`type == 0`) in the desired state. Window
+    /// thread.
+    [[nodiscard]] std::size_t cleared_tile_count() const;
     /// Advances whenever apply() changes buildings() (round ee: a reader that indexes the list
     /// rebuilds its index only then). Window thread.
     [[nodiscard]] std::uint64_t buildings_version() const { return buildings_version_; }
@@ -248,6 +268,7 @@ class ScenePicture {
     struct Reaper;
     std::shared_ptr<const render::Scene> current_;
     std::vector<SceneBuilding> picture_;
+    std::vector<SceneTileObject> tile_objects_;
     std::uint64_t buildings_version_ = 0;
     /// The island index of each island slot number (window thread; set at construction).
     std::vector<std::pair<std::uint32_t, std::size_t>> slots_;
@@ -255,15 +276,20 @@ class ScenePicture {
     std::shared_ptr<Reaper> reaper_;
     std::vector<std::thread> threads_;
     Limits limits_;
-    /// The picture's buildings per island number, in batch order (window thread). A build copies
-    /// only its island's entry, so the cost of a start does not grow with the rest of the city
-    /// (round dx, DX2e). Rebuilt for the touched islands when the list changes (reindex).
+    /// The picture's buildings and tile objects per island number, in batch order (window thread).
+    /// A build copies only its island's entry, so the cost of a start does not grow with the rest
+    /// of the city (round dx, DX2e). Rebuilt for the touched islands when the list changes.
     std::map<std::uint32_t, std::vector<SceneBuilding>> by_island_;
+    std::map<std::uint32_t, std::vector<SceneTileObject>> by_island_tiles_;
     std::vector<render::ChunkKey> last_invalidated_;
     std::vector<CommittedIsland> last_commit_;
 
-    /// Rebuilds the entries of `islands` from the building list (one pass over the list).
+    void init(const std::function<bool(std::uint16_t)>& is_building,
+              const std::function<bool(std::uint16_t)>& is_tile_object, std::size_t threads);
+
+    /// Rebuilds the entries of `islands` from the building / tile-object lists.
     void reindex(const std::set<std::uint32_t>& islands);
+    void reindex_tile_objects(const std::set<std::uint32_t>& islands);
 
     /// Starts the builds of `wanted` islands and of the due ones (deferred, retrying), within the
     /// limits. Hands what it replaces to `dropped` (retired by the caller). Returns the wanted

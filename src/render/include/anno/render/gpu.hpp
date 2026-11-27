@@ -492,8 +492,11 @@ struct FrameUniform {
     /// The weight of the simulated waves against the analytic ones (1 = only the
     /// simulation, GpuLimits::wave_fade_ms).
     float fluid_fade = 1;
+    /// Active scene-pixel rectangle of an ephemeral objects patch (width <= 0 when inactive).
+    std::pair<std::int32_t, std::int32_t> patch_origin{0, 0};
+    std::pair<std::int32_t, std::int32_t> patch_size{0, 0};
 };
-/// Bytes of the frame uniform (96, little-endian, WGSL uniform layout).
+/// Bytes of the frame uniform (112, little-endian, WGSL uniform layout).
 std::vector<std::uint8_t> frame_uniform_bytes(const FrameUniform& f);
 
 /// The binding contract of the river flow with gpu.wgsl (a test reads the

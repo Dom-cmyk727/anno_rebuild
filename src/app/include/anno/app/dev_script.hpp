@@ -11,7 +11,12 @@
 //                         the cheapest of the tool's types that costs gold (not a road)
 //   rotate R              press T until the rotation is R
 //   click X Y             move to, press and release over the drawn centre of tile (X, Y)
-//   click_px X Y          move to, press and release at the raw drawable pixel (X, Y) (UI.2 C4:
+//   click-land X Y        move to, press and release over terrain ground height of tile (X, Y)
+//   ldown-land X Y        move to, press left button over terrain ground height of tile (X, Y)
+//   lmove-land X Y        drag pointer with left button held to terrain ground height of tile (X,
+//   Y) lup-land X Y          drag pointer with left button held and release at ground height of (X,
+//   Y) hover-land X Y        move pointer over terrain ground height of tile (X, Y) click_px X Y
+//   move to, press and release at the raw drawable pixel (X, Y) (UI.2 C4:
 //                         construction_handle's own coordinate space, data/ui/'s 1024 x 768
 //                         reference - not a world tile; `click`'s window_point projection does
 //                         not apply)
@@ -74,7 +79,8 @@
 //                         there without a button; hover-sea X Y moves it over the sea surface of
 //                         tile (X, Y) without a button (UI-STATUS-1 B)
 //   hover_px X Y          the pointer moves to drawable pixel (X, Y) without a button (UI-STATUS-1
-//                         B: onto chrome, where the status bar keeps the last map tile)
+//                         B: onto chrome, where the status bar keeps the last map tile and
+//                         the placement ghost hides, UI-GHOST-1)
 //   lpan DX DY            a left-button drag by (DX, DY) window points from the window centre
 //   ldown_px X Y          a left press at drawable pixel (X, Y) with no release (a release lost
 //                         outside the window); ldrag_px X0 Y0 X1 Y1: press at (X0, Y0), move to

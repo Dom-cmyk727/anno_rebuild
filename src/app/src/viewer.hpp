@@ -101,6 +101,8 @@ struct ViewerHooks {
     /// so they do nothing in `Classic` rather than collide; `Dev` keeps the pan/quit meaning.
     /// Arrow keys (and A/W for pan) are unaffected in both surfaces.
     UiSurface ui = UiSurface::Classic;
+    /// UI-GHOST-2 ADAPTATION (default off): outline blocking footprint(s) on Reject::Occupied.
+    bool occupied_outline = false;
 };
 
 /// Opens the window and runs until it is closed; an empty string on

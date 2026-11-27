@@ -331,6 +331,25 @@ struct FrameStats {
     double ground_ms = 0, water_objects_ms = 0, sea_ms = 0, objects_ms = 0, total_ms = 0;
 };
 
+/// A small screen-space objects patch built without excluded static objects (UI-GHOST-2):
+/// overrides cached chunk `objects`, `base` and `submerged` planes inside `rect` at `group` on
+/// both CPU and GPU paths without mutating Scene or rebuilding 512x512 chunks on hover.
+struct ObjectsPatch {
+    Rect rect;
+    std::size_t group = 0;
+    std::vector<Px> objects;
+    std::vector<std::uint8_t> base;
+    std::vector<std::uint8_t> submerged;
+    std::uint64_t serial = 0;
+};
+
+/// Renders the objects patch covering the suppressed sprites of `exclude` at `group`. Returns
+/// nullopt when `group >= kGroups` or `exclude` produces no non-empty screen box.
+[[nodiscard]] std::optional<ObjectsPatch> build_objects_patch(const Scene& scene, std::size_t group,
+                                                              const ObjectsExclusion& exclude,
+                                                              bool ships = false,
+                                                              bool bases = true);
+
 /// Renders frames of a Scene into 0RGB buffers.
 class FrameRenderer {
   public:
@@ -345,6 +364,13 @@ class FrameRenderer {
 
     /// Builds chunks with `workers` from now on (nullptr: in the frame).
     void set_workers(std::unique_ptr<ChunkWorkers> workers);
+    /// Ephemeral objects patch overriding cached chunks inside `patch->rect` (null disables).
+    void set_objects_patch(std::shared_ptr<const ObjectsPatch> patch) {
+        objects_patch_ = std::move(patch);
+    }
+    [[nodiscard]] const std::shared_ptr<const ObjectsPatch>& objects_patch() const {
+        return objects_patch_;
+    }
     /// Takes chunks the caller held on to (an upload dropped or finished, gpu.cpp): the last
     /// reference to a chunk is freed on the chunk workers' thread, not the caller's (about a
     /// millisecond per chunk). Without workers they are freed here.
@@ -626,6 +652,7 @@ class FrameRenderer {
     std::map<ChunkKey, std::size_t> builds_, rebuilds_;
     /// Keys marked stale, with the generation of the invalidation that marked them (step 8).
     std::map<ChunkKey, std::uint64_t> dirty_;
+    std::shared_ptr<const ObjectsPatch> objects_patch_;
     std::uint64_t stale_discarded_ = 0;
     /// The scene the jobs of the current update read: set by update_chunks and released before
     /// it returns, so the renderer keeps no generation between frames (the jobs hold their own).

@@ -5,6 +5,8 @@
 
 #include <anno/app/dev_input.hpp>
 #include <anno/sim/building.hpp>
+#include <anno/sim/placement.hpp>
+#include <anno/sim/road_drag.hpp>
 #include <anno/sim/site_checks.hpp>
 
 namespace anno::app {
@@ -26,8 +28,10 @@ bool deposit_turned(const sim::BuildingType& type) {
 }
 
 DevInput::DevInput(std::shared_ptr<const sim::TypeRegistry> registry,
-                   std::vector<sim::TypeId> types, sim::CityRef city, sim::PlayerId issuer)
-    : registry_(std::move(registry)), types_(std::move(types)), city_(city), issuer_(issuer) {}
+                   std::vector<sim::TypeId> types, sim::CityRef city, sim::PlayerId issuer,
+                   sim::RoadRules road_rules)
+    : registry_(std::move(registry)), types_(std::move(types)), city_(city), issuer_(issuer),
+      road_rules_(road_rules) {}
 
 std::optional<sim::TypeId> DevInput::selected() const {
     if (types_.empty()) {
@@ -55,7 +59,36 @@ bool DevInput::arm(sim::TypeId type) {
 
 bool DevInput::road_like() const {
     const sim::BuildingType* type = selected_type();
-    return type != nullptr && (type->flags_word & sim::kRoadFlag) != 0;
+    return type != nullptr &&
+           ((type->flags_word & sim::kRoadFlag) != 0 || sim::is_land_road(*type));
+}
+
+bool DevInput::land_road_selected() const {
+    const sim::BuildingType* type = selected_type();
+    return type != nullptr && sim::is_land_road(*type);
+}
+
+std::vector<sim::PlacementWire> DevInput::road_preview_placements(sim::TileXY hover) const {
+    const auto id = selected();
+    if (!id || !land_road_selected() || !registry_) {
+        return {};
+    }
+    std::vector<sim::TileXY> tiles;
+    if (press_) {
+        tiles = road_rules_.enabled != 0 ? sim::road_path(*press_, hover, road_rules_.drag_cap)
+                                         : line(*press_, hover);
+    } else {
+        tiles.push_back(hover);
+    }
+    std::vector<sim::PlacementWire> out;
+    out.reserve(tiles.size());
+    for (std::size_t i = 0; i < tiles.size(); ++i) {
+        const sim::TileXY o = origin(tiles[i]);
+        const sim::TypeId variant =
+            road_rules_.enabled != 0 ? variant_deck_.variant_for(*registry_, *id, i) : *id;
+        out.push_back(sim::PlacementWire{variant, o.x, o.y, rotation_, 0, 0});
+    }
+    return out;
 }
 
 sim::TileXY DevInput::origin(sim::TileXY hover) const {
@@ -207,6 +240,36 @@ std::vector<sim::Command> DevInput::handle(const DevEvent& event,
             break;
         }
         const sim::TileXY from = *press_;
+        if (!demolish_ && road_drag_active()) {
+            // ROADS-3: L-path with original cap and deterministic UI variants identical to preview.
+            std::vector<sim::PlacementWire> placements = road_preview_placements(event.tile);
+            press_.reset();
+            hover_ = event.tile;
+            if (placements.empty()) {
+                message_ = "no buildable type";
+                break;
+            }
+            last_commit_variants_.clear();
+            last_commit_variants_.reserve(placements.size());
+            for (const auto& p : placements) {
+                last_commit_variants_.push_back(p.type);
+            }
+            variant_deck_.reroll();
+            sim::BuildCmd build;
+            build.city = city_;
+            build.placements = std::move(placements);
+            sim::Command cmd;
+            cmd.issuer = issuer_;
+            cmd.body = std::move(build);
+            if (!sim::has_wire_form(cmd.body)) {
+                message_ = "a drag of " +
+                           std::to_string(std::get<sim::BuildCmd>(cmd.body).placements.size()) +
+                           " tiles is over the wire limit of one command";
+                break;
+            }
+            out.push_back(std::move(cmd));
+            break;
+        }
         press_.reset();
         hover_ = event.tile;
         const std::uint64_t length = line_length(from, event.tile);

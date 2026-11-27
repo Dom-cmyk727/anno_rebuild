@@ -392,6 +392,33 @@ TEST_CASE("command line") {
     CHECK_FALSE(parse_args({"--ship-start", "m.json", "--seat", "0", "--fisher-rules", "on"}));
     CHECK_FALSE(parse_args({"--ship-start", "m.json", "--seat", "0", "--player", "1"}));
 
+    // --road-rules on|off (ROADS-3): --play developer switch only (nullopt -> main.cpp defaults
+    // to on for --play while faithful sim defaults stay off).
+    CHECK_FALSE(rules_default->road_rules.has_value());
+    const auto road_on = parse_args({"--play", "x.sze", "--road-rules", "on"});
+    REQUIRE(road_on.has_value());
+    REQUIRE(road_on->road_rules.has_value());
+    CHECK(*road_on->road_rules);
+    const auto road_off = parse_args({"--play", "x.sze", "--road-rules", "off"});
+    REQUIRE(road_off.has_value());
+    REQUIRE(road_off->road_rules.has_value());
+    CHECK_FALSE(*road_off->road_rules);
+    CHECK_FALSE(parse_args({"--play", "x.sze", "--road-rules", "yes"}));
+    CHECK_FALSE(parse_args({"--view", "x.sze", "--road-rules", "on"}));
+    CHECK_FALSE(parse_args({"--ship-start", "m.json", "--seat", "0", "--road-rules", "on"}));
+
+    // --occupied-outline on|off (UI-GHOST-2 ADAPTATION): default off, --play developer switch only.
+    CHECK_FALSE(rules_default->occupied_outline);
+    const auto occ_on = parse_args({"--play", "x.sze", "--occupied-outline", "on"});
+    REQUIRE(occ_on.has_value());
+    CHECK(occ_on->occupied_outline);
+    const auto occ_off = parse_args({"--play", "x.sze", "--occupied-outline", "off"});
+    REQUIRE(occ_off.has_value());
+    CHECK_FALSE(occ_off->occupied_outline);
+    CHECK_FALSE(parse_args({"--play", "x.sze", "--occupied-outline", "yes"}));
+    CHECK_FALSE(parse_args({"--view", "x.sze", "--occupied-outline", "on"}));
+    CHECK_FALSE(parse_args({"--ship-start", "m.json", "--seat", "0", "--occupied-outline", "on"}));
+
     // --ui classic|dev (ADR 0004 R2, W4-NEXT-1 part U's key-collision QUESTION): default
     // Classic, parsed independently of --play (unlike --construction-menu). Parsing it on
     // --view is accepted, not an error, but it has no live effect there - a --view window

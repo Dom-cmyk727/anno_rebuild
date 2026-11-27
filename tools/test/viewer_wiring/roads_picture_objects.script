@@ -1,0 +1,63 @@
+# ROADS-0 / PICTURE-OBJECTS-1: placing a land road (2520) via the developer tool reaches
+# Visibility::Visible (never NoVisualChange), increments picture.tile_objects, rotates, and
+# demolishes back down; demolishing an empty tile reports NoVisualChange, and demolishing a
+# pre-existing forest tree (1188 516) clears it visually (Visible) while redemolish is NoVisualChange.
+look 1156 516
+wait frames 10
+expect fact picture.tile_objects == 0
+expect fact picture.cleared_tiles == 0
+
+key b
+select 2520
+rotate 0
+click 1156 516
+wait outcome
+expect outcome Applied
+wait drawn
+expect visibility Visible
+expect fact picture.tile_objects == 1
+checkpoint road_rot0_visible
+
+rotate 1
+click 1157 516
+wait outcome
+expect outcome Applied
+wait drawn
+expect visibility Visible
+expect fact picture.tile_objects == 2
+checkpoint road_rot1_visible
+
+key x
+click 1156 516
+wait outcome
+expect outcome Applied
+wait drawn
+expect visibility Visible
+expect fact picture.tile_objects == 1
+checkpoint road_demolished_visible
+
+click 1156 516
+wait outcome
+expect outcome Applied
+wait drawn
+expect visibility NoVisualChange
+expect fact picture.tile_objects == 1
+checkpoint empty_demolish_no_visual_change
+
+click 1188 516
+wait outcome
+expect outcome Applied
+wait drawn
+expect visibility Visible
+expect fact picture.tile_objects == 1
+expect fact picture.cleared_tiles == 2
+checkpoint tree_demolish_visible
+
+click 1188 516
+wait outcome
+expect outcome Applied
+wait drawn
+expect visibility NoVisualChange
+expect fact picture.cleared_tiles == 2
+checkpoint tree_redemolish_no_visual_change
+quit

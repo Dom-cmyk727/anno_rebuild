@@ -1340,6 +1340,20 @@ Key **C**: same chrome, one occupied city row (`f15_city_list`). `TOOLTIP:INFOST
 
 Key **P**: parchment over the map, HUD chrome stays (`f15_pause`). `ToolGfx/Pause.tex` has **0** textures. The parchment is `fenster.inc` `MESSAGEBOX_BK` id **1512** 579 x 386 at **(222, 191)** (the geometric centre of 1024 x 768; opaque mean 27.2, grey-key 26.4; the ACCESS stores a dark field around the scroll). "Continue game" is `MESSAGEBOX_BUTTONS` id 1513 244 x 67 at **(286, 500)**, mean **11.61**. Leave with **P** again. Shot has a leftover speech submenu on the right from the options probe.
 
+**The message box (UI-PAUSE-1 step 1, GOG `AnnoFrame.dll`, D).** The pause box is drawn from the generic message
+box. The frame's vtable is `0x1008664c`.
+
+| What | Where | Notes |
+|---|---|---|
+| Show | slot `+0x70` = `0x1000c6a0` | Reads a descriptor: a word with the text's index in `Texte.dat` `MESSAGEBOX` (string `0x10094e50`, looked up at `0x1000c737`), words with the button labels' indices, and the button count at `+0x14`. Allocates the 0x114-byte box (`0x1000c7aa`, constructor `0x1003acf0`) into `[frame+0x18b8]` and sets the frame mode `[frame+0x16f8]` = 6 (`0x1000c882`). |
+| Mouse moves in mode 6 | `0x1000b490` (slot `+0x60`) → box `0x1003b450` | Moves go to the box, not to the map's edge scroll. |
+| Close | slot `+0xb8` = `0x1000c8c0` | Frees the box (`0x1003ad40`), clears `[frame+0x18b8]`, mode 0. |
+| The box's sprites | `0x1003af2c`.. (`MESSAGEBOX_BK`), `0x1003afd0`.. (`MESSAGEBOX_BUTTONS`) | |
+
+Strings (`Texte.dat` `MESSAGEBOX`, 0-based): 27 = "Pause!", 19 = "Continue game". What the button's own press handler
+does (inside the box object) and how P opens the box are OQ-908. **Rebuild (UI-PAUSE-1 A):** while paused, a press on
+`pause_button` resumes as P does, and every other press is swallowed (a modal box; assumption, OQ-908).
+
 ### 9.5 Rating
 
 Key **Q**: full 1024 x 768 overlay. `STATISTIK_UNTERGRUND` id 1509 at (0, 0), sprite-sad mean **23.41** on `f15_rating`. `Texte.dat` `STATISTIK` 19 lines. Leave control: a plank at the bottom-left (ACCESS not bound).

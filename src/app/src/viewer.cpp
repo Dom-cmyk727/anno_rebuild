@@ -2240,6 +2240,21 @@ bool Viewer::construction_handle(const SDL_Event& e) {
         return true; // the parts a larger layer adds (filler, the bar's added span): no buttons
     }
     const double px = hit.ref->first, py = hit.ref->second;
+    const auto inside_tab = [&](const char* name) {
+        const UiElement* tab = construction_menu_->hud().element(name);
+        return tab != nullptr && tab->has_pos && tab->has_size && px >= tab->pos_x &&
+               px < tab->pos_x + static_cast<double>(tab->size_w) && py >= tab->pos_y &&
+               py < tab->pos_y + static_cast<double>(tab->size_h);
+    };
+    // UI-PAUSE-1: the pause box is the original's modal message box (AnnoFrame 0x1000c6a0, mode
+    // 6). "Continue game" resumes as P does, on the press; every other press is swallowed. Both
+    // are assumptions (OQ-908): the box's own button handler was not read.
+    if (paused_at_) {
+        if (inside_tab("pause_button")) {
+            toggle_pause();
+        }
+        return true;
+    }
     // UI-MINIMAP-1 C: the minimap's buttons and its diamond act on the press, as the original's
     // (frame events 1 and 3, AnnoFrame 0x10006c60; the release only ends the capture).
     if (minimap_press(px, py)) {
@@ -2250,12 +2265,6 @@ bool Viewer::construction_handle(const SDL_Event& e) {
     // the gears show their view (hud.txt `view`) at the sub-tab it showed last (View.dll
     // 0x10034ab0 -> 0x100335d0); a press on the tab already selected changes nothing. Leaving
     // the construction menu for another tab turns an armed tool off.
-    const auto inside_tab = [&](const char* name) {
-        const UiElement* tab = construction_menu_->hud().element(name);
-        return tab != nullptr && tab->has_pos && tab->has_size && px >= tab->pos_x &&
-               px < tab->pos_x + static_cast<double>(tab->size_w) && py >= tab->pos_y &&
-               py < tab->pos_y + static_cast<double>(tab->size_h);
-    };
     if (inside_tab("tab_construction")) {
         if (!construction_menu_open_) {
             construction_menu_open_ = true;

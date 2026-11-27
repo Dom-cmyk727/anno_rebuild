@@ -260,6 +260,16 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt)
       set_tests_properties(viewer_wiring_ui_keys_gpu PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4 RESOURCE_LOCK gpu)
+      # UI-PAUSE-1: the pause box's "Continue game" resumes and the box swallows other presses
+      # (the HUD layout gives the box its chrome and hit rectangles).
+      add_test(NAME viewer_wiring_ui_pause_gpu
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_pause --gpu
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_pause_gpu PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4 RESOURCE_LOCK gpu)
       add_test(NAME viewer_wiring_status_icon_zoom_gpu
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
                 $<TARGET_FILE:anno1503> status_icon_zoom --gpu

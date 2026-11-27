@@ -4043,3 +4043,23 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **What we know:** Nothing read. ROADS-2b counts only the drag's own records (`apply.cpp`, kind-9 loop), an inference (L): the cap limits dragged tiles, and the neighbours are not dragged.
 - **How to resolve:** Read where the kind-9 apply (`0x100589a0`) or the road cursor (`0x1004b290`) enforces the 40-tile limit, relative to the reshaper call `0x1007cc40`; or drag a 40-tile road beside an existing one in the original and look at the neighbour.
 
+## OQ-908: How does P reach the pause, and what does the pause box's button do? (UI-KEYS-1, UI-PAUSE-1, 2026-11-27; OPEN)
+- **Question:** How does P stop the game and show the pause box? What does the box's "Continue game" button do,
+  on the press or on the release? Is the box modal, so that a press elsewhere on it is swallowed?
+- **What we know:**
+  - `docs/orchestration/tasks/ui-keys-1-draft.md` (on `task/UI-KEYS-1`) names P as case `0x10007441` of the kind-0
+    key switch, posting cmd `0x15` with argument `0x80`. Cmd `0x15` (`0x1000772e`) XORs that argument into
+    `[frame+0x16ec]` and marks a redraw (`0x10004290`) (D).
+  - **That attribution is now doubtful (UI-PAUSE-1 step 1):** bit `0x80` of `[frame+0x16ec]` gates the draw
+    `0x100054a0` (tested at `0x10005c02` and `0x1000b293`), which reads the cursor's tile and draws per tile. It
+    shows no box and calls no SetSpeed (D). Either case `0x10007441` is not P, or P's pause runs elsewhere.
+    UI-KEYS-1's behaviour (P pauses, the box shows) still matches the GOG shot `f15_pause` (P).
+  - The generic message box is read (`docs/re/ui.md` §9.4): shown by `0x1000c6a0` (mode 6), closed by `0x1000c8c0`.
+    The button's own press handler, inside the box object, was not found within the step's 1-hour limit.
+  - **Rebuild (assumption, L):** the button resumes on the press, as P does, and every other press while paused is
+    swallowed (`viewer.cpp`, UI-PAUSE-1 A).
+- **How to resolve:**
+  - P: read the kind-0 key switch's index table (the jump table at `0x10007cc4`/`0x10007c98`, key − `0x2c`) in
+    Ghidra under WSL or Linux, or make one Wine run that presses P and reads `[frame+0x16ec]` and `[frame+0x16f8]`.
+  - The button: read the box object's input methods, near `0x1003b450` and its vtable.
+

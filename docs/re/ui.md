@@ -1650,3 +1650,66 @@ caller, so the tracker stays pure), `Status::NoRoad = 3`, and the start-on-goal 
 start-on-goal read about 1 h (docs; the ported `sim::search` may already answer it), the sim packet
 3-4 h. The search cost per due report (every step
 while due, ≥ 500 ticks apart) is bounded by the walk searcher's own limits.
+
+
+## 12. The range display (UI-RANGE-1 stage A, 2026-11-27)
+
+Docs only. Evidence: GOG `AnnoWelt.dll`/`AnnoFrame.dll`/`AnnoDisplay.dll`/`View.dll` (hashes as in
+`docs/orchestration/evidence/win-nav-editions-1.md`; capstone linear sweep, private listings in `cache/range/`), HE frames
+of the owner's `he_01` (3:28, 3:55-4:19, 5:30-5:50) and `ui_10` (10:48-11:13), GOG Wine captures of UI-1/UI-PLACE-1.
+Labels: D disassembly, H HE pixels, P GOG capture pixels, L inference.
+
+### 12.1 What HE shows (H)
+
+| # | Rule | Evidence |
+|---|---|---|
+| 1 | While a Kontor or market is **selected**, every **island tile** whose owner is not that building's city is drawn darker; the city's own tiles keep their normal colour. | `he_01` 3:28 (`s3_market.png`) |
+| 2 | The dark set includes the **sea tiles inside the island's rectangle** (dark stepped diamonds off the coast); the open sea outside the island rectangle is never darkened. | `he_01` 3:28, 4:02 (bottom left) |
+| 3 | The lit edge is tile-stepped, the shape of the painted territory (the disc painter `AnnoWelt 0x10085840`, `ship-founding.md` 11.2), not a smooth circle. | `he_01` 3:28 |
+| 4 | **Combined range:** with a market placed, the lit area is the union of the Kontor's and the market's discs, i.e. all tiles of that city. Selecting either building shows the same lit set. | `he_01` 5:30-5:50 |
+| 5 | The same darkening shows while a **territory-bound building is armed** (market, 3:55-4:15) and while a **road** is armed (`ui_10` 10:48-11:13); it is gone once nothing is selected or armed (4:19). | `he_01` 3:55-4:19, `ui_10` |
+| 6 | The armed ghost's own range outline (green in HE, yellow `0xffff00` in GOG) is drawn **in addition**, centred on the footprint centre, so it moves with rotation (an odd footprint's centre shifts when w/h swap). Fully read in `BUILDINGSOBJECTS.md` part B §5.1 (3) (`AnnoFrame 0x100443c0`, half-width table 3.3); nothing new here. | §5.1 (3); `he_01` 3:32-4:21 |
+| 7 | Objects standing on dark tiles (trees, the forest) are darker too: the darkening applies to everything drawn on those tiles, not only the ground. The factor and whether it is a multiply, a blend or a palette shift are not measured (OQ-796). | `he_01` 3:28 (forest top left) |
+| 8 | **Other islands (GOG, P):** in the GOG capture (`r1` nothing selected vs `r2` the Kontor selected) the rocky land across the strait at the top right is darkened completely (1,950 of 1,950 sampled pixels, mean factor 0.637, the same as elsewhere), while the open sea and the city's own land are unchanged. That fits `range_dark`'s rule (every tile of another island is dark). Caveat: from the frame alone it is not proven that this land is a separate island rather than another part of the same island's rectangle. | GOG `r1`/`r2` |
+
+So the rule is a per-tile owner test against **one city**, not a distance test: "lit" = tile owner nibble (tile word bits
+25-28, `annowelt.md` §owner bits) == the city of the selected building, or of the armed tool's city. Which city an armed
+tool uses when the player has several cities on the island is **L** (the one under the pointer, as `City::Build` takes the
+footprint's owner, `0x10058890`).
+
+### 12.2 What GOG's code does and does not contain (D)
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Cursor draws: `tCursorAnlageDefault` draw `0x10048450`, `tCursorAnlageStrasse` draw `0x1004b7f0` (AnnoFrame) | Neither darkens anything: they draw the ghost, the radius outline `0x100443c0`, the bar, the yellow rectangle `0x10041050` (part B §5.1, §10.1 item 9). |
+| 2 | Every owner-nibble test (`and r, 0x1e000000` / `shr r, 0x19` + `and 0xf`) in `AnnoDisplay`, `View`, `AnnoFrame` | **None** in `AnnoDisplay` or `View`. The four in `AnnoFrame` (`0x10077208`-`0x10077390`) are the MD5 rounds of `0x100771b0` (constant `0xd76aa478`), not display. |
+| 3 | The same tests in `AnnoWelt` | `0x100830d7`, `0x1008329b`, `0x100834d9`, `0x100836f6`, `0x1008f7ee`-`0x1008fda2`: tile-word bitfield copies. `0x100854ab`, `0x100857da`, `0x100860e8`, `0x10086169`: the territory writers/painter (`annowelt.md`). `0x1008b0e2`-`0x1008b16b`: a sim pass that collects the owners of a tile's four corners into a per-chunk mask and posts event `0x17` for crop objects (type `0xe2`). `0x10080db5`-`0x100810ad`: an owner-set filter in a 2-step tile loop that calls city slot `+0xc8`. None of them is reached from a draw path that was read. |
+| 4 | Shadow brushes (`tBrushShadR` `0x10019f80`, `tBrush2ScreenShadR` `0x1001a560`, 5/8 brightness) | Used for `BSH_ALPHA` sprite shadows (`annodisplay.md` §3); no caller tied to a selection was found. |
+
+**GOG capture, 2026-11-27 (P, decisive; silent Wine run, new game, farthest zoom F2; shots `r1`-`r4` in the
+private `cache/orig/ui-range-1/`):** GOG **does** darken, exactly as HE: with the start Kontor selected (`r2`, the city
+panel open), with the market armed (`r3`, together with the yellow radius outline `0x100443c0`) and with the dirt road
+armed (`r4`), every island tile outside the city's territory is darker, the sea tiles inside the island rectangle as
+tile-stepped blocks; with nothing selected (`r1`) nothing is dark. **Factor (`r1` vs `r2`, the same view):** about 5/8
+per channel: of the sampled changed pixels, 27,022 fit 0.625 within one 5-bit step, 15,135 fit 0.75, 2,550 fit 0.5.
+That is the shadow brush's 5/8 (`tBrushShadR`, `annodisplay.md` §3) but not bit-exact through the capture path, so
+the layer is likely a shadow overlay per dark tile (L). Which GOG code draws it is still unread: the static search
+above found no direct owner test, so it goes through an accessor not traced here.
+
+**Conclusion before the capture (kept):** GOG has **no** owner-based darkening in its cursor draws or in any direct owner-nibble
+test of its display modules. Either GOG reaches the owner through an accessor inside the ground draw (not found in this
+pass), or **the darkening is a History Edition addition**. The GOG captures available cannot decide it: `f12_info_kontor_1302`
+and `p1_c_armed_1301` are at the closest zoom, where the whole screen lies inside the 24-tile range (P). The decisive check
+is one GOG Wine capture at the farthest zoom with a Kontor selected near the edge of its range (pre-authorized Wine run,
+about 30 min; OQ-795).
+
+### 12.3 What the rebuild has
+
+`TerritoryView` (`src/app/include/anno/app/territory_view.hpp`, published by `collect_territory_view` in `play.hpp`)
+already carries every island tile's owner and city, at the snapshot rate; the minimap and the status bar read it. No sim
+change is needed for stage B. Nothing draws the darkening yet.
+
+**B1 (2026-11-27):** `src/app` `range_view.hpp` decides it: `range_city(selection, armed tool, TerritoryView)` gives the lit
+city (island and owner value) or none, `range_dark` the per-tile predicate, `range_dark_count` the dev fact. The triggers are data
+(`RangeTriggers`: selected PRODTYPE 33-35, armed PRODTYPE 33-35, the armed road; OQ-797). The viewer reports `ui.range_city`
+and `ui.range_dark_tiles`; drawing is B2 (a per-pixel owner channel or the per-instance passes, decided by ORCH III).

@@ -17797,3 +17797,76 @@ UI lane, 2026-11-27, on the merged branch (cand12 + UI-HARVEST-ICON-1, `d5cdbc21
   executed, 0 failed. No C++ change (the script, its CMake registration, docs), so no WSL compile is needed.
 - **NOT_RUN:** a "fails before the fix" proof (there is no fix: the case documents intended behaviour); an automated
   pixel check (the screenshots were checked by eye: the sign with its flag above the roof at the closest zoom).
+
+## UI-RANGE-1 A — the range display, read — READY FOR REVIEW
+
+UI lane (this session, for ORCH III), 2026-11-27. Branch `task/UI-RANGE-1` on `refs/candidates/cand12` `446e7c1c`. Docs
+only: `docs/re/ui.md` 12, `docs/BUILDINGSOBJECTS.md` (G7 row, §10.1 note), OQ-767 narrowed, OQ-795/796 new, B draft
+`docs/orchestration/tasks/ui-range-1-b-draft.md`. Earlier range work checked first: none on `origin/task/UI-*` beyond
+UI-GHOST-1's radius outline (part B §5.1).
+
+**Findings:**
+1. **HE (pixels):** a selected Kontor/market, an armed territory-bound building or an armed road darkens every island tile
+   whose owner is not that city, sea tiles inside the island rectangle included; the open sea never; objects on dark
+   tiles (trees) too; gone when nothing is selected or armed. It is a per-tile owner test, so Kontor + market show their
+   combined range (he_01 3:28, 3:55-4:19, 5:30-5:50; ui_10 10:48-11:13).
+2. **The ghost's range outline** turning with rotation is already fully read (AnnoFrame `0x100443c0`, part B §5.1 (3)):
+   centred on the footprint centre, which moves when rotation swaps w/h. Nothing new.
+3. **GOG (disassembly):** no darkening in the cursor draws `0x10048450`/`0x1004b7f0`; no owner-nibble test at all in
+   `AnnoDisplay` or `View`; AnnoFrame's four hits are MD5 (`0x100771b0`); every AnnoWelt hit is sim or bitfield code
+   (addresses in `ui.md` 12.2). So GOG may not darken at all: OQ-795.
+4. **Rebuild:** `TerritoryView` already carries every tile's owner; no sim change is needed.
+
+**Evidence:** D = capstone linear sweep of the GOG DLLs (private listings and helper in `cache/range/`); H = he_01/ui_10
+frames; P = GOG Wine captures `f12_info_kontor_1302`, `p1_c_armed_1301` (closest zoom, inside the range: they cannot show
+darkening).
+
+**NOT_RUN:** a GOG Wine capture at the farthest zoom (the decisive check for OQ-795; pre-authorized, about 30 min, not
+done to keep this packet docs only); the darkening factor measurement (OQ-796); C++ gates (docs only, not required).
+
+**Decisions and reasoning:**
+- I stopped the static search at a time box: a ground-draw accessor could still exist, and one capture decides it more
+  cheaply than tracing the renderer.
+- B is split (B1 app + CPU reference, B2 GPU), because B2 touches render files and the factor is unmeasured.
+- OQ numbers 795-796 only, from the UI lane's range.
+
+**QUESTIONs:**
+- **For the owner, via ORCH III:** if GOG does not darken (OQ-795), should the rebuild show HE's darkening by default,
+  behind an option, or not at all?
+- **For ORCH III:** run the GOG Wine capture before B1 (recommended), or start B1 now with the trigger logic and keep the
+  draw behind the OQ-795 answer?
+
+### UI-RANGE-1 A, addendum (after ORCH III's review): the GOG capture
+
+- Silent Wine run (pre-authorized; PC quiet checked, after the cand12 build): new game, F8, F2 farthest zoom; the start
+  Kontor selected, then the market armed, then the dirt road armed (`cache/orig/ui-range-1/`, private).
+- **OQ-795 answered: GOG darkens exactly as HE** in all three cases, the sea inside the island rectangle included;
+  nothing selected, nothing dark. So it is the original's behaviour and needs no owner decision.
+- **OQ-796 narrowed:** about 5/8 per channel (0.625 fits 27,022 sampled changed pixels, 0.75 15,135), the shadow brush's
+  factor; not bit-exact through the capture path. The drawing code in GOG stays unread (OQ-767 answered in part).
+- ORCH III's nit fixed: ui.md 12.1 rows 6 and 7 back in order. B draft updated (no owner gate; factor 5/8).
+
+## UI-RANGE-1 B1 — which tiles the range display darkens (app only) — READY FOR REVIEW
+
+UI lane, 2026-11-27. Branch `task/UI-RANGE-1` (merges cand12 `c5af390c`). Scope as ORCH III approved: the lit-set logic,
+the triggers as data, two dev facts, unit cases and a wiring case from the default start view; no drawing (B2).
+
+- **Code:** `src/app` `range_view.hpp/.cpp`. `range_city(RangeInput, RangeTriggers, TerritoryView)` returns the lit city
+  (`RangeCity{island index, owner value}`) or none: the armed tool wins over the selection; the city is the owner of the
+  selected building's tile, or of the pointer tile for an armed tool; a neutral tile gives none. `range_dark` is the
+  per-tile predicate for either B2 path; `range_dark_count` feeds the fact. `RangeTriggers` (data): selected PRODTYPE
+  33-35, armed PRODTYPE 33-35, the armed road (`docs/re/ui.md` 12, GOG capture).
+- **Facts:** `ui.range_city` (`island:owner` or `none`), `ui.range_dark_tiles` (viewer.cpp, next to `tool.armed`).
+- **Tests:** six doctest cases (a selected Kontor; Kontor and market combined; an armed market over the selection, a
+  neutral and an off-island pointer; the armed road and the trigger list as data; nothing or an unlisted type; two cities
+  on one island) and `viewer_wiring_ui_range` (lan5, no `look`: the Kontor selected, Esc, the dirt road armed with the
+  pointer on the city).
+- **Gates (this PC, quiet; WSL after the render lane's check):** msvc build clean; `run_selected` over range, the
+  `viewer_wiring_ui_` scripts, the GOG oracle (`ANNO_UI_ORACLE_SHOTS`) and `anno_app_tests`: 443 selected, 439 executed,
+  0 failed, 4 skips (1 platform, 3 opt-in); the six range cases and `viewer_wiring_ui_range` among the executed. WSL GCC 13
+  / Clang 18 clean (444 + 99), after one fix: a `? 1 : 0` added to a `size_t` (`-Wsign-conversion`, GCC only). The gate's
+  name check refused a test name with a semicolon first; renamed.
+- **OQ-797** (every armed building? a neutral pointer tile) opened; a far-zoom pioneer-house GOG capture closes it.
+- **NOT_RUN:** a failure proof by mutation (the unit cases assert each trigger and the dark predicate directly); macOS.
+- **Decisions:** the armed tool wins over the selection, and the city comes from a tile's owner (no city lookup needed);
+  both are L and named in the header.

@@ -4,6 +4,16 @@
 
 namespace anno::app {
 
+ConstructionPanelState after_category_click(const ConstructionPanelState& state,
+                                            const std::string& category) {
+    // OQ-773: the original's tab handler (View.dll 0x1002bf90) was read as far as the gadget swap;
+    // that the grid group replaces the info panel's group is HE-observed (GOG unread past it).
+    ConstructionPanelState next = state;
+    next.category = category;
+    next.placement_open = false;
+    return next;
+}
+
 std::vector<ToolInput> turn_inputs(int turn) {
     const auto kind = turn > 0 ? ToolInput::Kind::Rotate : ToolInput::Kind::RotateBack;
     const std::int64_t steps = turn > 0 ? std::int64_t{turn} : -std::int64_t{turn}; // no -INT_MIN

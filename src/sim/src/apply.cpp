@@ -810,7 +810,7 @@ ApplyResult build(Env& env, const Command& c, const BuildCmd& cmd) {
             continue;
         }
         // The rewritten neighbours appended after the drag's own records do not count towards
-        // the drag cap (they are not dragged tiles).
+        // the drag cap (L, inferred: they are not dragged tiles; unread in the original, OQ-903).
         if (road_drag && chk.is_road && i < cmd.placements.size()) {
             if (road_count >= drag_cap) {
                 for (std::size_t j = i; j < placements.size(); ++j) {

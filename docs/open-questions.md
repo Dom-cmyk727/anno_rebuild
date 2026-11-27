@@ -4003,3 +4003,8 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Question:** the classifier remembers a straight's variant (`0x1007efd9`-`0x1007efee`, 2501-2504 folded to 2500). When the reshaper writes a straight back, does it restore that variant or the table's base id 2500/2520?
 - **What we know:** the rebuild keeps the tile's own straight id when the piece stays straight (L); a piece that becomes straight takes the base id.
 - **How to resolve:** follow the remembered variant byte (`[esp+0x13]`) to the output in `0x1007f2e0`-`0x1007f33c`.
+
+## OQ-903: Do the reshaper's neighbour rewrites count towards the 40-tile drag cap? (ROADS-2b, 2026-11-27; OPEN)
+- **Question:** The road drag caps a path at 40 tiles. When the reshaper appends re-lay records for existing neighbours, does the original count them towards the cap (so a 40-tile path beside existing roads loses its neighbour rewrites)?
+- **What we know:** Nothing read. ROADS-2b counts only the drag's own records (`apply.cpp`, kind-9 loop), an inference (L): the cap limits dragged tiles, and the neighbours are not dragged.
+- **How to resolve:** Read where the kind-9 apply (`0x100589a0`) or the road cursor (`0x1004b290`) enforces the 40-tile limit, relative to the reshaper call `0x1007cc40`; or drag a 40-tile road beside an existing one in the original and look at the neighbour.

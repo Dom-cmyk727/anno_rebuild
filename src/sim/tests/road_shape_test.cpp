@@ -105,7 +105,7 @@ TEST_CASE("road shape: laying beside an existing road rewrites the neighbour") {
     CHECK(r[1] == ShapedRoad{{1, 1}, 2527, 3}); // the neighbour: N+S+W, mask 13 -> T rotation 3
 }
 
-TEST_CASE("road shape: cobblestone stays cobblestone; a ramp connects but is not rewritten") {
+TEST_CASE("road shape: cobblestone stays cobblestone, and a ramp connects but is not rewritten") {
     const RoadAt w = world({{{1, 0}, {2510, 0}}});
     const auto r = anno::sim::reshape_road_path(kTable, {{0, 0}}, {2500}, w);
     REQUIRE(r.size() == 1);

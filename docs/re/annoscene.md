@@ -146,7 +146,8 @@ It does not prove that every arbitrary edited template must obey it.
 **P/U — comparison boundary.** Recounting our files confirms 465/429, not
 the co-developer's 464/428. As already measured in §5 step 1, our on-disk
 scan differs from GOG's built-in 428-name network list by
-Dschungel/D_080x080_0015_2B_Suedsee.scp. This is a concrete local difference;
+Dschungel/D_080x080_0015_2Ba_Suedsee.scp (corrected 2026-11-27: the built-in list at AnnoScene.dll file offset
+0x32288 holds `0015_2B_SUEDSEE`; both files are on disk). This is a concrete local difference;
 without his manifest it is **U** whether that is his missing file too.
 Do not infer his build's contents from our built-in list.
 

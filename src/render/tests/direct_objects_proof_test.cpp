@@ -319,7 +319,11 @@ TEST_CASE("RENDER-DIRECT-3 3a proof: a wrong instance (mutation control) exceeds
             return;
         }
     }
-    MESSAGE("skipping: no chunk with 2+ shadow instances found");
+    // Not a missing prerequisite (Single_01.sze is known, checked-in game data, measured by the
+    // tolerance test above to have 45,315 shadow instances across 1056 chunks) - a scene with no
+    // chunk of 2+ would mean the mutation control silently never ran, so this fails loudly.
+    FAIL("no chunk with 2+ shadow instances found on Single_01.sze - the mutation control did not "
+         "run");
 }
 
 TEST_CASE("RENDER-DIRECT-3 3a proof: the per-chunk scissor stops a spanning instance from "
@@ -396,5 +400,7 @@ TEST_CASE("RENDER-DIRECT-3 3a proof: the per-chunk scissor stops a spanning inst
             return;
         }
     }
-    MESSAGE("skipping: no chunk-spanning shadow instance found on Single_01.sze");
+    // Not a missing prerequisite (Single_01.sze is known, checked-in game data): a scene with no
+    // chunk-spanning shadow would mean the seam proof silently never ran, so this fails loudly.
+    FAIL("no chunk-spanning shadow instance found on Single_01.sze - the seam proof did not run");
 }

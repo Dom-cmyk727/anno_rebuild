@@ -574,9 +574,17 @@ class PlayRunner {
     /// Observable after synchronous `run_n`; the window never receives World.
     [[nodiscard]] std::uint64_t state_hash() const { return world_.state_hash(); }
     [[nodiscard]] std::uint32_t step_ms() const { return step_ms_; }
-    /// UI-KEYS-1: the world's host player (SimConfig::host_player, immutable): the issuer of a
-    /// single-process window's SetSpeedCmd, as the original's single player is its own host.
+    /// UI-KEYS-1: the world's host player (SimConfig::host_player, immutable).
     [[nodiscard]] sim::PlayerId host_player() const { return host_player_; }
+    /// UI-KEYS-1: who a speed key's SetSpeedCmd is issued as. In single player the window is its
+    /// own host (the original's single-player SetSpeed 0x1005a440 needs no host), so the host
+    /// player, whatever the local seat; in a multi-seat session only a local seat that is the
+    /// host speaks as the host, any other issues as itself and set_speed refuses it (NotHost),
+    /// as the original's multiplayer SetSpeed acts only on the host (0x1005e230, +0x3c8 =
+    /// server; docs/re/tick-loop.md). Reads set_local_player's seat: call it before start.
+    [[nodiscard]] sim::PlayerId speed_issuer() const {
+        return (!multiplayer_ || local_player_ == host_player_) ? host_player_ : local_player_;
+    }
 
   private:
     void loop();
@@ -612,6 +620,7 @@ class PlayRunner {
     /// sets step_ms_ for the next turn (turn_step_ms), so `--speed` holds until one does.
     std::uint32_t seen_speed_percent_ = 0;
     sim::PlayerId host_player_{};
+    bool multiplayer_ = false;
     std::uint32_t steps_ = 10;
     unsigned catchup_turns_ = 5;
     std::uint64_t index_ = 0;

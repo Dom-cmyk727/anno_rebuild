@@ -475,6 +475,7 @@ PlayRunner::PlayRunner(sim::World world, unsigned speed_percent, PlaySchedule* s
     step_ms_ = step.value_or(10);
     seen_speed_percent_ = world_.settings().speed_percent;
     host_player_ = world_.config().host_player;
+    multiplayer_ = world_.config().multiplayer;
     steps_ = sim::Timing{}.mp_steps_per_turn;
     {
         // UI-MINIMAP-1 B2: the first snapshot already carries the territory and the figures, so

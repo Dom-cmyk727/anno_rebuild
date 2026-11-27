@@ -61,6 +61,14 @@ are out of scope.
 **game ms per real ms = percent / 100 exactly, at all four speeds** (runner case over 7 turns each). No other
 constraint caps it: the sim steps any `step_ms`, and real time per turn does not change.
 
+**Who issues the speed (ORCH III review, 2026-11-27):** `PlayRunner::speed_issuer()`:
+- the host when the session is single-player (the window is its own host; the original's single-player SetSpeed
+  `0x1005a440` needs none) or when the local seat is the host;
+- otherwise the local player, which `set_speed` refuses (`NotHost`), as the original's multiplayer SetSpeed acts only
+  on the host (`0x1005e230`, `+0x3c8` = server; `docs/re/tick-loop.md`).
+
+That rule is read (D), so no OQ.
+
 ## Tests
 
 - A unit case per key: event → the command (or the pause call).

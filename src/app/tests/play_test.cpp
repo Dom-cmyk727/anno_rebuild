@@ -1508,6 +1508,28 @@ TEST_CASE("play: the tutorial's territory and minimap owners (UI-MINIMAP-1 B2)")
     CHECK(runner.snapshot()->map_figures->size() == figures.size());
 }
 
+namespace {
+/// UI-KEYS-1: a world with players 0 (the host) and 1, single- or multi-seat.
+anno::sim::World speed_world(bool multiplayer) {
+    anno::sim::ScenarioSpec spec;
+    spec.players.resize(2);
+    spec.players[0].id = anno::sim::PlayerId{0};
+    spec.players[1].id = anno::sim::PlayerId{1};
+    anno::sim::SimConfig config;
+    config.multiplayer = multiplayer;
+    auto made = anno::sim::World::create(spec, anno::sim::TypeRegistry::empty(), config);
+    REQUIRE_MESSAGE(made.ok(), (made.ok() ? std::string() : made.error()));
+    return std::move(made).value();
+}
+
+anno::sim::Command speed_cmd(anno::sim::PlayerId issuer, std::uint32_t percent) {
+    anno::sim::Command c;
+    c.issuer = issuer;
+    c.body = anno::sim::SetSpeedCmd{percent};
+    return c;
+}
+} // namespace
+
 TEST_CASE("play: UI-KEYS-1, the runner follows SetSpeedCmd and game ms per real ms is percent / "
           "100 at all four speeds") {
     // The runner's real time per turn is fixed (sim::Timing: mp_turn_real_ms), so the invariant
@@ -1518,14 +1540,12 @@ TEST_CASE("play: UI-KEYS-1, the runner follows SetSpeedCmd and game ms per real 
     CHECK(anno::app::turn_step_ms(400) == 40U); // ADAPTATION, single player (play.hpp)
     CHECK_FALSE(anno::app::turn_step_ms(0));
     CHECK_FALSE(anno::app::turn_step_ms(300));
-    anno::app::PlayRunner runner(empty_world(), 100);
+    anno::app::PlayRunner runner(speed_world(false), 100);
+    runner.set_local_player(anno::sim::PlayerId{1}); // --play's developer seat
     const anno::sim::Timing timing{};
     constexpr std::uint64_t kTurns = 7;
     for (const std::uint32_t percent : {50U, 200U, 400U, 100U}) {
-        anno::sim::Command c;
-        c.issuer = runner.host_player();
-        c.body = anno::sim::SetSpeedCmd{percent};
-        static_cast<void>(runner.post_command(std::move(c)));
+        static_cast<void>(runner.post_command(speed_cmd(runner.speed_issuer(), percent)));
         runner.run_n(1); // the turn that applies it still steps at the old speed
         CHECK(runner.step_ms() == anno::app::turn_step_ms(percent));
         const std::uint64_t before = runner.snapshot()->game_ms;
@@ -1535,4 +1555,31 @@ TEST_CASE("play: UI-KEYS-1, the runner follows SetSpeedCmd and game ms per real 
         CHECK_MESSAGE(game * 100 == real * percent, "percent " << percent << ": game " << game
                                                                << " ms in " << real << " real ms");
     }
+}
+
+TEST_CASE("play: UI-KEYS-1, a non-host seat's speed key is refused in a multi-seat session") {
+    // Single player: the window is its own host, whatever the local seat.
+    anno::app::PlayRunner single(speed_world(false), 100);
+    single.set_local_player(anno::sim::PlayerId{1});
+    CHECK(single.speed_issuer() == anno::sim::PlayerId{0});
+    // Multi-seat, local seat 1 (not the host): it speaks as itself and set_speed refuses it,
+    // as the original's multiplayer SetSpeed acts only on the host (0x1005e230).
+    anno::app::PlayRunner client(speed_world(true), 100);
+    client.set_local_player(anno::sim::PlayerId{1});
+    CHECK(client.speed_issuer() == anno::sim::PlayerId{1});
+    const auto id = client.post_command(speed_cmd(client.speed_issuer(), 200));
+    client.run_n(2);
+    const auto outcome = client.outcome(id);
+    CHECK(outcome.state == anno::app::CommandOutcome::State::Refused);
+    CHECK(outcome.status == anno::sim::Reject::NotHost);
+    CHECK(client.step_ms() == 10);
+    CHECK(client.snapshot()->speed_percent == 100);
+    // Multi-seat, local seat 0 (the host): applied.
+    anno::app::PlayRunner host(speed_world(true), 100);
+    host.set_local_player(anno::sim::PlayerId{0});
+    CHECK(host.speed_issuer() == anno::sim::PlayerId{0});
+    static_cast<void>(host.post_command(speed_cmd(host.speed_issuer(), 200)));
+    host.run_n(2);
+    CHECK(host.step_ms() == 20);
+    CHECK(host.snapshot()->speed_percent == 200);
 }

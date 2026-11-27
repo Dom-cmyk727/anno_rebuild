@@ -1790,7 +1790,7 @@ void Viewer::handle(const SDL_Event& e) {
             // 100/200/400/50). The sim refuses 400 in multiplayer (is_original_speed).
             if (play_ != nullptr) {
                 sim::Command c;
-                c.issuer = play_->runner().host_player();
+                c.issuer = play_->runner().speed_issuer();
                 c.body = sim::SetSpeedCmd{speed_key_percent(e.key.key).value_or(100)};
                 latest_receipt_ = play_->runner().post_command(std::move(c));
                 update_title();

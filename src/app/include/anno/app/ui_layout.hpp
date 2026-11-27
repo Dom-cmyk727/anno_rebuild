@@ -93,6 +93,10 @@ struct UiElement {
     int text_dy = 0;
     bool clip_box = false;
     std::optional<std::uint32_t> negative_rgb;
+    /// UI-PLANK-1: `text_section <name>`, the Texte.dat section a text box shows a line of
+    /// (`plank_text`: TOOLTIP:BAUMENU_EX, the line of the open category). Empty for every other
+    /// element.
+    std::string text_section;
 };
 
 /// One `click` line of hud.txt: either a rectangle centre (`click <name> pos <x> <y>`) in drawable

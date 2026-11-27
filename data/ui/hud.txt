@@ -60,6 +60,13 @@ element lupe_minus pos 826 153 size 19 21 file toolgfx/fenster.tex access KARTEP
 element karteplus_access size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 40 method inc-size
 element karte_nordung size 256 133 file toolgfx/fenster.tex access KARTE_NORDUNG tex_id 52 method inc-size
 element plankegross pos 783 252 size 241 48 file toolgfx/fenster.tex access PLANKEGROSS tex_id 1019 anchor right panel player,player_list,info,main_menu method sprite-sad shot r2_construction_public
+# UI-PLANK-1 (docs/re/ui.md 2.4, "Banner text"): the text gadget over the plank (View.dll class 0xb1c
+# 241 x 39, 0x1002bd7e-0x1002be23), the open category's line of TOOLTIP:BAUMENU_EX (tab handler
+# 0x1002bf90, 0x1002c0b8). pos x/size w are the gadget's; centring it puts the text's middle on the
+# shot's (white glyph box 843..962, middle 902.5). pos y: the shot's first white row 264 minus 3, the
+# info names' offset (info_name 316 vs 319); font as the info names (OQ-905). Measured on
+# r2_construction_public ("Public buildings").
+element plank_text pos 783 261 size 241 25 file toolgfx/mainsmall.zei align centre anchor right text_section TOOLTIP:BAUMENU_EX method glyph-match shot r2_construction_public
 # UI-BUILDCAT-1: the construction menu's eight category tabs, viewbautab_<k> for construction.txt
 # `index` k+1. View.dll 0x1002bb4f: VIEWBAUTAB, one 42 x 46 gadget per category (0x1002bbea),
 # texture 0x198 = VIEWBAUTAB + 2k (0x1002bc88 add esi, 2), loop cmp ebp, 8 (0x1002bc8b). Selected =

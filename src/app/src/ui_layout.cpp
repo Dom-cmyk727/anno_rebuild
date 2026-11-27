@@ -389,6 +389,10 @@ formats::Result<HudLayout, std::string> parse_hud_layout(const std::string& text
                     if (!tok.more())
                         return fail(line_no, "shot: missing value");
                     e.shot = opt_str(tok.take());
+                } else if (key == "text_section") {
+                    if (!tok.more())
+                        return fail(line_no, "text_section: missing value");
+                    e.text_section = tok.take();
                 } else if (key == "align") {
                     if (!tok.more())
                         return fail(line_no, "align: missing value");

@@ -334,6 +334,16 @@ if(ANNO_BUILD_TESTS)
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # UI-CATNAV-1: a category tab click with a building armed shows that category's grid and
       # keeps the building armed (ui.panel, tool.armed).
+      # UI-PLANK-1: the plank names the open category through all eight tabs and keeps it when a
+      # building or the road is armed (docs/re/ui.md 2.4).
+      add_test(NAME viewer_wiring_ui_plank
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_plank
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_plank PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       add_test(NAME viewer_wiring_ui_catnav
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
                 $<TARGET_FILE:anno1503> ui_catnav

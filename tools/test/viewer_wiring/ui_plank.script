@@ -1,0 +1,41 @@
+# UI-PLANK-1: the construction panel's plank names the open category (TOOLTIP:BAUMENU_EX by tab
+# index, View.dll 0x1002bf90; docs/re/ui.md 2.4), from the default start view (no look). Arming a
+# building or the road leaves it. ui.plank_text writes spaces as '_'.
+resize 1024 768
+wait frames 5
+key b
+wait frames 5
+expect fact ui.category == public
+expect fact ui.plank_text == Public_buildings
+screenshot plank_public
+click_px 770 373
+wait frames 3
+expect fact ui.plank_text == Squares,_Streets
+click_px 770 418
+wait frames 3
+expect fact ui.plank_text == Farms,_Plantations
+click_px 770 463
+wait frames 3
+expect fact ui.plank_text == Workshops
+click_px 770 508
+wait frames 3
+expect fact ui.plank_text == Coastal_buildings
+click_px 770 553
+wait frames 3
+expect fact ui.plank_text == Pits,_Mines
+click_px 770 598
+wait frames 3
+expect fact ui.plank_text == Military_installations
+click_px 770 643
+wait frames 3
+expect fact ui.plank_text == Ornamentals
+# Arm the dirt road: the info panel shows, the plank keeps the category.
+click_px 770 373
+wait frames 3
+click_px 833 330
+wait frames 3
+expect fact tool.armed == 2520
+expect fact ui.panel == info
+expect fact ui.plank_text == Squares,_Streets
+screenshot plank_roads_armed
+quit

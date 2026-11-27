@@ -18135,3 +18135,36 @@ GELAENDE records end up empty - not drawing id 5.
   zero-risk hardening, not scope creep.
 
 READY FOR REVIEW.
+
+## CI-SPEED-1 — a time limit on every CI job — READY FOR REVIEW
+
+UI lane, 2026-11-27. Branch `task/CI-SPEED-1` on origin/main `62f67abc`; packet `docs/orchestration/tasks/ci-speed-1.md`.
+Hosted CI only, no PC use.
+
+- **Change:** `.github/workflows/ci.yml` gets one job-level `timeout-minutes` line per job, right after `runs-on`.
+  Nothing else changes: `gate`'s name, `needs` and logic are untouched, and there is no `concurrency`.
+- **Measured** over the 60 most recent completed `ci.yml` runs (any branch or event). Only `success`/`failure` jobs
+  count. Job time is `completedAt - startedAt` (runner time). The key is the job name up to ` (`. A matrix key takes
+  its slowest entry. Every key has at least 20 counted jobs, so `--limit` stayed at 60.
+
+  | Job key | Counted jobs | Longest (min) | From run | 1.5 × longest | `timeout-minutes` |
+  |---|---|---|---|---|---|
+  | `changes` | 60 | 0.5 | 45981463030 | 0.8 | 5 |
+  | `lint` | 39 | 1.2 | 46060977838 | 1.8 | 5 |
+  | `test` | 78 | 6.2 | 46060977838 (`windows-latest`) | 9.2 | 10 |
+  | `build-macos` | 39 | 3.2 | 46060977838 | 4.8 | 5 |
+  | `cpp` | 195 | 50.7 | 46024381781 (`windows-msvc`) | 76.1 | 80 |
+  | `cpp-format` | 39 | 0.4 | 44901522840 | 0.6 | 5 |
+  | `gate` | — | — | — | — | 10 (packet) |
+
+  Formula: `max(5, min(90, ceil(1.5 × longest / 5) × 5))`. The 90 cap applies to no key.
+- **Chain check:** `changes` 5 + `cpp` 80 + `gate` 10 = 95 min of limits, inside `land.py`'s 120 min, which leaves
+  about 25 min for queueing.
+- **Decisions and reasoning:**
+  - I set the values the formula gives, with no rounding up beyond it. `build-macos` (4.8 → 5) has the least margin
+    over 1.5 ×. A slow macOS runner or a cold toolchain install could hit it. If one does, the job fails and `gate`
+    fails, which is the intended outcome. The fix then is a new measurement, not a silent raise.
+  - The measurement script was run locally, not committed: the packet asks for the table, not a tool.
+  - **EGM:** `/egm:egm-lite` cannot be run from this session. Its skill is marked user-invoked only, and the Skill tool
+    refused it. The packet was already EGM-reviewed by the orchestrator. No reviewer subagents were started.
+- **CI:** see the orchestrator message (run id on the exact head).

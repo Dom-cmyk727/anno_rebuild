@@ -26,6 +26,7 @@ jobs:
     # ubuntu-latest moved to ubuntu-26.04 (GCC 15.2) on 2026-11-19 and broke the -Werror build
     # (CI run 44493276095). Moving to a newer image is its own change.
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     outputs:
       code: ${{ steps.classify.outputs.code }}
     steps:
@@ -69,6 +70,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -87,6 +89,7 @@ jobs:
       matrix:
         os: [ubuntu-24.04, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -98,6 +101,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: macos-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -142,6 +146,7 @@ jobs:
             cxx: clang++
     name: cpp (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 80
     env:
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
@@ -266,6 +271,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       # Pinned to the version used locally (formatting differs between versions).
@@ -282,6 +288,7 @@ jobs:
     if: always()
     needs: [changes, lint, test, build-macos, cpp, cpp-format]
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - shell: bash
         env:

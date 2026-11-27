@@ -17574,8 +17574,7 @@ in `docs/adr/0007-direct-rendering.md`'s work list ("covers OQ-775"). No C++ tou
   all 3 pass (these exercise the surrounding code the comment sits next to; no behaviour changed to test
   directly, since the discard condition itself is unchanged).
 - `viewer_wiring_ui_ghost`/`ui_ghost_world`/`ui_ghost_pixel_check`/`ui_ghost2`/`ui_ghost2_occupied`/
-  `ui_ghost2_pixel_check`: NOT_RUN yet - held per ORCH III's PC-sharing instruction (UI lane building); will run
-  on "PC free" and this entry stands as READY FOR REVIEW pending that result, per ORCH III's own message.
+  `ui_ghost2_pixel_check`: run on "PC free" - **6/6 passed**.
 
 **Decisions and reasoning:**
 - Did not add a GPU test for "no change": the discard condition is byte-identical (`frame.enhanced != 0u` still
@@ -17584,4 +17583,4 @@ in `docs/adr/0007-direct-rendering.md`'s work list ("covers OQ-775"). No C++ tou
 - Chose a one-line shortcut comment over any structural change, per ORCH III's explicit decision and ponytail
   (the smallest complete change: a documented, reasoned no-op).
 
-READY FOR REVIEW (pending the viewer_wiring run on PC free).
+READY FOR REVIEW.

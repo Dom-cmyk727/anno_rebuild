@@ -16,7 +16,9 @@ describe tools and environments; the newer evidence contract governs acceptance.
 **Owner rules, 2026-11-27 (every orchestrator, executor and subagent; details in `docs/orchestration/TASKS.md`):**
 always use [ponytail](https://github.com/DietrichGebert/ponytail) (it never overrides the test/evidence rules here);
 long hardware-heavy tests only after big steps or bundles, RAM/CPU-heavy on the Mac executor, CPU/GPU-heavy on the
-Windows executor; advisor result review only after large steps or bundles.
+Windows executor; advisor result review only after large steps or bundles; use Google's
+[Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model) plugin (EGM): the orchestrator runs
+`/egm:egm-review` on plans and packet designs, executors use `/egm:egm-lite` and start no Goldfish reviewers.
 
 ## What this project is
 A clean-room reimplementation of ANNO 1503 (Max Design / Sunflowers, 2002; GOG "A.D." 2.0.0.5 build, binaries dated 2006-07-21, 32-bit x86, MSVC 6) as a native 64-bit application for **Windows and Linux**, written in **C++20** (owner decision 2026-10-17, `docs/adr/0001-cpp20.md`; the earlier Rust code in `crates/` is the reference implementation until every part is ported, then removed). Goal: the same game, stable, with robust deterministic multiplayer, quality-of-life features and modern performance. macOS is a development host only, never a target.

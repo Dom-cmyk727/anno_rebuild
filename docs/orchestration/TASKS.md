@@ -101,6 +101,16 @@ PC.**
 - **Advisor review only after large steps.** A result review by the advisor model happens only after a large
   development step or task, or a bundle of smaller ones; never per small packet. The orchestrator's review at handover
   (rule of 2026-11-12) is unchanged.
+- **EGM is mandatory (owner, 2026-11-27, second message).** Every orchestrator and executor uses Google's
+  [Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model) plugin. Claude Code:
+  `claude plugin marketplace add google/elephant-goldfish-model`, then `claude plugin install egm@egm`. Codex:
+  `codex plugin marketplace add google/elephant-goldfish-model`, then `codex plugin add egm@egm`. Start a new session
+  after installing. The owner's scope:
+  - **The orchestrator** runs `/egm:egm-review` with fresh Goldfish reviewers on every plan and every packet design
+    before dispatch.
+  - **Executors** use `/egm:egm-lite` for their own work and start no Goldfish reviewers, so the 2026-11-12 rule (no
+    executor-side reviewer subagents, small packets) stands.
+  - EGM, like ponytail, never removes a test, check or evidence that the project rules require.
 
 ## What moved out of this board (2026-11-10)
 

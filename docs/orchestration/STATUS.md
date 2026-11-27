@@ -4,7 +4,122 @@ A one-page view of the current work, for the owner and the co-developer. The tas
 [`TASKS.md`](TASKS.md) holds the full instructions and [`REPORTS.md`](REPORTS.md) the executors' reports. This page only
 says who is doing what, where the work is, and what it waits on.
 
-**Last updated:** 2026-11-17, by the Claude Code orchestrator:
+**Last updated:** 2026-11-27, by the Claude Code orchestrator (ORCH III):
+- **Plan [plan-2026-11-27.md](plan-2026-11-27.md)** (owner request; independent review ACCEPT WITH CHANGES, applied).
+  Render lane "anno rendering executor windows": W1 CAND12-PATCH-SUB-1, then RENDER-DIRECT-2a, PICTURE-IDS-1,
+  RENDER-DIRECT-2c, 2d (2d waits for the owner on OQ-727). UI lane "Executor Job Status und Shared Folder":
+  UI-RANGE-1 A, B, UI-PLANK-1. The Mac is away; Mac-lane work is not dispatched.
+- **Candidate 12 `refs/candidates/cand12` = `446e7c1c`:** candidate 11 + UI-GHOST-2 (with ROADS-0/1/3, UI-GHOST-1,
+  BUILDINGS-REF-2) + GATE-2a + FLAKE-RESIZE-1 + WATER-SUBMERGED-1 + `main` `2bba18e3`; UI-CATNAV-1 is stacked next.
+- **The owner, 2026-11-27:** asked whether one full game-file run on this PC (with GATE-2a's retry of refused
+  tests) may stand in for the Mac's run so this bundle lands, the owner answered "Yes, PC run lands it" (bundle B0
+  only).
+- **Candidate 13 `refs/candidates/cand13` = `aeb65424`** holds every accepted packet (candidate 12, UI-CATNAV-1,
+  UI-HARVEST-ICON-1 B/C + R1, UI-RANGE-1 A + B1, ROADS-2a + 2b, CAND12-PATCH-SUB-1, RENDER-DIRECT-2a, PICTURE-IDS-1).
+  The owner, asked whether all of it lands with one PC run: "All in one PC run"; the forester check: "Yes, passed".
+  Full PC run 2,892 executed, 0 failed after the F4 coordinator-staging flake (20/20 alone), GOG compares 5/5, WSL
+  clean; advisor bundle review done ([review](reviews/2026-11-27-candidate-13-review.md)). **LANDED** 2026-11-27:
+  `main` `2bba18e3` → `aeb65424` through `land.py` (`land/cand13`, gate green); GitLab and the share mirrored. The
+  eight `refs/candidates/*` (all ancestors of `main`) are still on origin: their deletion waits for the owner's OK.
+  Accepted after it, for the next bundle: RENDER-DIRECT-2c, UI-PLANK-1 A.
+- **Owner rules of 2026-11-27** (ponytail for everyone, heavy tests per bundle by hardware, advisor reviews bundles
+  only) are in TASKS.md and on `main` `2bba18e3`.
+
+Earlier (2026-11-21, by the Windows orchestrator):
+- **2026-11-20 (Windows orchestrator takeover; targeted unfreeze for Candidate 10):**
+  - **`UI-MAGNIFIER-MAC-1` ACCEPTED WITH NOTES** (`task/UI-MAGNIFIER-MAC-1`, code `cbfa8b1a`, report `e2e4b617`,
+    exact-head CI `44713929677` 12/12 green, base Candidate 10 `95897a55` + `origin/main` `a6468efd` CI pin;
+    independent orchestrator review: [`reviews/2026-11-20-ui-magnifier-mac-1-review.md`](reviews/2026-11-20-ui-magnifier-mac-1-review.md)).
+    - **OQ reservations:** OQ-795..797 reserved for `UI-MAGNIFIER-MAC-1` (unused; next free Windows/UI OQ is **798**).
+    - **Fix & evidence:** scales all 7 raw-pixel dev-script verbs (`*_px`, `wheel N X Y`) and `act.resize` by
+      `1/density`, matching `window_point`, `ANNO_VIEW_SIZE`, and `resize_at_`, and adds `hidden_`/`retry_at_`
+      transition/no-frame abort diagnostics; Windows PC MSVC Release + RTX 4090 gate (`111/111`, 8/8 required
+      contracts including all 6 UI oracles), `anno_app_input_tests --test-suite=dev_script` (`13/13`, 439/439),
+      WSL GCC 13/Clang 18 warnings, `clang-format 23.1.3`, and CI `44713929677` (`12/12`) all pass.
+  - **Candidate 11 `refs/candidates/ui-magnifier-mac-1` = `e2e4b617`** (`e2e4b617f6a3e7e748984102ec591e007a096d7b`,
+    tree `e1297ea2b060da61c80e1648bf1afd0233522e19`): stacks `UI-MAGNIFIER-MAC-1` on Candidate 10 (`95897a55`, covering
+    Candidates 6–10) with `origin/main` (`a6468efd`) merged in; exact-head CI `44713929677` 12/12 green.
+    - **The Windows PC's part PASSED (2026-11-20):** MSVC Release, RTX 4090 + Radeon iGPU, game files + GOG/HE UI
+      oracle shots (`ANNO_DEV_GOODS_TONS` unset): all 12 required contracts (`viewer_wiring_ui_magnifier_range`,
+      `_stepped`, `viewer_wiring_ui_buildcat`, `ui_mock_matches_oracle`, `live_screen_matches_oracle`,
+      `ui_dynamic_draw_check`, `info_panel_gog_compare`, `info_panel_rotation_gog_compare`,
+      `selected_house_pixel_check`, `ui_panels_match_gog`, `layer_check_contract`, `layer_check_self_test`) PASS 1/1
+      each; main selection `COUNTS: selected=378 executed=377 failed=0 empty=0 skipped=1 (opt-in=1 gpu=0)` `VERDICT: PASS`
+      (log `cand11-win-pc-01.log` sha256 `41a27ae7...a22d74`); WSL `tools/check_unix_warnings.sh` (GCC 13.3.0 & Clang
+      18.1.3, 435 w/ GPU + 92 w/o GPU, both negative controls caught) clean (`cand11-unix-warnings.log` sha256
+      `25eab9de...91598c2`).
+    - **Waiting for the Mac's `GATE-RUN ui-magnifier-mac-1`** on `refs/candidates/ui-magnifier-mac-1` (`e2e4b617`,
+      tree `e1297ea2`): once green (with the reconciled 10 named-adapter RTX/Radeon GPU skips), lands on `main` via
+      `tools/orch/land.py` under the standing rule.
+  - **`ROADS-1` (`SIM-ROADS-1`) ACCEPTED WITH NOTES** (`task/ROADS-1`, merge `82111b9e` with `origin/main` `a6468efd`,
+    code+docs `ed040a55`, report `45dc2c3e`, exact-head CI `44730763633` 12/12 green; independent orchestrator review
+    & Fix Round 1 re-review: [`reviews/2026-11-20-roads-1-review.md`](reviews/2026-11-20-roads-1-review.md)):
+    - **ADR 0006 header extension tag 2 (`road_rules`):** reserved & implemented (`kStateHashVersion = 139`, `0` pins
+      moved, `0` fixture changes, `tools/lint_sim_allow.txt` entry authorized; next free header extension tag is **3**).
+    - **Closure & evidence:** F1–F8 all closed (`lint_sim: ok`, `clang-format 23.1.3` clean, `Reject::PrefixStopped`,
+      road-scoped `stop_at_first_refusal` & `drag_cap`, `out.is_road` guards, all 5 fallback toggles, tag-2 `HashTree`
+      & corrupt-load refusal tests, 7 mutation controls, 8-row Acceptance Table); local Release gates 0 failed / 0
+      refused (`pins-roads1-r2.log` 1,711/1,711 executed, 3 pre-existing Windows symlink `ship start:` skips passing on
+      Linux CI; `roads1-r2-contracts.log` 4/4 + 1/1; `roads1-r2-app.log` 366/366; `roads1-r2-gpu.log` 134/134; WSL
+      GCC 13.3 / Clang 18.1.3 clean). 3 minor non-blocking notes recorded in the review.
+    - **Stacking:** descends from `BUILDINGS-REF-2` (`60a26f0d`) / Candidate 10 (`95897a55`) + `origin/main` (`a6468efd`);
+      queued for the next candidate wave **after** Candidate 11 (`refs/candidates/ui-magnifier-mac-1`, `e2e4b617`) lands.
+  - **`ROADS-0` (`PICTURE-OBJECTS-1`) ACCEPTED WITH NOTES** (`task/ROADS-0`, code+docs `b0b022c6`, merge `5bd871ff`
+    with `origin/main` `a6468efd`, report `944d317f`, exact-head CI `44843845461` 12/12 green; independent orchestrator
+    review & Fix Round 1 re-review: [`reviews/2026-11-21-roads-0-review.md`](reviews/2026-11-21-roads-0-review.md)):
+    - **Scope & OQs:** `src/sim/`, `src/render/`, and `fixtures/` untouched (`kStateHashVersion = 139`, sea passes
+      untouched); reserved OQ range `775–779` unused (no new OQs opened).
+    - **Closure & evidence:** F1–F2 closed (`clang-format 23.1.3` exit 0, `459/459` app + 6 UI oracles +
+      `viewer_wiring_roads_picture_objects`, `15/15` RTX 4090 GPU, `211/211` render, WSL GCC 13 / Clang 18 clean,
+      exact-head CI `44843845461` 12/12 green including `cpp (linux-clang-asan)`, 4-row Acceptance Table in `REPORTS.md`).
+      2 minor non-blocking notes recorded in the review.
+    - **Stacking:** descends from `BUILDINGS-REF-2` (`60a26f0d`) / Candidate 10 (`95897a55`) + `origin/main` (`a6468efd`);
+      queued for the next candidate wave **after** Candidate 11 (`refs/candidates/ui-magnifier-mac-1`, `e2e4b617`) lands.
+  - **`ROADS-3` (`UI-ROADS-1`) ACCEPTED WITH NOTES** (`task/ROADS-3`, prereq merges `280141a0` `ROADS-0` +
+    `024091c2` `ROADS-1` + `09a7e53c` `UI-GHOST-1`, feature `56c7cbfa`, skip-fix+report `7288379f`, exact-head CI
+    `44904803422` 12/12 green; independent orchestrator review:
+    [`reviews/2026-11-21-roads-3-review.md`](reviews/2026-11-21-roads-3-review.md)):
+    - **Scope & OQs:** read-only `World::check_build_path`, `--road-rules on|off` (default `on` in `--play`, compiled
+      `RoadRules{}` default `0`), `RoadVariantDeck` (`HEAD[11]` UI-side parity), `plan_road_ghost` (solid affordable
+      prefix, 699/700 ms blinking unaffordable tail, `0xffff00` 1x1 refusal box, no radius/fertility), `DevInput`
+      L-drag (`sim::is_land_road`, `drag_cap`), kind-9 prefix commit staying armed, right-click disarm, `buildv`/`buildcv`.
+      `kStateHashVersion = 139`, `0` fixture diffs, `0` pins moved, reserved OQ range `785–789` unused.
+    - **Evidence:** `lint_sim: ok`, `clang-format 23.1.3` exit 0 (24 C++ files), `pins.log` 1,713/1,713 executed (0
+      failed / 0 refused / 0 pins moved), `gate-msvc-app.log` 500/500 + 12/12 required contracts (6 UI oracles +
+      `roads_picture_objects` + `ui_ghost*` + `ui_roads*`), RTX 4090 `gate-msvc-gpu.log` 2/2 + `ui_roads --gpu` PASS,
+      WSL GCC 13.3 + Clang 18.1.3 clean, post-skipfix no-assets (`required-asset=2 other=0`) + 12/12 with-assets PASS,
+      exact-head CI `44904803422` 12/12 green. 2 minor non-blocking notes recorded in the review.
+    - **Stacking:** already stacks `ROADS-0` + `ROADS-1` + `UI-GHOST-1` on `BUILDINGS-REF-2` / Candidate 10 +
+      `origin/main` `a6468efd`; queued for the post-Candidate-11 candidate wave.
+  - **`UI-GHOST-2` ACCEPTED WITH NOTES (2026-11-21, Swarm worker `win-exec-ui`, independent orchestrator audit):**
+    `task/UI-GHOST-2` (`825ad577`; merge `f08e4ab0` over accepted `ROADS-3` `7288379f` + `ROADS-0` `944d317f` + `ROADS-1`
+    `45dc2c3e` + `UI-GHOST-1` `7a51050d` + `origin/main` `a6468efd`, zero `src/sim/` / `fixtures/` / `open-questions.md`
+    diff, reserved OQs `790–794` unused). Ephemeral render-layer `ObjectsPatch` suppresses flag-`0x20` objects under
+    valid, phase-0 unaffordable, and drawn road ghosts while preserving flag-`0x10` rocks via `overwrites()`; yellow
+    `0xffff00` refusal rectangle and opt-in default-OFF `--occupied-outline` ADAPTATION verified on CPU (`427/427`
+    app/UI + `220/220` render), RTX 4090 GPU (`20/20` + `ui_ghost2` / `ui_ghost2_occupied`), WSL GCC 13.3 + Clang 18.1.3,
+    and exact-head GitHub Actions CI `44951265341` (`12/12` `success`). Review:
+    [2026-11-21-ui-ghost-2-review.md](reviews/2026-11-21-ui-ghost-2-review.md). Non-blocking notes: prefer
+    `scene.generation()` over raw pointer compare in `Viewer::ghost_update_patch`; check `patch_submerged_pipe`
+    interaction when stacking `WATER-SUBMERGED-1`; schedule the two `6.84 GiB` digest corpus tests in the clean
+    post-Candidate-11 PC gate.
+  - **`GATE-2a` ACCEPTED WITH NOTES (2026-11-21, Swarm worker `win-exec-gate`, independent orchestrator audit):**
+    `task/GATE-2a` (code+tests+docs `7d2797a1`, `REPORTS.md` `74f087ab`, from `origin/main` `a6468efd`; `7` files changed
+    across `tools/test/` and `docs/testing/README.md`, zero `src/` / `fixtures/` / `TASKS.md` / `STATUS.md` edits;
+    exact-head GitHub Actions CI `44957444089` `12/12` `success`). Adds `REFUSED` (`exit 10`) classification with real-failure/sanitizer
+    precedence (`1`/`4` > `10`), automatic serial `-j 1` retry under `== retry refused <name>` + `--no-retry-refused` +
+    `COUNTS (after retry)` + `RETRIED: <name> passed`, `recorded_verdict` retry support, and `wsl_gate.sh` `lane_summary()`;
+    verified with `ctest_verdict_test.py` (`29/29`), `workflow_test.py` (`35/35`), real-log re-reads (`canonical-gate.log`
+    `6` refused / `0` failed, `wsl-play-live-1a-sim.log` `3` refused / `0` failed), live MSVC Release `ANNO_TEST_STOP_MB=999999`
+    (`rc=10` & normal `PASS`), deliberate precedence (`1`/`4`), and WSL `bash -n` (`LF`-only). Review:
+    [2026-11-21-gate-2a-review.md](reviews/2026-11-21-gate-2a-review.md). Completes the owner-queued **`2, go`** Windows run
+    (`UI-GHOST-2` -> `GATE-2a`).
+  - **Idle / Next Windows queue:** **`RENDER-DIRECT-2`** (ADR 0007 stage 2, pending packet draft). Candidate 11
+    (`refs/candidates/ui-magnifier-mac-1`, `e2e4b617`) still waits on the Mac's `GATE-RUN ui-magnifier-mac-1` before
+    landing on `main`; post-Candidate-11 Windows branches (`ROADS-1`, `ROADS-0`, `ROADS-3`, `UI-GHOST-2`, plus `GATE-2a`)
+    are ready for the next candidate/landing wave.
+
+Earlier updates (2026-11-17 to 2026-11-19, by the Claude Code orchestrator):
 - **`main` is `4dfdd9b7`** (2026-11-17, 09:40): RENDER-DIRECT-1a and LAYER-CHECK-1 landed through `land.py`
   (`land/atlas-layers`, gate run 44038235036, green) under the owner's standing rule. Verified as
   `origin/main`; `refs/candidates/atlas-layers` is deleted; GitLab and the share are mirrored. Next in line:
@@ -170,6 +285,106 @@ says who is doing what, where the work is, and what it waits on.
   order?", the owner answered "Yes". They run in the UI lane, then UI-RANGE-1. Also, asked "Delete the public
   task branch with the data table after landing, and recreate it clean?", the owner answered "Yes, clean it
   up": `task/BUILDINGS-REF-1` is recreated as one clean commit.
+- **BUILDINGS-REF-2 done** (UI lane, docs, `task/BUILDINGS-REF-2` `60a26f0d`): roads, built-over rules, selection
+  (BUILDINGSOBJECTS part B section 10, gaps 16-20, OQ-764..772; UI-CATNAV-1 uses 773-774, the next free number
+  is 775). **The owner's go, 2026-11-19:** asked "Go for ROADS-0, ROADS-1, ROADS-3 and UI-GHOST-2, in that
+  order?", the owner answered "Yes, go": runtime tile objects and roads in the picture; the original's road
+  rules in the sim; the L-drag road UI; the ghost hiding built-over objects. UI-SELECT-1, UI-RANGE-1, ROADS-2
+  and ROADS-5 are not approved yet.
+- **The owner's test ui_10 (2026-11-19, combined build `612f0940`)**: the Kontor placement, range, rotation and
+  ghost work. Findings: the UI lane's ui_10 report (kept outside the repo with the video). Dispatched:
+  - **WATER-SUBMERGED-1** (Windows executor; owner: "find the root cause and fix it"): with enhanced water,
+    the pier poles stand above the sea because the per-pixel submerged pass runs for Original only
+    (`gpu.cpp` around 3718, `gpu.wgsl` `sea_submerged_fs`); the per-column `object_in_water` misses thin poles.
+  - **UI-CATNAV-1** (UI lane, a bug fix): a category tab returns to the grid while a building is armed.
+  - **BUILDINGS-REF-2** (UI lane, research): road placement, building over trees and objects, the
+    `Occupied` refusals, selection; then a sim/UI plan. OQ-764..772 reserved for it; the next free number
+    is 773.
+- **CI pinned to ubuntu-24.04, LANDED on main `a6468efd`** 2026-11-19 (owner: "Yes, land it"). GitHub's
+  `ubuntu-latest` became Ubuntu 26.04 / GCC 15.2 that morning, and every branch's Linux `-Werror` build failed
+  (`<ciso646>` under Clang with libstdc++ 15; a GCC 15 null-dereference in `freight_state.hpp`; run
+  44493276095). The pin restores the documented GCC 13 / Clang 18 (CI 44500826347 green). Branches merge
+  origin/main to get green. A move to GCC 15 is its own later packet.
+- **FREEZE from 2026-11-19 afternoon** (owner: "have the executors finish all open tasks or tasks they are currently
+  working on and you do your review just as before. After that another freeze, i.e. no further tasks because i
+  need to save usage for now. We will then resume later on"). Final state of the Windows lanes:
+  - **ACCEPTED, to stack when work resumes:**
+    - FLAKE-RESIZE-1 `ea8bb893` (CI 44508802341);
+    - WATER-SUBMERGED-1 `05db2101` (CI 44517577603 after one apt-get infra rerun): the per-pixel submerged
+      pass runs in enhanced water too (`GpuLimits::submerged_over_objects`, default on), shaded with
+      enhanced's sea colour; the new GPU test changes 100 % of the pier's submerged mask and 0 pixels
+      outside it, and 0 of 1,768 with the fix reverted. Nit for later: the fixed 0.7 blend alpha as a
+      named parameter. The owner's viewer check is open;
+    - UI-CATNAV-1 `51cf9c48` (CI 44527711925; main merged after the GCC 15 image failure): a category tab shows
+      its grid and keeps the armed type (View.dll `0x1002bf90`, HE ui_10 10:08); OQ-773/774. The owner's
+      check is open;
+    - UI-GHOST-1 R2 `7a51050d` (CI 44509323099), whose behaviour the owner saw working in ui_10.
+  - **Waiting:** UI-HARVEST-ICON-1 `1e7fbee2` (CI green) for the owner's forester test; BUILDINGS-REF-2
+    `60a26f0d` (docs) for its CI.
+  - **Approved but not started:** ROADS-0 `c3489403`, ROADS-1 `df15310b`, ROADS-3 `0e8a15c9`, UI-GHOST-2
+    `5f4957f3` (packets only).
+  - **Unlanded candidates 6-10** still wait for the Mac's GATE-RUN cause (the magnifier `--gpu` cases) and
+    the skip-list update. The Mac lane runs on its own schedule.
+  - Nothing runs on the Windows PC; the UI lane and the Windows executor confirmed "frozen".
+- **FLAKE-RESIZE-1 ACCEPTED** 2026-11-19, head `ea8bb893` (origin/main with the CI pin merged in; CI 44508802341
+  green, 12/12). Earlier note, kept: head `11dd877a` (fix `b3304fd1`). Correction:
+  CI 44493276095 on `11dd877a` FAILED in the three Linux C++ jobs (`anno_sim_replay_g3_run` failed, many sim
+  cases incomplete) although the head adds only REPORTS to `b3304fd1`, whose run was green; the failed jobs
+  are rerun, and the packet is accepted only when that is green. The live-resize
+  case leaked SDL's per-thread error buffer (LeakSanitizer at exit) when its raw `std::thread` pusher hit
+  SDL's 65,535-event queue cap. Now the pusher always crosses the cap (70,000 pushes) and calls
+  `SDL_CleanupTLS`. Proof: CI with the cleanup removed fails every run (44177906209), with it all 12 jobs
+  pass (44190066591). msvc 50 loops 50/50 and `viewer_wiring_r4_occupancy` 50/50 (alongside another lane's
+  build); WSL clean. The local WSL ASan run is NOT_RUN (no compiler-rt runtime).
+- **WIN-NAV-EDITIONS-1 taken in** 2026-11-19 (owner: "independently verify the coarse navigation height
+  discrepancy against BOTH the original GOG and History Edition game files and executable code"). The
+  packet is `docs/orchestration/tasks/windows-nav-editions-1.md` at `orch/mac-lane` `56ff354a` (Mac
+  orchestrator's handoff from WILDLIFE-NAV-INPUTS-1 `74d50bfe`, production base `889143ba`).
+  - N0-N4 run in the HE/GOG research session (`task/WIN-NAV-EDITIONS-1` from main `b5c0ada2`); N5's
+    independent read-only review is the orchestrator's.
+  - Research only: no routing repair, no compatibility identity, no save/replay rebaseline, no choice
+    between edition behaviours; those stay with the owner.
+  - Intake only: the Mac lane's accepted packets are **not** accepted or landed by this entry.
+  - **Result, 2026-11-19:** research head `adb430b8` (tree `ee56dbcb`, docs only, CI 44486094969 green).
+    Independent read-only review: **ACCEPTED WITH NOTES**
+    ([review](reviews/2026-11-19-win-nav-editions-1-review.md)). The rebuild's coarse defect (the sum masked
+    and clamped instead of the component masked) is confirmed in GOG and in both HE modules; the editions
+    differ only in the height conversion's rounding (five shipped types one unit higher in HE), which can
+    never change a class or shore. Shipped scenes: 0 class or own-block shore changes. Recommendation: the
+    faithful correction (WILDLIFE-NAV-REPAIR-1); owner decisions: the ADR 0006 section base and the
+    pin/replay rebaseline policy. Original runtime NOT_RUN in both editions.
+  - **The owner's go, 2026-11-19:** asked "Approve the faithful navigation fix as the Mac's next repair
+    packet?", the owner answered "Yes, approve it". WILDLIFE-NAV-REPAIR-1 goes to the Mac lane: the
+    component mask before the add, no sum mask, no clamp, the 13 rows as permanent tests, the fine rule
+    and the conversion unchanged. The ADR 0006 section-version bump and any pin/replay rebaseline are
+    proposed in its report and applied only after a separate owner OK.
+- **The Mac's GATE-RUN on candidate 10 `95897a55` FAILED** (Mac review
+  `reviews/2026-11-17-gate-ui-info-2d-buildcat-review.md` on `orch/mac-lane`): 2,805 executed, 2 failed,
+  `viewer_wiring_ui_magnifier_range` and `_stepped` ("no frame was drawn within 30000 ms" on Metal); and 10
+  new skips, 8 of them named-adapter GPU cases (RTX/Radeon) that the stale "two expected gpu skips" rule
+  did not list. Candidates 6-10 stay unlanded until both are resolved.
+- **HALT until 2026-11-18** (owner, 2026-11-17 evening: "i want you to finish what you are currently doing as
+  well as the oither two executors and halt all work until tomorrow. only the mac executor and orchestrator
+  will keep working through the night"). Where everything stands:
+  - **LANDED:** ui-tabs-b (UI-TABS-1 B) on main `b5c0ada2` through `land.py`, after the Mac's GATE-RUN
+    ui-tabs-b passed on `004a26f4` (tree `7ab5576f`): 2,775 selected, 2,731 executed, 0 failed, 44 skips
+    (platform 9, opt-in 30, the two expected `gpu`, other 3; the one new skip `ui_balance_rows_compare`, GOG
+    shots absent on the Mac). Its candidate ref is deleted.
+  - **Waiting for the Mac's full run** (GATE-RUN on candidate 10 `95897a55`, which covers all of them):
+    atlas-pages-minimap `c9bdc3e3`, status-crops `c01d5806`, refs-crops-fertility-2 `43157de2`,
+    render-direct-1cd `45384a64`, ui-info-2d-buildcat `95897a55`. This PC's parts passed for all but
+    candidate 10, whose PC lanes run tomorrow.
+  - **Windows executor halted** on FLAKE-RESIZE-1 `0835d2c5`: the SDL TLS leak is proven by CI with the
+    fix removed (run 44177906209); the fix `b3304fd1` is pushed, its CI not yet checked; the local WSL
+    ASan proof needs the Clang 18 compiler-rt runtime (missing); the msvc 50-loop runs and the
+    `viewer_wiring_r4_occupancy` loops are open.
+  - **UI lane halted:** GHOST-1 R1 `32958430` is the last gated state; R2 ("Start at my city", the owner's
+    answer in the UI lane) is a WIP commit at `0c623006` that does not compile yet (one-line fix noted in
+    REPORTS). UI-HARVEST-ICON-1 B+C `c8da3ff2` waits for the owner's forester test. FERTILITY-1 1b-1d not
+    started.
+  - **Mac lane** continues overnight under the new Mac orchestrator
+    ([mac-lane-2026-11-17.md](mac-lane-2026-11-17.md); its branch `orch/mac-lane`; MAC-HEAVY-1's fix round
+    as `task/MAC-HEAVY-1b`).
 - **The owner's "go for all", 2026-11-17,** to the two open questions (prune the co-dev share repo; install
   the Linux viewer dev packages in WSL):
   - the share repo's reflog was expired and `gc --prune=now` run: `c0c3f3a0` is gone, `fsck` clean, the

@@ -17762,3 +17762,16 @@ READY FOR REVIEW.
   `ui_panels_match_gog`, `ui_mock_matches_oracle`. Selected 8, executed 8, failed 0, empty 0,
   skipped 0, sanitizer lines 0. **PASS.**
 - The WSL warnings check was not rerun: the merge brought no C++ change to this branch's files.
+
+### UI-HARVEST-ICON-1 addendum: merge of cand12 (c5af390c), for the owner's forester test (UI lane, 2026-11-27)
+
+- Merge `8721a1d1` (parents `1e7fbee2`, `c5af390c`), done in a fresh worktree (not the offline UI session's). Six
+  conflicts, both sides kept: the app test list (union); `viewer.hpp` (`status_icons` and `occupied_outline`);
+  `play.cpp` (`fill_build_probe`/`fill_road_probe`, then `refresh_status_icons`); `viewer.cpp` (the status-icon units
+  list, then the ghost outlines); REPORTS and open-questions (cand12's blocks first, then this branch's).
+- Gates on this PC, PC quiet checked (WSL included): `cmake --preset msvc` and build clean; `run_selected` over the
+  status-icon, ghost, road, tile-object, play, wiring, `ui_` and `anno_app_tests` lanes: 576 selected, 568 executed,
+  0 failed, 8 opt-in skips; with `ANNO_UI_ORACLE_SHOTS` set, `ui_panels_match_gog`, `ui_subtabs_compare` and
+  `ui_balance_rows_compare` 3/3 executed and passed. `check_unix_warnings.sh` (GCC 13, Clang 18): clean, 444 + 99 files.
+- NOT_RUN: `ui_window_matches_he` (needs the HE captures; the merge does not touch the window); macOS; the owner's
+  forester test (next, on ORCH III's integration build).

@@ -18136,7 +18136,7 @@ GELAENDE records end up empty - not drawing id 5.
 
 READY FOR REVIEW.
 
-## UI-KEYS-1 — the original's game keys (F5-F8 speed, P pause, F10 quick-save) — PARTIAL, run stopped for the owner
+## UI-KEYS-1 — the original's game keys (F5-F8 speed, P pause, F10 quick-save) — READY FOR REVIEW
 
 UI lane, 2026-11-27. Branch `task/UI-KEYS-1` on main `aeb65424`; plan `docs/orchestration/tasks/ui-keys-1-draft.md`
 (approved, 400 % decision (a), host guard per ORCH III's review).
@@ -18149,14 +18149,34 @@ UI lane, 2026-11-27. Branch `task/UI-KEYS-1` on main `aeb65424`; plan `docs/orch
   - keys: F5-F8 → `SetSpeedCmd` 100/200/400/50 (`speed_key_percent`, AnnoFrame `0x100071b0`); P → pause (Space
     kept); the opening's Save on F10; the dev tool's previous type P → M;
   - facts `game.speed`, `game.paused`; script key names m/f6/f7/f8/f10.
-- **Build:** msvc Release clean (incremental, in the UI-PLANK-1 build tree with this head checked out detached).
-- **Gate, stopped by ORCH III at the owner's request:**
-  - `run_selected` over `^anno_app_tests|^anno_app_input_tests|^viewer_wiring_|opening|replay|commands`: 600 passed,
-    0 failed of 622 when stopped (`cache/keys-gate-01.log` in the UI-PLANK-1 tree); the selection was wider than
-    needed (`replay` also matched render and sim replay tests).
-  - **Passed:** the runner invariant case (game ms per real ms = percent / 100 at 50/200/400/100), the non-host refusal
-    case, the speed and P/M key case, and the opening-keys case (F10 Save, F5 not mapped).
-  - **NOT_RUN:** `viewer_wiring_ui_keys_gpu`, `viewer_wiring_opening_sail`, `viewer_wiring_opening_resume`,
-    `viewer_wiring_r1_held_publication`, the rest of the selection, and the failure proofs.
-- **WSL:** GCC 13 clean on both configurations (453 + 102 files). Clang 18: NOT_RUN (stopped).
-- **Not READY FOR REVIEW** until the NOT_RUN items run after the owner releases the PC.
+- **Found by the wiring run and fixed (`1e272b85`):** a dev session (`--play` and the opening) could not record the
+  speed keys' command (`format_commands` had no line for `SetSpeedCmd`), so the window exited 1 at quit after F5-F8.
+  Since the turn length now follows the speed, the record must keep it: new line form
+  `turn N speed <issuer> <percent>` in both forms, parsed back (`commands_file.cpp`; `game-shell.md`,
+  `ship-opening.md` §5). The opening test that used `SetSpeedCmd` as its "no line form" example now uses a legacy
+  record.
+- **Gates (this PC, msvc Release; incremental build in the UI-PLANK-1 build tree with this head checked out detached):**
+  - first run (`cache/keys-gate-01.log`, stopped for the owner): 600 passed, 0 failed of 622, all new unit cases
+    passed (that selection was wider than needed);
+  - wiring run before the fix (`cache/keys-gate-02.log`): `ui_keys_gpu` and `opening_session_replay` FAILED on the
+    session record above (every script line had run); `r1_held_publication`, `opening_controls` passed;
+  - after the fix (`cache/keys-gate-03.log`): `viewer_wiring_ui_keys_gpu`, `viewer_wiring_r1_held_publication`,
+    `viewer_wiring_opening_controls`, `opening_session_replay` (opening_sail with F5 then F10, opening_resume,
+    opening_resume2; stage 1's replay with the recorded speed line: 38 checkpoints and 2 outcomes agree), the four
+    UI-KEYS-1 unit cases, the commands-file and ship-start cases: 16 selected, 15 executed, 0 failed, 1 skipped
+    (opt-in measure), `VERDICT: PASS`.
+- **Failure proofs** (one build, restored after; unit runs):
+  - the old F5 save binding restored: the opening-keys case fails (`opening_key_from_sdl(F5)` is Save);
+  - the runner not following the speed: the invariant case fails at 50/200/400 (step and game ms per real ms), and
+    the host case fails (step 10, not 20);
+  - no speed line form: the session round-trip case fails (`format_commands` refuses).
+- **WSL:** on `1e272b85` (`cache/keys-unix-02.log`): GCC 13 and Clang 18 clean on both configurations (453 + 102 files), negative controls caught.
+- **Owner test:**
+
+  ```
+  anno1503 --play data\maps\lan5.txt --game-dir E:\anno1503\game\app --construction-menu on --layout data\ui
+  ```
+
+  Press F8, F5, F6, F7: the game runs at 50 / 100 / 200 / 400 %. P pauses and P resumes. In the ship opening, F10
+  saves and F5 changes the speed.
+- **Open:** OQ-906 (the speed indicator), OQ-908 (P's path to the pause box); the pause box is proposed as UI-KEYS-2.

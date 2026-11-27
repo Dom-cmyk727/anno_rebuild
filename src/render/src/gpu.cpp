@@ -2664,16 +2664,31 @@ struct GpuFrame::Impl {
     /// `scissor` is `view`-relative chunk rects, one draw per visible chunk (not one combined
     /// buffer sliced by byte offset): each chunk is resolved against `cb.residency` and uploaded
     /// on its own, which also keeps a chunk with nothing to draw a no-op with no empty draw call.
+    /// `scissor_chunks` (default true, production's only setting): whether each chunk's draw is
+    /// clamped to its own screen rect. The 3a seam proof is the one caller that passes false, to
+    /// show the double blend the scissor exists to prevent (a spanning instance is listed, and
+    /// drawn, under every chunk its reach() touches).
     void draw_direct_objects(WGPURenderPassEncoder p, const Scene& scene,
                              const ChunkInstanceBuckets& buckets,
                              std::span<const std::pair<int, int>> visible_chunks,
                              std::uint32_t track, bool depth_test, const depth::Params& dparams,
                              Rect view, std::uint32_t target_w, std::uint32_t target_h,
-                             std::uint64_t max_upload_bytes) {
-        const WGPUBindGroup direct_atlas = direct_atlas_bind();
-        if (direct_atlas == nullptr || cb.ft == nullptr) {
+                             std::uint64_t max_upload_bytes, bool scissor_chunks = true) {
+        if (!cb.residency || cb.ft == nullptr) {
             return;
         }
+        // Resolve, make resident and place every chunk's instances first, appending each chunk's
+        // bytes to one buffer at its own offset - `wgpuQueueWriteBuffer` only enqueues the copy,
+        // so writing per chunk at a shared offset 0 and drawing immediately after (the previous
+        // version) would have every draw call read whichever chunk wrote last by the time the GPU
+        // actually executes the pass, not the chunk each draw call was recorded for.
+        struct ChunkDraw {
+            std::pair<int, int> chunk;
+            std::uint64_t byte_offset;
+            std::uint32_t count;
+        };
+        std::vector<ChunkDraw> draws;
+        Bytes bytes;
         for (const auto& chunk : visible_chunks) {
             const std::array<std::pair<int, int>, 1> one = {chunk};
             std::vector<FrameRef> needed;
@@ -2694,7 +2709,7 @@ struct GpuFrame::Impl {
             if (placed.empty()) {
                 continue;
             }
-            Bytes bytes;
+            const std::uint64_t offset = bytes.b.size();
             for (const auto& inst : placed) {
                 bytes.i32(inst.record.x);
                 bytes.i32(inst.record.y);
@@ -2705,29 +2720,50 @@ struct GpuFrame::Impl {
                 bytes.u32(inst.atlas.layer);
                 bytes.u32(inst.record.flags);
             }
-            write_direct_instances(bytes.b);
-            const auto [cx, cy] = chunk;
+            draws.push_back({chunk, offset, static_cast<std::uint32_t>(placed.size())});
+        }
+        if (draws.empty()) {
+            return;
+        }
+        // Bound after the uploads above, not before: `cb_resident` may grow or recreate
+        // `cb.atlas_view` (a bind group taken before that would name the atlas's old texture).
+        const WGPUBindGroup direct_atlas = direct_atlas_bind();
+        if (direct_atlas == nullptr) {
+            return;
+        }
+        write_direct_instances(bytes.b);
+        wgpuRenderPassEncoderSetPipeline(p, sprite_pipe.get());
+        wgpuRenderPassEncoderSetBindGroup(p, 1, empty_bind.get(), 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(p, 2, direct_atlas, 0, nullptr);
+        for (const auto& d : draws) {
+            const auto [cx, cy] = d.chunk;
             const auto on_screen = chunk_rect(cx, cy).intersect(view);
             if (!on_screen) {
                 continue; // not actually visible this frame (reach() over-estimates slightly)
             }
-            const std::int32_t sx = on_screen->x - view.x, sy = on_screen->y - view.y;
-            const std::uint32_t sw =
-                std::min<std::uint32_t>(on_screen->w, target_w - std::max(sx, 0));
-            const std::uint32_t sh =
-                std::min<std::uint32_t>(on_screen->h, target_h - std::max(sy, 0));
-            if (sw == 0 || sh == 0) {
-                continue;
+            if (scissor_chunks) {
+                const std::int32_t sx = on_screen->x - view.x, sy = on_screen->y - view.y;
+                const std::uint32_t sw =
+                    std::min<std::uint32_t>(static_cast<std::uint32_t>(std::max(on_screen->w, 0)),
+                                            target_w - static_cast<std::uint32_t>(std::max(sx, 0)));
+                const std::uint32_t sh =
+                    std::min<std::uint32_t>(static_cast<std::uint32_t>(std::max(on_screen->h, 0)),
+                                            target_h - static_cast<std::uint32_t>(std::max(sy, 0)));
+                if (sw == 0 || sh == 0) {
+                    continue;
+                }
+                wgpuRenderPassEncoderSetScissorRect(p, static_cast<std::uint32_t>(std::max(sx, 0)),
+                                                    static_cast<std::uint32_t>(std::max(sy, 0)), sw,
+                                                    sh);
+            } else {
+                // Seam-proof control only: every chunk's quad draws over the whole view, so a
+                // spanning instance (listed under every chunk its reach() touches) blends once
+                // per chunk at the same screen position - the double blend the scissor prevents.
+                wgpuRenderPassEncoderSetScissorRect(p, 0, 0, target_w, target_h);
             }
-            wgpuRenderPassEncoderSetScissorRect(p, static_cast<std::uint32_t>(std::max(sx, 0)),
-                                                static_cast<std::uint32_t>(std::max(sy, 0)), sw,
-                                                sh);
-            wgpuRenderPassEncoderSetPipeline(p, sprite_pipe.get());
-            wgpuRenderPassEncoderSetBindGroup(p, 1, empty_bind.get(), 0, nullptr);
-            wgpuRenderPassEncoderSetBindGroup(p, 2, direct_atlas, 0, nullptr);
-            wgpuRenderPassEncoderSetVertexBuffer(p, 0, direct_objects.buf.get(), 0,
+            wgpuRenderPassEncoderSetVertexBuffer(p, 0, direct_objects.buf.get(), d.byte_offset,
                                                  WGPU_WHOLE_SIZE);
-            wgpuRenderPassEncoderDraw(p, 6, static_cast<std::uint32_t>(placed.size()), 0, 0);
+            wgpuRenderPassEncoderDraw(p, 6, d.count, 0, 0);
         }
         wgpuRenderPassEncoderSetScissorRect(p, 0, 0, target_w, target_h); // restore full scissor
     }
@@ -4503,6 +4539,53 @@ std::optional<ChunkPlanes> GpuFrame::build_chunk_planes(const ChunkDraws& draws,
     out.base = read_back(base_tex.get(), w, h, 1);
     out.submerged = read_back(sub_tex.get(), w, h, 1);
     out.bases = draws.bases;
+    return out;
+}
+
+std::optional<std::vector<Px>>
+GpuFrame::draw_direct_objects_test(const Scene& scene, const ChunkInstanceBuckets& buckets,
+                                   std::span<const std::pair<int, int>> visible_chunks,
+                                   std::size_t group, bool depth_test, Rect view, WGPUColor clear,
+                                   std::uint64_t max_upload_bytes, bool scissor_chunks,
+                                   std::uint32_t track) {
+    Impl& m = *impl_;
+    if (!m.cb_init()) {
+        return std::nullopt;
+    }
+    const auto w = static_cast<std::uint32_t>(std::max(view.w, 0));
+    const auto h = static_cast<std::uint32_t>(std::max(view.h, 0));
+    if (w == 0 || h == 0) {
+        return std::nullopt;
+    }
+    const auto target = offscreen_target(w, h);
+    m.write_frame_uniform(view, group, 0, WaterStyle::Original, scene, false, false);
+    const BindGroup frame_bind = m.frame_bind(nullptr, nullptr);
+    const depth::Params dparams = depth::params(group, scene.lift);
+    // render() sets this itself (gpu.cpp, GpuFrame::render) and clears it when the frame ends;
+    // this test entry is the only other caller of draw_direct_objects, so it must do the same -
+    // cb_resident (called from the resolve/upload loop below) dereferences it.
+    m.cb.ft = &scene.frame_table;
+    WGPUCommandEncoderDescriptor ed = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
+    CommandEncoder enc(wgpuDeviceCreateCommandEncoder(m.dev(), &ed));
+    WGPURenderPassEncoder p = begin(enc.get(), target.second.get(), clear);
+    wgpuRenderPassEncoderSetViewport(p, 0.0F, 0.0F, static_cast<float>(w), static_cast<float>(h),
+                                     0.0F, 1.0F);
+    wgpuRenderPassEncoderSetScissorRect(p, 0, 0, w, h);
+    wgpuRenderPassEncoderSetBindGroup(p, 0, frame_bind.get(), 0, nullptr);
+    m.draw_direct_objects(p, scene, buckets, visible_chunks, track, depth_test, dparams, view, w, h,
+                          max_upload_bytes, scissor_chunks);
+    wgpuRenderPassEncoderEnd(p);
+    wgpuRenderPassEncoderRelease(p);
+    m.cb.ft = nullptr;
+    if (!m.submit(enc.get(), "direct-proof", false)) {
+        return std::nullopt;
+    }
+    const auto bytes = read_back(target.first.get(), w, h, 4);
+    if (bytes.size() != std::size_t{w} * h * 4) {
+        return std::nullopt;
+    }
+    std::vector<Px> out(bytes.size() / 4);
+    std::memcpy(out.data(), bytes.data(), bytes.size());
     return out;
 }
 

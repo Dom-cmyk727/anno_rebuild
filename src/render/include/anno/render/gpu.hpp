@@ -32,7 +32,9 @@
 #include <vector>
 
 #include <anno/assets/texture.hpp>
+#include <anno/render/chunk_instances.hpp>
 #include <anno/render/chunk_reduce.hpp>
+#include <anno/render/depth.hpp>
 #include <anno/render/fluid.hpp>
 #include <anno/render/frame.hpp>
 #include <anno/render/gpu_fluid.hpp>
@@ -728,6 +730,19 @@ class GpuFrame {
     /// (the caller then uses the CPU).
     std::optional<ChunkPlanes> build_chunk_planes(const ChunkDraws& draws, const FrameTable& frames,
                                                   std::span<const std::uint16_t> terrain = {});
+    /// RENDER-DIRECT-3 3a test entry: draws only `buckets`' instances in `visible_chunks` through
+    /// the direct object pass (docs/render/direct-object-pass-3a.md - the existing sprite pipeline,
+    /// sourced from the residency atlas instead of baking a chunk) into a fresh `view.w x view.h`
+    /// target cleared to `clear`, and reads the result back. This call, not a flag in render(), is
+    /// 3a's "switch": nothing in the normal render() path draws through this pass yet, so calling
+    /// render() instead of this gives the unmodified baked picture (0 digest change, by
+    /// construction). Waits for the GPU; nullopt if the pass could not be submitted.
+    std::optional<std::vector<Px>>
+    draw_direct_objects_test(const Scene& scene, const ChunkInstanceBuckets& buckets,
+                             std::span<const std::pair<int, int>> visible_chunks, std::size_t group,
+                             bool depth_test, Rect view, WGPUColor clear,
+                             std::uint64_t max_upload_bytes, bool scissor_chunks = true,
+                             std::uint32_t track = 0);
     /// The clock the chunk dissolves run on (GpuLimits::chunk_fade_ms), in
     /// milliseconds: by default a steady clock of the compositor's own, not
     /// render()'s animation time, which the viewer freezes on pause (a chunk

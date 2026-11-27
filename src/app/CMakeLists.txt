@@ -9,6 +9,7 @@ add_library(anno_app_core
   src/construction_menu.cpp
   src/selection.cpp
   src/status_bar.cpp
+  src/range_view.cpp
   src/dev_feedback.cpp
   src/dev_session.cpp
   src/dev_input.cpp
@@ -98,7 +99,7 @@ if(ANNO_BUILD_TESTS)
     tests/construction_menu_test.cpp tests/inspect_building_test.cpp tests/selection_test.cpp
     tests/minimap_test.cpp tests/hud_tabs_test.cpp tests/status_bar_test.cpp
     tests/balance_rows_test.cpp tests/atlas_pages_lan5_test.cpp tests/info_preview_test.cpp
-    tests/fertility_indicator_test.cpp tests/tile_object_picture_test.cpp
+    tests/range_view_test.cpp tests/fertility_indicator_test.cpp tests/tile_object_picture_test.cpp
     tests/placement_ghost_test.cpp tests/road_drag_ui_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   target_compile_definitions(anno_app_tests PRIVATE
@@ -437,6 +438,16 @@ if(ANNO_BUILD_TESTS)
                 --app-arg --construction-menu --app-arg on
                 --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
       set_tests_properties(viewer_wiring_ui_start_view PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # UI-RANGE-1 B1: the lit city and the dark-tile count for a selected Kontor and an armed road,
+      # from the default start view (range_view.hpp, docs/re/ui.md 12).
+      add_test(NAME viewer_wiring_ui_range
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_range
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_range PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # UI-GHOST-1: the same session's screenshots, the outline's exact 0xffff00 pixels counted
       # (ghost_pixel_check.py; the hidden shot is the negative control).

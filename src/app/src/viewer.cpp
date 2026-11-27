@@ -26,6 +26,7 @@
 #include <anno/app/live_resize.hpp>
 #include <anno/app/placement_ghost.hpp>
 #include <anno/app/png.hpp>
+#include <anno/app/range_view.hpp>
 #include <anno/app/road_drag_ui.hpp>
 #include <anno/app/sdl_input.hpp>
 #include <anno/app/section_overlap.hpp>
@@ -3614,6 +3615,31 @@ void Viewer::script_tick() {
     st.facts["tool.armed"] =
         tool_armed ? std::to_string(dev_->input().selected()->v) : std::string("none");
     st.facts["tool.turn"] = tool_armed ? std::to_string(dev_->turn()) : std::string("none");
+    // UI-RANGE-1 B1: the city whose range the original darkens around, and how many tiles go dark
+    // (range_view.hpp, docs/re/ui.md 12). Decision only; drawing it is UI-RANGE-1 B2.
+    {
+        RangeInput rin;
+        if (selection_.selected && st.snapshot && st.snapshot->inspection &&
+            st.snapshot->inspection->id == selection_.selected->id) {
+            rin.selected_prodtype = st.snapshot->inspection->prodtype;
+            rin.selected_tile = selection_.selected->tile;
+        }
+        if (tool_armed && !dev_->input().demolish_mode()) {
+            rin.armed_road = dev_->land_road_armed();
+            if (const sim::BuildingType* t = dev_->input().selected_type(); t != nullptr) {
+                rin.armed_prodtype = t->prodtype;
+            }
+            rin.pointer_tile = dev_->ghost_hover();
+        }
+        const auto city = st.snapshot && st.snapshot->territory
+                              ? range_city(rin, RangeTriggers{}, *st.snapshot->territory)
+                              : std::nullopt;
+        st.facts["ui.range_city"] =
+            city ? std::to_string(city->island) + ":" + std::to_string(city->owner)
+                 : std::string("none");
+        st.facts["ui.range_dark_tiles"] =
+            city ? std::to_string(range_dark_count(*st.snapshot->territory, *city)) : "0";
+    }
     // UI-GHOST-1: the ghost's state, the blink's phase (1: the unaffordable building hidden), its
     // flips so far and the outline pixels the last frame drew.
     st.facts["tool.ghost"] = std::string(ghost_state_name(ghost_));

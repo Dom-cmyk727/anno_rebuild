@@ -4006,3 +4006,8 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Question:** the factor of the darkening, whether it is a multiply, a blend towards black or a palette shift, and whether the objects on dark tiles (trees, buildings) use the same factor as the ground. Also which city an armed tool uses when the player owns several cities on one island (L: the one under the pointer).
 - **What we know:** HE frames show the ground and the trees outside the range darker, the sea inside the island rectangle too (`ui.md` 12.1 rows 1, 2, 7).
 - **How to resolve:** compare pixel pairs of the same tile lit and dark in `he_01` (3:28 vs 4:19) at full resolution, per channel; stage B fits its factor to that.
+
+## OQ-797: Does every armed building darken the map outside the range, or only the territory-bound ones? (UI-RANGE-1 B1, 2026-11-27; OPEN)
+- **Question:** GOG darkens while a market or a road is armed (`docs/re/ui.md` 12.2). Does an armed pioneer house (or any building) darken too? And which city is lit when the pointer is on a neutral tile or on another city's tile?
+- **What we know:** the GOG capture `p1_a_armed` (pioneer house) is at the closest zoom, entirely inside the range, so it cannot show it (P). B1's trigger list (`RangeTriggers`, `range_view.hpp`) lists only the evidenced cases (PRODTYPE 33-35 armed, the road), and a neutral pointer tile lights nothing (L).
+- **How to resolve:** one far-zoom GOG Wine capture with a pioneer house armed, the pointer on the city, then on a neutral tile (pre-authorized; ORCH III: when a quiet slot comes).

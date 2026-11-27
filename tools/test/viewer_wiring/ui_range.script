@@ -1,0 +1,35 @@
+# UI-RANGE-1 B1: which tiles the range display darkens (range_view.hpp, docs/re/ui.md 12), through the
+# real window from the default start view (owner rule: no `look`). lan5: the developer city is on
+# island 1 (1048, 440, 256 x 256), its Kontor at (1284, 540) (ui_start_view.script). The decision only;
+# nothing is drawn yet (UI-RANGE-1 B2).
+resize 1024 768
+wait frames 5
+expect fact ui.range_city == none
+expect fact ui.range_dark_tiles == 0
+# The Kontor selected: its city is lit, every other island tile is dark.
+click 1284 540
+wait fact ui.range_city != none within 5000
+expect fact ui.range_dark_tiles > 0
+note fact ui.range_city
+checkpoint kontor_selected
+key esc
+wait fact ui.range_city == none within 5000
+expect fact ui.range_dark_tiles == 0
+checkpoint deselected
+# The dirt road armed (roads tab, first cell), the pointer on the city: the same city is lit.
+key b
+wait frames 5
+click_px 770 372
+wait frames 3
+click_px 833 330
+wait frames 5
+hover_px 388 384
+wait frames 5
+expect fact ui.range_city same
+expect fact ui.range_dark_tiles > 0
+checkpoint road_armed
+key esc
+wait frames 3
+key esc
+wait fact ui.range_city == none within 5000
+quit

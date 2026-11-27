@@ -1607,3 +1607,8 @@ about 30 min; OQ-795).
 `TerritoryView` (`src/app/include/anno/app/territory_view.hpp`, published by `collect_territory_view` in `play.hpp`)
 already carries every island tile's owner and city, at the snapshot rate; the minimap and the status bar read it. No sim
 change is needed for stage B. Nothing draws the darkening yet.
+
+**B1 (2026-11-27):** `src/app` `range_view.hpp` decides it: `range_city(selection, armed tool, TerritoryView)` gives the lit
+city (island and owner value) or none, `range_dark` the per-tile predicate, `range_dark_count` the dev fact. The triggers are data
+(`RangeTriggers`: selected PRODTYPE 33-35, armed PRODTYPE 33-35, the armed road; OQ-797). The viewer reports `ui.range_city`
+and `ui.range_dark_tiles`; drawing is B2 (a per-pixel owner channel or the per-instance passes, decided by ORCH III).

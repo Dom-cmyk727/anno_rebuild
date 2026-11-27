@@ -18135,3 +18135,59 @@ GELAENDE records end up empty - not drawing id 5.
   zero-risk hardening, not scope creep.
 
 READY FOR REVIEW.
+
+## MAC-HEAVY-2 — Mac verification of candidate 13 on main (2026-11-27)
+
+- Tested main `62f67abc926635325ef118698e9a7b52d4aa84ba`, tree `2b96bdb6158ab68e3251defbd0993ab31d2071f0`, with a clean source tree.
+- Host: Apple M5 Max, 18 CPU cores, 48 GiB unified RAM, macOS 27.0.1 (26A434), Apple Clang 21.0.0 (2100.1.1.101). Local GPU tests used Apple M5 Max Metal.
+- Full gates: `run_selected.py --select "." --asset-policy required --jobs 8 --allow-skip gpu --allow-skip other` with GOG files, four internal test threads and shared memory admission. Both builds passed with three duplicate-library linker notices each. The asan preset used `-O1 -g` and address, undefined and float-cast-overflow instrumentation.
+- Raw logs, inventories, native case order, stderr and receipts are in `cache/mac-heavy-2/`. `SHA256SUMS` seals 152 artifacts (SHA-256 `09f0c0fffb21519c5b599570bf1ef1e02d66859899b8f277d2a712998a36c913`). Each full gate and the order matrix independently printed the required picture contract receipt below.
+
+```text
+COUNTS: selected=1 executed=1 failed=0 refused=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+| Stage | Log and SHA-256 | Wall time | Main-selection receipt, verbatim |
+|---|---|---:|---|
+| 1 Release | `01-release.log` `1db35ed18ca872f7462d031b2155a7142d138877fea9a7231795857089bcc3c8` | 980 s incl. build | `COUNTS: selected=2948 executed=2889 failed=1 refused=0 empty=0 skipped=58 (required-asset=0 platform=14 opt-in=31 gpu=10 other=3) incomplete=0 sanitizer_lines=0`<br>`VERDICT: FAIL failed tests` |
+| 2 ASan/UBSan | `02-asan.log` `53292cc6d7d05667c275b12dce77bf7aa6ae9d13083d52b26e5acea813650412` | 2,985 s incl. build | `COUNTS: selected=2949 executed=2890 failed=1 refused=0 empty=0 skipped=58 (required-asset=0 platform=14 opt-in=31 gpu=10 other=3) incomplete=0 sanitizer_lines=0`<br>`VERDICT: FAIL failed tests` |
+| 3 Order | `03-orders.log` `87c601a3006c27323f103ab502b2c8afef1636f70071bce95604c33d52359b76` | 3,112 s | `COUNTS: selected=36 executed=33 failed=3 refused=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0`<br>`VERDICT: FAIL failed tests` |
+| 4 Release A | `04-release-a.log` `ba56892a046187b6f05a3cf1a6af3913ee11b100e93e7931ad47e7c7d46e1b2b` | 813 s | `COUNTS: selected=2948 executed=2889 failed=1 refused=0 empty=0 skipped=58 (required-asset=0 platform=14 opt-in=31 gpu=10 other=3) incomplete=0 sanitizer_lines=0`<br>`VERDICT: FAIL failed tests` |
+| 4 Release B | `04-release-b.log` `7b22fe7724ba16dbacf3937756ec475e5c2a485b8117774381357e9a99d99073` | 847 s | `COUNTS: selected=2948 executed=2889 failed=1 refused=0 empty=0 skipped=58 (required-asset=0 platform=14 opt-in=31 gpu=10 other=3) incomplete=0 sanitizer_lines=0`<br>`VERDICT: FAIL failed tests` |
+| 5 Transport (Release; ASan) | `05-transport-release.log` `b6d65131df332010303537accbda6d69fdff94c2343e7038a9109ee5f0ffc665`; `05-transport-asan.log` `d9b1c25c5e65c6ed4f0d6c176f0124740d802482b0c692f89a6dd45a16e98569` | 1.8 s; 3.9 s | Both: `COUNTS: selected=1 executed=0 failed=1 refused=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0`<br>`VERDICT: FAIL failed tests` |
+| 5 Matched MH-005 filter | `05-MH005-seed2.log` `c42e747f9de1957132e38c0024c4fc73b22d35311103f59dbcef6f9fa0e92f19` | 185 s | `COUNTS: selected=1 executed=0 failed=1 refused=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0`<br>`VERDICT: FAIL failed tests` |
+
+- Order ran nine doctest binaries whole with default order and `--order-by=rand` seeds `1`, `2`, `3`. Each order selected 2,726 native cases and had 41 prerequisite skips (26 opt-in, 5 platform, 10 GPU). In that order the executed-pass counts were 2,682 / 2,685 / 2,684 / 2,685 and failed-case counts 3 / 0 / 1 / 0.
+- Each full selection had the same ten named-adapter skips. The entries below are in `anno_render_gpu_tests`.
+  - `play: GPU matches the CPU path on one scene` (RTX 4090) and `play: GPU matches the CPU path on one scene, on the Radeon iGPU`.
+  - `atlas upload: lan5.txt is byte-exact and sample-exact on the RTX 4090 (all three groups)` and `atlas upload: lan5.txt is byte-exact and sample-exact on the Radeon iGPU (the adjacent pair)`.
+  - `atlas upload: endless02.sze's worst resident set (all three groups, 360 MiB) is byte-exact and fits the real device budget on the RTX 4090` and `atlas upload: endless02.sze's worst resident set (the adjacent pair, 340 MiB) is byte-exact and fits the real device budget on the Radeon iGPU`.
+  - `atlas upload: VRAM and upload/readback time for lan5.txt and 02_1024_easy_128.sze, RTX 4090 (step 4, a quiet machine)` and `atlas upload: VRAM and upload/readback time for lan5.txt and 02_1024_easy_128.sze, Radeon iGPU (step 4, a quiet machine)`.
+  - `RENDER-DIRECT-1d question 1: endless02.sze's pair as two SEPARATE per-group textures, both resident at once, on the Radeon iGPU`; `RENDER-DIRECT-1d question 4 (orchestrator follow-up): endless02.sze's full pair split under the single-resource ceiling, both resident and byte-exact, then the total heap's own stopping point on the Radeon iGPU`.
+- The three other skips were `ui_mock_matches_oracle` (Pillow absent), `info_panel_gog_compare` and `info_panel_rotation_gog_compare` (shot folders unset).
+
+### Findings and MAC-HEAVY-1 recheck
+
+| ID | Test and first failing assertion | Alone? | Attribution |
+|---|---|---|---|
+| MH2-001 | `viewer_wiring_status_icon_zoom_gpu` — `FAIL line 25 (wait): not over after 30000 ms (outcome #1 Applied turn 32, visibility Visible)`. Both Release repeats had the same assertion at turn 7. ASan passed. | Yes, `isolated-06-release.log` failed at line 25 with the same 30000 ms wait (turn 8). | `09120398` inserted the pause before the frame wait from `d5466730`. |
+| MH2-002 / MH-001 | `viewer_wiring_ui_minimap_controls` — `FAIL line 88 (expect): view.tile_w is '42', expected == 84`. Reproduced in full ASan, with zero sanitizer diagnostic lines. | No, `isolated-01-asan.log` passed. | Assertion from `8c984dc6`. Cause unresolved. |
+| MH2-003 / MH-002 | `anno_render_tests.scene reclaim: the window's release of the last generation is destroyed on the reclaimer` — `scene_reclaim_test.cpp:57: ERROR: CHECK( render::SceneReclaimer::shared().stats().completed == before ) is NOT correct!`. Reproduced in default order. | No, `isolated-05-release.log` passed. | `bb6ad81a`, shared completed-count assertion. |
+| MH2-004 / MH-003 | `anno_app_tests.publish: a frame-held intermediate generation and shutdown with work in flight are released on the reclaimer` — `scene_picture_publish_test.cpp:783: FATAL ERROR: REQUIRE( eventually([&] { const auto now = render::payload_counts(); return now.of(render::PayloadKind::Incremental) == before.of(render::PayloadKind::Incremental) && now.of(render::PayloadKind::Generation) == before.of(render::PayloadKind::Generation) && reclaimer.stats().in_flight == 0; }) ) is NOT correct!`. Reproduced in default order. | No, `isolated-04-release.log` passed. | Assertion from `96cf6e95`. Cause unresolved. |
+| MH2-005 / MH-004 | `anno_app_tests.ownership: a frame-held generation outlives the bridge and is destroyed on the reclaimer` — `scene_picture_ownership_test.cpp:517: FATAL ERROR: REQUIRE( eventually([&] { const auto now = render::payload_counts(); return now.of(render::PayloadKind::Incremental) == before.of(render::PayloadKind::Incremental) && now.of(render::PayloadKind::Generation) == before.of(render::PayloadKind::Generation) && reclaimer.stats().in_flight == 0; }) ) is NOT correct!`. Reproduced in default, seed 2 and the historical filtered seed 2. | No, `isolated-02-release.log` passed. | Assertion from `c73067c6`. Cause unresolved. |
+| MH2-006 / MH-006 | `anno_sim_tests.transport search statistics (ANNO_SIM_TRANSPORT_STATS)` — `scenario_test.cpp:1078: FATAL ERROR: REQUIRE( w.ok() ) is NOT correct!`; `script offset 475: unsupported action: SET_DIPLOMACY`. | Yes, both builds. | `d7479004` test and strict script action dispatch from `9d658712`. Transport measurement never started. |
+| MH2-007 | `anno_app_tests.picture failures: an obsolete failure is not evidence about a newer change` — `scene_picture_recovery_test.cpp:647: ERROR: CHECK( picture.commit(frames) == 1 ) is NOT correct!`. Observed in the historical filtered seed 2. | No, `isolated-03-release.log` passed. | Assertion from `8c33942b`. Cause unresolved. |
+
+- MH-005: `anno_app_tests.picture recovery: a result of an older version is never published after a newer change`, assertion `scene_picture_recovery_test.cpp:402: CHECK( picture.commit(frames) == 1 )`. Did not reproduce in four full orders or in the historical seed-2 run excluding the heavy suite. The historical run had 396 executed passes, 2 failed cases (MH2-005 and MH2-007), 3 prerequisite skips and 4 filter exclusions.
+- Isolated gates used `--jobs 1` and exact test names. `isolated-01` through `isolated-05` each printed the 1/1 PASS receipt above. `isolated-06` printed the same 1/0 FAIL receipt as the transport probes.
+
+### Decisions and reasoning
+
+- Used the prescribed three Release samples to compare flakiness on unchanged binaries. All three retained MH2-001 as a failure. The canonical logs show zero memory refusals, so no admission retry was needed.
+- Used a private CTest registry to invoke each whole binary without case filters through the canonical runner. Different binaries occupied up to three jobs, with one process at a time per binary. Native counts describe cases and the outer verdict describes processes.
+- Kept the named-adapter skips because the Metal host has neither named Windows adapter. Hosted CI on the publication is a docs gate. The Mac verdicts remain as recorded.
+
+**NOT_RUN:** Windows GPU adapters, Windows-only screenshots, missing GOG screenshot comparisons, Pillow mock comparison, and LeakSanitizer (unsupported on this host). No repair or pin changes in this packet.
+
+**READY FOR REVIEW**

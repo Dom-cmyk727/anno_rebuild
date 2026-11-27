@@ -14850,6 +14850,92 @@ landing candidate's own build): both pass, run directly with `python3 -I tools/l
 
 READY FOR REVIEW.
 
+## FLAKE-RESIZE-1 — paused on the owner's instruction, mid-proof — PAUSED (task/FLAKE-RESIZE-1, from origin/main `4dfdd9b7`, head `b3304fd1`)
+
+**Stopped here, not finished, on the owner's explicit instruction to halt all work until the next day.** No new step started after this message arrived; what follows records exactly where the task stands.
+
+**Root cause, found and fixed, with CI-confirmed evidence.** `anno_app_input_tests`' ZOOM-SMOOTH-2b F1 case (`src/app/tests/live_resize_test.cpp`) failed once in CI (run 44076929673, attempt 1, `linux-clang-asan`) with a LeakSanitizer report, not a correctness/race failure - all 4 doctest assertions in that case passed. Cause: the case's background `std::thread` floods `SDL_PushEvent` with nothing draining the queue; SDL 3.4.18's own `SDL_AddEvent` (`SDL_events.c`, the pinned source, read directly) refuses and calls `SDL_SetError` once the queue already holds `SDL_MAX_QUEUED_EVENTS` (65535, a hard cap). `SDL_SetError` lazily allocates a per-thread TLS error buffer (`SDL_GetErrBuf`) that SDL only frees for threads it created itself (`SDL_CreateThread`); this is a raw `std::thread`, so the buffer leaked whenever a slow/contended CI run happened to push past 65535 within the test's own ~10 ms window - the flakiness.
+
+**Fix, in two commits for the proof the task asked for.**
+- Commit A (`333b6035`): the pusher now pushes a fixed 70,000 events before its normal loop, forcing the overflow deterministically regardless of timing - with `SDL_CleanupTLS()` deliberately NOT called yet. Pushed; CI run **44177906209**'s `linux-clang-asan` job failed with the identical leak signature (214 bytes, 4 allocations, `SDL_GetErrBuf`) - confirmed via the job's own uploaded `test.log` artifact, not just the summary line. Every other job in that run passed - this one case is the only thing the fix touches.
+- Commit B (`b3304fd1`, current head): restores `SDL_CleanupTLS()` at the end of the pusher lambda, with a comment quoting SDL 3.4.18's own `SDL_thread.h` doc text verbatim. Pushed; **CI on this head has not been checked yet** (the halt instruction arrived before it could complete) - this is the one outstanding verification.
+
+**Local WSL ASan proof: blocked, then started, not finished.**
+- First attempt (before packages were installed): WSL Ubuntu was missing all X11/Wayland/audio dev packages CI installs except `libx11-dev`; SDL3's own cmake configure refused. Reported to the orchestrator; held rather than using `SDL_UNIX_CONSOLE_BUILD=ON` (would diverge from CI's own configuration).
+- Owner installed the 20 missing packages (`dpkg --configure -a` first for an interrupted state). Reconfigured and built `anno_app_input_tests` (ASan preset) successfully - but with the **default compiler** (`/usr/bin/c++`, GCC), not Clang: the commit-A binary then passed 15/15 local runs, i.e. did **not** reproduce the leak locally, because CI's `linux-clang-asan` job specifically uses Clang, and GCC's own sanitizer runtime did not report it here.
+- Rebuilt with the standalone Clang 18 at `/home/altin/clang18/root/usr/lib/llvm-18/bin/clang++` (the same compiler `tools/check_unix_warnings.sh` uses for its compile-only checks) to match CI. Configure and **compiling** succeeded, but **linking** `anno_budget_coord` (a dependency built before `anno_app_input_tests` in the same ninja graph) failed: `/usr/bin/ld: cannot find .../libclang_rt.asan-x86_64.a` (and the `_static`/`_cxx` variants) - this standalone Clang installation has no compiler-rt sanitizer runtime libraries, only enough to compile (consistent with `check_unix_warnings.sh`'s own compile-only use of it). **Never got to actually run the binary with this compiler**; the local WSL Clang ASan proof is NOT_RUN for this reason, distinct from the earlier X11/Wayland blocker.
+- CI runs 44076929673 (the original flaky failure, attempt 1) and 44177906209 (commit A's deterministic failure) stand as the substitute evidence for the local WSL proof, per the orchestrator's own instruction once the compiler gap was found.
+
+**Not started at all: the Windows msvc 50-loop stability proof (item 3) and the second item (`viewer_wiring_r4_occupancy`, 50 loops, item 4).** `anno_app_input_tests` was built once on msvc Release (confirms the code compiles there) but no loop was run - the halt arrived first.
+
+**Cleanup done before stopping:** no background build, test loop, or WSL process left running (checked `pgrep` in WSL and `Get-Process` on Windows for ninja/cc1plus/clang++/cmake/ctest/anno_* after each step); the detached gatecheck worktree and its two scratch WSL build directories (`~/anno-build/flake-resize-1-check`, `~/anno-build/flake-resize-1-check-clang`) were removed.
+
+**What's next, for whoever resumes:**
+1. Check CI on head `b3304fd1` (commit B) - should be fully green; if not, read why before anything else.
+2. Either get this standalone Clang 18 a compiler-rt runtime (or find/install a different Clang 18 that has one) to actually run the local WSL ASan loop proof, or treat CI runs 44076929673/44177906209 as sufficient per the orchestrator's own fallback instruction and say so explicitly in the final report.
+3. Run the msvc 50-loop stability proof (`anno_app_input_tests`/live_resize, confirming the 70,000 forced pushes keep the test's own assertions stable) and the `viewer_wiring_r4_occupancy` 50-loop (item 4), neither started yet.
+4. `check_unix_warnings.sh` has not been run against this branch's change yet either.
+5. Write the final REPORTS.md entry only once all of the above is in, per the task's own acceptance criteria.
+
+No question for the orchestrator right now; this entry is the status record the halt instruction asked for.
+
+## FLAKE-RESIZE-1 — resumed, all steps done — READY FOR REVIEW (task/FLAKE-RESIZE-1, from origin/main `4dfdd9b7`, head `0835d2c5`)
+
+Resumed from the PAUSED entry above after the owner's "Yes, resume both." Root cause, fix (commits
+`333b6035`/`b3304fd1`) and the fix commit's head are unchanged from that entry; this entry closes
+out the five items the pause left open, in the order the orchestrator asked for them.
+
+**1. CI on `b3304fd1` (the fix commit) — green.** All 12 jobs `"conclusion":"success"`: `changes`,
+`lint`, `build-macos`, `test (ubuntu-latest)`, `test (windows-latest)`, `cpp (windows-msvc)`,
+`cpp (linux-gcc)`, `cpp (linux-gcc-release)`, `cpp (macos-clang)`, `cpp-format`,
+`cpp (linux-clang-asan)`, `gate` (run `44190066591`).
+
+**2. msvc 50-loop stability proof, `anno_app_input_tests`/`live_resize`.** Built fresh at head
+`0835d2c5` (the worktree's prior msvc build was stale, from 2026-11-17). `ctest --preset msvc -j 2
+-R "anno_app_input_tests\." --repeat until-fail:50`: all 50 distinct test cases in the binary
+(`#88`-`#137`, including `#130`, the ZOOM-SMOOTH-2b F1 case this task is about, and `#135`/`#136`,
+the other live-resize-labeled cases) passed every one of their up-to-50 repeats -
+**"100% tests passed out of 50"**, 60.61 s total. Ran serially (`-j 2`) alongside another lane's
+own msvc build, per the orchestrator's explicit go-ahead once the owner's "Yes, resume both"
+landed (stability, not timing, is what this loop checks, so shared-PC contention does not
+invalidate it - if anything it is closer to the conditions the original flake needed).
+
+**3. `viewer_wiring_r4_occupancy`, 50 loops.** First attempt (`-j 1 --repeat until-fail:50`, no env)
+skipped outright (`SKIP_RETURN_CODE 77`, 0.12 s) - `ANNO1503_GAME_DIR` was not set in that shell.
+Reran with `ANNO1503_GAME_DIR` pointed at `game/app`: **50/50 passed**, ~7 s per run, 353.51 s
+total, 0 failures, 0 skips. Also ran serially alongside the other lane's build.
+
+**4. `tools/check_unix_warnings.sh`.** Ran via WSL once WSL itself was free (it does not contend
+with Windows-side `cl`/`MSBuild`). All four configurations clean: GCC viewer+GPU on (416 files),
+GCC viewer without GPU (83 files), Clang 18 viewer+GPU on (416 files), Clang 18 viewer without GPU
+(83 files). Both negative controls ("failed as expected (shadowed variable caught)") confirmed the
+check itself is live.
+
+**5. Local WSL ASan loop proof — NOT_RUN.** The standalone Clang 18 install at
+`/home/altin/clang18/root/usr/lib/llvm-18/bin/clang++` can compile (used for item 4 above) but has
+no compiler-rt sanitizer runtime archives (`libclang_rt.asan-x86_64.a` and variants) to **link** an
+ASan-instrumented binary - confirmed by `/usr/bin/ld: cannot find .../libclang_rt.asan-x86_64.a`
+when linking `anno_budget_coord`, a dependency built before `anno_app_input_tests` in the same
+ninja graph. Per the orchestrator's explicit instruction this is left as a toolchain gap - no
+toolchain installed to work around it. Substitute evidence, per the same instruction: CI run
+**44177906209** (commit A, the forced-deterministic trigger without the fix) failed
+`linux-clang-asan` with the identical leak signature (214 bytes, 4 allocations, `SDL_GetErrBuf`),
+and CI run **44190066591** (commit B, the fix, item 1 above) passed the same job clean - together
+the deterministic failure/fix proof the task's own acceptance criterion asks for, just run on CI's
+Clang rather than this host's.
+
+**Decisions and reasoning:**
+- Ran items 2 and 3 while another lane's msvc build was active, on the orchestrator's explicit
+  instruction once the owner's halt lifted: these are stability proofs (the test's own assertions
+  holding over N repeats), not timing measurements, so PC contention does not weaken the result -
+  the original flake (CI run `44076929673`) surfaced under contention in the first place.
+- Did not attempt to fix or install a compiler-rt runtime for the standalone Clang 18 (item 5):
+  explicitly out of scope per the orchestrator's instruction, and that install exists only for
+  `check_unix_warnings.sh`'s compile-only use, not for linking sanitized binaries.
+- Used CI runs 44177906209/44190066591 as the substitute two-commit deterministic proof rather
+  than re-deriving it locally, since the commits, the trigger (70,000 forced pushes) and the leak
+  signature are already pinned and auditable from those run logs.
+
 ## UI-TABS-1 stage B — READY FOR REVIEW (Windows, 2026-11-17)
 
 - Continued on `task/UI-TABS-1` from `ae5164d9` (no rebase, no origin/main merge). Commits

@@ -7,6 +7,7 @@ add_library(anno_render
   src/chunk_instances.cpp
   src/chunk_reduce.cpp
   src/depth.cpp
+  src/direct_instances.cpp
   src/fluid.cpp
   src/frame.cpp
   src/frame_table.cpp
@@ -36,6 +37,7 @@ if(ANNO_BUILD_TESTS)
     tests/chunk_instances_test.cpp
     tests/chunk_reduce_test.cpp
     tests/depth_test.cpp
+    tests/direct_instances_test.cpp
     tests/fluid_test.cpp
     tests/frame_config_test.cpp
     tests/picking_test.cpp

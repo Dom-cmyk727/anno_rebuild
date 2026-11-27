@@ -255,3 +255,36 @@ The class `Load`s do not pass their switch bit *through* slot `+0xac`. In the wo
 - World slot `+0xcc` = `0x1009d9b0`: the square x ± r, y ± r in 8 x 8 chunks, island slot `+0x130` per chunk island (a repeat in a chunk row is skipped, `0x1009da99`). World slot `+0x130` = `0x100a59f0` (`ret 0x10`) is a different method (the chunk-map builder, not read). **D**
 - Callers: a moving ship (ship slot `+0x17c` = `0x10042210`, vtable `0x100c4da4`; `(state & 7) == 1`; world `+0xcc` at `0x10042273`, radius 14, flags 5); the scout (vtable `0x100c3758` slot `+0x18c` = `0x10036570`; island `+0x130` at `0x100365dc`, radius 8, flags 7); founding (flags 1); land units (hook `0x10047a90`, call `0x10047af0`, flags 1). **D**
 - Island slot `+0xcc` is SetHitPoints (`0x10093c10`; no-op `0x10087cd0` in the base vtable), not a reveal.
+
+## The road reshaper's classifier and shape table (ROADS-2a, 2026-11-27; D)
+
+Read with capstone on the GOG `AnnoWelt.dll` (`f220a878...`). `0x1007ef60` (`ret 0x14`) classifies one road record and
+its four neighbour records (the list `0x1007e8b0` built, 10 bytes per record: id u16, x u16, y u16, rotation u8, height
+u8):
+
+| Step | Address | What it does |
+|---|---|---|
+| Null or id 0/1 | `0x1007ef7c`-`0x1007efc0` | returns `0x40` |
+| Fold dirt onto cobblestone | `0x1007efc3`-`0x1007efd4` | id in `0x9d8`-`0x9f5` (2520-2549): id -= 20, remembers the offset `0x14` |
+| Fold the straight variants | `0x1007efd9`-`0x1007efee` | id in `0x9c5`-`0x9c8` (2501-2504) becomes `0x9c4` (2500), the variant kept |
+| Bridges | `0x1007eff8`-`0x1007f004` | id `0x9d6`/`0x9d7` (2518/2519) sets a bridge flag |
+| PRODTYPE `0x181` | `0x1007f013`-`0x1007f035` | the record's type with PRODTYPE `0x181` returns 1 (not shaped) |
+| Not a road | `0x1007f038`-`0x1007f049` | id outside `0x9c4`-`0x9f7` (2500-2551) is not shaped |
+| Ids that return 1 | `0x1007f067`-`0x1007f094` | `0x9f6`-`0x9fb`, `0xa06`-`0xa09`, `0xadc` (2550-2555, 2566-2569, 2780): not shaped |
+| **The neighbour mask** | `0x1007f0c0`-`0x1007f18a` | per direction 0-3: a neighbour whose id (folded as above) is in `0x9c4`-`0x9f7` sets bit `1 << dir`; **any other neighbour record is zeroed** (`0x1007f177`), so buildings, entrances and other objects never connect. A neighbour `0x9d2` (2514, a ramp) is collected separately; a neighbour whose height byte is 16-32 above the tile's, and one exactly 16 below, are noted for the slope pieces |
+| Ramps cut connections | `0x1007f190`-`0x1007f1e2` | for a ramp neighbour on an odd direction whose rotation is odd, its bit is cleared |
+| **The table** | `0x1007f21d`, `0x1007f236` | `id = [0x100c9d90 + 8 * mask]`, `rotation = [0x100c9d94 + 8 * mask]` |
+| Slope pieces | `0x1007f25a`-`0x1007f2e0` | island slot `+0x64(x, y)` non-zero and the id 2500/2508/2510-2513: a slope variant `0x9d5 + n` (ROADS-5, not read further) |
+
+**The table at `0x100c9d90`** (mask N=1, E=2, S=4, W=8 -> id, rotation): 0 -> 2500, 3; 1 -> 2508, 1; 2 -> 2508, 0;
+3 -> 2505, 1; 4 -> 2508, 3; 5 -> 2500, 3; 6 -> 2505, 0; 7 -> 2507, 1; 8 -> 2508, 2; 9 -> 2505, 2; 10 -> 2500, 0;
+11 -> 2507, 2; 12 -> 2505, 3; 13 -> 2507, 3; 14 -> 2507, 0; 15 -> 2506, 3. It equals the table read from the shipped
+scenarios (`BUILDINGSOBJECTS.md` part B 10.1 item 8) piece for piece and fixes the rotations the files left open (a lone
+tile and the N-S straight 3, the cross 3). **A road end (one neighbour) is an end cap (2508/2528)**: nothing in the
+classifier keeps it straight. The dirt family adds the remembered 20 back.
+
+**Against the shipped scenarios** (`tools/road_shape.py corpus`, 50 `.sze`, 40,939 shaped tiles): 38,635 agree (94.4 %).
+The misses are data the scenarios hold, not a rule the code shows: 1,060 road ends shipped as straights (1,046 of them in
+line with their one road neighbour), 824 T pieces with no road on the third arm, then about 400 in smaller classes. Since
+the classifier zeroes every non-road neighbour, entrances cannot explain them; most likely the scenarios were built with an
+editor that does not reshape (L). A GOG capture of a freshly laid road's end decides it (OQ-764).

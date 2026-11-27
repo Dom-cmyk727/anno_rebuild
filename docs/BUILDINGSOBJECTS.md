@@ -524,7 +524,9 @@ scripted rebuild session, **H** = HE pixels from the owner's recording.
    changes to the output list (`0x1007ece0`). Bridge pieces (2516-2519, 2536/2537) have their own pass that scans up to
    20 tiles along the axis (`0x1007d917`-`0x1007dc52`). Heights of re-shaped tiles are recomputed with the type slot
    `+0x68` (`0x1007e154`). Only the structure was read; the table in item 8 is from files.
-8. **The shape table (P, from the shipped scenarios; D for the family arithmetic).** Dirt id = cobblestone id + 20
+8. **The shape table (P, from the shipped scenarios; D for the family arithmetic; since ROADS-2a also D: the original's
+   own table at `AnnoWelt 0x100c9d90`, `docs/re/annowelt.md` "The road reshaper's classifier", equal piece for piece, with the
+   rotations: lone tile and N-S straight 3, cross 3; a road end is an end cap; only road ids connect).** Dirt id = cobblestone id + 20
    (`0x1007efcf`, `0x1007f0f3`). Over 28,233 dirt and 13,967 cobblestone tiles of 50 shipped `.sze` files
    (`cache/bref2/auto.py`; neighbour mask N=1, E=2, S=4, W=8):
 

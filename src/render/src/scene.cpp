@@ -1880,6 +1880,27 @@ std::pair<DrawStats, std::size_t> Scene::draw_island_objects(Canvas& local, cons
     return {stats, drawn};
 }
 
+std::optional<ObjectRecord> Scene::object_record(const SpriteDraw& d, std::pair<int, int> offset,
+                                                 std::uint32_t track, bool depth_test_on,
+                                                 const depth::Params& dparams) const {
+    // A frame that cannot be decoded is left out, as draw_prepared does.
+    const auto id = frame_table.intern_building(anlagen, sprites, d.key, *d.frame);
+    if (!id) {
+        return std::nullopt;
+    }
+    const bool shadow = d.is_shadow();
+    const depth::Draw dd = !shadow && depth_test_on
+                               ? depth::draw(dparams, d.anchor.second + offset.second, d.height,
+                                             d.frame->format(), d.frame->anchor_y)
+                               : depth::Draw{};
+    return ObjectRecord{d.anchor.first + offset.first - d.frame->anchor_x,
+                        d.anchor.second + offset.second - d.frame->anchor_y, *id,
+                        (shadow ? object_flags::kShadow : track) |
+                            std::uint32_t{d.height} << object_flags::kHeightShift |
+                            object_flags::depth_bits(dd.rule),
+                        0, 0, dd.base};
+}
+
 ChunkDraws Scene::objects_draws(Rect rect, std::size_t group, bool ships, bool bases,
                                 std::uint32_t bin_px, const ObjectsExclusion* exclude) const {
     assert(group < kGroups);
@@ -1914,22 +1935,9 @@ ChunkDraws Scene::objects_draws(Rect rect, std::size_t group, bool ships, bool b
             active, anlagen, group, lift, 0,
             [&](int x, int y, int w, int h) { return overlaps(local, x, y, w, h); }, draws);
         for (const SpriteDraw& d : draws) {
-            // A frame that cannot be decoded is left out, as draw_prepared does.
-            const auto id = frame_table.intern_building(anlagen, sprites, d.key, *d.frame);
-            if (!id) {
-                continue;
+            if (const auto rec = object_record(d, offset, track, depth_test, dparams)) {
+                out.add(*rec);
             }
-            const bool shadow = d.is_shadow();
-            const depth::Draw dd = !shadow && depth_test
-                                       ? depth::draw(dparams, d.anchor.second + offset.second,
-                                                     d.height, d.frame->format(), d.frame->anchor_y)
-                                       : depth::Draw{};
-            out.add(ObjectRecord{d.anchor.first + offset.first - d.frame->anchor_x,
-                                 d.anchor.second + offset.second - d.frame->anchor_y, *id,
-                                 (shadow ? object_flags::kShadow : track) |
-                                     std::uint32_t{d.height} << object_flags::kHeightShift |
-                                     object_flags::depth_bits(dd.rule),
-                                 0, 0, dd.base});
         }
     };
     // UnitSprite::draw: the shadow, then the frame, in scene coordinates;

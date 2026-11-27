@@ -2,8 +2,12 @@
 // files). The corpus proof against place_prepared/object_record (the two .sze scenes, lan5.txt,
 // a mutation control) lives in chunk_instances_corpus_test.cpp (anno_render_tests) and
 // chunk_instances_lan5_test.cpp (anno_app_tests).
+// RENDER-DIRECT-2c: the patch (place/demolish/upgrade) tests below, synthetic. The real-island
+// proof (Single_01 island 0) and the opt-in patch-timing measurement live in
+// chunk_instances_corpus_test.cpp too.
 #include <array>
 #include <cstdint>
+#include <span>
 #include <utility>
 #include <vector>
 
@@ -40,6 +44,44 @@ anl::AnlagenFile one_entry_file(std::uint32_t anlage_id, anno::formats::Bytes an
     anl::AnlagenFile file;
     file.entries.push_back(std::move(entry));
     return file;
+}
+
+/// Several static (n=1) entries in one file, for the place/demolish/upgrade patch tests (each
+/// needs at least two distinct anlage ids coexisting). `kOneFrame` (n=1 ms=50) for every one.
+anl::AnlagenFile multi_entry_file(std::span<const std::uint32_t> ids,
+                                  anno::formats::Bytes anim_payload, fig::Frame frame = {}) {
+    anl::AnlagenFile file;
+    for (const std::uint32_t id : ids) {
+        fig::GfxSet set;
+        set.frame_sets.push_back(fig::FrameSet{0, {frame}});
+        fchunk::Chunk anim;
+        anim.name_field = *fchunk::name_field("ANIM");
+        anim.payload = anim_payload;
+        set.records.push_back(std::move(anim));
+        fig::Entry entry;
+        entry.id = id;
+        entry.gfx.push_back(std::move(set));
+        file.entries.push_back(std::move(entry));
+    }
+    return file;
+}
+
+/// A chunk-bucketed structure, element for element (not a set): every chunk key present in both,
+/// with its instances' keys equal in the same order.
+void check_buckets_equal(const render::ChunkInstanceBuckets& a,
+                         const render::ChunkInstanceBuckets& b) {
+    REQUIRE(a.size() == b.size());
+    for (const auto& [chunk, insts] : a) {
+        CAPTURE(chunk.first);
+        CAPTURE(chunk.second);
+        REQUIRE(b.count(chunk) == 1);
+        const auto& other_insts = b.at(chunk);
+        REQUIRE(insts.size() == other_insts.size());
+        for (std::size_t i = 0; i < insts.size(); ++i) {
+            CHECK(insts[i].key == other_insts[i].key);
+            CHECK(insts[i].draw.anchor == other_insts[i].draw.anchor);
+        }
+    }
 }
 
 } // namespace
@@ -112,5 +154,61 @@ TEST_CASE("bucket_by_chunk: the chunk keys match frame.hpp's own visible_chunks 
         REQUIRE(buckets.at(chunk).size() == 1);
         CHECK(buckets.at(chunk)[0].draw.anchor == expected_anchor);
         CHECK(buckets.at(chunk)[0].list_index == statics[0].list_index);
+    }
+}
+
+namespace {
+
+/// A single-tile object at (x, y) of anlage `id`, as one `other` entry.
+render::Prepared one_object(std::uint32_t id, std::uint16_t x, std::uint16_t y) {
+    insel::PlacedObject o;
+    o.anlage = static_cast<std::uint16_t>(id);
+    o.x = x;
+    o.y = y;
+    return {o, {1, 1}};
+}
+
+render::ChunkInstanceBuckets fresh_build(std::span<const render::Prepared> list,
+                                         const anl::AnlagenFile& file, std::pair<int, int> offset) {
+    return render::bucket_by_chunk(
+        render::resolve_static_instances(list, file, 0, render::kHeightLift), offset);
+}
+
+} // namespace
+
+TEST_CASE("patch_chunk_instances: place, demolish and upgrade each match a fresh build "
+          "element for element (RENDER-DIRECT-2c)") {
+    static constexpr std::array<std::uint32_t, 2> kIds{300, 301};
+    static constexpr std::array<std::uint8_t, 6> kOneFrame{0, 0, 1, 0, 50, 0};
+    const auto file = multi_entry_file(kIds, kOneFrame);
+    const std::pair<int, int> offset{0, 0};
+
+    SUBCASE("place: an object appears") {
+        const std::vector<render::Prepared> before{one_object(300, 10, 10)};
+        const std::vector<render::Prepared> after{one_object(300, 10, 10), one_object(300, 20, 20)};
+        auto buckets = fresh_build(before, file, offset);
+        render::patch_chunk_instances(buckets, before, after, file, 0, render::kHeightLift, offset);
+        check_buckets_equal(buckets, fresh_build(after, file, offset));
+    }
+
+    SUBCASE("demolish: an object disappears") {
+        const std::vector<render::Prepared> before{one_object(300, 10, 10),
+                                                   one_object(300, 20, 20)};
+        const std::vector<render::Prepared> after{one_object(300, 10, 10)};
+        auto buckets = fresh_build(before, file, offset);
+        render::patch_chunk_instances(buckets, before, after, file, 0, render::kHeightLift, offset);
+        check_buckets_equal(buckets, fresh_build(after, file, offset));
+    }
+
+    SUBCASE("upgrade: the same tile, a different anlage - remove-old-key plus add-new-key, no "
+            "special case") {
+        const std::vector<render::Prepared> before{one_object(300, 10, 10)};
+        const std::vector<render::Prepared> after{one_object(301, 10, 10)};
+        auto buckets = fresh_build(before, file, offset);
+        render::patch_chunk_instances(buckets, before, after, file, 0, render::kHeightLift, offset);
+        check_buckets_equal(buckets, fresh_build(after, file, offset));
+        // Confirm it actually changed (not a vacuous pass: before == after by coincidence).
+        REQUIRE(buckets.size() == 1);
+        CHECK(buckets.begin()->second.at(0).key.anlage == 301);
     }
 }

@@ -464,6 +464,21 @@ if(ANNO_BUILD_TESTS)
                 $<TARGET_FILE:anno1503>)
       set_tests_properties(viewer_wiring_ui_roads_pixel_check PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 300 PROCESSORS 4)
+      # ROADS-2b: the owner's L, T and cross with the road reshaper from the default start view
+      # (tool.road.shaped: the sim's shaped pieces), and the ghost-vs-commit pixel check.
+      add_test(NAME viewer_wiring_ui_roads_shape
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_roads_shape
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_roads_shape PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      add_test(NAME viewer_wiring_ui_roads_shape_pixel_check
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/roads_shape_pixel_check.py
+                $<TARGET_FILE:anno1503>)
+      set_tests_properties(viewer_wiring_ui_roads_shape_pixel_check PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 300 PROCESSORS 4)
       # UI-GHOST-2: ghost hides overlappable flag-0x20 objects under footprint without mutating Scene,
       # restores on move/cancel/phase-1, draws only yellow refusal box when default-off, and draws
       # blocking footprint outline only under --occupied-outline on (ADAPTATION, default off).

@@ -897,6 +897,8 @@ class Viewer {
     std::shared_ptr<const render::ObjectsPatch> cached_patch_;
     /// ROADS-3: live road ghost path, plan, probe match state and drawn sprite count.
     std::vector<sim::PlacementWire> road_ghost_path_;
+    /// ROADS-2b: the sim's shaped records for road_ghost_path_ (empty until the probe answered).
+    std::vector<sim::PlacementWire> road_ghost_shaped_;
     RoadGhostPlan road_ghost_plan_;
     bool road_probe_matched_ = false;
     std::size_t road_ghost_drawn_ = 0;
@@ -2979,9 +2981,14 @@ std::vector<Preview> Viewer::road_ghost_previews(const render::Scene& scene,
         return out;
     }
     const std::size_t n = std::min(road_ghost_plan_.draw_count, road_ghost_path_.size());
-    out.reserve(n);
-    for (std::size_t i = 0; i < n; ++i) {
-        const sim::PlacementWire& rec = road_ghost_path_[i];
+    // ROADS-2b: the shaped pieces when the sim answered (the path's records first, then the
+    // rewritten neighbours, drawn only with the whole path, as their shapes assume it).
+    const bool shaped = road_ghost_shaped_.size() >= road_ghost_path_.size();
+    const std::vector<sim::PlacementWire>& recs = shaped ? road_ghost_shaped_ : road_ghost_path_;
+    const std::size_t total = shaped && n == road_ghost_path_.size() ? recs.size() : n;
+    out.reserve(total);
+    for (std::size_t i = 0; i < total; ++i) {
+        const sim::PlacementWire& rec = recs[i];
         if (auto p =
                 make_type_preview(scene, rec.type, rec.rotation, {rec.x, rec.y}, group_, time)) {
             out.push_back(std::move(*p));
@@ -3016,8 +3023,10 @@ bool Viewer::ghost_refresh() {
         if (play_ != nullptr) {
             play_->runner().request_road_probe(probe);
             const auto snap = play_->runner().snapshot();
+            road_ghost_shaped_.clear();
             if (snap && snap->road_probe && snap->road_probe->probe == probe) {
                 verdict = snap->road_probe->check;
+                road_ghost_shaped_ = snap->road_probe->shaped;
             }
         }
         const auto verdict_before = ghost_verdict_;
@@ -3043,6 +3052,7 @@ bool Viewer::ghost_refresh() {
     }
 
     road_ghost_path_.clear();
+    road_ghost_shaped_.clear();
     road_ghost_plan_ = {};
     road_probe_matched_ = false;
     GhostInputs in;
@@ -3641,6 +3651,16 @@ void Viewer::script_tick() {
             : std::string("pending");
     st.facts["tool.road.drawn"] = std::to_string(road_ghost_drawn_);
     st.facts["tool.road.commit_matched_preview"] = last_road_commit_matched_preview_ ? "1" : "0";
+    // ROADS-2b: the sim's shaped pieces for the current road preview, "id:rotation" per record in
+    // record order (the path, then the rewritten neighbours), or "none".
+    {
+        std::string shaped;
+        for (const sim::PlacementWire& p : road_ghost_shaped_) {
+            shaped += (shaped.empty() ? "" : ",") + std::to_string(p.type.v) + ":" +
+                      std::to_string(p.rotation);
+        }
+        st.facts["tool.road.shaped"] = shaped.empty() ? std::string("none") : shaped;
+    }
     // UI-PRODBAR-1 B1: the fertility indicator over the ghost (fertility_indicator.hpp,
     // docs/re/ui.md 4.1). Roads never show a fertility bar (`BUILDINGSOBJECTS.md` §10.1 item 9).
     {

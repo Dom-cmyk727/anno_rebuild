@@ -41,7 +41,7 @@ if(ANNO_BUILD_TESTS)
                  tests/route_unit_test.cpp
                  tests/route_world_test.cpp
                  tests/route_stamps_test.cpp
-                 tests/road_drag_test.cpp tests/road_shape_test.cpp)
+                 tests/road_drag_test.cpp tests/road_shape_test.cpp tests/road_shape_apply_test.cpp)
   # Independent spec oracle generated into the build, never the current fixtures.
   set(extension_oracle "${CMAKE_CURRENT_BINARY_DIR}/synthetic-extension.txt")
   add_custom_command(OUTPUT "${extension_oracle}"

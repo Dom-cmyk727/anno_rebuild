@@ -196,6 +196,10 @@ struct RoadPathProbe {
 struct RoadPathProbeAnswer {
     RoadPathProbe probe;
     sim::RoadPathCheck check;
+    /// ROADS-2b: the records the commit would place after the reshaper (World::shape_road_path):
+    /// the path's records with their shaped pieces, then the rewritten neighbours. The ghost draws
+    /// these, so the preview equals the commit.
+    std::vector<sim::PlacementWire> shaped;
 };
 
 struct PlaySnapshot {

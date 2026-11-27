@@ -1418,7 +1418,8 @@ void PlayRunner::fill_road_probe(PlaySnapshot& next) {
     next.road_probe.reset();
     if (probe) {
         next.road_probe =
-            RoadPathProbeAnswer{*probe, world_.check_build_path(probe->city, probe->records)};
+            RoadPathProbeAnswer{*probe, world_.check_build_path(probe->city, probe->records),
+                                world_.shape_road_path(probe->city, probe->records)};
     }
 }
 

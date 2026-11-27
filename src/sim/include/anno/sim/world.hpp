@@ -404,6 +404,12 @@ class World {
     /// remaining site-valid records past the first CannotAfford as unaffordable tail).
     [[nodiscard]] RoadPathCheck check_build_path(CityRef city,
                                                  std::span<const PlacementWire> records) const;
+    /// ROADS-2b: the records a road drag of `city` would place, after the original's reshaper
+    /// (road_shape.hpp; AnnoWelt 0x1007cc40/0x1007ef60): each road record's piece and rotation from
+    /// its neighbours, then the existing road tiles beside the path whose piece changes. Only while
+    /// road_rules is enabled; otherwise `records` unchanged. A pure read (the ghost draws these).
+    [[nodiscard]] std::vector<PlacementWire>
+    shape_road_path(CityRef city, std::span<const PlacementWire> records) const;
 
     /// The structural facts and the derived-equals-recomputed facts of docs/sim/
     /// state.md §9.6 that exist at this stage. Empty when they all hold, else one

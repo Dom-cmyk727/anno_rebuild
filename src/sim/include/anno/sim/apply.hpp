@@ -37,6 +37,9 @@ struct Commands {
     /// cumulative virtual placements and budget (ROADS-3).
     static RoadPathCheck check_build_path(const World& w, CityRef city,
                                           std::span<const PlacementWire> records);
+    /// World::shape_road_path: the records a road drag places after the reshaper (ROADS-2b).
+    static std::vector<PlacementWire> shape_road_path(const World& w, CityRef city,
+                                                      std::span<const PlacementWire> records);
 };
 
 } // namespace anno::sim

@@ -115,7 +115,7 @@ original text in git). This file keeps the method, the field meanings, findings 
 | 15 | The figure veto (`0x10045080`) runs only at founding, not in Build | B | sim |
 | 16 | **Runtime tile objects (roads, later fields and trees) never reach the picture**: a placed road is `Applied` but `NoVisualChange`; the trees under a new building stay drawn | B (10.1, 10.2) | **Settled for runtime roads & cleared scenery (S + code, ROADS-0):** `PlayRunner` diffs tracked tile objects (`kRoadFlag`) and cleared tick-0 scenery alongside `BuildingDelta`; `ScenePicture` -> `apply_island_buildings` emits `PROD2` sprites (`id, rotation, height, phase`), placed roads reach `Visible`, cleared trees disappear and stay bare on demolish. Planting crops/trees remains gap 4 |
 | 17 | Road drag: L path with y first on ties, 40 tiles, every tile territory, no downgrade, same-family free, kind-9 prefix commit; hold-and-follow ghost | B (10.1) | **Settled (S + code):** ROADS-1 (`sim::road_path`, `RoadRules`, `check_build_path`, kind-9 commit) + ROADS-3 (`plan_road_ghost`, `RoadVariantDeck`, `DevInput` L-drag, `--road-rules` default `on` in `--play`) |
-| 18 | Road autotiling table (corner/T/cross/end, dirt = cobblestone + 20) | B (10.1 item 8) | ROADS-2 |
+| 18 | Road autotiling table (corner/T/cross/end, dirt = cobblestone + 20) | B (10.1 item 8) | **Settled when `road_rules` on (D + S + code, ROADS-2a/2b):** the binary's table `0x100c9d90` in `sim::reshape_road_path`; the kind-9 commit and `check_build_path` shape the drag's records and re-lay the changed neighbours (preview == commit); the picture tracks the slope-class pieces (`viewer_wiring_ui_roads_shape`, `roads_shape_pixel_check`). Open: OQ-765 (water, ADAPTATION), OQ-900/901/903 |
 | 19 | The ghost hides no trees; no yellow rectangle on refusal; occupied footprints invisible | B (10.2) | **Settled (D + H + S + code, `UI-GHOST-2`):** render-layer `ObjectsPatch` suppresses flag-`0x20` scenery under shown ghosts while respecting `overwrites()` (`0x10` rocks stay under `0x10` mines; moving away/cancelling restores immediately without mutating `Scene`); `AnnoFrame 0x10048450`/`0x1004b7f0` -> `0x10041050` draws only the yellow (`0xffff00`) empty rectangle on refusal without hiding trees (`0x10047848`); optional `--occupied-outline on\|off` **ADAPTATION (default `off`)** outlines blocking `Reject::Occupied` footprints (`kOccupiedOutlineRgb = 0xff4040`) |
 | 20 | Selected building has a title but no yellow highlight; market/Kontor click does not open the warehouse | B (10.3) | UI-SELECT-1/2 |
 
@@ -515,7 +515,8 @@ scripted rebuild session, **H** = HE pixels from the owner's recording.
    works on the island's tile grid), which is what HE shows (road mode darkens only what is outside the range, and a road
    piece stands "in the water" near the shore, `ui_10` 11:04). The class-`0x1000` pieces (corner, T, cross, end, see item
    8) need `rec[8] >= 32` and a slope of at most `0x10` (RP section 2), so those do **not** go on water. Whether a
-   re-shaped piece that would fall on water is refused at commit, and how the ghost shows it, is **U** (OQ-765).
+   re-shaped piece that would fall on water is refused at commit, and how the ghost shows it, is **U** (OQ-765). ROADS-2b
+   refuses it at that tile by the ordinary placement rule and the prefix commit stops there (**ADAPTATION** until read).
 7. **Reshaping (D, island slot `+0x80` = `AnnoWelt 0x1007cc40`, about 3,000 instructions).** Called with the record list
    (n records, a mode byte, flags: `0x80` write the ghost, `0x80000000` ghost, `0x20000000` blinking). For each record
    whose type has flag `0x800` or PRODTYPE `0x181`, or when the mode byte is set, it finds the four orthogonal
@@ -524,7 +525,9 @@ scripted rebuild session, **H** = HE pixels from the owner's recording.
    changes to the output list (`0x1007ece0`). Bridge pieces (2516-2519, 2536/2537) have their own pass that scans up to
    20 tiles along the axis (`0x1007d917`-`0x1007dc52`). Heights of re-shaped tiles are recomputed with the type slot
    `+0x68` (`0x1007e154`). Only the structure was read; the table in item 8 is from files.
-8. **The shape table (P, from the shipped scenarios; D for the family arithmetic).** Dirt id = cobblestone id + 20
+8. **The shape table (P, from the shipped scenarios; D for the family arithmetic; since ROADS-2a also D: the original's
+   own table at `AnnoWelt 0x100c9d90`, `docs/re/annowelt.md` "The road reshaper's classifier", equal piece for piece, with the
+   rotations: lone tile and N-S straight 3, cross 3; a road end is an end cap; only road ids connect).** Dirt id = cobblestone id + 20
    (`0x1007efcf`, `0x1007f0f3`). Over 28,233 dirt and 13,967 cobblestone tiles of 50 shipped `.sze` files
    (`cache/bref2/auto.py`; neighbour mask N=1, E=2, S=4, W=8):
 
@@ -569,7 +572,7 @@ combined range; no GOG display module tests the tile owner directly (D), but a G
 | Hold-and-follow preview | ghost path while held | **Settled (`S + code`, ROADS-3):** `PlayRunner::request_road_probe` -> `World::check_build_path`, `plan_road_ghost` draws valid prefix solid, blinks unaffordable tail (699/700 ms), yellow `0xffff00` refusal rectangle when `valid_count == 0`, UI-side `RoadVariantDeck` preview == commit parity (`tools/test/roads_ghost_pixel_check.py`) | **G3 settled** |
 | Territory per tile | every tile owner != 15, one city, own player | **Settled when `road_rules` on (`S + code`, ROADS-1 + ROADS-3):** `footprint_all_owned_rule` (`enabled = 1` default under interactive `--play --road-rules on`; compiled `RoadRules{}` default `0` preserves faithful pins) | **G4 settled (`road_rules`)** |
 | No downgrade / free re-lay | refuse dirt over cobblestone; same family free | **Settled when `road_rules` on (`S + code`, ROADS-1 + ROADS-3):** `is_road_downgrade` + `same_family_free` + kind-9 prefix commit (`viewer_wiring_ui_roads`, `roads_ghost_pixel_check`) | **G5 settled (`road_rules`)** |
-| Autotiling | corner/T/cross/end pieces, neighbour rewrites | none: the commanded flat straight id for every tile, rotation by the tool only | G6 |
+| Autotiling | corner/T/cross/end pieces, neighbour rewrites | **with `road_rules` on (ROADS-2b):** the reshaper's pieces and neighbour re-lays in the kind-9 commit and the ghost; off: the commanded straight id, as before | G6 settled (`road_rules`) |
 | Terrain | none for the flat piece; slope class for shape pieces | `road_require_land_level` is **off** by default (the original behaviour); the title's `unchecked: the placement rule` is the window's own text, not a refusal | none for flat; G6 |
 | Radius outline | none | none for a road | none |
 | Armed after placing | yes | yes | none |

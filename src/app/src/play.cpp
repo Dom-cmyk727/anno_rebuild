@@ -417,7 +417,9 @@ bool anlage_is_tracked_tile_object(const sim::World& world, std::uint32_t anlage
     if (type == nullptr || world.config().layout.list_for(type->prodtype).has_value()) {
         return false;
     }
-    return (type->flags_word & sim::kRoadFlag) != 0;
+    // ROADS-2b: the reshaper's corner, T, cross and end pieces are land roads of the slope class
+    // (0x1186, no kRoadFlag), and a road drag now places them, so the picture tracks them too.
+    return (type->flags_word & sim::kRoadFlag) != 0 || sim::is_land_road(*type);
 }
 
 std::vector<SceneTileObject> play_tile_objects(const sim::World& world) {
@@ -486,8 +488,8 @@ PlayRunner::PlayRunner(sim::World world, unsigned speed_percent, PlaySchedule* s
         }
         if (world_.config().layout.list_for(type.prodtype).has_value()) {
             building_type_mask_[type.id.v] = 1;
-        } else if ((type.flags_word & sim::kRoadFlag) != 0) {
-            tracked_type_mask_[type.id.v] = 1;
+        } else if ((type.flags_word & sim::kRoadFlag) != 0 || sim::is_land_road(type)) {
+            tracked_type_mask_[type.id.v] = 1; // the same classes as anlage_is_tracked_tile_object
         }
     }
     const auto& islands = world_.islands();
@@ -1423,7 +1425,8 @@ void PlayRunner::fill_road_probe(PlaySnapshot& next) {
     next.road_probe.reset();
     if (probe) {
         next.road_probe =
-            RoadPathProbeAnswer{*probe, world_.check_build_path(probe->city, probe->records)};
+            RoadPathProbeAnswer{*probe, world_.check_build_path(probe->city, probe->records),
+                                world_.shape_road_path(probe->city, probe->records)};
     }
 }
 

@@ -3932,7 +3932,8 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **How to resolve:** the follow-up "pick over the whole map" (packet `docs/orchestration/tasks/ui-ghost-1.md`, "Follow-up"): a pick for the ghost over every map tile; the click still builds only on the island.
 - **Answer (fix round R1):** `DevTool::ghost_hover` names the tile under the pointer anywhere on the map (`pick_point`: any island's ground, else the sea-level tile). Off the city's island the sim's verdict is OutOfIsland and the refused footprint shows; a click there is sent and refused by the sim with the same reject (`viewer_wiring_ui_ghost_world`). The adaptation is gone.
 
-## OQ-764: The exact road reshaper `AnnoWelt 0x1007cc40` (BUILDINGS-REF-2, 2026-11-19; OPEN)
+## OQ-764: The exact road reshaper `AnnoWelt 0x1007cc40` (BUILDINGS-REF-2, 2026-11-19; NARROWED ROADS-2a)
+- **Update (ROADS-2a, 2026-11-27, `docs/re/annowelt.md`):** the classifier `0x1007ef60` and the table `0x100c9d90` are read: only road ids connect, a one-neighbour tile is an end cap, the table equals the scenario-derived one. Against the 50 shipped `.sze`, 94.4 % of 40,939 tiles agree; the gap by class: road ends shipped straight 1,060 (1,046 in line with the neighbour), T without a third road arm 824, straight->T 126, straight->corner 57, cross->T 51, T->corner 50, others about 90. These look like editor-placed data (L); a GOG capture of a laid road's end confirms the end cap. Still unread: `0x1007cc40`'s mode byte, flag `0x10`, the output order `0x1007ece0`, the slope variants (ROADS-5).
 - **Question:** When is a one-neighbour tile an end piece (2508/2528) and when does it stay a straight piece (the corpus has both), which neighbour rewrites does the reshaper emit, and what do its mode byte and flag `0x10` do?
 - **What we know:** `docs/BUILDINGSOBJECTS.md` part B 10.1 items 7-8: the structure is read (four neighbours by `0x1007e8b0`, classification `0x1007ef60`, output `0x1007ece0`); the id/rotation table is derived from 42,000 shipped tiles (P), 90-100 % per id.
 - **How to resolve:** Decode `0x1007cc40`, `0x1007e8b0`, `0x1007ece0`, `0x1007ef60`, `0x1007f960`, `0x10080610`, `0x1008bae0` (packet RE-ROADS-2, 3 h) or emulate the function on the corpus.
@@ -3941,6 +3942,7 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Question:** The corner, T, cross and end pieces are class `0x1186` and need `rec[8] >= 32`, so they cannot stand on water while the flat straight piece can. Does the kind-9 apply re-check the reshaped records, and what does the ghost show?
 - **What we know:** Part B 10.1 items 6-7: the per-tile cursor check has no terrain test; the dry reshaper call only computes the record list.
 - **How to resolve:** Read the kind-9 apply in `0x100589a0` and the ghost write with flag `0x80000000`, or one Wine capture of a road dragged into the sea with a turn in it.
+- **ROADS-2b (2026-11-27):** ADAPTATION until read: the shaped piece goes through the ordinary placement rule, so it is refused at that tile, and the kind-9 prefix commit stops there; the ghost shows the same verdict (`check_build_path` runs the same records).
 
 ## OQ-766: Bridges: the 20-tile scan and which cursor places them (BUILDINGS-REF-2; OPEN)
 - **Question:** Which cursor places 2516, 2517, 2536 and 2537 (the menu arms only the grand bridge 2518), and what does the scan of up to 20 tiles in `0x1007d917`-`0x1007dc52` do?
@@ -4012,3 +4014,18 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **Question:** GOG darkens while a market or a road is armed (`docs/re/ui.md` 12.2). Does an armed pioneer house (or any building) darken too? And which city is lit when the pointer is on a neutral tile or on another city's tile?
 - **What we know:** the GOG capture `p1_a_armed` (pioneer house) is at the closest zoom, entirely inside the range, so it cannot show it (P). B1's trigger list (`RangeTriggers`, `range_view.hpp`) lists only the evidenced cases (PRODTYPE 33-35 armed, the road), and a neutral pointer tile lights nothing (L).
 - **How to resolve:** one far-zoom GOG Wine capture with a pioneer house armed, the pointer on the city, then on a neutral tile (pre-authorized; ORCH III: when a quiet slot comes).
+
+## OQ-900: The order of the reshaper's neighbour rewrites (ROADS-2a, 2026-11-27; OPEN)
+- **Question:** when two path tiles share an existing neighbour, in which order does `AnnoWelt 0x1007ece0` append the rewritten neighbours, and is a neighbour appended once or per touching path tile?
+- **What we know:** the rebuild appends each changed neighbour once, in first-touch order after the path (`reshape_road_path`, L). The order changes only the record order, not the pieces placed.
+- **How to resolve:** read `0x1007ece0` and the loop of `0x1007cc40` that calls it.
+
+## OQ-901: Does a re-shaped straight keep its cosmetic variant? (ROADS-2a, 2026-11-27; OPEN)
+- **Question:** the classifier remembers a straight's variant (`0x1007efd9`-`0x1007efee`, 2501-2504 folded to 2500). When the reshaper writes a straight back, does it restore that variant or the table's base id 2500/2520?
+- **What we know:** the rebuild keeps the tile's own straight id when the piece stays straight (L); a piece that becomes straight takes the base id.
+- **How to resolve:** follow the remembered variant byte (`[esp+0x13]`) to the output in `0x1007f2e0`-`0x1007f33c`.
+
+## OQ-903: Do the reshaper's neighbour rewrites count towards the 40-tile drag cap? (ROADS-2b, 2026-11-27; OPEN)
+- **Question:** The road drag caps a path at 40 tiles. When the reshaper appends re-lay records for existing neighbours, does the original count them towards the cap (so a 40-tile path beside existing roads loses its neighbour rewrites)?
+- **What we know:** Nothing read. ROADS-2b counts only the drag's own records (`apply.cpp`, kind-9 loop), an inference (L): the cap limits dragged tiles, and the neighbours are not dragged.
+- **How to resolve:** Read where the kind-9 apply (`0x100589a0`) or the road cursor (`0x1004b290`) enforces the 40-tile limit, relative to the reshaper call `0x1007cc40`; or drag a 40-tile road beside an existing one in the original and look at the neighbour.

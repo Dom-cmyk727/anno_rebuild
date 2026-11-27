@@ -23,6 +23,7 @@
 #include <anno/sim/mine_source.hpp>
 #include <anno/sim/placement.hpp>
 #include <anno/sim/road_drag.hpp>
+#include <anno/sim/road_shape.hpp>
 #include <anno/sim/ship_cargo.hpp>
 #include <anno/sim/ship_orders.hpp>
 #include <anno/sim/site_checks.hpp>
@@ -683,6 +684,65 @@ RecordResult place(Env& env, Island& is, City& city, Player& owner, const Checke
     return r;
 }
 
+/// ROADS-2b: a road drag's records after the original's reshaper (road_shape.hpp; AnnoWelt
+/// 0x1007cc40, table 0x100c9d90). Runs only while road_rules is enabled (header tag 2), so the
+/// faithful default and every save without road_rules are unchanged. The road records (land roads
+/// whose id the reshaper places) form the path in record order; each gets its shaped id and
+/// rotation, and every existing road beside the path whose piece changes is appended as a re-lay
+/// record (same family: free, ROADS-1). Other records are kept as they are.
+/// ADAPTATION (OQ-765, unread in the original): the corner, T, cross and end pieces are slope
+/// class 0x1186, so a shaped piece on water is refused by the ordinary placement rule at that
+/// tile, and the kind-9 prefix commit stops there.
+std::vector<PlacementWire> shape_road_records(const World& w, const Island& is,
+                                              const TypeRegistry& types,
+                                              std::span<const PlacementWire> records) {
+    std::vector<PlacementWire> out(records.begin(), records.end());
+    if (!w.road_drag_enabled()) {
+        return out;
+    }
+    const RoadShapeTable table{};
+    std::vector<std::size_t> at;
+    std::vector<TileXY> path;
+    std::vector<std::uint32_t> ids;
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        const BuildingType* t = out[i].type.v != 0 ? types.find(out[i].type) : nullptr;
+        if (t != nullptr && is_land_road(*t) && road_shaped_base(table, out[i].type.v)) {
+            at.push_back(i);
+            path.push_back({out[i].x, out[i].y});
+            ids.push_back(out[i].type.v);
+        }
+    }
+    if (path.empty()) {
+        return out;
+    }
+    const RoadAt existing = [&](TileXY p) -> std::optional<RoadObject> {
+        const Slot idx = is.tiles.index_of(p.x, p.y);
+        if (idx == kNoSlot) {
+            return std::nullopt;
+        }
+        const std::uint32_t id = is.tiles.object(idx);
+        if (id == 0) {
+            return std::nullopt;
+        }
+        return RoadObject{id, is.tiles.foot_rotation(idx)};
+    };
+    const std::vector<ShapedRoad> shaped = reshape_road_path(table, path, ids, existing);
+    for (std::size_t k = 0; k < at.size(); ++k) {
+        out[at[k]].type = TypeId{shaped[k].id};
+        out[at[k]].rotation = shaped[k].rotation;
+    }
+    const PlacementWire& first = records[at.front()];
+    for (std::size_t k = at.size(); k < shaped.size(); ++k) {
+        PlacementWire n = first;
+        n.type = TypeId{shaped[k].id};
+        n.x = shaped[k].tile.x;
+        n.y = shaped[k].tile.y;
+        n.rotation = shaped[k].rotation;
+        out.push_back(n);
+    }
+    return out;
+}
+
 ApplyResult build(Env& env, const Command& c, const BuildCmd& cmd) {
     ApplyResult result;
     const Target t = resolve_city(env, c, cmd.city);
@@ -697,7 +757,10 @@ ApplyResult build(Env& env, const Command& c, const BuildCmd& cmd) {
         result.status = Reject::UnknownIssuer;
         return result;
     }
-    result.records.resize(cmd.placements.size());
+    // ROADS-2b: the reshaper's records (unchanged unless road_rules is enabled).
+    const std::vector<PlacementWire> placements =
+        shape_road_records(env.w, is, env.types, cmd.placements);
+    result.records.resize(placements.size());
 
     // Rules::build_atomic (D8): every record is validated against a scratch budget
     // first; one failure places nothing. The records that would have passed say
@@ -706,9 +769,9 @@ ApplyResult build(Env& env, const Command& c, const BuildCmd& cmd) {
         Budget budget;
         budget.accounts = city.accounts;
         bool all_pass = true;
-        for (std::size_t i = 0; i < cmd.placements.size(); ++i) {
+        for (std::size_t i = 0; i < placements.size(); ++i) {
             const Checked chk =
-                check_record(check_env(env), is, city, *owner, cmd.placements[i], &budget);
+                check_record(check_env(env), is, city, *owner, placements[i], &budget);
             if (chk.skip) {
                 continue;
             }
@@ -720,8 +783,8 @@ ApplyResult build(Env& env, const Command& c, const BuildCmd& cmd) {
             spend(budget, is, chk);
         }
         if (!all_pass) {
-            for (std::size_t i = 0; i < cmd.placements.size(); ++i) {
-                if (result.records[i].status == Reject::None && cmd.placements[i].type.v != 0) {
+            for (std::size_t i = 0; i < placements.size(); ++i) {
+                if (result.records[i].status == Reject::None && placements[i].type.v != 0) {
                     result.records[i].status = Reject::AtomicAbort;
                 }
             }
@@ -741,16 +804,17 @@ ApplyResult build(Env& env, const Command& c, const BuildCmd& cmd) {
     const bool road_drag = env.w.road_drag_enabled();
     const std::uint32_t drag_cap = env.w.road_rules().drag_cap;
     const bool stop_on_refusal = road_drag && env.w.road_rules().stop_at_first_refusal != 0;
-    for (std::size_t i = 0; i < cmd.placements.size(); ++i) {
-        const Checked chk =
-            check_record(check_env(env), is, city, *owner, cmd.placements[i], nullptr);
+    for (std::size_t i = 0; i < placements.size(); ++i) {
+        const Checked chk = check_record(check_env(env), is, city, *owner, placements[i], nullptr);
         if (chk.skip) {
             continue;
         }
-        if (road_drag && chk.is_road) {
+        // The rewritten neighbours appended after the drag's own records do not count towards
+        // the drag cap (L, inferred: they are not dragged tiles; unread in the original, OQ-903).
+        if (road_drag && chk.is_road && i < cmd.placements.size()) {
             if (road_count >= drag_cap) {
-                for (std::size_t j = i; j < cmd.placements.size(); ++j) {
-                    if (cmd.placements[j].type.v != 0) {
+                for (std::size_t j = i; j < placements.size(); ++j) {
+                    if (placements[j].type.v != 0) {
                         result.records[j].status = Reject::PrefixStopped;
                     }
                 }
@@ -775,8 +839,8 @@ ApplyResult build(Env& env, const Command& c, const BuildCmd& cmd) {
             // Kind-9 prefix commit (AnnoFrame 0x1004b5c7, OQ-043): stop at first refusal
             // for road placements (never stopping ordinary multi-building BuildCmds).
             if (stop_on_refusal && (chk.is_road || road_count > 0)) {
-                for (std::size_t j = i + 1; j < cmd.placements.size(); ++j) {
-                    if (cmd.placements[j].type.v != 0) {
+                for (std::size_t j = i + 1; j < placements.size(); ++j) {
+                    if (placements[j].type.v != 0) {
                         result.records[j].status = Reject::PrefixStopped;
                     }
                 }
@@ -1134,13 +1198,15 @@ RoadPathCheck Commands::check_build_path(const World& w, CityRef ref,
         return out;
     }
     const CheckEnv env{w, w.config_, w.rules_, w.seams_, *w.types_};
+    // ROADS-2b: the same shaped records the commit places (preview == commit).
+    const std::vector<PlacementWire> shaped = shape_road_records(w, is, *w.types_, records);
     Budget budget;
     budget.accounts = city->accounts;
     bool still_affordable = true;
     std::uint32_t road_count = 0;
     const bool road_drag = w.road_drag_enabled();
     const std::uint32_t drag_cap = w.road_rules().drag_cap;
-    for (const PlacementWire& p : records) {
+    for (const PlacementWire& p : shaped) {
         Checked chk = check_record(env, is, *city, *owner, p, &budget, still_affordable);
         if (chk.skip) {
             continue;
@@ -1188,6 +1254,20 @@ RoadPathCheck Commands::check_build_path(const World& w, CityRef ref,
 
 RoadPathCheck World::check_build_path(CityRef city, std::span<const PlacementWire> records) const {
     return Commands::check_build_path(*this, city, records);
+}
+
+std::vector<PlacementWire> Commands::shape_road_path(const World& w, CityRef ref,
+                                                     std::span<const PlacementWire> records) {
+    if (!ref.island.valid() || ref.island.v >= w.islands_.size() ||
+        !w.islands_[ref.island.v].has_value()) {
+        return {records.begin(), records.end()};
+    }
+    return shape_road_records(w, *w.islands_[ref.island.v], *w.types_, records);
+}
+
+std::vector<PlacementWire> World::shape_road_path(CityRef city,
+                                                  std::span<const PlacementWire> records) const {
+    return Commands::shape_road_path(*this, city, records);
 }
 
 } // namespace anno::sim

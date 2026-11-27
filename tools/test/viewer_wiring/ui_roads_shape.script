@@ -1,0 +1,79 @@
+# ROADS-2b: the owner's L, T and cross through the construction menu, from the default start view
+# (no look), with the original's road reshaper (docs/BUILDINGSOBJECTS.md part B 10.1 items 7-8,
+# AnnoWelt table 0x100c9d90; mask N=1, E=2, S=4, W=8). tool.road.shaped lists the sim's shaped
+# records ("id:rotation", the path, then the rewritten neighbours); the commit must place them.
+# Screenshots shape_hidden(_b) / shape_l_ghost / shape_l_commit feed roads_shape_pixel_check.py.
+resize 1024 768
+wait frames 5
+key b
+wait frames 5
+
+# Open the Roads category and arm dirt road 2520.
+click_px 770 372
+wait frames 3
+expect fact ui.category == roads
+click_px 833 330
+wait frames 3
+expect fact tool.armed == 2520
+
+# Negative control: the pointer on the panel, no ghost.
+hover_px 950 600
+wait fact tool.ghost == hidden
+wait frames 3
+expect fact tool.road.drawn == 0
+screenshot shape_hidden
+wait frames 30
+screenshot shape_hidden_b
+
+# L: (1254, 530) -> (1259, 532), x first: end cap open east, four E-W straights, the W+S corner,
+# an N-S straight, an end cap open north.
+ldown-land 1254 530
+lmove-land 1259 532
+wait fact tool.road.ready == 1
+expect fact tool.road.path == 8
+expect fact tool.road.valid == 8
+expect fact tool.road.shaped == 2528:0,2520:0,2520:0,2520:0,2520:0,2525:3,2520:3,2528:1
+wait frames 3
+expect fact tool.road.drawn == 8
+screenshot shape_l_ghost
+lup-land 1259 532
+wait outcome
+expect outcome Applied
+wait drawn
+expect fact tool.road.commit_matched_preview == 1
+# Every committed piece is in the picture (the shaped pieces are slope class 0x1186, not kRoadFlag).
+expect fact picture.tile_objects == 8
+hover_px 950 600
+wait fact tool.ghost == hidden
+wait frames 3
+screenshot shape_l_commit
+
+# T: (1255, 528) -> (1255, 529) north of the L's second tile: an end cap open south, an N-S
+# straight, and the existing straight at (1255, 530) re-laid as the T (W, E, N).
+ldown-land 1255 528
+lmove-land 1255 529
+wait fact tool.road.ready == 1
+expect fact tool.road.path == 2
+expect fact tool.road.shaped == 2528:3,2520:3,2527:2
+lup-land 1255 529
+wait outcome
+expect outcome Applied
+wait drawn
+expect fact picture.tile_objects == 10
+
+# Cross: (1257, 529) -> (1257, 531) across the L's E-W run: two end caps and the cross on the run.
+ldown-land 1257 529
+lmove-land 1257 531
+wait fact tool.road.ready == 1
+expect fact tool.road.path == 3
+expect fact tool.road.shaped == 2528:3,2526:3,2528:1
+lup-land 1257 531
+wait outcome
+expect outcome Applied
+wait drawn
+expect fact picture.tile_objects == 12
+hover_px 950 600
+wait fact tool.ghost == hidden
+wait frames 3
+screenshot shape_ltx_commit
+quit

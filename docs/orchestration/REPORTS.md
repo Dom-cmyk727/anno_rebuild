@@ -18135,3 +18135,51 @@ GELAENDE records end up empty - not drawing id 5.
   zero-risk hardening, not scope creep.
 
 READY FOR REVIEW.
+
+## MAC-FIX-ORDER-1 — isolate process-wide scene reclamation in tests (2026-11-27)
+
+- Base `62f67abc926635325ef118698e9a7b52d4aa84ba` (tree `2b96bdb6158ab68e3251defbd0993ab31d2071f0`). Tested code `4d77a9732a20495adf76f16f5b361e02ab987228` (tree `55b92477b574531b13ceaf86b49588981561ac67`).
+- Evidence under `cache/mac-fix-order-1/` in the task worktree. Baseline binaries were saved at the base before edits. The adopted `9ac05e01` checkpoint verified the fix direction. Its separate gates and failures are preserved.
+- Test and test-support changes only. A shared test drain observes both waiting and in-flight scene retirements before global counter snapshots and zero-backlog commits. The post-destruction payload checks compare exact quiescent snapshots. Early exits open their gates before worker joins.
+
+### Shortest witnessed orders
+
+The original affected cases passed alone. Each pair selects two cases in the historical predecessor-first order. Unfixed loss and final pass are both in `repro/`.
+
+| Finding and affected assertion | Preceding case | Observed difference on the base and final code |
+|---|---|---|
+| MH2-003, window-release case, `scene_reclaim_test.cpp:57` | `accounting: a generation dequeued into a stalled destruction stays counted until it ends` | Default-order pair failed on attempt 1: `completed == before` had `3 == 2`. The predecessor's own base scene can retire after its last check. Final 2/2. |
+| MH2-004, frame-held publication and shutdown, `scene_picture_publish_test.cpp:783` | `publish: transient and permanent failures under a stream, while the healthy island advances, and the failed one is reported after the edits stop` | Default-order pair failed on attempt 6 at the payload and in-flight predicate. Retirement from the prior case can change the sampled baseline. Final 2/2. |
+| MH2-005, frame-held ownership, `scene_picture_ownership_test.cpp:517` | `accounting: one, two and four workers each hold a superseded generation at a barrier` | Default-order pair failed on attempt 6 at the payload and in-flight predicate. The predecessor settles inside its iteration and releases its last base generation on exit. Final 2/2. |
+| MH2-007, obsolete-failure recovery, `scene_picture_recovery_test.cpp:647` | `legal workload: intermediate publications under a stream of builds and a demolish each equal a fresh scene of the state they represent (game files)` | The natural pair passed ten attempts. With the test seam holding its actual tail retirements, the base had waiting=3, in_flight=1 and first commit 0 instead of 1. The final code observed waiting=2, in_flight=1, drained them first and passed 2/2. |
+
+- Separate controlled payload probes held foreign generations with distinct lineages. Both original payload assertions failed and both checkpoint controls passed. The production queue deliberately retires scenes asynchronously. The zero-backlog predicate reads the shared waiting count, a valid reason to defer a commit in the baseline pair.
+- The renderer also waits for the actual last-owner worker to finish before sampling its exact completed-count delta. Other tests relying on the same global snapshot or zero-backlog prerequisite use the shared drain.
+- MH-005 (`a result of an older version is never published after a newer change`, old line 402) passed in both new seeds (4 and 5) and the other four final app orders.
+
+### Gates
+
+- Mac Release, Apple M5 Max, original game files, four internal test threads. Built `anno_app_tests`, `anno_render_tests` and `bench_picture`. clang-format 23.1.3 and `git diff --check` passed.
+- `selected-final.log` SHA-256 `3c9dc81c1d1c4e165b22fee3d2db180e6fa0011b7c2403dbf0e1c16843e599aa`. `run_selected.py --select '^anno_(app|render)_tests\.' --asset-policy required --jobs 4`.
+- `whole-final.log` SHA-256 `487c7cd4de6c4da5871487fefc1a389b70a990a3bf2c266bff36b42510801e78`. Twelve whole processes under the same runner, `--jobs 2`, default plus seeds `1, 2, 3, 4, 5` for each binary.
+- Within each whole order the renderer ran 228 cases and the app selected 405, including 3 opt-in skips. The outer gate counts processes. Native ordered case lists and assertions are under `final/`.
+- `SHA256SUMS` SHA-256 `5234c0e0a5aa22f88a1d171cde91959679cab793ddabedb6f4b209673aa870b5` covers the logs, inventories and reproduction receipts.
+
+```text
+COUNTS: selected=1 executed=1 failed=0 refused=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=633 executed=630 failed=0 refused=0 empty=0 skipped=3 (required-asset=0 platform=0 opt-in=3 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+COUNTS: selected=12 executed=12 failed=0 refused=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+```
+
+### Decisions and reasoning
+
+- Moved the synchronization to the cause. A process-wide snapshot must follow both queue drain and in-flight completion. Destruction assertions still check the intended deltas and retained scene identities.
+- Preserved the prior ten-second bounds for equivalent waits. Existing recovery helpers that were already bounded at thirty seconds retain that limit.
+- Used a private test-seam harness only for the rare MH2-007 schedule. Three other failures have uninstrumented two-case witnesses. No case order or skip rules changed in the test binaries.
+
+**NOT_RUN:** local Windows and Linux game-file suites, full project matrix with game files, GPU lane and unrelated viewer/transport findings.
+
+**READY FOR REVIEW**

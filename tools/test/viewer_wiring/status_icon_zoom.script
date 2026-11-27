@@ -14,10 +14,10 @@ expect title build 801
 click 1156 516
 wait outcome
 expect outcome Applied
-key esc
-wait frames 3
 wait fact inspection.status_icon == 1 within 200000
 wait fact status_icons.drawn >= 1 within 10000
+key esc
+wait frames 3
 look 1156 516
 wait frames 10
 note fact zoom.target

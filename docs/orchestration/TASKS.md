@@ -86,6 +86,22 @@ PC.**
 - **One at a time.** At most one open packet per executor. The orchestrator dispatches the next packet after
   reviewing the last one, and only with the owner's OK.
 
+**Owner rules, 2026-11-27 (every orchestrator, executor and subagent):**
+- **Ponytail is mandatory.** Every orchestrator, executor and subagent uses
+  [ponytail](https://github.com/DietrichGebert/ponytail). Claude Code: `/plugin marketplace add DietrichGebert/ponytail`,
+  then `/plugin install ponytail@ponytail` (it then reaches every Agent-tool subagent). Codex:
+  `codex plugin marketplace add DietrichGebert/ponytail`, `codex plugin add ponytail@ponytail`, then trust its two
+  hooks in `/hooks`. Both need Node on PATH. Ponytail's "only what the task needs" never removes a test, check or
+  piece of evidence that `CLAUDE.md` or the [evidence contract](../testing/evidence-contract.md) requires; where they
+  disagree, the project rules win.
+- **Long hardware-heavy tests only after big steps or bundles,** placed by hardware: RAM- and CPU-heavy runs (game-file
+  corpus, scene-corpus renders, large CPU suites) on the Mac executor; CPU- and GPU-heavy runs (RTX 4090 GPU tests,
+  GPU-vs-CPU-reference checks, benchmarks) on the Windows executor. A single packet runs only the build, the tests of
+  what it changed and hosted CI.
+- **Advisor review only after large steps.** A result review by the advisor model happens only after a large
+  development step or task, or a bundle of smaller ones; never per small packet. The orchestrator's review at handover
+  (rule of 2026-11-12) is unchanged.
+
 ## What moved out of this board (2026-11-10)
 
 The board's closed history moved verbatim, nothing edited, to [`HISTORY-2.md`](HISTORY-2.md), and the older

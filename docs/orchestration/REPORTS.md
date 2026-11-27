@@ -17575,3 +17575,13 @@ done to keep this packet docs only); the darkening factor measurement (OQ-796); 
   behind an option, or not at all?
 - **For ORCH III:** run the GOG Wine capture before B1 (recommended), or start B1 now with the trigger logic and keep the
   draw behind the OQ-795 answer?
+
+### UI-RANGE-1 A, addendum (after ORCH III's review): the GOG capture
+
+- Silent Wine run (pre-authorized; PC quiet checked, after the cand12 build): new game, F8, F2 farthest zoom; the start
+  Kontor selected, then the market armed, then the dirt road armed (`cache/orig/ui-range-1/`, private).
+- **OQ-795 answered: GOG darkens exactly as HE** in all three cases, the sea inside the island rectangle included;
+  nothing selected, nothing dark. So it is the original's behaviour and needs no owner decision.
+- **OQ-796 narrowed:** about 5/8 per channel (0.625 fits 27,022 sampled changed pixels, 0.75 15,135), the shadow brush's
+  factor; not bit-exact through the capture path. The drawing code in GOG stays unread (OQ-767 answered in part).
+- ORCH III's nit fixed: ui.md 12.1 rows 6 and 7 back in order. B draft updated (no owner gate; factor 5/8).

@@ -556,7 +556,8 @@ scripted rebuild session, **H** = HE pixels from the owner's recording.
 instruction in `tCursorAnlageStrasse` (input `0x1004b290`, draw `0x1004b7f0`) does it; it is another layer (OQ-767).
 **Narrowed by UI-RANGE-1 A (2026-11-27, `docs/re/ui.md` 12):** the HE rule is a per-tile owner test against one city
 (selected Kontor/market, armed territory-bound building or road), not a distance test, so a Kontor plus a market show their
-combined range; no GOG display module tests the tile owner (D), so GOG may not darken at all (OQ-795).
+combined range; no GOG display module tests the tile owner directly (D), but a GOG capture shows GOG darkens exactly as HE, at about
+5/8 brightness (OQ-795 answered, `ui.md` 12.2).
 
 **What the rebuild has, and the exact gaps (S + code).**
 
@@ -571,7 +572,7 @@ combined range; no GOG display module tests the tile owner (D), so GOG may not d
 | Terrain | none for the flat piece; slope class for shape pieces | `road_require_land_level` is **off** by default (the original behaviour); the title's `unchecked: the placement rule` is the window's own text, not a refusal | none for flat; G6 |
 | Radius outline | none | none for a road | none |
 | Armed after placing | yes | yes | none |
-| Darkening outside the range | HE yes: every island tile not owned by the selected/armed city, sea tiles inside the island rectangle included (`ui.md` 12.1); GOG not found in its code (OQ-795) | `territory_view` exists, not tied to road mode | G7 (OQ-767 narrowed, OQ-795, OQ-796) |
+| Darkening outside the range | HE yes: every island tile not owned by the selected/armed city, sea tiles inside the island rectangle included (`ui.md` 12.1); GOG the same, about 5/8 brightness (GOG capture, OQ-795 answered; the drawing code unread) | `territory_view` exists, not tied to road mode | G7 (OQ-767 narrowed, OQ-795, OQ-796) |
 | Bridges 2518, piers, ramps | bridge scan up to 20 tiles | `Unsupported` | G8 |
 
 **Implementation plan, small packets** (ROADS-0 first, or nothing placed can be seen).

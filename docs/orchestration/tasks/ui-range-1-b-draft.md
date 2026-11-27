@@ -4,9 +4,8 @@ Stage A's findings: `docs/re/ui.md` 12. **Recommendation: split into B1 and B2**
 touch the app's selection logic, the CPU reference picture and the GPU compositor's ground and object passes, and it
 needs a factor that is not measured yet (OQ-796). B2 touches render files, so it is serialised with the render lane.
 
-**Before either:** the owner's decision on OQ-795. If a GOG capture shows no darkening, the darkening is a History
-Edition addition, and showing it is an owner choice (the original UI is the base, owner rule 2026-11-14). Proposal: the
-faithful default follows the GOG answer; HE's darkening is drawn when GOG has it too, or behind a UI option if not.
+**OQ-795 is answered:** the GOG original darkens too (`ui.md` 12.2), so the darkening is faithful default behaviour and
+needs no owner decision. The factor is about 5/8 (OQ-796).
 
 ## B1: which tiles are lit (app, CPU reference; about 3 h)
 
@@ -19,8 +18,8 @@ faithful default follows the GOG answer; HE's darkening is drawn when GOG has it
 - **Lit set:** island tiles with `owner == range_city`; every other tile of that island **and of every other island**
   (sea tiles inside each island rectangle included, `ui.md` 12.1 row 2) is dark; the open sea outside the island
   rectangles is never dark.
-- **Draw (CPU reference path only):** multiply the ground and every object anchored on a dark tile by the factor from
-  OQ-796 (measured on `he_01` 3:28 vs 4:19 in this packet; one value, data with its source in `data/ui/`).
+- **Draw (CPU reference path only):** multiply the ground and every object anchored on a dark tile by 5/8 (the GOG
+  capture `r1` vs `r2`, OQ-796; one value, data with its source in `data/ui/`; the exact form stays open).
 - **Tests:** the pure `range_city`/lit-set function in unit cases (selected Kontor, combined Kontor+market, armed market,
   armed road, nothing selected, a second city on the island); a wiring script from the **default start view** (owner
   rule) with dev facts `ui.range_city` and the lit-tile count; a failure proof.

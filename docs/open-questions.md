@@ -3951,7 +3951,8 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **What we know:** Part B 10.1 item 7: bridge ids get their own pass in the reshaper; the road cursor checks 2518/2519 as 2500.
 - **How to resolve:** Read the bridge pass and the view cell callback (OQ-729).
 
-## OQ-767: Who darkens the map outside the range in road mode? (BUILDINGS-REF-2; NARROWED UI-RANGE-1 A)
+## OQ-767: Who darkens the map outside the range in road mode? (BUILDINGS-REF-2; ANSWERED IN PART UI-RANGE-1 A)
+- **Update 2 (GOG capture, OQ-795):** GOG darkens too, so it is the original's behaviour, not an HE addition; the drawing layer is still unread.
 - **Update 2026-11-27 (UI-RANGE-1 A, `docs/re/ui.md` 12):** HE darkens every island tile (sea tiles inside the island rectangle included) whose owner is not the selected or armed building's city, for a selected Kontor/market, an armed territory-bound building and an armed road (H). In GOG neither cursor draw does it, and no display module (`AnnoDisplay`, `View`, `AnnoFrame`) tests the owner nibble; every `AnnoWelt` owner test found is sim or bitfield code (D). Either GOG reaches the owner through an accessor not yet found, or the darkening is an HE addition: decided by OQ-795.
 - **Question:** HE darkens everything outside the Kontor/market range while a road is armed (`ui_10` 10:48-11:13). Which layer does it, and does GOG do the same?
 - **What we know:** No instruction in `tCursorAnlageStrasse` input `0x1004b290` or draw `0x1004b7f0` does it (part B 10.1).
@@ -3982,12 +3983,14 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **What we know:** Part B 10.3 items 3-4: kinds 2, 3, 4, 5 and the validity rule (PRODTYPE group at most `0xa0`).
 - **How to resolve:** Read `0x10019c20`, `0x10077730` and `0x10050b90`.
 
-## OQ-795: Does GOG darken the map outside a city's range at all? (UI-RANGE-1 A, 2026-11-27; OPEN)
+## OQ-795: Does GOG darken the map outside a city's range at all? (UI-RANGE-1 A, 2026-11-27; ANSWERED: yes)
+- **Answer (2026-11-27, GOG Wine capture, `docs/re/ui.md` 12.2):** yes, as HE: a selected Kontor, an armed market and an armed dirt road all darken every island tile outside the city's territory, the sea inside the island rectangle included; nothing selected, nothing dark. The drawing code is still unread (no direct owner test found; an accessor in the ground draw).
 - **Question:** HE darkens every island tile not owned by the selected/armed city (`docs/re/ui.md` 12.1). Does the GOG build do the same, or is it a History Edition addition?
 - **What we know:** no owner test in GOG's display modules or cursor draws (`ui.md` 12.2). The GOG captures at hand are at the closest zoom, entirely inside the 24-tile range, so they cannot show it (P).
 - **How to resolve:** one GOG Wine capture at the farthest zoom with a Kontor selected near the edge of its range, and one with a market armed (pre-authorized Wine run). If GOG darkens, find the accessor in the ground draw; if not, the darkening is an HE feature, and whether the rebuild shows it is an owner decision (the original UI is the base).
 
-## OQ-796: How strong is the HE darkening, and how is it applied? (UI-RANGE-1 A, 2026-11-27; OPEN)
+## OQ-796: How strong is the HE darkening, and how is it applied? (UI-RANGE-1 A, 2026-11-27; NARROWED)
+- **Update (GOG capture):** about 5/8 per channel (0.625 fits 27,022 sampled pixels, 0.75 15,135), the shadow brush's factor, not bit-exact through the capture; the multiply-vs-shadow-overlay form and the multi-city choice stay open.
 - **Question:** the factor of the darkening, whether it is a multiply, a blend towards black or a palette shift, and whether the objects on dark tiles (trees, buildings) use the same factor as the ground. Also which city an armed tool uses when the player owns several cities on one island (L: the one under the pointer).
 - **What we know:** HE frames show the ground and the trees outside the range darker, the sea inside the island rectangle too (`ui.md` 12.1 rows 1, 2, 7).
 - **How to resolve:** compare pixel pairs of the same tile lit and dark in `he_01` (3:28 vs 4:19) at full resolution, per channel; stage B fits its factor to that.

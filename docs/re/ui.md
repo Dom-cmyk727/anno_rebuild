@@ -1566,8 +1566,8 @@ Labels: D disassembly, H HE pixels, P GOG capture pixels, L inference.
 | 3 | The lit edge is tile-stepped, the shape of the painted territory (the disc painter `AnnoWelt 0x10085840`, `ship-founding.md` 11.2), not a smooth circle. | `he_01` 3:28 |
 | 4 | **Combined range:** with a market placed, the lit area is the union of the Kontor's and the market's discs, i.e. all tiles of that city. Selecting either building shows the same lit set. | `he_01` 5:30-5:50 |
 | 5 | The same darkening shows while a **territory-bound building is armed** (market, 3:55-4:15) and while a **road** is armed (`ui_10` 10:48-11:13); it is gone once nothing is selected or armed (4:19). | `he_01` 3:55-4:19, `ui_10` |
-| 7 | Objects standing on dark tiles (trees, the forest) are darker too: the darkening applies to everything drawn on those tiles, not only the ground. The factor and whether it is a multiply, a blend or a palette shift are not measured (OQ-796). | `he_01` 3:28 (forest top left) |
 | 6 | The armed ghost's own range outline (green in HE, yellow `0xffff00` in GOG) is drawn **in addition**, centred on the footprint centre, so it moves with rotation (an odd footprint's centre shifts when w/h swap). Fully read in `BUILDINGSOBJECTS.md` part B §5.1 (3) (`AnnoFrame 0x100443c0`, half-width table 3.3); nothing new here. | §5.1 (3); `he_01` 3:32-4:21 |
+| 7 | Objects standing on dark tiles (trees, the forest) are darker too: the darkening applies to everything drawn on those tiles, not only the ground. The factor and whether it is a multiply, a blend or a palette shift are not measured (OQ-796). | `he_01` 3:28 (forest top left) |
 
 So the rule is a per-tile owner test against **one city**, not a distance test: "lit" = tile owner nibble (tile word bits
 25-28, `annowelt.md` §owner bits) == the city of the selected building, or of the armed tool's city. Which city an armed
@@ -1583,7 +1583,17 @@ footprint's owner, `0x10058890`).
 | 3 | The same tests in `AnnoWelt` | `0x100830d7`, `0x1008329b`, `0x100834d9`, `0x100836f6`, `0x1008f7ee`-`0x1008fda2`: tile-word bitfield copies. `0x100854ab`, `0x100857da`, `0x100860e8`, `0x10086169`: the territory writers/painter (`annowelt.md`). `0x1008b0e2`-`0x1008b16b`: a sim pass that collects the owners of a tile's four corners into a per-chunk mask and posts event `0x17` for crop objects (type `0xe2`). `0x10080db5`-`0x100810ad`: an owner-set filter in a 2-step tile loop that calls city slot `+0xc8`. None of them is reached from a draw path that was read. |
 | 4 | Shadow brushes (`tBrushShadR` `0x10019f80`, `tBrush2ScreenShadR` `0x1001a560`, 5/8 brightness) | Used for `BSH_ALPHA` sprite shadows (`annodisplay.md` §3); no caller tied to a selection was found. |
 
-**Conclusion (OQ-767, narrowed):** GOG has **no** owner-based darkening in its cursor draws or in any direct owner-nibble
+**GOG capture, 2026-11-27 (P, decisive; silent Wine run, new game, farthest zoom F2; shots `r1`-`r4` in the
+private `cache/orig/ui-range-1/`):** GOG **does** darken, exactly as HE: with the start Kontor selected (`r2`, the city
+panel open), with the market armed (`r3`, together with the yellow radius outline `0x100443c0`) and with the dirt road
+armed (`r4`), every island tile outside the city's territory is darker, the sea tiles inside the island rectangle as
+tile-stepped blocks; with nothing selected (`r1`) nothing is dark. **Factor (`r1` vs `r2`, the same view):** about 5/8
+per channel: of the sampled changed pixels, 27,022 fit 0.625 within one 5-bit step, 15,135 fit 0.75, 2,550 fit 0.5.
+That is the shadow brush's 5/8 (`tBrushShadR`, `annodisplay.md` §3) but not bit-exact through the capture path, so
+the layer is likely a shadow overlay per dark tile (L). Which GOG code draws it is still unread: the static search
+above found no direct owner test, so it goes through an accessor not traced here.
+
+**Conclusion before the capture (kept):** GOG has **no** owner-based darkening in its cursor draws or in any direct owner-nibble
 test of its display modules. Either GOG reaches the owner through an accessor inside the ground draw (not found in this
 pass), or **the darkening is a History Edition addition**. The GOG captures available cannot decide it: `f12_info_kontor_1302`
 and `p1_c_armed_1301` are at the closest zoom, where the whole screen lies inside the 24-tile range (P). The decisive check

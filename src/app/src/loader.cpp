@@ -339,6 +339,14 @@ void apply_island_buildings(insel::Island& island, const std::vector<SceneBuildi
     std::vector<PendingProd2> pending;
     pending.reserve(buildings.size() + tile_objects.size());
     for (const SceneBuilding& b : buildings) {
+        // apply_world_buildings already refuses b.type >= kPictureAnlageIds before it reaches
+        // `buildings` here; checked again, symmetric with tile_objects just below, so this
+        // function never relies solely on its one caller to keep the cast in range.
+        if (b.type >= kPictureAnlageIds) {
+            notes.push_back("play: Anlagen id " + std::to_string(b.type) +
+                            " does not fit a PROD2 item");
+            continue;
+        }
         pending.push_back(PendingProd2{static_cast<std::uint16_t>(b.type), b.x, b.y,
                                        static_cast<std::uint8_t>(b.rotation & 3u), b.height, 0,
                                        false});

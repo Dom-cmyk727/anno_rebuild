@@ -4,13 +4,17 @@
     python -I tools/test/roads_shape_pixel_check.py <anno1503 executable> [--renderer cpu|gpu] [--save-dir <dir>]
 
 Drives tools/test/viewer_wiring/ui_roads_shape.script on lan5 (default start view) and compares
-three 1024 x 768 screenshots in the map area:
-  - shape_hidden: armed, pointer on the panel, no ghost (before any road);
+four 1024 x 768 screenshots inside LAND_ROI (the L's land):
+  - shape_hidden, shape_hidden_b: armed, pointer on the panel, no ghost (before any road), 30
+    frames apart: the pixels that differ between them animate (the sea) and are left out;
   - shape_l_ghost: the shaped L's ghost (8 tiles: end caps, straights, the corner) before release;
   - shape_l_commit: the committed L, pointer back on the panel.
-The road area is where both the ghost and the commit differ from shape_hidden. Inside its box the
-ghost and the commit must agree: a wrong piece or rotation in the preview (or the commit) differs
-by a whole tile sprite, so diff(ghost, commit) must stay under MAX_MISMATCH of diff(ghost, hidden).
+The road area is where both the ghost and the commit differ from shape_hidden. Inside its box, every
+pixel where the committed road is visible (commit != hidden) must show the same in the ghost: a
+wrong piece or rotation differs by a whole tile sprite, so fewer than MAX_MISMATCH of those pixels
+may differ (interior pixels only: the outline blends with the ground differently in the scene). Pixels where the commit equals shape_hidden are left out: there scenery in front (a
+tree on the next tile) covers the committed road in the scene's depth order, while the ghost is
+drawn over everything (the same overlay as roads_ghost_pixel_check.py).
 
 Exit: 0 pass, 1 fail, 2 bad arguments, 77 skipped.
 """
@@ -23,10 +27,15 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[2]
 SCRIPT = HERE / "tools" / "test" / "viewer_wiring" / "ui_roads_shape.script"
-MAP = (0, 0, 745, 733)  # left of the panel, above the status bar (as roads_ghost_pixel_check.py)
+# The L's land around (1254, 530)-(1259, 532) in the default start view: inland, so no sea pixels
+# animate inside (as LAND_ROI in roads_ghost_pixel_check.py).
+LAND_ROI = (630, 160, 735, 240)
 MIN_ROAD_PX = 400  # 8 road tiles at the default zoom
 MAX_MISMATCH = 0.10
-NAMES = ("shape_hidden", "shape_l_ghost", "shape_l_commit")
+# The overlay and the scene composite the same sprite through different paths: off by 1-2 per
+# channel. A wrong piece differs by tens (a one-tile shift of the same shot: 99.5 % of the pixels).
+CHANNEL_TOLERANCE = 8
+NAMES = ("shape_hidden", "shape_hidden_b", "shape_l_ghost", "shape_l_commit")
 
 
 def diff_set(a, b, rect):
@@ -113,19 +122,27 @@ def main(argv):
             print(f"FAIL: shots not 1024x768: {sorted({img.size for img in shots.values()})}")
             return 1
 
-        ghost = diff_set(shots["shape_l_ghost"], shots["shape_hidden"], MAP)
-        commit = diff_set(shots["shape_l_commit"], shots["shape_hidden"], MAP)
+        animated = diff_set(shots["shape_hidden"], shots["shape_hidden_b"], LAND_ROI)
+        ghost = diff_set(shots["shape_l_ghost"], shots["shape_hidden"], LAND_ROI) - animated
+        commit = diff_set(shots["shape_l_commit"], shots["shape_hidden"], LAND_ROI) - animated
         road = ghost & commit
         if len(road) < MIN_ROAD_PX:
             print(f"FAIL: road area too small: ghost {len(ghost)}, commit {len(commit)}, "
                   f"both {len(road)} < {MIN_ROAD_PX}")
             return 1
         roi = box(road)
-        in_roi = [p for p in ghost if roi[0] <= p[0] < roi[2] and roi[1] <= p[1] < roi[3]]
-        mismatch = diff_set(shots["shape_l_ghost"], shots["shape_l_commit"], roi)
-        ratio = len(mismatch) / max(len(in_roi), 1)
-        print(f"road box {roi}: ghost-hidden {len(in_roi)} px, ghost-commit {len(mismatch)} px "
-              f"({ratio:.3f}, max {MAX_MISMATCH})")
+        visible = {p for p in commit if roi[0] <= p[0] < roi[2] and roi[1] <= p[1] < roi[3]}
+        # Interior only: the sprite's outline blends with the ground differently in the scene than
+        # in the overlay, so a pixel counts when its four neighbours show the committed road too.
+        visible = {(x, y) for (x, y) in visible
+                   if {(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)} <= visible}
+        pg, pc = shots["shape_l_ghost"].load(), shots["shape_l_commit"].load()
+        mismatch = {p for p in visible
+                     if max(abs(a - b) for a, b in zip(pg[p], pc[p])) > CHANNEL_TOLERANCE}
+        print(f"animated (left out): {len(animated)} px")
+        ratio = len(mismatch) / max(len(visible), 1)
+        print(f"road box {roi}: committed road visible {len(visible)} px, of them differing in "
+              f"the ghost {len(mismatch)} px ({ratio:.3f}, max {MAX_MISMATCH})")
         if ratio > MAX_MISMATCH:
             print("FAIL: the ghost's pieces differ from the committed road")
             return 1

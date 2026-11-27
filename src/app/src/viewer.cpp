@@ -41,6 +41,7 @@
 #include <anno/render/picking.hpp>
 #include <anno/sim/production.hpp>
 #include <anno/sim/reject.hpp>
+#include <anno/sim/road_shape.hpp>
 #ifdef ANNO_VIEWER_GPU
 #include <anno/render/gpu.hpp>
 
@@ -3652,12 +3653,18 @@ void Viewer::script_tick() {
     st.facts["tool.road.drawn"] = std::to_string(road_ghost_drawn_);
     st.facts["tool.road.commit_matched_preview"] = last_road_commit_matched_preview_ ? "1" : "0";
     // ROADS-2b: the sim's shaped pieces for the current road preview, "id:rotation" per record in
-    // record order (the path, then the rewritten neighbours), or "none".
+    // record order (the path, then the rewritten neighbours), or "none". A straight's cosmetic
+    // variant (2521-2524, the variant deck) is folded to its family's first straight.
     {
+        const sim::RoadShapeTable table{};
         std::string shaped;
         for (const sim::PlacementWire& p : road_ghost_shaped_) {
-            shaped += (shaped.empty() ? "" : ",") + std::to_string(p.type.v) + ":" +
-                      std::to_string(p.rotation);
+            std::uint32_t id = p.type.v;
+            if (const auto base = sim::road_shaped_base(table, id)) {
+                id = *base + (id >= table.dirt_first ? table.dirt_offset : 0U);
+            }
+            shaped +=
+                (shaped.empty() ? "" : ",") + std::to_string(id) + ":" + std::to_string(p.rotation);
         }
         st.facts["tool.road.shaped"] = shaped.empty() ? std::string("none") : shaped;
     }

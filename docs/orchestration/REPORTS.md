@@ -17553,3 +17553,69 @@ READY FOR REVIEW.
 NOT_RUN: GPU window live, Linux/Mac CI.
 
 READY FOR REVIEW.
+
+## RENDER-DIRECT-2a — per-island instance lists, chunk-culled, resolved once at load — READY FOR REVIEW (task/RENDER-DIRECT-2a, from refs/candidates/cand12 c5af390c)
+
+**Scope (ORCH III, 2026-11-27):** `IslandLists`/`Scene::build_island_lists` already builds the per-island
+instance list once at load (checked before coding, not assumed). What's new is resolving each static
+object's `SpriteDraw` once too, instead of on every chunk build (`objects_draws`' `emit_list` calling
+`place_prepared` fresh each time), bucketed per chunk for RENDER-DIRECT-3's future instance buffers.
+
+**`src/render/include/anno/render/chunk_instances.hpp` + `.cpp`:**
+- `is_static_instance(anlagen, id)`: `n == 1 || ms == 0` (`frame_index`'s step is `(time_ms/ms + phase)
+  % n`, time-invariant either way) - corrected from my own draft's `n == 1` before any code was written
+  (advisor review).
+- `resolve_static_instances(list, anlagen, group, lift)`: eligible `Prepared` entries resolved one at a
+  time via `place_prepared` (same pattern `Scene::object_frame` uses), tagged with `list_index`.
+- `bucket_by_chunk(instances, offset)`: buckets by `visible_chunks(reach())` after the island's
+  placement offset, reusing `frame.hpp`'s own chunk grid; checked directly against `visible_chunks` in
+  the synthetic test, not re-derived via a second per-chunk rasteriser (ORCH III's instruction).
+
+**`Scene::object_record` extracted** from `emit_list`'s loop body (frame interning + depth test +
+flags) - pure extraction, no other change to `objects_draws`/`emit_list` (ORCH III: "with a duplicated
+conversion, the proof only shows that your copy equals itself"). Before/after proof: 3 recorded-digest
+tests unmoved - "chunk draw lists replay to the objects and base planes of Scene::render, every chunk",
+the frame-cache digests, the scene-render digests (vs the Rust reference).
+
+**Corpus proof** (the island-list granularity, not per-chunk - see chunk_instances.hpp's note above):
+`resolve_static_instances` merged with a fresh `place_prepared` of the (rare) time-varying entries, by
+`list_index`, reproduces exactly what resolving the whole list live gives, through the same
+`object_record`. Every island, every group:
+- atlas.md §9's two `.sze` scenes (`anno_render_tests`): **398,761/398,761 assertions**, 372,636 static
+  instances resolved, 69,786 dynamic (live).
+- `lan5.txt`, the packet's third named scene (`anno_app_tests`, `heavy`, via `app::load_play`/
+  `load_placed_scene` like `atlas_pages_lan5_test.cpp`): **531,549/531,549 assertions**, 512,688 static,
+  98,148 dynamic.
+- Shared between both via `anno/test/chunk_instances_check.hpp` (`test_support`, header-only, the same
+  split `atlas_pages_check.hpp` uses) - one implementation, not two copies.
+- **Mutation control:** a deliberately wrong anchor on a resolved static instance makes the equality
+  check fail (`chunk_instances_corpus_test.cpp`'s second case) - the check is live, not vacuous.
+- Synthetic predicate test (`chunk_instances_test.cpp`): one frame, `n>1` with `ms==0`, an animated
+  case, and a missing entry.
+
+**Gates:**
+- Build: `anno_render_tests` + `anno_app_tests` (msvc Release) - clean.
+- All of the above pass; the existing `atlas pages: lan5.txt...` test (unrelated, sanity-checked) still
+  passes too.
+- clang-format 23.1.3: clean on every touched file.
+- `check_unix_warnings.sh` (WSL, GCC13/Clang18): clean, all 4 configs - run across a WSL restart mid-way
+  (ORCH III flagged it, ~12:16); re-verified the log was complete and uncut (both negative controls
+  present) before counting it.
+
+**NOT_RUN / provisional:** load-time and memory of the new structure, as the packet's proof section
+asks - the PC was shared with the owner's manual viewer checks and the UI lane's builds throughout this
+packet (ORCH III's instruction), so any number taken now is not a quiet-PC measurement. Deferred;
+re-measure before this is accepted as a performance claim, not a correctness one.
+
+**Decisions and reasoning:**
+- Compared at the island-list granularity, not by replaying into chunks: the chunk-bucketing itself
+  (`bucket_by_chunk`) is pure geometry already checked against `frame.hpp`'s own `visible_chunks`
+  directly; re-deriving `objects_draws`' unit-interleaving logic for a full per-chunk raster would have
+  been a second, undisclosed rasteriser for a claim the island-list comparison already settles.
+- `object_record` extraction kept to exactly that: no other line of `objects_draws`/`emit_list` changed,
+  so the before/after digest tests are a real behaviour-preservation proof, not a coincidence.
+- Did not fold the per-object resolution eligibility check into `place_prepared` itself: `is_static_
+  instance` is a cheap, separate predicate callers can check before deciding whether to resolve once or
+  per frame, which is exactly how `resolve_static_instances` and the corpus test both use it.
+
+READY FOR REVIEW.

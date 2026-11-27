@@ -1894,11 +1894,14 @@ std::optional<ObjectRecord> Scene::object_record(const SpriteDraw& d, std::pair<
                                              d.frame->format(), d.frame->anchor_y)
                                : depth::Draw{};
     return ObjectRecord{d.anchor.first + offset.first - d.frame->anchor_x,
-                        d.anchor.second + offset.second - d.frame->anchor_y, *id,
+                        d.anchor.second + offset.second - d.frame->anchor_y,
+                        *id,
                         (shadow ? object_flags::kShadow : track) |
                             std::uint32_t{d.height} << object_flags::kHeightShift |
                             object_flags::depth_bits(dd.rule),
-                        0, 0, dd.base};
+                        0,
+                        0,
+                        dd.base};
 }
 
 ChunkDraws Scene::objects_draws(Rect rect, std::size_t group, bool ships, bool bases,

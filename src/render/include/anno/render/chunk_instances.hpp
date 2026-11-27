@@ -27,10 +27,11 @@ struct StaticInstance {
 bool is_static_instance(const formats::anlagen::AnlagenFile& anlagen, std::uint32_t anlage_id);
 
 /// The static-eligible entries of `list` (place_prepared's own per-object resolution for each, one
-/// at a time, as `Scene::object_frame` already does), in `list`'s own order, before any chunk split.
+/// at a time, as `Scene::object_frame` already does), in `list`'s own order, before any chunk
+/// split.
 std::vector<StaticInstance> resolve_static_instances(std::span<const Prepared> list,
-                                                      const formats::anlagen::AnlagenFile& anlagen,
-                                                      std::size_t group, Lift lift);
+                                                     const formats::anlagen::AnlagenFile& anlagen,
+                                                     std::size_t group, Lift lift);
 
 /// `instances`' entries bucketed by the chunk(s) their `draw.reach()` overlaps (`frame.hpp`'s own
 /// `visible_chunks`, so the chunk grid matches the real chunk build exactly), `offset` (the

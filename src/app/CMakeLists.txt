@@ -97,7 +97,8 @@ if(ANNO_BUILD_TESTS)
     tests/ui_layout_test.cpp tests/ui_transform_test.cpp tests/ui_construction_eligibility_test.cpp
     tests/construction_menu_test.cpp tests/inspect_building_test.cpp tests/selection_test.cpp
     tests/minimap_test.cpp tests/hud_tabs_test.cpp tests/status_bar_test.cpp
-    tests/balance_rows_test.cpp tests/atlas_pages_lan5_test.cpp tests/info_preview_test.cpp
+    tests/balance_rows_test.cpp tests/atlas_pages_lan5_test.cpp tests/chunk_instances_lan5_test.cpp
+    tests/info_preview_test.cpp
     tests/fertility_indicator_test.cpp tests/tile_object_picture_test.cpp
     tests/placement_ghost_test.cpp tests/road_drag_ui_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)

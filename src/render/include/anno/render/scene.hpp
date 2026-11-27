@@ -644,9 +644,9 @@ class Scene : public std::enable_shared_from_this<Scene> {
     /// used. Factored out (RENDER-DIRECT-2a) so a resolved-once-at-load `SpriteDraw` and one
     /// resolved fresh by `place_prepared` produce an identical record through the same code.
     [[nodiscard]] std::optional<ObjectRecord> object_record(const SpriteDraw& d,
-                                                             std::pair<int, int> offset,
-                                                             std::uint32_t track, bool depth_test_on,
-                                                             const depth::Params& dparams) const;
+                                                            std::pair<int, int> offset,
+                                                            std::uint32_t track, bool depth_test_on,
+                                                            const depth::Params& dparams) const;
     /// render() with the terrain height at each scene pixel given by
     /// `terrain` (from a chunk cache) for the river depth test.
     [[nodiscard]] std::pair<Canvas, SceneStats>

@@ -32,6 +32,7 @@ if(ANNO_BUILD_TESTS)
     tests/buffer_equiv_test.cpp
     tests/chunk_draws_corpus_test.cpp
     tests/chunk_draws_test.cpp
+    tests/chunk_instances_corpus_test.cpp
     tests/chunk_instances_test.cpp
     tests/chunk_reduce_test.cpp
     tests/depth_test.cpp

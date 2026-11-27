@@ -39,8 +39,8 @@ TEST_CASE("is_static_instance: one frame or a zero interval is static, several f
           "nonzero interval is not") {
     // ANIM payload (iso::animation, iso.cpp): bytes [2..3] = frames per rotation, [4..5] = ms,
     // little-endian.
-    static constexpr std::array<std::uint8_t, 6> kOneFrame{0, 0, 1, 0, 50, 0};  // n=1, ms=50
-    static constexpr std::array<std::uint8_t, 6> kZeroMs{0, 0, 4, 0, 0, 0};     // n=4, ms=0
+    static constexpr std::array<std::uint8_t, 6> kOneFrame{0, 0, 1, 0, 50, 0}; // n=1, ms=50
+    static constexpr std::array<std::uint8_t, 6> kZeroMs{0, 0, 4, 0, 0, 0};    // n=4, ms=0
     static constexpr std::array<std::uint8_t, 6> kAnimated{0, 0, 4, 0, 50, 0}; // n=4, ms=50
 
     CHECK(render::is_static_instance(one_entry_file(100, kOneFrame), 100));

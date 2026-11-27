@@ -203,7 +203,7 @@ void stalled_reclaimer_case(const ReclaimerPrelude& pre) {
     }
     // The call under test: without it a baseline can include foreign work that finishes during the
     // case (W4-WIN-CLOSE C3: the unsigned difference wraps, the final equalities miss).
-    REQUIRE(settle_reclaimer(pre.on_settle_poll));
+    REQUIRE(settle_reclaimer(std::chrono::seconds(30), pre.on_settle_poll));
     reclaimer.set_test_gate([open] {
         const auto give_up = std::chrono::steady_clock::now() + std::chrono::seconds(60);
         while (!open->load() && std::chrono::steady_clock::now() < give_up) {
@@ -812,7 +812,7 @@ TEST_CASE("picture reclaim: the stalled-reclaimer case settles foreign generatio
     // mutation record in docs/orchestration/evidence/w4-win-final shows it). No sleep decides the
     // order: the release comes from the case's own polling, or from its baseline.
     auto& reclaimer = render::SceneReclaimer::shared();
-    REQUIRE(settle_reclaimer());
+    REQUIRE(settle_reclaimer(std::chrono::seconds(30)));
     auto foreign_open = std::make_shared<std::atomic<bool>>(false);
     std::atomic<int> polls_that_saw_foreign_work{0};
     struct Reset {
@@ -863,7 +863,7 @@ TEST_CASE(
     // The arithmetic of the old failure, ordered by handshakes only: a stale baseline with one
     // waiting foreign generation, then the generations drain.
     auto& reclaimer = render::SceneReclaimer::shared();
-    REQUIRE(settle_reclaimer());
+    REQUIRE(settle_reclaimer(std::chrono::seconds(30)));
     auto open = std::make_shared<std::atomic<bool>>(false);
     struct Reset {
         render::SceneReclaimer& r;
@@ -892,7 +892,7 @@ TEST_CASE(
     INFO("stale baseline: " << describe(stale));
     REQUIRE(stale.waiting >= 1);
     open->store(true);
-    REQUIRE(settle_reclaimer());
+    REQUIRE(settle_reclaimer(std::chrono::seconds(30)));
     const auto now = reclaimer.stats();
     const std::size_t wrapped = now.waiting - stale.waiting; // the old expression
     CHECK(wrapped > 100);

@@ -174,7 +174,7 @@ TEST_CASE("road shape: agrees with the oracle over every shipped road tile" *
                 const bool cross = want_base == std::optional<std::uint32_t>{2506};
                 const bool rot = cross || (straight ? r[0].rotation % 2 == obj.rotation % 2
                                                     : r[0].rotation == obj.rotation);
-                a += (want_base == base && rot) ? 1 : 0;
+                a += (want_base == base && rot) ? std::uint64_t{1} : std::uint64_t{0};
             }
             if (t != 0) {
                 std::string key = rel.generic_string() + " " + std::to_string(n);

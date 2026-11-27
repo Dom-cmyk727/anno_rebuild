@@ -18,7 +18,9 @@ says who is doing what, where the work is, and what it waits on.
   UI-HARVEST-ICON-1 B/C + R1, UI-RANGE-1 A + B1, ROADS-2a + 2b, CAND12-PATCH-SUB-1, RENDER-DIRECT-2a, PICTURE-IDS-1).
   The owner, asked whether all of it lands with one PC run: "All in one PC run"; the forester check: "Yes, passed".
   Full PC run 2,892 executed, 0 failed after the F4 coordinator-staging flake (20/20 alone), GOG compares 5/5, WSL
-  clean; advisor bundle review done ([review](reviews/2026-11-27-candidate-13-review.md)). Landing through `land.py`.
+  clean; advisor bundle review done ([review](reviews/2026-11-27-candidate-13-review.md)). **LANDED** 2026-11-27:
+  `main` `2bba18e3` → `aeb65424` through `land.py` (`land/cand13`, gate green); GitLab and the share mirrored. The
+  eight `refs/candidates/*` (all ancestors of `main`) are still on origin: their deletion waits for the owner's OK.
   Accepted after it, for the next bundle: RENDER-DIRECT-2c, UI-PLANK-1 A.
 - **Owner rules of 2026-11-27** (ponytail for everyone, heavy tests per bundle by hardware, advisor reviews bundles
   only) are in TASKS.md and on `main` `2bba18e3`.

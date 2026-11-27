@@ -43,25 +43,36 @@ everything else uses, there is no separate patch pipeline left to have a texture
 **3b - the ground pass and the per-pixel planes (`base`, `field`, `terrain`, `submerged`), same
 contract as 3a** (a measured tolerance switch-on, 0 digest change switch-off, a mutation control).
 
-**3c - the ghost and placement preview as instances; retires the patch pipeline; UI-RANGE-1 B2's
-draw-time darkening.**
+**3c - the ghost and placement preview as instances; retires the patch pipeline; closes OQ-775.**
 - The placement ghost/preview (today's `ObjectsPatch`/`patch_*_fs` shaders, UI-GHOST-2) becomes
   ordinary instances drawn by 3a's own object pass, instead of a separate patch pipeline with its
   own frame group and texture budget - this is what resolves OQ-775 (above): there is no more
   `patch_submerged_fs` to have a 14-texture ceiling.
-- **UI-RANGE-1 B2** (an object whose anchor tile is outside the currently-shown range darkens to
-  5/8 per channel): not baked into the resolved instance - which tiles are dark changes every
-  frame (the player's current selection/hover), while the instance data is only patched on a
-  building change. So: `StaticInstance` carries the object's **world tile** alongside the screen
-  anchor it already has (one or two more fields, resolved once, from `Prepared::first.x/y` - no
-  extra resolve cost). The darkening itself is a draw-time colour multiply against whatever
+- Done when: the ghost/preview draws pixel-identical (within 3a's own measured tolerance) through
+  the ordinary object pass, the patch pipeline (`patch_objects_pipe`/`patch_submerged_pipe`, their
+  frame/group layouts) is removed, and OQ-775 is closed in `docs/open-questions.md`.
+
+**3d - UI-RANGE-1 B2's draw-time darkening.**
+- An object whose anchor tile is outside the currently-shown range darkens to 5/8 per channel -
+  not baked into the resolved instance, since which tiles are dark changes every frame (the
+  player's current selection/hover), while the instance data is only patched on a building
+  change. So: `StaticInstance` carries the object's **world tile** alongside the screen anchor it
+  already has (one or two more fields, resolved once, from `Prepared::first.x/y` - no extra
+  resolve cost). The darkening itself is a draw-time colour multiply against whatever
   `range_view` the frame is currently showing: bit-exact 5/8 in the CPU reference's blit, within
   3a/3b's own measured tolerance in the GPU shader (the same shape `object_in_water`'s per-pixel
   lookup already uses for a different per-pixel condition) - never baked into the instance data,
   and never a reason to patch more often.
-- Units and ships move to the instance path in this stage too (named here, not earlier): they are
-  the other thing the old per-chunk draw still owns once the ghost moves off it, and both are
-  small, bounded sets per frame, unlike the (patched) static-object buffers.
+- Done when: a lit and a dark object of the same type draw identically except for the 5/8 factor,
+  bit-exact on the CPU reference, within tolerance on the GPU; a frame where the shown range
+  changes (a different selection) redraws the darkening with no patch of the instance data.
+
+**3e - units and ships move to the instance path.**
+- The other thing the old per-chunk object draw still owns once the ghost moves off it (3c); both
+  are small, bounded sets per frame, unlike the (patched) static-object buffers, so a separate,
+  simpler instance source (not chunk-bucketed, not patched the same way).
+- Done when: units/ships draw from this path with the same measured-tolerance/mutation-control/
+  switch-off-zero-digest contract as 3a, and the old per-chunk unit draw is removed.
 
 ## Common rules
 clang-format 23.1.3; WSL `check_unix_warnings.sh`; REPORTS entry per stage (~60 lines); exact-head

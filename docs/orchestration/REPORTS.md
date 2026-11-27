@@ -18135,3 +18135,28 @@ GELAENDE records end up empty - not drawing id 5.
   zero-risk hardening, not scope creep.
 
 READY FOR REVIEW.
+
+## UI-KEYS-1 — the original's game keys (F5-F8 speed, P pause, F10 quick-save) — PARTIAL, run stopped for the owner
+
+UI lane, 2026-11-27. Branch `task/UI-KEYS-1` on main `aeb65424`; plan `docs/orchestration/tasks/ui-keys-1-draft.md`
+(approved, 400 % decision (a), host guard per ORCH III's review).
+
+- **Code (app only, no new sim command):**
+  - runner: `turn_step_ms` (400 % single player = 40 game-ms per 10-real-ms step, ADAPTATION); the runner follows
+    `speed_percent` at the turn boundary;
+  - `speed_issuer()`: the host in single player or when the local seat is the host, else the local player
+    (refused, `NotHost`, as the original's multiplayer SetSpeed `0x1005e230` acts only on the host);
+  - keys: F5-F8 → `SetSpeedCmd` 100/200/400/50 (`speed_key_percent`, AnnoFrame `0x100071b0`); P → pause (Space
+    kept); the opening's Save on F10; the dev tool's previous type P → M;
+  - facts `game.speed`, `game.paused`; script key names m/f6/f7/f8/f10.
+- **Build:** msvc Release clean (incremental, in the UI-PLANK-1 build tree with this head checked out detached).
+- **Gate, stopped by ORCH III at the owner's request:**
+  - `run_selected` over `^anno_app_tests|^anno_app_input_tests|^viewer_wiring_|opening|replay|commands`: 600 passed,
+    0 failed of 622 when stopped (`cache/keys-gate-01.log` in the UI-PLANK-1 tree); the selection was wider than
+    needed (`replay` also matched render and sim replay tests).
+  - **Passed:** the runner invariant case (game ms per real ms = percent / 100 at 50/200/400/100), the non-host refusal
+    case, the speed and P/M key case, and the opening-keys case (F10 Save, F5 not mapped).
+  - **NOT_RUN:** `viewer_wiring_ui_keys_gpu`, `viewer_wiring_opening_sail`, `viewer_wiring_opening_resume`,
+    `viewer_wiring_r1_held_publication`, the rest of the selection, and the failure proofs.
+- **WSL:** GCC 13 clean on both configurations (453 + 102 files). Clang 18: NOT_RUN (stopped).
+- **Not READY FOR REVIEW** until the NOT_RUN items run after the owner releases the PC.

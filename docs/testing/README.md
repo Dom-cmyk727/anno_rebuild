@@ -126,7 +126,8 @@ tiny compiler-free project. They start no game, renderer or budget coordinator.
 
 After a workflow change, run both contract suites and source preflight. CI uses
 the same gate on Linux, Windows and macOS; an unexecuted CI platform remains an
-external validation limitation. Require independent read-only review, preserve
+external validation limitation. Require independent read-only review (for executor packets, the orchestrator's
+review at handover), preserve
 the review record, and keep gameplay/rendering changes in their own packages.
 
 ## What a packet runs, and refused tests (owner, 2026-11-13)

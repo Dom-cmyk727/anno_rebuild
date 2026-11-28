@@ -15,14 +15,11 @@ At task start and before reporting a package complete, read and follow:
 - [The mandatory test/evidence contract](docs/testing/evidence-contract.md).
 - [The shared gate commands and adoption procedure](docs/testing/README.md).
 
-Every substantive package requires independent read-only review, including the
-tests and evidence that support its claims. Use a review subagent when available;
-otherwise mark independent review pending. Fix actionable findings and obtain
-re-review before completion.
+Independent review follows [CLAUDE.md](CLAUDE.md) and the evidence contract, section "Independent review and completion": for executor packets, the orchestrator's review at handover is the independent review, and an executor starts no reviewer subagents unless its packet asks for one.
 
-Existing work adopts this policy at the next package checkpoint. Do not interrupt
-a running gate, reset another worktree, alter its coordinator or start an unrelated
-repair campaign. Preserve the assigned scope and its stopping criteria.
+Do not interrupt a running gate, reset another worktree, alter its coordinator or
+start an unrelated repair campaign. Preserve the assigned scope and its stopping
+criteria.
 
 These tracked instructions were authorized by the owner on 2026-10-31. Historical
 task-board text saying that AGENTS.md is an untracked duplicate or must never be

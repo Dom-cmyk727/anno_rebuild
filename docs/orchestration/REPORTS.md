@@ -18135,3 +18135,47 @@ GELAENDE records end up empty - not drawing id 5.
   zero-risk hardening, not scope creep.
 
 READY FOR REVIEW.
+
+## 2026-11-28 — MAC-FIX-VIEWER-TRANSPORT-1 — READY FOR REVIEW
+
+- Base `62f67abc926635325ef118698e9a7b52d4aa84ba`, code `84435b73a73f4183fb82f863a2e63f7740a9ab7e`. Apple M5 Max / Metal, macOS 27.0.1, Apple Clang 21.0.0.
+- EGM-lite critique and acceptance checklist: `cache/mac-fix-viewer-transport-1/egm_lite_checklist.md` (baseline above, ignored). Spec and diff review at this handover.
+- **MH2-001, `39f539a0`.** `01-release-baseline.log` reproduced line 25's 30 s timeout. Frames 7684 → 7688, then idle, at turn 642.
+  The separate baseline `status-look/run.trace/frames.tsv` has presented frame 7689 at turn 642, after the view origin moved from (-6752, 7877) to (-6912, 7957).
+  The script now observes actual drawn tile widths 20 → 15 → 11 → 119. It checks that the icon is drawn at every stage, raw wood is zero, the pause and clock persist, and the icon clears after wood arrives.
+- **MH2-002, `84435b73`.** MAC-HEAVY-2 `02-asan.log` recorded line 88's 42 vs 84. The CPU viewer defers a step until its sea pattern is ready. The scratch ASan control delayed 12 polls of this same path. The original script failed at line 88 after four polls. The revised script waited for the exact width and passed with the same delay.
+  Gate facts now sequence magnifier inputs after each observed width. The cap and chevron checks still assert no movement.
+- **MH2-006.** The actor-free transport measurement stops at its first failed create, before recording statistics. Separate calls using the same projection in `transport-compile-probe.log` show:
+  `0100Kampagne01/S01_07_01.sze` → `script offset 475: unsupported action: SET_DIPLOMACY`.
+  `0201SingleAddOn/single36.sze` → `script offset 16: unsupported object definition: OBJECT_FIGUR`.
+  The prior [inventory](../re/fisher-canary-maps.md#all-50-maps) also lists ATTACK_AREA, PLAYVIDEO, GOTO_SCREEN and SET_PROFILE in the first, and QUESTLOG_SHOW, QUESTLOG_DRAW, PLAYVIDEO and SHOWTEXT past the second's object definition.
+
+### Decisions and reasoning
+
+- Wait for rendered state and observed zoom progress. Paused redraws and async sea preparation do not promise an arbitrary number of frames.
+- Preserve existing viewer and sim behavior. The delay executable and projected probe are cache-only controls.
+- Keep the measurement's whole-program refusal. A runtime stop cannot repair a compile-time refusal, and a script cut would describe a separate component measurement.
+
+**QUESTION (MH2-006).** Use another scenario with representative carts and carriers (recommended), authorize a private script cut before the refusal for a scoped component measurement, or schedule the missing script support? The projected probe creates `0010SingleEndlos/01_1024_easy_256.sze` and `00_1024_easyentry_01.sze` without advancing. Their transport workload still needs qualification. SET_DIPLOMACY alone would leave other unsupported names and single36's object definition.
+
+### Gates
+
+Logs and hashes under `cache/mac-fix-viewer-transport-1/`. Release and ASan/UBSan builds pass with the same duplicate-library linker warning as the baseline. clang-format 23.1.3 passes for the changed C++. Workflow contract 35/35.
+
+- Baseline negative (`01-release-baseline.log`)
+  `COUNTS: selected=1 executed=0 failed=1 refused=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0`
+  `VERDICT: FAIL failed tests`
+- Release Metal, 3 consecutive passes (`release-status-1.log`, `release-status-2.log`, `release-status-3.log`)
+  `COUNTS: selected=1 executed=1 failed=0 refused=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`
+- Release app lane (`release-app.log`)
+  `COUNTS: selected=515 executed=508 failed=0 refused=0 empty=0 skipped=7 (required-asset=0 platform=4 opt-in=3 gpu=0 other=0) incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`
+- Full ASan+UBSan, 3 consecutive passes (`asan-full-1.log`, `asan-full-2.log`, `asan-full-3.log`)
+  `COUNTS: selected=2949 executed=2891 failed=0 refused=0 empty=0 skipped=58 (required-asset=0 platform=14 opt-in=31 gpu=10 other=3) incomplete=0 sanitizer_lines=0`
+  `VERDICT: PASS`
+- Each required picture contract printed `COUNTS: selected=1 executed=1 failed=0 refused=0 empty=0 skipped=0 (required-asset=0 platform=0 opt-in=0 gpu=0 other=0) incomplete=0 sanitizer_lines=0` and `VERDICT: PASS`.
+- Full ASan used the prior 8-job game-file recipe. The ten GPU skips are the same RTX 4090 / Radeon-pinned tests. Three other skips are Pillow and two unset GOG capture directories.
+- [Code CI 46079318562](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/46079318562) passed on the tested code head. Logs, inventory sidecars, tested-input hashes and `SHA256SUMS` are in the cache above.
+
+**NOT_RUN.** Live Windows adapters and GOG capture compares on this Mac, LeakSanitizer on this host, and a replacement transport statistics run pending the owner decision.

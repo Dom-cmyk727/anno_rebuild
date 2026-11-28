@@ -112,6 +112,14 @@ PC.**
     executor-side reviewer subagents, small packets) stands.
   - EGM, like ponytail, never removes a test, check or evidence that the project rules require.
 
+**Owner rules, 2026-11-28 (harness items 1-7; every executor):**
+- **Numstat in every report.** Run `git diff --numstat <packet base> HEAD` and explain every large deletion in the
+  report (the UI-PLANK-1 `ui.md` cut of 2026-11-27 went unnoticed until review).
+- **Never edit a check to pass it.** If a test, oracle or spec looks wrong, stop and report it; never edit it to make a
+  check pass unless the packet scopes that edit.
+- **At most 2 fix rounds per packet.** After a second fix round that still does not pass review, the orchestrator
+  re-scopes or splits the packet instead of sending a third.
+
 ## What moved out of this board (2026-11-10)
 
 The board's closed history moved verbatim, nothing edited, to [`HISTORY-2.md`](HISTORY-2.md), and the older

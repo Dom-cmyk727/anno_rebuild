@@ -347,13 +347,13 @@ TEST_CASE("F3 (D2): coordinator death with the real meter child: no inherited de
     // compiles into cache\coord (named by the build id), on WSL the sibling.
     std::string coord_binary;
 #if defined(_WIN32)
-    const std::filesystem::path root = std::filesystem::path(__FILE__)
-                                           .parent_path()  // tests
-                                           .parent_path()  // test_support
-                                           .parent_path()  // src
-                                           .parent_path(); // the worktree
-    coord_binary = as_wsl_path(root / "cache" / "coord" /
-                               ("anno_budget_coord-" + hex16(anno::test::coordinator_build())));
+    // FLAKE-COORD-STAGE-1: stage (compile, if needed) this build's coordinator before the
+    // relaunch below starts it directly with nohup - the same latent defect as F4 N4, masked
+    // here only because the client hold just above usually compiles it first.
+    const auto staged = anno::test::stage_wsl_coordinator();
+    INFO("staging the WSL coordinator in cache/coord failed");
+    REQUIRE(staged);
+    coord_binary = as_wsl_path(*staged);
 #else
     coord_binary = sibling("anno_budget_coord").generic_string();
 #endif

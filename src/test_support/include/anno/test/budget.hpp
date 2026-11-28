@@ -192,6 +192,17 @@ Reservation reserve_cpu_setup();
 /// (wire::kCompatVersion).
 std::uint64_t coordinator_build();
 
+#if defined(_WIN32)
+/// Compiles (if not already built) and returns this build's WSL coordinator binary's Windows
+/// path, under a process-wide mutex so two clients never compile at once (FLAKE-COORD-STAGE-1):
+/// `ensure_wsl_coordinator` (coord.cpp) and a test that starts the binary directly (F3 D2, F4 N4)
+/// both call this instead of each computing and compiling their own copy. nullopt on any failure
+/// to stage it: the mutex could not be created or acquired, or the compile (or its atomic
+/// publish, so a killed compiler never leaves a partial binary other callers would take as
+/// built) failed.
+std::optional<std::filesystem::path> stage_wsl_coordinator();
+#endif
+
 /// The canonical journal of `port`: ANNO_TEST_BUDGET_JOURNAL, else coord-<port>.journal in the
 /// user's cache. The same file for every compatibility version.
 std::filesystem::path coordinator_default_journal(std::uint16_t port);

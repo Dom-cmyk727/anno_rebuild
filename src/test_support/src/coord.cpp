@@ -202,43 +202,15 @@ bool spawn_local(const std::filesystem::path& exe, std::uint16_t port, bool all_
 
 #if defined(_WIN32)
 bool ensure_wsl_coordinator(std::uint16_t port) {
-    const std::filesystem::path root =
-        std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path();
-    // Named by the build id (the hash of the coordinator's sources at
-    // configure time): a binary of this name is this build's coordinator.
-    const std::string id = hex64(coordinator_build());
-    const std::filesystem::path binary = root / "cache" / "coord" / ("anno_budget_coord-" + id);
-    std::error_code error;
-    std::filesystem::create_directories(binary.parent_path(), error);
-    const HANDLE mutex = CreateMutexW(nullptr, FALSE, L"Local\\anno1503-coord-build");
-    if (mutex != nullptr) {
-        WaitForSingleObject(mutex, 120000);
-    }
-    const std::filesystem::path source_dir = root / "src" / "test_support" / "src";
-    bool compiled = std::filesystem::exists(binary, error);
-    if (!compiled) {
-        const std::string include = to_wsl_path(root / "src" / "test_support" / "include");
-        const std::string out = to_wsl_path(binary);
-        const std::string cmd = "wsl.exe -d Ubuntu -- g++ -std=c++20 -O2 -pthread "
-                                "-DANNO_COORD_BUILD=0x" +
-                                id + "ULL -I" + include + " " +
-                                to_wsl_path(source_dir / "budget_coord.cpp") + " " +
-                                to_wsl_path(source_dir / "coord_server.cpp") + " " +
-                                to_wsl_path(source_dir / "memory.cpp") + " -o " + out;
-        compiled = std::system(cmd.c_str()) == 0;
-    }
-    if (mutex != nullptr) {
-        ReleaseMutex(mutex);
-        CloseHandle(mutex);
-    }
-    if (!compiled) {
+    const auto binary = stage_wsl_coordinator();
+    if (!binary) {
         return false;
     }
     // wsl.exe stays up for the life of the coordinator. Detach it so this
     // client does not wait, and so the coordinator is not tied to the
     // client's stdin pipe.
     const std::string command =
-        "wsl.exe -d Ubuntu -- " + to_wsl_path(binary) + " " + std::to_string(port) + " any";
+        "wsl.exe -d Ubuntu -- " + to_wsl_path(*binary) + " " + std::to_string(port) + " any";
     std::vector<char> mutable_command(command.begin(), command.end());
     mutable_command.push_back('\0');
     STARTUPINFOA startup{};
@@ -774,6 +746,67 @@ CoordResult transact(Session& session, Frame request, std::uint64_t bytes, bool 
 }
 
 } // namespace
+
+#if defined(_WIN32)
+std::optional<std::filesystem::path> stage_wsl_coordinator() {
+    const std::filesystem::path root =
+        std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path();
+    // Named by the build id (the hash of the coordinator's sources at
+    // configure time): a binary of this name is this build's coordinator.
+    const std::string id = hex64(coordinator_build());
+    const std::filesystem::path binary = root / "cache" / "coord" / ("anno_budget_coord-" + id);
+    std::error_code error;
+    std::filesystem::create_directories(binary.parent_path(), error);
+    if (std::filesystem::exists(binary, error)) {
+        return binary;
+    }
+    const HANDLE mutex = CreateMutexW(nullptr, FALSE, L"Local\\anno1503-coord-build");
+    if (mutex == nullptr) {
+        return std::nullopt;
+    }
+    const DWORD wait = WaitForSingleObject(mutex, 120000);
+    if (wait != WAIT_OBJECT_0 && wait != WAIT_ABANDONED) {
+        // WAIT_TIMEOUT or WAIT_FAILED: the lock was never acquired - compiling anyway (the old
+        // behaviour) would race every other waiter, and releasing a mutex not held is undefined.
+        CloseHandle(mutex);
+        return std::nullopt;
+    }
+    std::optional<std::filesystem::path> result;
+    if (std::filesystem::exists(binary, error)) {
+        // Published by whoever held the mutex before this waiter (also covers WAIT_ABANDONED:
+        // its previous holder may have died mid-compile, but atomic publish below means the
+        // existing file, if any, is always a complete one).
+        result = binary;
+    } else {
+        const std::filesystem::path temp =
+            binary.parent_path() /
+            (binary.filename().string() + ".tmp-" + std::to_string(GetCurrentProcessId()));
+        const std::string include = to_wsl_path(root / "src" / "test_support" / "include");
+        const std::filesystem::path source_dir = root / "src" / "test_support" / "src";
+        const std::string out = to_wsl_path(temp);
+        const std::string cmd = "wsl.exe -d Ubuntu -- g++ -std=c++20 -O2 -pthread "
+                                "-DANNO_COORD_BUILD=0x" +
+                                id + "ULL -I" + include + " " +
+                                to_wsl_path(source_dir / "budget_coord.cpp") + " " +
+                                to_wsl_path(source_dir / "coord_server.cpp") + " " +
+                                to_wsl_path(source_dir / "memory.cpp") + " -o " + out;
+        if (std::system(cmd.c_str()) == 0) {
+            std::filesystem::rename(temp, binary, error);
+            if (!error) {
+                result = binary;
+            }
+        }
+        if (!result) {
+            // A failed compile, or a rename that lost a race with another publisher (the mutex
+            // should prevent that, but never leave a stray temp file either way).
+            std::filesystem::remove(temp, error);
+        }
+    }
+    ReleaseMutex(mutex);
+    CloseHandle(mutex);
+    return result;
+}
+#endif
 
 namespace {
 

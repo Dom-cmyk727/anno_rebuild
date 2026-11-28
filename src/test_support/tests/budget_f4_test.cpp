@@ -60,13 +60,13 @@ std::string journal_text(const std::filesystem::path& journal) {
 
 std::string wsl_coord_binary() {
 #if defined(_WIN32)
-    const auto root = std::filesystem::path(__FILE__)
-                          .parent_path()  // tests
-                          .parent_path()  // test_support
-                          .parent_path()  // src
-                          .parent_path(); // the worktree
-    return as_wsl_path(root / "cache" / "coord" /
-                       ("anno_budget_coord-" + hex16(anno::test::coordinator_build())));
+    // FLAKE-COORD-STAGE-1: stage (compile, if needed) this build's coordinator before any caller
+    // starts it directly with nohup, instead of only computing the path a compile may never have
+    // produced (the F4 N4 flake).
+    const auto staged = anno::test::stage_wsl_coordinator();
+    INFO("staging the WSL coordinator in cache/coord failed");
+    REQUIRE(staged);
+    return as_wsl_path(*staged);
 #else
     return sibling("anno_budget_coord").generic_string();
 #endif

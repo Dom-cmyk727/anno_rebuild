@@ -18446,3 +18446,45 @@ egm-lite checklist: `E:\anno1503-worktrees\anno1503-UI-PAUSE-1\cache\egm_lite_ch
   nothing; a click on "Continue game" resumes.
 - **Open:** OQ-908 (P's real path, the button handler).
 
+## FLAKE-COORD-STAGE-1 — fix the Windows coordinator-staging race — 2026-11-28 — status: FINISHED
+- Branch: `task/FLAKE-COORD-STAGE-1` at `dc298d2b`, base `origin/main` `b5ee471c`; worktree:
+  `E:\anno1503-worktrees\anno1503-FLAKE-COORD-STAGE-1`.
+- Step 0 (confirm the cause): `E:\anno1503-worktrees\cand12\cache\gates\cand13-full-01.log` shows
+  `F4 (N4)` failing at test #110 (`nohup` error for `anno_budget_coord-208a2c085d5db934`) while
+  `F4 (N3)` (test #109, same binary) did not finish until position 298/2928 — no earlier client had
+  compiled it yet. Matches the packet's three stated criteria.
+- Built: `anno::test::stage_wsl_coordinator()` (`src/test_support/include/anno/test/budget.hpp`,
+  `src/test_support/src/coord.cpp`) factors the compile-once-under-a-mutex step out of
+  `ensure_wsl_coordinator`; it checks `WaitForSingleObject`'s return value before touching the
+  mutex (the prior code ignored it and called `ReleaseMutex`/`CloseHandle` unconditionally), and
+  publishes atomically (compile to `.tmp-<GetCurrentProcessId()>`, `std::filesystem::rename` on
+  success, remove on any failure, so a killed compiler never leaves a partial binary another caller
+  mistakes for complete). `F4 (N4)`'s `wsl_coord_binary()` (`budget_f4_test.cpp`) and `F3 (D2)`'s
+  inline block (`budget_f3_test.cpp`) now call this instead of each computing and compiling their
+  own copy.
+- Failure proofs (scratch worktree `E:\anno1503-worktrees\flake-coord-scratch`, detached at the
+  base `b5ee471c`, holds the "without the fix" binary):
+  - F4(N4): reproduces without the fix; passes with the fix; 10/10 in a loop with the fix.
+  - F3(D2): reproduces without the fix (a foreign-but-protocol-compatible coordinator holds the
+    port so the client-hold never compiles its own); passes with the fix; 10/10 in a loop with the
+    fix.
+  - g++-failure path: Windows ACL deny-write (`icacls ... /deny "...:(OI)(CI)W"`) on `cache/coord/`
+    makes the compile fail; no final binary appears, no leftover `.tmp-*` file, the caller fails
+    with the expected message. Restored after with `icacls ... /remove:d`.
+- Gates: msvc build (full `cmake --build --preset msvc`, not just the test target — an earlier
+  incremental build of only `anno_test_support_tests` was missing the sibling `anno_budget_coord`/
+  `anno_budget_probe` binaries and produced 38 unrelated failures from that, not from this change;
+  rebuilt, then clean) ok; `anno_test_support_tests.exe`, `ANNO_TEST_THREADS=16`: 80/80 test cases,
+  754/754 assertions, `[doctest] Status: SUCCESS!`; clang-format 23.1.3 `--dry-run --Werror` on the
+  4 touched files ok; `tools/check_unix_warnings.sh` (WSL Ubuntu, GCC 13.3 and Clang 18.1.3, viewer+
+  GPU on and viewer without GPU) ok, both negative controls caught as expected.
+- Evidence: failure-proof logs and the g++-failure-path ACL test are in this session's run, not
+  committed (the packet asks for the fix and the three proofs, not a kept artifact).
+- EGM: `cache/egm/flake-coord-stage-1-checklist.md` (uncommitted, this worktree), baseline commit
+  `b5ee471c`. §1 critique sent to the orchestrator before building (no blockers); the orchestrator's
+  packet release stood in for Proceed; §2B/§4 skipped (owner's no-reviewer-subagent rule, the
+  orchestrator's own handover review stands in).
+- Left open / questions for the orchestrator or owner: none. Per-worktree coordinator port bands
+  were explicitly out of scope for this packet; the lock-timeout path is reviewed, not changed.
+- Time spent / subagents used: no subagents (EGM §2B/§4 skipped per standing rule).
+- **CI:** run id on `dc298d2b` — see the orchestrator message for the result.

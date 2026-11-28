@@ -7,6 +7,7 @@ add_library(anno_render
   src/chunk_instances.cpp
   src/chunk_reduce.cpp
   src/depth.cpp
+  src/direct_instances.cpp
   src/fluid.cpp
   src/frame.cpp
   src/frame_table.cpp
@@ -36,6 +37,7 @@ if(ANNO_BUILD_TESTS)
     tests/chunk_instances_test.cpp
     tests/chunk_reduce_test.cpp
     tests/depth_test.cpp
+    tests/direct_instances_test.cpp
     tests/fluid_test.cpp
     tests/frame_config_test.cpp
     tests/picking_test.cpp
@@ -83,7 +85,8 @@ if(ANNO_HAVE_WGPU)
   if(ANNO_BUILD_TESTS)
     add_executable(anno_render_gpu_tests tests/main.cpp tests/gpu_test.cpp
       tests/gpu_chunk_build_test.cpp tests/play_gpu_test.cpp tests/picture_gpu_test.cpp
-      tests/preview_gpu_test.cpp tests/atlas_upload_test.cpp tests/adapter_memory_diag_test.cpp)
+      tests/preview_gpu_test.cpp tests/atlas_upload_test.cpp tests/adapter_memory_diag_test.cpp
+      tests/direct_objects_proof_test.cpp)
     target_link_libraries(anno_render_gpu_tests PRIVATE anno_render_gpu anno_app_core
       anno_test_support doctest::doctest)
     if(WIN32)

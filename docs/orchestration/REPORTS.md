@@ -18123,6 +18123,55 @@ GELAENDE records end up empty - not drawing id 5.
 - New test: **2/2 assertions pass.** Existing coverage re-run: `play: an id that does not fit PROD2
   is refused` (16/16), the two `ScenePicture` sanity tests (both still pass, confirming the new inline
   guard didn't change `apply_island_buildings`'s behaviour for in-range ids).
+
+
+## RENDER-DIRECT-2c — patch the static instance lists on a building change — READY FOR REVIEW (task/RENDER-DIRECT-2c, from task/RENDER-DIRECT-2a's accepted head bf185b2e)
+
+**Step 0 (measured before writing the diff, ORCH III, 2026-11-27):** `resolve_static_instances`
++ `bucket_by_chunk` for one whole island, worst case: Single_01.sze island 0 group 1 (23,706
+objects, 97 chunks) 11.216 ms; `lan5.txt` island 4 group 2 (22,400 objects) 8.894 ms. Both over
+the 1 ms bar, so a plain per-island replace was ruled out; built the value-key diff.
+
+**The sort in the diff is real, not defensive (your question).** `other` is built from a
+`std::set<PlacedObject>` (dedup/sort by `PlacedObject`), but `prepare_objects` then re-filters and
+`std::stable_sort`s the result by painter's order (`x + footprint.w + y + footprint.h, x` -
+iso.cpp) before returning - so `other` itself is in painter's order, not `PlacedObject` order.
+`std::set_difference` needs both inputs sorted by the comparator it is given (`PlacedObject`'s
+own `<`), so sorting a copy of each list's keys is necessary.
+
+**A real bug the element-for-element proof caught, before this went further:** appending newly
+added instances to the end of a touched bucket is not enough - a placed/upgraded object can
+belong *before* a surviving one in painter's order within the same chunk. Fixed: `StaticInstance`
+now also carries `painter_key` (the same formula, computed once at resolve time); any bucket a
+patch inserts into is `stable_sort`ed back into painter's order (tie-broken by `key`, matching
+what `prepare_objects`' own stable_sort ties preserve). The real-island test (below) failed with
+350/211,753 assertions wrong before this fix, 0 after.
+
+**API** (`chunk_instances.hpp`/`.cpp`): `removed_static_instance_keys`, `added_static_instances`,
+`remove_static_instances`, `patch_chunk_instances` (the single efficient entry point - sorts each
+list's keys once, shared by both diffs, rather than calling the two public helpers separately).
+
+**Proof:**
+- Synthetic (`chunk_instances_test.cpp`): place, demolish, upgrade, each: the patched buckets
+  equal a fresh build element for element (`check_buckets_equal`) - **place 2 assertions, demolish
+  2, upgrade 3** (21 total incl. setup), all pass. Upgrade needs no special case (confirmed: it is
+  exactly a removed old key + an added new key at the same tile).
+- Real island, Single_01.sze island 0 group 1 (the worst case from step 0), all three change
+  kinds (`chunk_instances_corpus_test.cpp`, game files): **211,753/211,753 assertions pass**
+  (two real, different, already-static anlage ids the island actually uses, not fabricated).
+- Patch timing (opt-in: `ANNO_MEASURE_CHUNK_INSTANCE_TIME=1`, provisional - the owner had a viewer
+  open for a road test): one change on the same island/group, **5.712 ms**. Better than a full
+  per-island rebuild (11.216 ms) but still over the 1 ms target - dominated by sorting the full
+  23,706-entry list twice (`sorted_keys`), not by resolving the one changed object. Flagging for
+  your call: good enough as "cheaper than a full rebuild," or worth a further pass (e.g. an
+  incremental/maintained sorted index instead of re-sorting the whole list per patch)?
+
+**Gates:**
+- Build: `anno_render_tests` + `anno_app_tests` (msvc Release) - clean.
+- All chunk_instances-related tests, both binaries: pass (regression check on the existing 2a
+  tests too - unaffected by the new `painter_key` field).
+- `cmake/CheckTestNames.cmake`: "test names ok" (fixed a semicolon in both opt-in timing test
+  names that silently ran 0 doctest cases under `ctest -R` - caught running step 0 for real).
 - clang-format 23.1.3: clean on every touched file.
 - `check_unix_warnings.sh` (WSL, GCC13/Clang18): clean, all 4 configs.
 
@@ -18225,3 +18274,13 @@ Hosted CI only, no PC use.
   - **EGM:** `/egm:egm-lite` cannot be run from this session. Its skill is marked user-invoked only, and the Skill tool
     refused it. The packet was already EGM-reviewed by the orchestrator. No reviewer subagents were started.
 - **CI:** see the orchestrator message (run id on the exact head).
+
+- `patch_chunk_instances` does its own sort rather than calling `removed_static_instance_keys`/
+  `added_static_instances`: those each sort both lists again, which would triple the sort cost on
+  the one path where it matters (the ≤1 ms target).
+- Stable-sorted only the chunks a patch actually touched (removal or addition), not every bucket:
+  a removal-only bucket's survivors keep their already-correct relative order, so re-sorting it
+  would be free but pointless; the set of touched chunks is small (place/demolish/upgrade touch
+  one object's reach, at most a couple of chunks) regardless of island size.
+
+READY FOR REVIEW.

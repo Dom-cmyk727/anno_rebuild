@@ -4043,3 +4043,12 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 - **What we know:** Nothing read. ROADS-2b counts only the drag's own records (`apply.cpp`, kind-9 loop), an inference (L): the cap limits dragged tiles, and the neighbours are not dragged.
 - **How to resolve:** Read where the kind-9 apply (`0x100589a0`) or the road cursor (`0x1004b290`) enforces the 40-tile limit, relative to the reshaper call `0x1007cc40`; or drag a 40-tile road beside an existing one in the original and look at the neighbour.
 
+## OQ-777: patch_chunk_instances' cost (RENDER-DIRECT-2c, 2026-11-27; OPEN)
+- **Question:** is `patch_chunk_instances`' measured cost (one building change) acceptable once it is on the viewer's frame path?
+- **What we know:** 5.7 ms, provisional (owner's viewer open at measurement time, not a quiet PC), on Single_01.sze island 0 group 1 (23,706 objects) - dominated by re-sorting the whole `other` list twice (both `std::set_difference` calls' own sort, `sorted_keys`), not by resolving the one changed object. A patch runs once per building change, not once per frame, so this was accepted as-is for RENDER-DIRECT-2c (orchestrator ORCH III, 2026-11-27).
+- **Option, not built:** a maintained key-sorted index (kept sorted incrementally as changes land, instead of re-sorting the whole list fresh per patch) would turn the cost into roughly the size of the change, not the size of the island.
+- **How to resolve:** decided when RENDER-DIRECT-3 hooks the patch into the viewer and measures its real frame-time impact (a building change mid-frame, not a synthetic call).
+
+Note (OQ-775/OQ-776 numbering): CAND12-PATCH-SUB-1 and PICTURE-IDS-1 each already used OQ-775/OQ-776
+on their own branches (neither merged into this one yet) - used OQ-777 here instead of OQ-776 to
+avoid a collision once all three stack.

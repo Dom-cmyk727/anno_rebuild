@@ -86,7 +86,7 @@ enum class OpeningKey : std::uint8_t {
     QtyDown,    ///< [
     QtyUp,      ///< ]
     Send,       ///< Enter
-    Save,       ///< F5
+    Save,       ///< F10 (UI-KEYS-1; the original's quick-save key)
     Escape,     ///< Esc
 };
 

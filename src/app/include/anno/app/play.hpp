@@ -214,6 +214,9 @@ struct PlaySnapshot {
     /// Reported, not run as extra steps.
     std::uint64_t behind_ms = 0;
     bool paused = false;
+    /// UI-KEYS-1: the world's speed in percent after the turn (WorldSettings::speed_percent, set
+    /// by SetSpeedCmd: F5-F8).
+    std::uint32_t speed_percent = 100;
     /// The last turn this snapshot follows (its index), so a reader can check
     /// the snapshot against the mailbox.
     std::uint64_t turn = 0;
@@ -397,6 +400,16 @@ class PlaySchedule {
     virtual void wake() {}
 };
 
+/// UI-KEYS-1: game milliseconds of one runner step at `percent` speed, or nullopt for a speed the
+/// runner does not step at. The runner is turn-based (sim::Timing: a step every mp_step_real_ms =
+/// 10 real ms, mp_steps_per_turn per turn), so game ms per real ms = step / 10 = percent / 100
+/// exactly. 50/100/200 are the original's multiplayer steps (sim::multiplayer_step_ms, D
+/// AnnoFrame.dll 0x1005fe10). 400 is single-player only in the original (F7, refused for a net
+/// client: 0x100071b0, 0x10009440); the original's single player steps per frame
+/// (sim::single_player_step_ms), so 400 -> 40 here is an ADAPTATION of that to the turn runner
+/// (ORCH III decision 2026-11-27), with the same invariant.
+[[nodiscard]] std::optional<std::uint32_t> turn_step_ms(std::uint32_t percent);
+
 /// Owns the world on one thread. `run_n` is the same turn the thread runs,
 /// on the caller's thread, for tests. Do not call it while `start` is running.
 /// `schedule` must outlive the runner; null uses `steady_clock`.
@@ -561,6 +574,17 @@ class PlayRunner {
     /// Observable after synchronous `run_n`; the window never receives World.
     [[nodiscard]] std::uint64_t state_hash() const { return world_.state_hash(); }
     [[nodiscard]] std::uint32_t step_ms() const { return step_ms_; }
+    /// UI-KEYS-1: the world's host player (SimConfig::host_player, immutable).
+    [[nodiscard]] sim::PlayerId host_player() const { return host_player_; }
+    /// UI-KEYS-1: who a speed key's SetSpeedCmd is issued as. In single player the window is its
+    /// own host (the original's single-player SetSpeed 0x1005a440 needs no host), so the host
+    /// player, whatever the local seat; in a multi-seat session only a local seat that is the
+    /// host speaks as the host, any other issues as itself and set_speed refuses it (NotHost),
+    /// as the original's multiplayer SetSpeed acts only on the host (0x1005e230, +0x3c8 =
+    /// server; docs/re/tick-loop.md). Reads set_local_player's seat: call it before start.
+    [[nodiscard]] sim::PlayerId speed_issuer() const {
+        return (!multiplayer_ || local_player_ == host_player_) ? host_player_ : local_player_;
+    }
 
   private:
     void loop();
@@ -592,6 +616,11 @@ class PlayRunner {
     std::unique_ptr<PlaySchedule> owned_schedule_;
     PlaySchedule* schedule_ = nullptr;
     std::uint32_t step_ms_ = 10;
+    /// UI-KEYS-1: the world's speed_percent the runner last saw; a SetSpeedCmd that changes it
+    /// sets step_ms_ for the next turn (turn_step_ms), so `--speed` holds until one does.
+    std::uint32_t seen_speed_percent_ = 0;
+    sim::PlayerId host_player_{};
+    bool multiplayer_ = false;
     std::uint32_t steps_ = 10;
     unsigned catchup_turns_ = 5;
     std::uint64_t index_ = 0;

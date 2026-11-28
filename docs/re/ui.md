@@ -193,6 +193,7 @@ Grid (confirmed by `NO_KLICK` id 56, mean **12.927** on every locked public cell
 | Unlocked cell icon | same origin, 50 × 50 | `fenster.tex` id = category `THUMBNAIL*` ACCESS id + **3 × record_index** (`record_index = row*4+col`, empty id-1 slots included) | gadget `0xb0c` 50 × 50 in chrome builder `0x1002c360`. Public (2,0) type 1301 = 154+6 = **160** mean 7.98; (3,0) **163** mean 9.59; (3,1) **175** mean 9.77; workshops (0,1) weaver = 277+12 = **289** mean 10.0. Three consecutive frames per record (idle, hover, pressed). Locked cells keep the textures in the file but draw `NO_KLICK` on top. |
 | Category column | tab k at **(762, 303 + 46k)** 42 × 46, one per category (eight) | `VIEWBAUTAB` id 16 + 2k idle, 17 + 2k selected (the open category) | `View.dll` `0x1002bb4f` copies `VIEWBAUTAB`; per tab (loop `0x1002bb93`..`0x1002bc8e`, `inc ebp; cmp ebp, 8`) a gadget `0xb0d` of size `push 0x2e; push 0x2a` (`0x1002bbea`, 42 × 46), property `0x198` = texture (`esi`, `add esi, 2` at `0x1002bc88`), `0x1c9` = the k-th `TOOLTIP:BAUMENUTAB` line (`0x1002bc6e`). **UI-BUILDCAT-1, sprite-565 exact:** all eight tabs 1879/1879 px (tab 0 1880/1880) at those positions on `f13_construction_open`, `f13_hover_cat_{public,roads,farms}`, `r2_place_pioneer_house`, `r2_info_pioneer_house`, `r2_construction_open`; on each `r2_construction_<c>` the seven other tabs exact and the clicked one in its selected frame under the hover tooltip (rows click_y−23..click_y−8). No hover frame (hovering farms leaves id 20). Not clipped: the tabs stick out left of the panel (x 762..778 over the map), like the sub-tab columns of the other views (§5.4). The old row (779, click_y−23) measured only the part right of the panel edge. `B_Baumenue.tex` 60 × 63 is a different house glyph, not the column. Hit area: the gadget rectangle, so the column ends at x 803 and grid column 0 (808..857) is the grid's (answers OQ-714 with the measured position; the gadget class's hit-test slot itself was not read). |
 | Banner | (783, 252) 241 × 48 | `PLANKEGROSS` id **1019** | gadget `0xb17` after the eight tabs, size `push 0x30; push 0xf1` = 48 × 241 (`0x1002bd15` string `PLANKEGROSS`). Sprite-sad mean **38.75** on `r2_construction_public` (text sits on the plank). |
+| Banner text (UI-PLANK-1 A, 2026-11-27) | over the plank, gadget 241 × 39 | text gadget class `0xb1c` | Created right after the plank (D): `0x1002bd7e` class `0xb1c`, size `push 0x27; push 0xf1` (`0x1002bdc3`), property `0x1c6` = 2 (`0x1002bdd7`, the centred style of the info panel's names), parent `[this+0x5c0]` (`0x1002bdee`), initial text `0x1c4` = `"00"` (the constant at `0x100a8404`, `0x1002bdfa`-`0x1002be23`, overwritten before it shows, L). **The text is the open category's name:** the tab handler `0x1002bf90` reads the selected tab from the tab group (`[this+0x5d4]` property `0x1b3`, `0x1002bfa9`), stores it at `[this+0x5f0]` (`0x1002c07e`), takes list `TOOLTIP:BAUMENU_EX` (string `0x100a8434`) from the text service (`[this+0x568]` slot `+0x88`, then `+0x5c`), entry `+8(index)`, and sets `0x1c4` on `[[this+0x5d4]+8]` (`0x1002c0b8`). It is the only reader of that list in `View.dll`, so the text changes only through this handler: on a tab click, and from the panel-message case at `0x1002ad8e` (after `0x1001cbe0` and `0x1002b0a0`), which re-sets it from the selected tab (which message that is: OQ-904). Arming a building or the road leaves it (HE `he_01` `c7` 3:57: "Öffentl. Gebäude" with the market house armed). GOG `Texte.dat` `[TOOLTIP:BAUMENU_EX]`, tab 0..7: Public buildings, Squares, Streets, Farms, Plantations, Workshops, Coastal buildings, Pits, Mines, Military installations, Ornamentals (the same eight lines as `[TOOLTIP:BAUMENUTAB]`, OQ-539). Font: OQ-905. **Rebuild (UI-PLANK-1 B):** `hud.txt` `plank_text`, `MainSmall.zei` centred in the gadget's 241 at x 783, y 261; the live public screen's 441 white glyph pixels equal GOG `r2_construction_public`'s, box x 843..962, y 264..277. |
 | Pickaxe | (970, 710) 53 × 53 | `ABRISSICON` id 659 mean 6.7 on `r2_construction_public`; id 660 mean 6.3 on `r2_demolish` (active) | hidden on idle HUD (mean 95) |
 | Cancel-X | (984, 725) 33 × 38 | `INFOEXIT` id 38 mean 11.0 | on the **info / placement** panel only; not on the category grid (search mean 94) |
 
@@ -1339,6 +1340,29 @@ Key **C**: same chrome, one occupied city row (`f15_city_list`). `TOOLTIP:INFOST
 ### 9.4 Pause
 
 Key **P**: parchment over the map, HUD chrome stays (`f15_pause`). `ToolGfx/Pause.tex` has **0** textures. The parchment is `fenster.inc` `MESSAGEBOX_BK` id **1512** 579 x 386 at **(222, 191)** (the geometric centre of 1024 x 768; opaque mean 27.2, grey-key 26.4; the ACCESS stores a dark field around the scroll). "Continue game" is `MESSAGEBOX_BUTTONS` id 1513 244 x 67 at **(286, 500)**, mean **11.61**. Leave with **P** again. Shot has a leftover speech submenu on the right from the options probe.
+
+**The message box (UI-PAUSE-1 step 1, GOG `AnnoFrame.dll`, D).** The pause box is drawn from the generic message
+box. The frame's vtable is `0x1008664c`.
+
+| What | Where | Notes |
+|---|---|---|
+| Show | slot `+0x70` = `0x1000c6a0` | Reads a descriptor: a word with the text's index in `Texte.dat` `MESSAGEBOX` (string `0x10094e50`, looked up at `0x1000c737`), words with the button labels' indices, and the button count at `+0x14`. Allocates the 0x114-byte box (`0x1000c7aa`, constructor `0x1003acf0`) into `[frame+0x18b8]` and sets the frame mode `[frame+0x16f8]` = 6 (`0x1000c882`). |
+| Mouse moves in mode 6 | `0x1000b490` (slot `+0x60`) → box `0x1003b450` | Moves go to the box, not to the map's edge scroll. |
+| Close | slot `+0xb8` = `0x1000c8c0` | Frees the box (`0x1003ad40`), clears `[frame+0x18b8]`, mode 0. |
+| The box's sprites | `0x1003af2c`.. (`MESSAGEBOX_BK`), `0x1003afd0`.. (`MESSAGEBOX_BUTTONS`) | |
+
+Strings (`Texte.dat` `MESSAGEBOX`, 0-based): 27 = "Pause!", 19 = "Continue game". What the button's own press handler
+does (inside the box object) and how P opens the box are OQ-908. **Rebuild (UI-PAUSE-1 A):** while paused, a press on
+`pause_button` resumes as P does, and every other press is swallowed (a modal box; assumption, OQ-908).
+**Rebuild (UI-PAUSE-1 B):** the label is not part of sprite 1513 (none of its pixels is white; the shot has 368 white
+pixels over the button). Both strings are drawn in `MainSmall.zei` (byte-identical to `MainMedium`/`HelpNormal`),
+glyph-exact on `f15_pause` with 0 differing pixels:
+- "Pause!" (MESSAGEBOX 27) at (497, 349), 49 x 25, centre x 521. That is the parchment's centre + 10; the box's own
+  text gadget was not read.
+- "Continue game" (19) at (350, 523), 117 x 25, centred on the button.
+
+`hud.txt` `pause_text` / `pause_label` (`text_section MESSAGEBOX`, `text_index`), drawn by `draw_centred_text` on
+the CPU and GPU-overlay paths.
 
 ### 9.5 Rating
 

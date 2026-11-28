@@ -277,6 +277,7 @@ stops before turn 0.
 ```
 turn <n> build <type> <x> <y> <rotation> [<x> <y> <rotation>]...
 turn <n> demolish <x> <y> [<x> <y>]...
+turn <n> speed <issuer> <percent>
 ```
 
 - `<type>` is the registry's `TypeId` value (a number); `<x> <y>` is the tile of
@@ -287,6 +288,8 @@ turn <n> demolish <x> <y> [<x> <y>]...
   The extra triples are more placements in stream order, in the same command.
 - One `demolish` line is one `DemolishCmd` over the listed tiles, for the
   developer player's city on the island under its first tile.
+- One `speed` line is one `SetSpeedCmd` (F5-F8, UI-KEYS-1) from `<issuer>`; the
+  runner's turn length follows the applied speed, so a session record keeps it.
 - A line with no such city (no city of the developer player on that island) is
   refused at load time with its line number. No city id is invented, so the
   sim never sees a command the file made up.

@@ -29,6 +29,10 @@ expect fact generation == 0
 expect fact committed == 0
 expect fact discarded == 0
 expect fact pending_builds == 0
+# UI-KEYS-1: F5 is the original's 100 % speed, not a save (F10 saves); give a save 2 s to show.
 key f5
+wait frames 120
+expect fact save == none
+key f10
 wait fact save contains saved within 30000
 quit

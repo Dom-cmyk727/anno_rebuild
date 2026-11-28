@@ -252,6 +252,24 @@ if(ANNO_BUILD_TESTS)
       # UI-HARVEST-ICON-1 R1: the forester's icon kept through zooming out and in while the game is
       # paused with no wood, then cleared once wood arrives. GPU window with enhanced water (the owner's
       # renderer) only: a paused CPU window draws no frame, so the script cannot advance there.
+      # UI-KEYS-1: P pauses (no turn published), P resumes, F8/F5/F6/F7 set 50/100/200/400 %, from
+      # the default start view. GPU window: a paused CPU window draws no frames.
+      add_test(NAME viewer_wiring_ui_keys_gpu
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_keys --gpu
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt)
+      set_tests_properties(viewer_wiring_ui_keys_gpu PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4 RESOURCE_LOCK gpu)
+      # UI-PAUSE-1: the pause box's "Continue game" resumes and the box swallows other presses
+      # (the HUD layout gives the box its chrome and hit rectangles).
+      add_test(NAME viewer_wiring_ui_pause_gpu
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_pause --gpu
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_pause_gpu PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4 RESOURCE_LOCK gpu)
       add_test(NAME viewer_wiring_status_icon_zoom_gpu
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
                 $<TARGET_FILE:anno1503> status_icon_zoom --gpu
@@ -334,6 +352,16 @@ if(ANNO_BUILD_TESTS)
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       # UI-CATNAV-1: a category tab click with a building armed shows that category's grid and
       # keeps the building armed (ui.panel, tool.armed).
+      # UI-PLANK-1: the plank names the open category through all eight tabs and keeps it when a
+      # building or the road is armed (docs/re/ui.md 2.4).
+      add_test(NAME viewer_wiring_ui_plank
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                $<TARGET_FILE:anno1503> ui_plank
+                --app-arg --play --app-arg ${PROJECT_SOURCE_DIR}/data/maps/lan5.txt
+                --app-arg --construction-menu --app-arg on
+                --app-arg --layout --app-arg ${PROJECT_SOURCE_DIR}/data/ui)
+      set_tests_properties(viewer_wiring_ui_plank PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
       add_test(NAME viewer_wiring_ui_catnav
         COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
                 $<TARGET_FILE:anno1503> ui_catnav

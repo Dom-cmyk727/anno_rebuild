@@ -1619,7 +1619,7 @@ void Viewer::handle(const SDL_Event& e) {
     }
     if (dev_ != nullptr) {
         // The developer tool first (sdl_input.hpp: B toggles it; with it on, the left button,
-        // N, P, T, X and Esc with something to cancel are its). The frame is the one drawn, so
+        // N, M, T, X and Esc with something to cancel are its). The frame is the one drawn, so
         // the pointer picks what is on screen. Its commands go to the runner's queue; the
         // receipts are kept for the feedback.
         const bool was_on = dev_->enabled();
@@ -1779,7 +1779,22 @@ void Viewer::handle(const SDL_Event& e) {
             }
             break;
         case SDLK_SPACE:
+        case SDLK_P: // UI-KEYS-1: the original's pause key (AnnoFrame 0x10007441, cmd 0x15)
             toggle_pause();
+            break;
+        case SDLK_F5:
+        case SDLK_F6:
+        case SDLK_F7:
+        case SDLK_F8:
+            // UI-KEYS-1: the original's speed keys (AnnoFrame 0x100071b0: F5-F8 post cmd 0x16 with
+            // 100/200/400/50). The sim refuses 400 in multiplayer (is_original_speed).
+            if (play_ != nullptr) {
+                sim::Command c;
+                c.issuer = play_->runner().speed_issuer();
+                c.body = sim::SetSpeedCmd{speed_key_percent(e.key.key).value_or(100)};
+                latest_receipt_ = play_->runner().post_command(std::move(c));
+                update_title();
+            }
             break;
         case SDLK_E:
             water_ = water_ == render::WaterStyle::Original ? render::WaterStyle::Enhanced
@@ -2225,6 +2240,21 @@ bool Viewer::construction_handle(const SDL_Event& e) {
         return true; // the parts a larger layer adds (filler, the bar's added span): no buttons
     }
     const double px = hit.ref->first, py = hit.ref->second;
+    const auto inside_tab = [&](const char* name) {
+        const UiElement* tab = construction_menu_->hud().element(name);
+        return tab != nullptr && tab->has_pos && tab->has_size && px >= tab->pos_x &&
+               px < tab->pos_x + static_cast<double>(tab->size_w) && py >= tab->pos_y &&
+               py < tab->pos_y + static_cast<double>(tab->size_h);
+    };
+    // UI-PAUSE-1: the pause box is the original's modal message box (AnnoFrame 0x1000c6a0, mode
+    // 6). "Continue game" resumes as P does, on the press; every other press is swallowed. Both
+    // are assumptions (OQ-908): the box's own button handler was not read.
+    if (paused_at_) {
+        if (inside_tab("pause_button")) {
+            toggle_pause();
+        }
+        return true;
+    }
     // UI-MINIMAP-1 C: the minimap's buttons and its diamond act on the press, as the original's
     // (frame events 1 and 3, AnnoFrame 0x10006c60; the release only ends the capture).
     if (minimap_press(px, py)) {
@@ -2235,12 +2265,6 @@ bool Viewer::construction_handle(const SDL_Event& e) {
     // the gears show their view (hud.txt `view`) at the sub-tab it showed last (View.dll
     // 0x10034ab0 -> 0x100335d0); a press on the tab already selected changes nothing. Leaving
     // the construction menu for another tab turns an armed tool off.
-    const auto inside_tab = [&](const char* name) {
-        const UiElement* tab = construction_menu_->hud().element(name);
-        return tab != nullptr && tab->has_pos && tab->has_size && px >= tab->pos_x &&
-               px < tab->pos_x + static_cast<double>(tab->size_w) && py >= tab->pos_y &&
-               py < tab->pos_y + static_cast<double>(tab->size_h);
-    };
     if (inside_tab("tab_construction")) {
         if (!construction_menu_open_) {
             construction_menu_open_ = true;
@@ -3575,6 +3599,9 @@ void Viewer::script_tick() {
         }
         // FISHER-VIEW-1: the game time the facts above belong to (the snapshot's clock).
         st.facts["game.ms"] = std::to_string(st.snapshot->game_ms);
+        // UI-KEYS-1: the world's speed (F5-F8) and whether the window paused the game (P, Space).
+        st.facts["game.speed"] = std::to_string(st.snapshot->speed_percent);
+        st.facts["game.paused"] = paused_at_ ? "1" : "0"; // the window's (toggle_pause)
         // UI-HARVEST-ICON-1 B: the icons the snapshot carries, and the units this frame drew.
         st.facts["status_icons.count"] =
             std::to_string(st.snapshot->status_icons ? st.snapshot->status_icons->size() : 0);
@@ -3643,6 +3670,17 @@ void Viewer::script_tick() {
         }
         st.facts["ui.category"] = category;
         st.facts["ui.category_tab"] = category_tab;
+        // UI-PLANK-1: the text the plank shows (construction_plank_text), spaces as '_' so a
+        // script can compare it; "none" with the menu closed or no text.
+        std::string plank;
+        if (construction_menu_open_ && construction_menu_ != nullptr &&
+            construction_tex_cache_ != std::nullopt) {
+            plank = construction_plank_text(*construction_tex_cache_, construction_menu_->hud(),
+                                            construction_menu_->construction(),
+                                            construction_open_category_);
+            std::replace(plank.begin(), plank.end(), ' ', '_');
+        }
+        st.facts["ui.plank_text"] = plank.empty() ? std::string("none") : plank;
     }
     // UI-CATNAV-1: the panel the open menu shows (grid / info), and the armed type (tool.armed:
     // the Anlagen id, or none) - the two are independent, as the original's.

@@ -1,0 +1,20 @@
+# UI-PAUSE-1: the pause box is modal; "Continue game" resumes. From the default start view: P
+# pauses, then three presses inside the box. Beside the button and on the part of the box that
+# covers the construction tab, nothing changes (that tab would otherwise open the construction
+# menu). On the button (hud.txt pause_button, 286 500 244 x 67) the game resumes. Runs on the GPU
+# window: a paused CPU window draws no frames.
+resize 1024 768
+wait frames 5
+expect fact game.paused == 0
+note fact ui.tab
+key p
+expect fact game.paused == 1
+click_px 600 533
+expect fact game.paused == 1
+click_px 790 200
+expect fact game.paused == 1
+expect fact ui.tab same
+click_px 408 533
+expect fact game.paused == 0
+expect fact ui.tab same
+quit

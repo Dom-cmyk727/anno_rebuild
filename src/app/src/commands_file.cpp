@@ -88,7 +88,7 @@ formats::Result<std::optional<ScriptedCommand>, std::string> parse_line(std::str
     if (tok.size() < 4 || tok[0] != "turn") {
         return where +
                "expected `turn <n> build|buildv|demolish|buildc|buildcv|demolishc|found|move|"
-               "stop|unload|load ...`";
+               "stop|unload|load|speed ...`";
     }
     const auto turn = number<std::uint64_t>(tok[1]);
     if (!turn) {
@@ -98,7 +98,8 @@ formats::Result<std::optional<ScriptedCommand>, std::string> parse_line(std::str
     out.turn = *turn;
     out.command.issuer = player;
     if (tok[2] == "buildc" || tok[2] == "buildcv" || tok[2] == "demolishc" || tok[2] == "found" ||
-        tok[2] == "move" || tok[2] == "stop" || tok[2] == "unload" || tok[2] == "load") {
+        tok[2] == "move" || tok[2] == "stop" || tok[2] == "unload" || tok[2] == "load" ||
+        tok[2] == "speed") {
         // The ship-start forms: the issuer is on the line and nothing is looked up in the world.
         auto issuer = number<std::uint32_t>(tok[3]);
         if (!issuer) {
@@ -212,6 +213,16 @@ formats::Result<std::optional<ScriptedCommand>, std::string> parse_line(std::str
                 return where + "move: numbers expected";
             }
             out.command.body = sim::MoveCmd{sim::FigureId{*ship}, *x, *y};
+        } else if (tok[2] == "speed") {
+            // UI-KEYS-1: speed <issuer> <percent> (F5-F8); the runner's turn length follows it.
+            if (tok.size() != 5) {
+                return where + "speed takes <issuer> <percent>";
+            }
+            const auto percent = number<std::uint32_t>(tok[4]);
+            if (!percent) {
+                return where + "speed: the percent is not a number";
+            }
+            out.command.body = sim::SetSpeedCmd{*percent};
         } else if (tok[2] == "stop") {
             if (tok.size() != 5) {
                 return where + "stop takes <issuer> <ship>";
@@ -468,6 +479,11 @@ format_commands(const std::vector<ScriptedCommand>& commands, bool ship_start) {
     for (const ScriptedCommand& scripted : commands) {
         const std::string turn = "turn " + std::to_string(scripted.turn) + " ";
         const std::string who = std::to_string(scripted.command.issuer.v);
+        // UI-KEYS-1: both forms carry the speed keys' command, with its issuer.
+        if (const auto* sp = std::get_if<sim::SetSpeedCmd>(&scripted.command.body)) {
+            out += turn + "speed " + who + " " + std::to_string(sp->percent) + "\n";
+            continue;
+        }
         if (ship_start) {
             // The ship-start session form: every line carries its issuer.
             if (const auto* f = std::get_if<sim::FoundCmd>(&scripted.command.body)) {
@@ -533,7 +549,7 @@ format_commands(const std::vector<ScriptedCommand>& commands, bool ship_start) {
             out += '\n';
             continue;
         }
-        return FormatError{"a command other than Build or Demolish has no line form"};
+        return FormatError{"a command other than Build, Demolish or Speed has no line form"};
     }
     return out;
 }

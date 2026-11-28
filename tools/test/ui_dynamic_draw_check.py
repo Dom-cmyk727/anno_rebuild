@@ -70,6 +70,41 @@ def expected_image(layout_dir, screen, game_dir, overrides):
     return Image.frombytes("RGB", (w, h), bytes(rgb))
 
 
+def texte_line(game_dir, section, index):
+    """Line `index` (0-based) of Texte.dat section `section`, raw bytes (ui_mock.cpp text_line)."""
+    import text
+
+    buf = open(os.path.join(game_dir, "Texte.dat"), "rb").read()
+    current, lines = None, []
+    for _n, t, _end in text.lines(buf):
+        h = text.header(t)
+        if h is not None:
+            current = h
+        elif current == section.encode():
+            lines.append(t)
+    return lines[index]
+
+
+def with_text(image, layout_dir, game_dir, names):
+    """`image` with each hud.txt text element in `names` drawn over it as draw_centred_text does:
+    its `text_section` line `text_index` in its font, at centred_text_x(pos_x, size_w, w), pos_y."""
+    import ui_layout
+    from PIL import Image
+
+    hud = ui_layout.parse_hud(os.path.join(layout_dir, "hud.txt"))
+    by_name = {el["name"]: el for el in hud["elements"]}
+    rgb = bytearray(image.tobytes())
+    w, h = image.size
+    for name in names:
+        el = by_name[name]
+        line = texte_line(game_dir, el["text_section"], int(el["text_index"]))
+        tw, th, rgba = ui_layout.info_render_text(
+            os.path.join(game_dir, el["file"].replace("/", os.sep)), line)
+        x = ui_layout.centred_text_x(el["pos"][0], el["size"][0], tw)
+        ui_layout.blit_rgba(rgb, w, h, (tw, th, rgba), x, el["pos"][1])
+    return Image.frombytes("RGB", (w, h), bytes(rgb))
+
+
 def compare(expected, live, rects, width, height, channel_tolerance=0):
     """Only pixels inside `rects` where `expected` is opaque (not compose_screen's all-black
     background) are checked - live_screen_compare.py's own `compare()` convention, duplicated
@@ -185,10 +220,21 @@ def main(argv):
             failures.append(f"hud_paused: {png} was not captured")
         else:
             live = Image.open(png).convert("RGB")
-            correct = expected_image(str(layout_dir), "hud_idle", game_dir,
-                                     [("pause_parchment", 1512), ("pause_button", 1513)])
+            chrome = expected_image(str(layout_dir), "hud_idle", game_dir,
+                                    [("pause_parchment", 1512), ("pause_button", 1513)])
+            # UI-PAUSE-1: the box's text and the button's label over the chrome.
+            correct = with_text(chrome, str(layout_dir), game_dir, ["pause_text", "pause_label"])
             wrong = expected_image(str(layout_dir), "hud_idle", game_dir, [])  # no overlay at all
             rects = [rect("pause_parchment"), rect("pause_button")]
+            # The second deliberately wrong input: the chrome without the text, over the text's
+            # rows only (its white glyph pixels; compare() skips the black edge, as every row here).
+            text_rects = [rect("pause_text"), rect("pause_label")]
+            bad_notext, checked_notext, _ = compare(chrome, live, text_rects, width, height,
+                                                    channel_tolerance)
+            if bad_notext == 0:
+                failures.append(
+                    "hud_paused: the deliberately wrong input (the box without its text) was not "
+                    "rejected - the comparison is not sensitive to the pause text")
             bad_wrong, checked_wrong, _ = compare(wrong, live, rects, width, height,
                                                   channel_tolerance)
             if bad_wrong == 0:
@@ -202,7 +248,8 @@ def main(argv):
                                 f"first at ({x},{y}): expected={a} live={b}")
             else:
                 print(f"hud_paused: exact match on {checked} opaque pixels "
-                     f"(wrong-input control correctly rejected: {bad_wrong} of {checked_wrong})")
+                     f"(wrong-input controls correctly rejected: no overlay {bad_wrong} of "
+                     f"{checked_wrong}, no text {bad_notext} of {checked_notext})")
 
     if failures:
         print("FAILURES:")

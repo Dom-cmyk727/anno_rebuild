@@ -4052,3 +4052,43 @@ Goal setup is `0x10003f91`-`0x1000415f`, with the goal mark at `0x10004065`-`0x1
 Note (OQ-775/OQ-776 numbering): CAND12-PATCH-SUB-1 and PICTURE-IDS-1 each already used OQ-775/OQ-776
 on their own branches (neither merged into this one yet) - used OQ-777 here instead of OQ-776 to
 avoid a collision once all three stack.
+
+## OQ-904: Which panel message re-sets the banner text from the selected tab? (UI-PLANK-1 A, 2026-11-27; OPEN)
+- **Question:** `View.dll` `0x1002ad8e` (a case of the construction panel's message switch, table `0x1002af14`/`0x1002af2c`) calls `0x1001cbe0`, `0x1002b0a0` and the tab handler `0x1002bf90`, which re-sets the plank text from the selected tab. Which message is it (the panel opening, a refresh), and which tab is selected when the panel first opens?
+- **What we know:** the handler reads the tab group's property `0x1b3`; `[this+0x5f0]` is set to -1 at `0x1002bf71`'s neighbourhood (a reset). The text never shows the initial `"00"` in any capture (L).
+- **How to resolve:** map the switch index at `0x1002ad72` (`cmp ebp, 0xf`) to its message numbers, or open the construction panel in the GOG Wine runner and read the plank before any tab click.
+
+## OQ-905: Which font draws the banner text? (UI-PLANK-1 A, 2026-11-27; ANSWERED)
+- **Answer (UI-PLANK-1 B, P):** the info names' font, `MainSmall.zei` (byte-identical to `MainMedium`/`HelpNormal` in GOG), centred in the gadget's 241 px at x 783, text top y 261 (the first white row 264 minus the font's 3): the live screen's 441 white glyph pixels equal the GOG shot `r2_construction_public`'s, same box; no new capture was needed.
+- **Question:** the text gadget sets property `0x1c6` = 2 like the info panel's centred names, which glyph-match `MainSmall.zei` (GOG `MainSmall`, `MainMedium` and `HelpNormal.zei` are byte-identical). Is the plank's font the same, and where is the text's baseline inside the 39-px gadget on the 48-px plank?
+- **What we know:** HE `he_01` `c7` shows the plank text at about the size of the name box below it (not measured; HE is scaled).
+- **How to resolve:** glyph-match the GOG `r2_construction_public` shot (the oracle's mask (800, 258) 200 × 22) with `MainSmall.zei` by the `render_text` rule, as UI-INFO-1 did (stage B).
+
+## OQ-907: Is the range darkening per pixel or per object anchor? (UI-RANGE-1 B2 note, 2026-11-27; ANSWERED: per object)
+- **Answer (2026-11-27, P, the existing GOG capture, no new run):** per object. In UI-RANGE-1 A's silent Wine run (`r1_overview_zoom3` nothing selected vs `r2_kontor_selected`, the same view, private `cache/orig/ui-range-1/`), the map of pixels darkened by about 5/8 against those unchanged has its boundary along the **tree crowns' outlines**, not along tile edges: trees on lit tiles keep their whole sprite lit where their crowns hang over dark ground behind them. So an object is lit or dark as a whole, by the tile it stands on. A building can never straddle the edge (its footprint must lie in its own city's range), so for buildings the anchor tile and the footprint give the same answer.
+- **Question:** a building whose footprint straddles the edge of the lit city's range: is it darkened as a whole by its anchor tile, per tile of its footprint, or per pixel by the tile under each pixel?
+- **What we know:** B1's rule darkens objects "anchored" on a dark tile (L). RENDER-DIRECT-3 stage 3d (ORCH III, 2026-11-27) applies the multiply per instance by its world tile; per pixel is possible there too.
+- **How to resolve:** one GOG Wine capture at the farthest zoom of a large building straddling the range edge (with OQ-796's), after "PC free".
+
+## OQ-908: How does P reach the pause, and what does the pause box's button do? (UI-KEYS-1, UI-PAUSE-1, 2026-11-27; OPEN)
+- **Question:** How does P stop the game and show the pause box? What does the box's "Continue game" button do,
+  on the press or on the release? Is the box modal, so that a press elsewhere on it is swallowed?
+- **What we know:**
+  - `docs/orchestration/tasks/ui-keys-1-draft.md` (on `task/UI-KEYS-1`) names P as case `0x10007441` of the kind-0
+    key switch, posting cmd `0x15` with argument `0x80`. Cmd `0x15` (`0x1000772e`) XORs that argument into
+    `[frame+0x16ec]` and marks a redraw (`0x10004290`) (D).
+  - **That attribution is now doubtful (UI-PAUSE-1 step 1):** bit `0x80` of `[frame+0x16ec]` gates the draw
+    `0x100054a0` (tested at `0x10005c02` and `0x1000b293`), which reads the cursor's tile and draws per tile. It
+    shows no box and calls no SetSpeed (D). Either case `0x10007441` is not P, or P's pause runs elsewhere.
+    UI-KEYS-1's behaviour (P pauses, the box shows) still matches the GOG shot `f15_pause` (P).
+  - The generic message box is read (`docs/re/ui.md` §9.4): shown by `0x1000c6a0` (mode 6), closed by `0x1000c8c0`.
+  - The box's strings (UI-PAUSE-1 B, P): `Texte.dat` MESSAGEBOX 27 "Pause!" and 19 "Continue game", glyph-exact on
+    `f15_pause`. Which code builds the pause box's descriptor was not found: no code or data stores 27 next to 19.
+    The button's own press handler, inside the box object, was not found within the step's 1-hour limit.
+  - **Rebuild (assumption, L):** the button resumes on the press, as P does, and every other press while paused is
+    swallowed (`viewer.cpp`, UI-PAUSE-1 A).
+- **How to resolve:**
+  - P: read the kind-0 key switch's index table (the jump table at `0x10007cc4`/`0x10007c98`, key − `0x2c`) in
+    Ghidra under WSL or Linux, or make one Wine run that presses P and reads `[frame+0x16ec]` and `[frame+0x16f8]`.
+  - The button: read the box object's input methods, near `0x1003b450` and its vtable.
+

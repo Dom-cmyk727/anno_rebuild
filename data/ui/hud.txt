@@ -60,6 +60,13 @@ element lupe_minus pos 826 153 size 19 21 file toolgfx/fenster.tex access KARTEP
 element karteplus_access size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 40 method inc-size
 element karte_nordung size 256 133 file toolgfx/fenster.tex access KARTE_NORDUNG tex_id 52 method inc-size
 element plankegross pos 783 252 size 241 48 file toolgfx/fenster.tex access PLANKEGROSS tex_id 1019 anchor right panel player,player_list,info,main_menu method sprite-sad shot r2_construction_public
+# UI-PLANK-1 (docs/re/ui.md 2.4, "Banner text"): the text gadget over the plank (View.dll class 0xb1c
+# 241 x 39, 0x1002bd7e-0x1002be23), the open category's line of TOOLTIP:BAUMENU_EX (tab handler
+# 0x1002bf90, 0x1002c0b8). pos x/size w are the gadget's; centring it puts the text's middle on the
+# shot's (white glyph box 843..962, middle 902.5). pos y: the shot's first white row 264 minus 3, the
+# info names' offset (info_name 316 vs 319); font as the info names (OQ-905). Measured on
+# r2_construction_public ("Public buildings").
+element plank_text pos 783 261 size 241 25 file toolgfx/mainsmall.zei align centre anchor right text_section TOOLTIP:BAUMENU_EX method glyph-match shot r2_construction_public
 # UI-BUILDCAT-1: the construction menu's eight category tabs, viewbautab_<k> for construction.txt
 # `index` k+1. View.dll 0x1002bb4f: VIEWBAUTAB, one 42 x 46 gadget per category (0x1002bbea),
 # texture 0x198 = VIEWBAUTAB + 2k (0x1002bc88 add esi, 2), loop cmp ebp, 8 (0x1002bc8b). Selected =
@@ -83,6 +90,12 @@ element wohnhaus_platte size 244 469 file toolgfx/fenster.tex access WOHNHAUS_PL
 element house_portrait pos 812 355 size 100 108 file toolgfx/Pioniere.tex access image001.pcx tex_id 1 anchor right method sprite-sad shot f15_selected_house
 element pause_parchment pos 222 191 size 579 386 file toolgfx/fenster.tex access MESSAGEBOX_BK tex_id 1512 method sprite-sad shot f15_pause
 element pause_button pos 286 500 size 244 67 file toolgfx/fenster.tex access MESSAGEBOX_BUTTONS tex_id 1513 method sprite-sad shot f15_pause
+# UI-PAUSE-1: the box's text and the button's label, Texte.dat MESSAGEBOX lines 27 and 19 (shown
+# by the message box AnnoFrame 0x1000c6a0, docs/re/ui.md 9.4). MainSmall.zei, glyph-exact on f15_pause
+# (0 differing pixels): "Pause!" drawn at (497, 349), centre 521 (the parchment's centre + 10; the
+# box's own text gadget was not read); the label at (350, 523), centred on the button.
+element pause_text pos 232 349 size 579 25 file toolgfx/mainsmall.zei align centre text_section MESSAGEBOX text_index 27 method glyph-match shot f15_pause
+element pause_label pos 286 523 size 244 25 file toolgfx/mainsmall.zei align centre text_section MESSAGEBOX text_index 19 method glyph-match shot f15_pause
 element abrissicon pos 970 710 size 53 53 file toolgfx/fenster.tex access ABRISSICON tex_id 659 frame_normal 659 frame_active 660 anchor right method sprite-sad shot r2_construction_public
 element info_panel pos 804 302 size 220 466 file toolgfx/fenster.tex access INFOUNTERGRUND tex_id 33 anchor right method sprite-sad shot r2_info_pioneer_house
 # UI-INFO-1: INFOEXIT draws 33 x 35 (View.dll gadget 0x1002ff95 pushes 0x23, 0x21), the texture's last three

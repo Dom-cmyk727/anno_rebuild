@@ -129,6 +129,26 @@ class TexCache {
         return it != names_.end() ? &it->second : nullptr;
     }
 
+    /// UI-PLANK-1: line `index` (0-based) of `Texte.dat` section `section` (raw Windows-1252
+    /// bytes, as `.zei` codes use them), or nullptr when the file, the section or the line is
+    /// missing. Each section is read once and kept.
+    const std::string* text_line(const std::string& section, std::size_t index) {
+        auto it = sections_.find(section);
+        if (it == sections_.end()) {
+            std::vector<std::string> lines;
+            if (auto bytes = read_binary(game_dir_ / "Texte.dat")) {
+                const auto texte = formats::text::Texte::parse(*bytes);
+                if (const auto* s = texte.section(section)) {
+                    for (const auto& line : s->lines) {
+                        lines.emplace_back(reinterpret_cast<const char*>(line.data()), line.size());
+                    }
+                }
+            }
+            it = sections_.emplace(section, std::move(lines)).first;
+        }
+        return index < it->second.size() ? &it->second[index] : nullptr;
+    }
+
     /// UI-INFO-1, UI-INFO-2: the decoded preview sprite of Anlagen id `id` at `rotation`
     /// (sprite set 0, zoom group 0, assets::building::to_rgba), cached per (id, rotation);
     /// nullptr when the entry has none. The frame is the first animation step of rotation block
@@ -319,6 +339,7 @@ class TexCache {
     std::map<std::string, std::optional<LoadedFont>> fonts_;
     bool names_loaded_ = false;
     std::map<std::uint32_t, std::string> names_;
+    std::map<std::string, std::vector<std::string>> sections_;
     std::map<std::tuple<std::uint32_t, std::uint8_t, std::size_t>, std::optional<DecodedSprite>>
         previews_;
     std::map<std::uint16_t, std::unique_ptr<LoadedFigure>> figures_;
@@ -597,6 +618,50 @@ assets::Rgba clip_to(const assets::Rgba& sprite, int x, int y, int cx, int cy, i
     return out;
 }
 
+/// UI-PLANK-1 (docs/re/ui.md 2.4, "Banner text"): the text on the construction panel's plank, the
+/// open category's line of the element's `text_section` (GOG `TOOLTIP:BAUMENU_EX`; View.dll tab
+/// handler 0x1002bf90 takes the entry by tab index, 0x1002c0b8). The tab index is the category's
+/// construction.txt `index` - 1. Empty when the element, its section, the category or the line is
+/// missing; arming a building or the road leaves it (the handler is its only writer).
+std::string plank_text_of(TexCache& cache, const HudLayout& hud,
+                          const ConstructionLayout& construction, const std::string& category) {
+    const UiElement* el = hud.element("plank_text");
+    const ConstructionCategory* c = construction.category(category);
+    if (el == nullptr || el->text_section.empty() || c == nullptr || c->index < 1)
+        return {};
+    const std::string* line =
+        cache.text_line(el->text_section, static_cast<std::size_t>(c->index - 1));
+    return line != nullptr ? *line : std::string{};
+}
+
+/// UI-PAUSE-1: the fixed line of an element with `text_section` and `text_index` (the pause box's
+/// "Pause!" and "Continue game", Texte.dat MESSAGEBOX 27 and 19), or empty.
+std::string fixed_text_of(TexCache& cache, const HudLayout& hud, const char* element) {
+    const UiElement* el = hud.element(element);
+    if (el == nullptr || el->text_section.empty() || !el->text_index)
+        return {};
+    const std::string* line = cache.text_line(el->text_section, *el->text_index);
+    return line != nullptr ? *line : std::string{};
+}
+
+/// A centred text box (hud.txt `align centre`, docs/re/ui.md 2.5): `text` in the element's font at
+/// x = pos_x + size_w / 2 - text_w / 2, y = pos_y, through `blit`. Nothing when the element is
+/// missing or incomplete, its font does not load, or `text` is empty.
+template <typename Blit>
+void draw_centred_text(TexCache& cache, const HudLayout& hud, const UiPlacement& placement,
+                       const char* element, const std::string& text, Blit&& blit) {
+    const UiElement* el = hud.element(element);
+    if (el == nullptr || !el->has_pos || !el->has_size || el->align != "centre" ||
+        el->file.empty() || text.empty())
+        return;
+    const formats::zei::CharSet* font = cache.font(el->file);
+    if (font == nullptr)
+        return;
+    const assets::Rgba image = render_info_text(*font, text);
+    const auto [bx, by] = placement.place(el->anchor, el->pos_x, el->pos_y);
+    blit(image, centred_text_x(bx, el->size_w, image.width), by);
+}
+
 /// UI-INFO-1: everything the info panel draws for `info` over its chrome, through `blit` (an
 /// opaque blit of an RGBA image at (x, y): the XRGB or the GPU-overlay path's own). Shared by
 /// both paths so the two can never place a figure differently.
@@ -605,16 +670,7 @@ void draw_info_content(TexCache& cache, const HudLayout& hud, const UiPlacement&
                        const InfoPanelContent& info, const formats::anlagen::AnlagenFile* anlagen,
                        Blit&& blit) {
     const auto text_box = [&](const char* element, const std::string& text) {
-        const UiElement* el = hud.element(element);
-        if (el == nullptr || !el->has_pos || !el->has_size || el->align != "centre" ||
-            el->file.empty() || text.empty())
-            return;
-        const formats::zei::CharSet* font = cache.font(el->file);
-        if (font == nullptr)
-            return;
-        const assets::Rgba image = render_info_text(*font, text);
-        const auto [bx, by] = placement.place(el->anchor, el->pos_x, el->pos_y);
-        blit(image, centred_text_x(bx, el->size_w, image.width), by);
+        draw_centred_text(cache, hud, placement, element, text, blit);
     };
     if (const std::string* name = cache.anlagen_name(info.type.v))
         text_box("info_name", *name);
@@ -924,6 +980,11 @@ UiTexCache::UiTexCache(std::filesystem::path game_dir)
 UiTexCache::~UiTexCache() = default;
 const assets::Rgba* UiTexCache::decode(const std::string& rel_path, int tex_id) {
     return impl_->decode(rel_path, tex_id);
+}
+std::string construction_plank_text(UiTexCache& cache, const HudLayout& hud,
+                                    const ConstructionLayout& construction,
+                                    const std::string& category) {
+    return plank_text_of(cache.impl(), hud, construction, category);
 }
 UiTexCache::UiTexCache(UiTexCache&&) noexcept = default;
 UiTexCache& UiTexCache::operator=(UiTexCache&&) noexcept = default;
@@ -1258,6 +1319,11 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
 
     if (is_construction) {
         blit_el("plankegross");
+        draw_centred_text(cache, hud, placement, "plank_text",
+                          plank_text_of(cache, hud, construction, screen.category),
+                          [&](const assets::Rgba& image, int x, int y) {
+                              blit_xrgb(dst, dst_w, dst_h, image, x, y);
+                          });
         draw_category_tabs(
             hud, construction, screen.category,
             [&](const std::string& name, std::optional<int> tid) { blit_el(name, tid); });
@@ -1336,6 +1402,14 @@ std::string draw_live_screen_xrgb(std::uint32_t* dst, int dst_w, int dst_h, cons
     if (paused) {
         blit_el("pause_parchment");
         blit_el("pause_button");
+        // UI-PAUSE-1: the box's text and the button's label (MainSmall.zei, glyph-exact on
+        // f15_pause).
+        for (const char* name : {"pause_text", "pause_label"}) {
+            draw_centred_text(cache, hud, placement, name, fixed_text_of(cache, hud, name),
+                              [&](const assets::Rgba& image, int x, int y) {
+                                  blit_xrgb(dst, dst_w, dst_h, image, x, y);
+                              });
+        }
     }
 
     return "";
@@ -1516,6 +1590,10 @@ std::string draw_live_screen_rgba_into(
 
     if (is_construction) {
         blit_el("plankegross");
+        draw_centred_text(
+            cache, hud, placement, "plank_text",
+            plank_text_of(cache, hud, construction, screen.category),
+            [&](const assets::Rgba& image, int x, int y) { blit_rgba_over(canvas, image, x, y); });
         draw_category_tabs(
             hud, construction, screen.category,
             [&](const std::string& name, std::optional<int> tid) { blit_el(name, tid); });
@@ -1580,6 +1658,14 @@ std::string draw_live_screen_rgba_into(
     if (paused) {
         blit_el("pause_parchment");
         blit_el("pause_button");
+        // UI-PAUSE-1: the box's text and the button's label (MainSmall.zei, glyph-exact on
+        // f15_pause).
+        for (const char* name : {"pause_text", "pause_label"}) {
+            draw_centred_text(cache, hud, placement, name, fixed_text_of(cache, hud, name),
+                              [&](const assets::Rgba& image, int x, int y) {
+                                  blit_rgba_over(canvas, image, x, y);
+                              });
+        }
     }
 
     return "";

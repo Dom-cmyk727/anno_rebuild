@@ -22,7 +22,7 @@ wait held
 # rebuild the title inside the interval (the tool's own events, not a refresh helper).
 wait frames 5
 key n
-key p
+key m
 select paid
 wait frames 3
 # The script consumer (PlayRunner::feedback in script_tick): the outcome is withheld.
@@ -49,7 +49,7 @@ click 1156 516
 wait held
 wait frames 5
 key n
-key p
+key m
 select paid
 wait frames 3
 expect outcome Queued

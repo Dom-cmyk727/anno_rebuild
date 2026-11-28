@@ -22,7 +22,8 @@ std::optional<ToolInput> tool_input_from_sdl(const SDL_Event& e, float density, 
         case SDLK_N:
             return ToolInput{(e.key.mod & SDL_KMOD_SHIFT) != 0 ? K::NextTypeFast : K::NextType, 0,
                              0};
-        case SDLK_P:
+        // UI-KEYS-1: M, not P - P is the original's pause key (AnnoFrame 0x10007441).
+        case SDLK_M:
             return ToolInput{(e.key.mod & SDL_KMOD_SHIFT) != 0 ? K::PrevTypeFast : K::PrevType, 0,
                              0};
         // The original's ordinary placement cursor turns on (+1, like the info panel's right
@@ -74,7 +75,7 @@ ToolStep dev_tool_step(DevTool& tool, const SDL_Event& event, float density,
         // A held key of the tool's does nothing, and it is still the tool's: a held Esc after a
         // cancel must not reach the window's own Esc (quit; integration review of round ee, P2-1).
         const SDL_Keycode k = event.key.key;
-        step.taken = k == SDLK_B || (tool.enabled() && (k == SDLK_N || k == SDLK_P || k == SDLK_T ||
+        step.taken = k == SDLK_B || (tool.enabled() && (k == SDLK_N || k == SDLK_M || k == SDLK_T ||
                                                         k == SDLK_COMMA || k == SDLK_PERIOD ||
                                                         k == SDLK_X || k == SDLK_ESCAPE));
         return step;
@@ -121,8 +122,23 @@ std::optional<OpeningKey> opening_key_from_sdl(SDL_Keycode key) {
     case SDLK_RETURN:
     case SDLK_KP_ENTER:
         return OpeningKey::Send;
-    case SDLK_F5:
+    case SDLK_F10: // UI-KEYS-1: the original's quick-save key (AnnoFrame 0x10007309, cmd 0x12)
         return OpeningKey::Save;
+    default:
+        return std::nullopt;
+    }
+}
+
+std::optional<std::uint32_t> speed_key_percent(SDL_Keycode key) {
+    switch (key) {
+    case SDLK_F5:
+        return 100;
+    case SDLK_F6:
+        return 200;
+    case SDLK_F7:
+        return 400;
+    case SDLK_F8:
+        return 50;
     default:
         return std::nullopt;
     }

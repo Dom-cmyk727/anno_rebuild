@@ -33,7 +33,10 @@ std::optional<SDL_Keycode> keycode(const std::string& name) {
         return SDLK_N;
     }
     if (name == "p") {
-        return SDLK_P;
+        return SDLK_P; // UI-KEYS-1: pause (the dev tool's previous type is M now)
+    }
+    if (name == "m") {
+        return SDLK_M;
     }
     if (name == "t") {
         return SDLK_T;
@@ -100,6 +103,18 @@ std::optional<SDL_Keycode> keycode(const std::string& name) {
     }
     if (name == "f5") {
         return SDLK_F5;
+    }
+    if (name == "f6") {
+        return SDLK_F6;
+    }
+    if (name == "f7") {
+        return SDLK_F7;
+    }
+    if (name == "f8") {
+        return SDLK_F8;
+    }
+    if (name == "f10") {
+        return SDLK_F10;
     }
     return std::nullopt;
 }

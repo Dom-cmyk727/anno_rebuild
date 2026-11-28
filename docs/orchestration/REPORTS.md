@@ -18284,3 +18284,165 @@ Hosted CI only, no PC use.
   one object's reach, at most a couple of chunks) regardless of island size.
 
 READY FOR REVIEW.
+
+## UI-PLANK-1 — the construction plank names the open category — READY FOR REVIEW
+
+UI lane, 2026-11-27. Branch `task/UI-PLANK-1` on cand13 `aeb65424`. Stage A (accepted): `docs/re/ui.md` 2.4 "Banner
+text".
+
+- **Code:**
+  - `data/ui/hud.txt` `plank_text`: pos 783 261, size 241 25, `MainSmall.zei`, `align centre`,
+    `text_section TOOLTIP:BAUMENU_EX`, measured on `r2_construction_public`;
+  - `UiElement::text_section`;
+  - `TexCache::text_line` (Texte.dat sections, read once);
+  - `plank_text_of` and a shared `draw_centred_text`, which `draw_info_content` now also uses;
+  - drawn right after `plankegross` on the CPU and GPU-overlay paths;
+  - public `construction_plank_text`; fact `ui.plank_text` (spaces as `_`).
+- **Behaviour:** the open category's line (tab index = construction.txt `index` - 1). Arming a building or the road
+  leaves it, as the original (the tab handler is its only writer).
+- **Tests:**
+  - `plank text: the open category's TOOLTIP:BAUMENU_EX line` (all eight strings from the real Texte.dat);
+  - `plank text: the live public screen's glyphs are where the GOG shot has them` (441 white pixels, box x 843..962,
+    y 264..277, equal to GOG);
+  - `viewer_wiring_ui_plank` from the default start view: all eight tabs, then the dirt road armed keeps
+    "Squares, Streets".
+- **Failure proofs** (data only, restored after each):
+  - `text_section` pointed at `TOOLTIP:BAUMENUINFO`: the section check and all eight strings fail;
+  - pos y 262: the pixel case fails on y0/y1.
+- **Gates (this PC, msvc Release):**
+  - `run_selected` over hud / ui / construction / selection / `^viewer_wiring_ui_` / the oracle and panel compares /
+    plank / ui transform-layout-placement-layer: 108 selected, 102 executed, 0 failed, 6 skipped (the shot compares
+    without their env vars), `VERDICT: PASS` (`cache/plank-gate-01.log`);
+  - with `ANNO_UI_ORACLE_SHOTS` and `ANNO_UI_ROTATION_SHOTS` set: `ui_panels_match_gog`, `info_panel_gog_compare`,
+    `info_panel_rotation_gog_compare`, `ui_subtabs_compare`, `ui_balance_rows_compare`, `live_screen_matches_oracle`:
+    6/6 PASS (`cache/plank-gate-02.log`);
+  - `ui_window_matches_he` left skipped: it compares the idle HUD only, which this change does not draw on;
+  - WSL GCC 13 / Clang 18: the first run caught an `int` -> `size_t` index in the new test (fixed); re-run clean (453 + 102 files, negative controls fail as expected).
+- **OQs:**
+  - OQ-905 answered (font and position, from the existing GOG shot; no capture needed);
+  - OQ-907 answered from the existing UI-RANGE-1 A capture: per object (the lit/dark boundary follows the tree crowns),
+    so no Wine run was needed for it either;
+  - OQ-904 open (which panel message re-sets the text).
+- **Owner test:**
+
+  ```
+  anno1503 --play data\maps\lan5.txt --game-dir E:\anno1503\game\app --construction-menu on --layout data\ui
+  ```
+
+  Press B, then click through the eight tabs: the plank names each category, and arming a building or the road keeps
+  it.
+
+## UI-KEYS-1 — the original's game keys (F5-F8 speed, P pause, F10 quick-save) — READY FOR REVIEW
+
+UI lane, 2026-11-27. Branch `task/UI-KEYS-1` on main `aeb65424`; plan `docs/orchestration/tasks/ui-keys-1-draft.md`
+(approved, 400 % decision (a), host guard per ORCH III's review).
+
+- **Code (app only, no new sim command):**
+  - runner: `turn_step_ms` (400 % single player = 40 game-ms per 10-real-ms step, ADAPTATION); the runner follows
+    `speed_percent` at the turn boundary;
+  - `speed_issuer()`: the host in single player or when the local seat is the host, else the local player
+    (refused, `NotHost`, as the original's multiplayer SetSpeed `0x1005e230` acts only on the host);
+  - keys: F5-F8 → `SetSpeedCmd` 100/200/400/50 (`speed_key_percent`, AnnoFrame `0x100071b0`); P → pause (Space
+    kept); the opening's Save on F10; the dev tool's previous type P → M;
+  - facts `game.speed`, `game.paused`; script key names m/f6/f7/f8/f10.
+- **Found by the wiring run and fixed (`1e272b85`):** a dev session (`--play` and the opening) could not record the
+  speed keys' command (`format_commands` had no line for `SetSpeedCmd`), so the window exited 1 at quit after F5-F8.
+  Since the turn length now follows the speed, the record must keep it: new line form
+  `turn N speed <issuer> <percent>` in both forms, parsed back (`commands_file.cpp`; `game-shell.md`,
+  `ship-opening.md` §5). The opening test that used `SetSpeedCmd` as its "no line form" example now uses a legacy
+  record.
+- **Gates (this PC, msvc Release; incremental build in the UI-PLANK-1 build tree with this head checked out detached):**
+  - first run (`cache/keys-gate-01.log`, stopped for the owner): 600 passed, 0 failed of 622, all new unit cases
+    passed (that selection was wider than needed);
+  - wiring run before the fix (`cache/keys-gate-02.log`): `ui_keys_gpu` and `opening_session_replay` FAILED on the
+    session record above (every script line had run); `r1_held_publication`, `opening_controls` passed;
+  - after the fix (`cache/keys-gate-03.log`): `viewer_wiring_ui_keys_gpu`, `viewer_wiring_r1_held_publication`,
+    `viewer_wiring_opening_controls`, `opening_session_replay` (opening_sail with F5 then F10, opening_resume,
+    opening_resume2; stage 1's replay with the recorded speed line: 38 checkpoints and 2 outcomes agree), the four
+    UI-KEYS-1 unit cases, the commands-file and ship-start cases: 16 selected, 15 executed, 0 failed, 1 skipped
+    (opt-in measure), `VERDICT: PASS`.
+- **Failure proofs** (one build, restored after; unit runs):
+  - the old F5 save binding restored: the opening-keys case fails (`opening_key_from_sdl(F5)` is Save);
+  - the runner not following the speed: the invariant case fails at 50/200/400 (step and game ms per real ms), and
+    the host case fails (step 10, not 20);
+  - no speed line form: the session round-trip case fails (`format_commands` refuses).
+- **WSL:** on `1e272b85` (`cache/keys-unix-02.log`): GCC 13 and Clang 18 clean on both configurations (453 + 102 files), negative controls caught.
+- **Owner test:**
+
+  ```
+  anno1503 --play data\maps\lan5.txt --game-dir E:\anno1503\game\app --construction-menu on --layout data\ui
+  ```
+
+  Press F8, F5, F6, F7: the game runs at 50 / 100 / 200 / 400 %. P pauses and P resumes. In the ship opening, F10
+  saves and F5 changes the speed.
+- **Open:** OQ-906 (the speed indicator), OQ-908 (P's path to the pause box); the pause box is proposed as UI-KEYS-2.
+
+## UI-PAUSE-1 — the pause box's text and its "Continue game" button — READY FOR REVIEW
+
+UI lane, 2026-11-28. Branch `task/UI-PAUSE-1`: part A `a909e61e` on `task/UI-KEYS-1` `0595a0fe`; part B merges
+`task/UI-PLANK-1` `5a08acd2` (`f32e8009`), then `6d09bdc2`. Packet `docs/orchestration/tasks/ui-pause-1.md`.
+egm-lite checklist: `E:\anno1503-worktrees\anno1503-UI-PAUSE-1\cache\egm_lite_checklist.md` (not in git), baseline
+`0595a0fe`.
+
+> **BLUF:** P's box now reads "Pause!" with a "Continue game" button, pixel-exact against the original's shot, and a
+> click on the button resumes the game. What the original's button handler does was not found within the 1 h limit,
+> so the click and the modal box are labelled assumptions (OQ-908). The P key's address in UI-KEYS-1's draft is now
+> doubtful (OQ-908).
+
+- **Step 1 (read, GOG `AnnoFrame.dll`):** the generic message box (`docs/re/ui.md` §9.4).
+  - Frame vtable `0x1008664c`: slot `+0x70` = `0x1000c6a0` shows it (a descriptor with MESSAGEBOX text indices, mode
+    `[frame+0x16f8]` = 6, the box in `[frame+0x18b8]`); slot `+0xb8` = `0x1000c8c0` closes it; in mode 6, mouse moves
+    go to the box (`0x1000b490` → `0x1003b450`).
+  - The button's own handler was not found within the limit, so the packet's fallback applies.
+  - P's cmd `0x15`/`0x80` toggles a per-tile draw (`0x100054a0`, gated at `0x10005c02` and `0x1000b293`), not the
+    box. That makes UI-KEYS-1's attribution doubtful; it is recorded in OQ-908, and UI-KEYS-1's files are untouched
+    (ORCH III).
+- **Part A (`viewer.cpp`, click path only):** while paused, a press on `pause_button` calls `toggle_pause()`, as
+  `case SDLK_P` does, and every other press is swallowed. `inside_tab` moved above it. Wiring
+  `viewer_wiring_ui_pause_gpu` (`ui_pause.script`):
+  - P;
+  - beside the button (600, 533): still paused;
+  - on the box over the construction tab (790, 200): still paused, `ui.tab` unchanged;
+  - on the button (408, 533): resumed.
+- **Part B:**
+  - Step 4: the label is not in sprite 1513 (0 white pixels in it; 368 in the shot over the button).
+  - Step 5: both strings are glyph-exact in `MainSmall.zei` on `f15_pause` with 0 differing pixels: "Pause!"
+    (MESSAGEBOX 27) at (497, 349), "Continue game" (19) at (350, 523). No wrapping, one line each.
+  - `hud.txt` `pause_text` / `pause_label` with the new key `text_index` (`UiElement::text_index`); `fixed_text_of`
+    plus UI-PLANK-1's `draw_centred_text` in both paused blocks (CPU and GPU overlay).
+  - `ui_dynamic_draw_check.py` row 10 adds the text to its expected image (`with_text`, Texte.dat through
+    `tools/text.py`), plus a second wrong input, the box without its text, over the text rows. Since the live text
+    equals the expected image and the expected text equals the shot, the drawn text matches `f15_pause` exactly.
+- **The UI-PLANK-1 docs repair (found while merging):** `c5e6c432` had cut `docs/re/ui.md` from 1715 to 196 lines
+  (my stage-A commit `8ff63b70`). Fixed on `task/UI-PLANK-1` as `5a08acd2`, and ORCH III verified it. Every commit
+  here was checked with `git diff --numstat` for unintended deletions.
+- **Gates (this PC, msvc Release, built in the UI-PLANK-1 build tree with the head checked out detached; the tree is
+  back on its branch):**
+  - part A (`cache/pause-gate-01.log`): `viewer_wiring_ui_pause_gpu`, `viewer_wiring_ui_keys_gpu`,
+    `viewer_wiring_ui_plank`: 3/3 PASS;
+  - part B (`cache/pause-gate-02.log`): `ui_dynamic_draw_check`, the three wiring cases above, and the hud/layout/plank
+    and `live_screen*` cases: 25 selected, 25 executed, 0 failed, `VERDICT: PASS`. Row 10 matches exactly on 218,380
+    pixels; the controls are rejected (no overlay: 9,296 of 12,130 differ; no text: 1,376 of 20,454);
+  - after the gate, `6d09bdc2` changed only clang-format wrapping and docs; msvc rebuilt clean on it.
+- **Failure proofs (restored after each):**
+  - the resume call removed: `ui_pause` fails at line 18 (`game.paused` 1);
+  - the swallow removed: `ui_pause` fails at line 16 (`ui.tab` becomes `construction`);
+  - the text draw removed: row 10 fails, with 905 pixels differing and the no-text control no longer rejected.
+- **WSL** on `6d09bdc2` (`cache/pause-unix-01.log`): GCC 13 and Clang 18 clean on both configurations (453 + 102
+  files), negative controls caught. clang-format 23.1.3 applied.
+- **Decisions and reasoning:**
+  - `text_index` is a new `hud.txt` key, not `text_section MESSAGEBOX:27`: section names already contain `:` (for
+    example `TOOLTIP:BAUMENU_EX`), so a separate key avoids an ambiguous parse.
+  - The `pause_text` box is centred at x 521, the measured centre, which is 10 px right of the parchment's. The
+    original's text gadget rectangle was not read; that is noted in `hud.txt` and ui.md.
+  - The modal swallow also covers the minimap while paused (the packet's "every other press").
+- **Owner check:**
+
+  ```
+  anno1503 --play data\maps\lan5.txt --game-dir E:\anno1503\game\app --construction-menu on --layout data\ui
+  ```
+
+  Press P: the box reads "Pause!" with "Continue game", as in the original. A click on the box beside the button does
+  nothing; a click on "Continue game" resumes.
+- **Open:** OQ-908 (P's real path, the button handler).
+

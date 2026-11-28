@@ -138,6 +138,6 @@ expect fact ship.1.x == 266
 expect fact generation same
 expect fact committed same
 expect fact discarded same
-key f5
+key f10
 wait fact save contains saved within 30000
 quit

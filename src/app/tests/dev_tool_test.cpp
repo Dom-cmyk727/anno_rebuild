@@ -624,7 +624,7 @@ TEST_CASE("dev tool: press, move, cancel, release and focus-loss sequences make 
         for (int i = 0; i < 3; ++i) {
             CHECK(app::dev_tool_step(tool, held, 1.0F, &frame).taken); // not the window's
         }
-        for (const SDL_Keycode k : {SDLK_N, SDLK_P, SDLK_T, SDLK_X, SDLK_B}) {
+        for (const SDL_Keycode k : {SDLK_N, SDLK_M, SDLK_T, SDLK_X, SDLK_B}) {
             SDL_Event r = key(k);
             r.key.repeat = true;
             const auto before = tool.input().selected();
@@ -852,8 +852,27 @@ TEST_CASE("opening keys: `,` turns the founding cursor on and `.` back, as the o
     }
     CHECK(app::opening_key_from_sdl(SDLK_RETURN) == app::OpeningKey::Send);
     CHECK(app::opening_key_from_sdl(SDLK_KP_ENTER) == app::OpeningKey::Send);
-    CHECK(app::opening_key_from_sdl(SDLK_F5) == app::OpeningKey::Save);
+    // UI-KEYS-1: F10 saves, as the original's quick-save; F5 is the original's 100 % speed.
+    CHECK(app::opening_key_from_sdl(SDLK_F10) == app::OpeningKey::Save);
+    CHECK_FALSE(app::opening_key_from_sdl(SDLK_F5));
     // Esc is the window's (it needs the opening's state); other keys are not the opening's.
     CHECK_FALSE(app::opening_key_from_sdl(SDLK_ESCAPE));
     CHECK_FALSE(app::opening_key_from_sdl(SDLK_B));
+}
+
+TEST_CASE("UI-KEYS-1: F5-F8 are the original's speeds, P is no tool key, M is the previous type" *
+          doctest::test_suite("dev_tool")) {
+    // AnnoFrame.dll 0x100071b0 key-down cases: F5 100, F6 200, F7 400, F8 50 (cmd 0x16).
+    CHECK(app::speed_key_percent(SDLK_F5) == 100U);
+    CHECK(app::speed_key_percent(SDLK_F6) == 200U);
+    CHECK(app::speed_key_percent(SDLK_F7) == 400U);
+    CHECK(app::speed_key_percent(SDLK_F8) == 50U);
+    CHECK_FALSE(app::speed_key_percent(SDLK_F9));
+    CHECK_FALSE(app::speed_key_percent(SDLK_F10));
+    CHECK_FALSE(app::speed_key_percent(SDLK_P));
+    // P is the original's pause: with the tool on it is not the tool's; M is its previous type.
+    CHECK_FALSE(app::tool_input_from_sdl(key(SDLK_P), 1.0F, true, false));
+    const auto m = app::tool_input_from_sdl(key(SDLK_M), 1.0F, true, false);
+    REQUIRE(m);
+    CHECK(m->kind == app::ToolInput::Kind::PrevType);
 }

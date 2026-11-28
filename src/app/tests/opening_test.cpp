@@ -195,9 +195,10 @@ TEST_CASE(
     REQUIRE(old_form.ok());
     CHECK(old_form.value() == "turn 3 build 1001 251 137 0\n");
     // A command with no line form is refused, not dropped.
-    const auto speed =
-        app::format_commands({{1, Command{sim::PlayerId{0}, sim::SetSpeedCmd{100}}}}, true);
-    CHECK_FALSE(speed.ok());
+    // (SetSpeedCmd has one since UI-KEYS-1; a legacy record still has none.)
+    const auto legacy =
+        app::format_commands({{1, Command{sim::PlayerId{0}, sim::LegacyRawCmd{0x10, {}}}}}, true);
+    CHECK_FALSE(legacy.ok());
     // Malformed lines name themselves.
     for (const char* bad :
          {"turn 1 found 0 1 1302 1 254 137 255\n", "turn 1 move 0 1 5\n",

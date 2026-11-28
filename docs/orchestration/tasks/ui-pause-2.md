@@ -4,7 +4,7 @@
   release. Follow-up to UI-PAUSE-1 (landed in candidate 14, `main` `d3f7bd3c`); the owner found the mismatch
   ("it doesnt match our current state", relayed by ORCH III, 2026-11-28).
 - **Branch:** `task/UI-PAUSE-2`, base origin/main.
-- **Size:** one concern (the pause box), about 2-3 h.
+- **Size:** one concern (the pause box), about 3-4 h.
 
 ## The finding
 
@@ -19,6 +19,14 @@ Evidence in `E:\1503_test_videos\`:
 | Button label | "Weiterspielen" (Continue game) | "Back" |
 | Placement | parchment centred in the play area at that window size, map visible around it | top left, near the 1024 x 768 coordinates (222, 191), unscaled |
 | Inside the box | text near the vertical middle, button lower left | text higher |
+| Button background | none: the frame lies on the parchment | an opaque pale rectangle, about 240 x 65 at 1:1, hard edges above and right of the frame (the image's background, not keyed out) |
+| Button frame | one plaque with dark end caps | a lighter inner plate with a doubled thin line along top and left (a second layer, or a hover/pressed state drawn as well?) |
+| Label in the frame | vertically centred | against the bottom of the frame |
+| Minor | - | frame a few px right of HE's; a thin pale fringe along the parchment's top edge |
+
+The parchment art, the box's size and aspect and the text line's height match HE: ORCH III's sheet
+`E:\1503_test_videos\pause_compare.png` (HE scaled to our box, ours, a 50 % blend; crops `he_pause_crop.png`,
+`ours_pause_crop.png`).
 
 ## Cause of the text, as read by the orchestrator (verify it)
 
@@ -59,11 +67,19 @@ Both indices are 3 too high. The section just before it, `STARTUP:MESSAGEBOX`, h
    - **Place the parchment, the text and the button as one unit**, centred in the play area (the window minus the HUD
      chrome, as HE shows it). Keep the 1024 x 768 positions of §9.4 as the unit's internal layout.
    - **If HE's rule differs from simple centring,** follow HE and record the rule.
-3. **Layout inside the box.** After steps 1-2, compare the text's and the button's positions inside the parchment
+3. **The button: keying, layers, label.**
+   - **Find why the button image's background is drawn.** `pause_button` is `toolgfx/fenster.tex` `MESSAGEBOX_BUTTONS`
+     1513. Compare its keying with how the other `fenster.tex` sprites in `hud.txt` are keyed.
+   - **Find out what the second layer is:** the lighter inner plate with the doubled line. Is a second sprite or state
+     (hover, pressed) drawn over the plaque? Read which ids of `MESSAGEBOX_BUTTONS` exist and which one the original
+     draws at rest (GOG `f15_pause`).
+   - **Centre the label vertically in the frame,** as HE and `f15_pause` show it.
+   - **Check the two minors** (the frame's horizontal offset, the parchment's top fringe) in the same compare.
+4. **Layout inside the box.** After steps 1-3, compare the text's and the button's positions inside the parchment
    with HE and with GOG's `f15_pause` at 1024 x 768. Fix any offset that the wrong string length does not explain.
-4. **`docs/re/ui.md` line 98** says the pause parchment "hides the map", but HE shows the map around it, and §9.4
+5. **`docs/re/ui.md` line 98** says the pause parchment "hides the map", but HE shows the map around it, and §9.4
    gives a 579 x 386 box. Correct the sentence, saying what each edition shows.
-5. **Tests:**
+6. **Tests:**
    - extend the pause row of `tools/test/ui_dynamic_draw_check.py` so it checks the two strings' content;
    - extend `tools/test/viewer_wiring/ui_pause.script` so it checks the box's position at a window size other than
      1024 x 768;
@@ -72,6 +88,8 @@ Both indices are 3 too high. The section just before it, `STARTUP:MESSAGEBOX`, h
 ## Acceptance
 
 - The step 0 evidence: addresses and the rule, in `docs/re/ui.md` §9.4.
+- **0 differing pixels** for the whole pause box, button and both strings included, against GOG's `f15_pause` at
+  1024 x 768, with the existing pixel-compare method (name it in the report); plus a centring check at 2576 x 1408.
 - A screenshot of our build paused at 2576 x 1408 and at 1024 x 768, next to the owner's HE shot, under
   `C:\Users\altin\Pictures\anno-review\UI-PAUSE-2\`.
 - The tests of step 5 pass on msvc (only the changed lanes), WSL `check_unix_warnings.sh` passes, and hosted CI

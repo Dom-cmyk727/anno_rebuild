@@ -12,15 +12,17 @@ jobs:
   # What kind of change this run checks. A change that touches only docs/ or the
   # Markdown files at the repository root (CLAUDE.md, README.md) builds and tests
   # nothing: no build step, test or reference script reads those files (checked
-  # 2026-11-10). Everything else (src/, tools/, data/, fixtures/, .github/, ...)
-  # is code. Any doubt (no usable base, an empty diff, a git error) means code,
-  # and so does a path Windows cannot check out (the Windows jobs must see it).
+  # 2026-11-10); it still runs `docs-integrity` below. Everything else (src/,
+  # tools/, data/, fixtures/, .github/, ...) is code. Any doubt (no usable base, an
+  # empty diff, a git error) means code, and so does a path Windows cannot check
+  # out (the Windows jobs must see it).
   # Base: for a push to main, the commit before the push (that commit already
   # passed `gate` on its landing branch). For everything else, branches and pull
   # requests alike, the merge base with main: a change is always checked as a
   # whole against main, so neither a later docs-only commit nor a pull request
   # aimed at another branch can hide code. main is named by its full ref, which a
-  # tag called "origin/main" cannot shadow.
+  # tag called "origin/main" cannot shadow. `docs-integrity` reuses this base
+  # (output `base`), so there is one base rule for the whole run.
   changes:
     # Linux runners are pinned to ubuntu-24.04 (GCC 13.3, Clang 18), the toolchain CLAUDE.md documents:
     # ubuntu-latest moved to ubuntu-26.04 (GCC 15.2) on 2026-11-19 and broke the -Werror build
@@ -29,6 +31,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       code: ${{ steps.classify.outputs.code }}
+      base: ${{ steps.classify.outputs.base }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,14 +46,17 @@ jobs:
           set -uo pipefail
           code=true
           base=
+          base_valid=false
           if [ "$EVENT" = push ] && [ "$REF" = refs/heads/main ]; then base="$BEFORE"
           elif [ "$EVENT" = push ] || [ "$EVENT" = pull_request ]; then
             base=$(git merge-base refs/remotes/origin/main HEAD 2>/dev/null || true)
           fi
-          # --no-renames: a file moved out of src/ into docs/ lists its old path too.
           if [ -n "$base" ] && [ "$base" != 0000000000000000000000000000000000000000 ] \
-             && git cat-file -e "$base^{commit}" 2>/dev/null \
-             && git diff --name-only --no-renames "$base" HEAD > changed.txt \
+             && git cat-file -e "$base^{commit}" 2>/dev/null; then
+            base_valid=true
+          fi
+          # --no-renames: a file moved out of src/ into docs/ lists its old path too.
+          if [ "$base_valid" = true ] && git diff --name-only --no-renames "$base" HEAD > changed.txt \
              && [ -s changed.txt ]; then
             echo "files changed since $base: $(wc -l < changed.txt)"
             head -n 100 changed.txt
@@ -61,10 +67,31 @@ jobs:
               echo "a path Windows cannot check out: treated as a code change"
               code=true
             fi
-          else
+          elif [ "$base_valid" != true ]; then
             echo "no usable base (event $EVENT, ref $REF, base '${base}'): a code change"
           fi
           echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+          if [ "$base_valid" = true ]; then echo "base=$base" | tee -a "$GITHUB_OUTPUT"
+          else echo "base=" | tee -a "$GITHUB_OUTPUT"
+          fi
+
+  # The deletion guard and the rule-sync lint (tools/orch/docs_integrity.py; HARNESS-GUARD-1). Runs
+  # on every push, docs-only included, with no `if:` — unlike the build/test jobs below, it is never
+  # skipped. An empty `base` (no usable base) means the guard itself is skipped, and the script says
+  # so; the lint still runs.
+  docs-integrity:
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      BASE: ${{ needs.changes.outputs.base }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: python3 -I tools/orch/docs_integrity.py ${BASE:+--base "$BASE"} --head HEAD
+      - run: python3 -I tools/orch/docs_integrity_test.py
+      - run: python3 -I tools/orch/land_test.py
 
   lint:
     needs: changes
@@ -280,13 +307,15 @@ jobs:
 
   # The one required check of main's branch protection (owner rule 2026-11-10,
   # top of docs/orchestration/TASKS.md; tools/orch/land.py). It passes only when every
-  # job above succeeded, or, for a docs-only change, was skipped. It runs even
-  # after a failure or cancellation (always()), because GitHub counts a skipped
-  # required check as passed. Re-running failed jobs re-runs this one too.
+  # job above succeeded, or, for a docs-only change, was skipped. `changes` and
+  # `docs-integrity` must succeed on every change, docs-only ones included: they
+  # are never allowed to be skipped. It runs even after a failure or cancellation
+  # (always()), because GitHub counts a skipped required check as passed.
+  # Re-running failed jobs re-runs this one too.
   gate:
     name: gate
     if: always()
-    needs: [changes, lint, test, build-macos, cpp, cpp-format]
+    needs: [changes, docs-integrity, lint, test, build-macos, cpp, cpp-format]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -303,7 +332,7 @@ jobs:
           case "$CODE" in true|false) ;; *) echo "::error title=gate::no change classification"; fail=1 ;; esac
           while read -r job result; do
             if [ "$result" = success ]; then continue; fi
-            if [ "$job" != changes ] && [ "$result" = skipped ] && [ "$CODE" = false ]; then continue; fi
+            if [ "$job" != changes ] && [ "$job" != docs-integrity ] && [ "$result" = skipped ] && [ "$CODE" = false ]; then continue; fi
             echo "::error title=gate::${job}: ${result}"
             fail=1
           done < results.txt

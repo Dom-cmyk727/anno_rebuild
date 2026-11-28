@@ -6,12 +6,15 @@ every orchestrator (they all push as the owner's account). `gate` passes when ev
 that touches only `docs/` and root `*.md` files, when the build jobs were skipped. CI runs on a push to any branch,
 so a commit gets its check on a landing branch first:
 
-    python -I tools/orch/land.py [--repo E:/anno1503] [--rev HEAD] [--name <topic>] [--allow-ci-change]
-                                 [--timeout-min 120] [--no-sync]
+    python -I tools/orch/land.py --rev <full 40-hex commit id> --name <topic> [--repo E:/anno1503]
+                                 [--allow-ci-change] [--timeout-min 120] [--no-sync]
 
-1. fetch `origin`; the commit must descend from `origin/main` (fast-forward only: merge or rebase first). A commit
-   that changes `.github/` is refused unless `--allow-ci-change` says its workflow changes were reviewed: the commit
-   being checked defines `gate`, so a weakened workflow would approve itself;
+1. fetch `origin`; `--rev` must be a full 40-hex commit id (a branch name or `HEAD` can move after review) that
+   descends from `origin/main` (fast-forward only: merge or rebase first). A commit that changes CI (`.github/`) or
+   its own landing guard (`tools/orch/docs_integrity.py`, this file) is refused unless `--allow-ci-change` says those
+   changes were reviewed: the commit being checked defines `gate` and its own guard, so weakening either would
+   approve itself. The commit is also refused when `tools/orch/docs_integrity.py`'s deletion guard or rule-sync lint
+   finds something, against `origin/main` as the base (HARNESS-GUARD-1);
 2. unless `gate` already passed on that commit: push it to `land/<name>` and wait for `gate` on that exact commit
    (about 30 minutes for a code change, about 1 for a docs-only one). Only a `gate` of `ci.yml`, run for a push of
    this very commit, counts: not one from a pull request (its base may be another branch), from another workflow,
@@ -29,10 +32,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import docs_integrity  # noqa: E402
 
 CHECK = "gate"
 WORKFLOW = ".github/workflows/ci.yml"
@@ -40,6 +47,8 @@ MAIN = "refs/remotes/origin/main"  # the full ref: a tag named "origin/main" wou
 POLL_S = 30
 NO_RUN_MIN = 10  # no CI run for the commit this long after the push: it will not come ([skip ci], a broken ci.yml)
 MAX_API_ERRORS = 5
+# Changes here need --allow-ci-change too: each defines its own gate or its own landing guard.
+GUARDED_PATHS = ("tools/orch/docs_integrity.py", "tools/orch/land.py")
 
 
 def run(*cmd: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -108,34 +117,73 @@ def ci_runs_exist(slug: str, sha: str) -> bool:
     return any(r.get("path") == WORKFLOW for r in runs)
 
 
+def rev_refusal(rev: str) -> str | None:
+    """`--rev` must be a full 40-hex commit id: a branch name or `HEAD` can move after review (HARNESS-GUARD-1)."""
+    if re.fullmatch(r"[0-9a-f]{40}", rev or ""):
+        return None
+    return (f"REFUSED: --rev must be a full 40-hex commit id, not {rev!r}; run `git rev-parse {rev}` to get the "
+            "commit it names right now")
+
+
+def refusal(repo: str, sha: str, main_sha: str, allow_ci_change: bool) -> str | None:
+    """Every refusal that needs no GitHub lookup: ancestry, the guarded paths, then `docs_integrity`'s deletion
+    guard and rule-sync lint (base `main_sha`, head `sha`). Prints every honoured `Large-Deletion` trailer either
+    way. Raises subprocess.CalledProcessError on a git error."""
+    if run("git", "-C", repo, "merge-base", "--is-ancestor", main_sha, sha, check=False).returncode != 0:
+        return f"REFUSED: {sha[:8]} does not descend from origin/main {main_sha[:8]}; merge or rebase onto it first"
+    ci_files = [f for f in changed_paths(repo, main_sha, sha) if f.startswith(".github/") or f in GUARDED_PATHS]
+    if ci_files and not allow_ci_change:
+        return (f"REFUSED: {sha[:8]} changes CI or its landing guard ({', '.join(ci_files)}). The commit defines "
+                "its own gate or its own guard: review those changes, then land with --allow-ci-change")
+    findings, honoured = docs_integrity.check(repo, main_sha, sha)
+    for h in honoured:
+        print(h)
+    if findings:
+        lines = "\n  ".join(findings)
+        return (f"REFUSED: docs-integrity findings on {sha[:8]}:\n  {lines}\n  Explain a true deletion with a "
+                "`Large-Deletion: <path> - <reason>` trailer in its own commit's last paragraph; never edit a "
+                "test, oracle, spec or doc to make a finding disappear (owner rule, 2026-11-28) — report it instead")
+    return None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--repo", default=".", help="the clone to land from (default: the current directory)")
-    ap.add_argument("--rev", default="HEAD", help="the commit to land (default: HEAD)")
+    ap.add_argument("--rev", required=True, help="the full 40-hex commit id to land (the exact commit reviewed)")
     ap.add_argument("--name", help="landing branch name after land/ (default: land-<commit>)")
     ap.add_argument("--allow-ci-change", action="store_true",
-                    help="the commit changes .github/ and those changes were reviewed")
+                    help="the commit changes CI or its landing guard (.github/, tools/orch/docs_integrity.py, "
+                         "tools/orch/land.py) and those changes were reviewed")
     ap.add_argument("--timeout-min", type=int, default=120, help="give up waiting for gate after this long")
     ap.add_argument("--no-sync", action="store_true", help="do not mirror to GitLab and the share afterwards")
     a = ap.parse_args()
+
+    msg = rev_refusal(a.rev)
+    if msg:
+        print(msg)
+        return 1
 
     def git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
         return run("git", "-C", a.repo, *args, check=check)
 
     git("fetch", "--quiet", "origin")
     sha = git("rev-parse", "--verify", f"{a.rev}^{{commit}}").stdout.strip()
+    if sha != a.rev:
+        print(f"REFUSED: {a.rev} does not name a commit directly (it peels to {sha}); pass the commit id itself")
+        return 1
     main_sha = git("rev-parse", "--verify", f"{MAIN}^{{commit}}").stdout.strip()
     if sha == main_sha:
         print(f"{sha[:8]} is origin/main already: nothing to land")
         return 0
-    if git("merge-base", "--is-ancestor", main_sha, sha, check=False).returncode != 0:
-        print(f"REFUSED: {sha[:8]} does not descend from origin/main {main_sha[:8]}; merge or rebase onto it first")
+    try:
+        msg = refusal(a.repo, sha, main_sha, a.allow_ci_change)
+    except subprocess.CalledProcessError as e:
+        print(f"REFUSED: cannot check {sha[:8]} against {main_sha[:8]}: {e}\n{e.stderr}")
         return 1
-    ci_files = [f for f in changed_paths(a.repo, main_sha, sha) if f.startswith(".github/")]
-    if ci_files and not a.allow_ci_change:
-        print(f"REFUSED: {sha[:8]} changes CI ({', '.join(ci_files)}). The commit defines its own gate: review those "
-              "changes, then land with --allow-ci-change")
+    if msg:
+        print(msg)
         return 1
+    ci_files = [f for f in changed_paths(a.repo, main_sha, sha) if f.startswith(".github/") or f in GUARDED_PATHS]
     slug = run("gh", "repo", "view", git("remote", "get-url", "origin").stdout.strip(),
                "--json", "nameWithOwner", "-q", ".nameWithOwner").stdout.strip()
     branch = f"land/{a.name or 'land-' + sha[:8]}"

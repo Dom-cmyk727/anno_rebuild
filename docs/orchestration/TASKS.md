@@ -47,14 +47,28 @@ PC.**
   can be merged. The rule binds admins too, so it binds every session that pushes as the owner's account.
 - **What `gate` means.** Every CI job passed. For a change that touches only `docs/` and root `*.md` files, the build
   jobs are skipped and `gate` passes in about a minute. Any other change, compared as a whole against `main`, runs
-  the full matrix, about 30 minutes; so does a path Windows cannot check out.
+  the full matrix, about 30 minutes; so does a path Windows cannot check out. `changes` and `docs-integrity` must
+  succeed on every change, docs-only ones included: they are never allowed to be skipped.
 - **How to land: only with `land.py`, never with GitHub's merge button.** Commit on top of `origin/main`, then
-  `python -I tools/orch/land.py --rev <commit> --name <topic>`. It pushes the commit to `land/<topic>`, waits for
-  `gate`, pushes `main`, deletes the landing branch and runs `sync_gitlab.py`. GitHub's own check is weaker than
-  `land.py`'s: `land.py` counts only a `gate` that `ci.yml` ran for a push of that exact commit.
+  `python -I tools/orch/land.py --rev <full 40-hex commit id> --name <topic>`. It pushes the commit to
+  `land/<topic>`, waits for `gate`, pushes `main`, deletes the landing branch and runs `sync_gitlab.py`. GitHub's own
+  check is weaker than `land.py`'s: `land.py` counts only a `gate` that `ci.yml` ran for a push of that exact commit.
 - **A change to `.github/` needs `--allow-ci-change`.** The commit being checked defines its own `gate`, so first
   review its workflow changes for anything that weakens the gate (a job left out of `gate`, `continue-on-error`, a
   step that writes check runs).
+- **The deletion guard and rule-sync lint (HARNESS-GUARD-1, `tools/orch/docs_integrity.py`).** `land.py` refuses a
+  commit whose diff against `origin/main` cuts a file by 200+ lines at 4x or more its added lines in the same file
+  (the deletion guard), or that leaves the two old review-rule phrases harness item 1 removed from AGENTS.md (one
+  naming a reviewer subagent, one naming re-review before completion; exact wording in `docs_integrity.py`) in
+  `AGENTS.md`, `CLAUDE.md`, this file or `docs/testing/*.md` (the rule-sync lint; `docs/orchestration/tasks/` is not
+  scanned, so a packet may quote them). The same two checks run in CI's `docs-integrity` job on every push,
+  docs-only included. A true deletion
+  (an archive move, a trim the packet scopes) is explained with a `Large-Deletion: <path> - <reason>` trailer, which
+  git reads only from a commit message's last paragraph — one written mid-body does not count. The orchestrator
+  checks every honoured trailer at handover; a trailer is a review item, not an exemption. `--rev` must now be a
+  full 40-hex commit id (no `HEAD` or branch-name default: either can move after review). `--allow-ci-change` also
+  covers a change to `tools/orch/docs_integrity.py` or `tools/orch/land.py` itself, for the same self-approval
+  reason as `.github/`.
 - **A failed `gate`** stops `land.py` with the run's link. Re-run the failed jobs (`gh run rerun <id> --failed`) and
   run `land.py` again: it waits for the re-run. Or fix and land the new commit.
 - **What it does not change.** Executors still never push `main`. The game-file run after a code push (rule above)

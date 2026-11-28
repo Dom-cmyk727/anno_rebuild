@@ -158,7 +158,7 @@ def main(argv: list[str]) -> int:
         "   `%s` at `%s`. Do not search the board for these blocks again. Open other files only when a step" % (BOARD, commit),
         "   needs them, and batch independent reads into one parallel turn.",
         "",
-        "Claude Code loads `CLAUDE.md` by itself; `AGENTS.md` is the same text for Codex (never edit or commit it).",
+        "Claude Code loads `CLAUDE.md` automatically; `AGENTS.md` points Codex to the same rules.",
         "",
         instructions,
         "",

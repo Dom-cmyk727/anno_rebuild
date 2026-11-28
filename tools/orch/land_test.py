@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -97,6 +98,105 @@ class GateOf(unittest.TestCase):
                 with self.answers((0, json.dumps(check_runs), ""),
                                   (0, json.dumps({"total_count": 1, "workflow_runs": [run_json]}), "")):
                     self.assertEqual(land.gate_of("o/r", SHA)[0], want)
+
+
+class RevRefusal(unittest.TestCase):
+    def test_full_sha_passes(self):
+        self.assertIsNone(land.rev_refusal(SHA))
+
+    def test_head_is_refused(self):
+        self.assertIsNotNone(land.rev_refusal("HEAD"))
+
+    def test_branch_name_is_refused(self):
+        self.assertIsNotNone(land.rev_refusal("task/HARNESS-GUARD-1"))
+
+    def test_short_sha_is_refused(self):
+        self.assertIsNotNone(land.rev_refusal(SHA[:8]))
+
+    def test_empty_is_refused(self):
+        self.assertIsNotNone(land.rev_refusal(""))
+
+
+class Refusal(unittest.TestCase):
+    """land.refusal against a temp git repo: no network, nothing pushed."""
+
+    def _repo(self):
+        d = tempfile.TemporaryDirectory()
+        path = d.name
+        git = lambda *a: subprocess.run(["git", "-C", path, *a], capture_output=True, text=True, check=True).stdout
+        git("init", "-q")
+        git("config", "user.email", "t@t")
+        git("config", "user.name", "t")
+        (Path(path) / "AGENTS.md").write_text("(CLAUDE.md)\n", encoding="utf-8")
+        git("add", "-A")
+        git("commit", "-q", "-m", "base")
+        main_sha = git("rev-parse", "HEAD").strip()
+        return d, path, git, main_sha
+
+    def test_clean_commit_is_not_refused(self):
+        d, path, git, main_sha = self._repo()
+        with d:
+            (Path(path) / "a.txt").write_text("a\n", encoding="utf-8")
+            git("add", "-A")
+            git("commit", "-q", "-m", "add a file")
+            sha = git("rev-parse", "HEAD").strip()
+            self.assertIsNone(land.refusal(path, sha, main_sha, False))
+
+    def test_commit_not_descending_from_main_is_refused(self):
+        d, path, git, main_sha = self._repo()
+        with d:
+            git("checkout", "-q", "--orphan", "other")
+            (Path(path) / "b.txt").write_text("b\n", encoding="utf-8")
+            git("add", "-A")
+            git("commit", "-q", "-m", "unrelated")
+            sha = git("rev-parse", "HEAD").strip()
+            msg = land.refusal(path, sha, main_sha, False)
+            self.assertIsNotNone(msg)
+            self.assertIn("does not descend", msg)
+
+    def test_guarded_tool_change_needs_allow_ci_change(self):
+        d, path, git, main_sha = self._repo()
+        with d:
+            p = Path(path) / "tools" / "orch" / "land.py"
+            p.parent.mkdir(parents=True)
+            p.write_text("# weakened\n", encoding="utf-8")
+            git("add", "-A")
+            git("commit", "-q", "-m", "touch land.py")
+            sha = git("rev-parse", "HEAD").strip()
+            msg = land.refusal(path, sha, main_sha, False)
+            self.assertIsNotNone(msg)
+            self.assertIn("tools/orch/land.py", msg)
+            self.assertIsNone(land.refusal(path, sha, main_sha, True))
+
+    def test_deletion_guard_finding_is_refused(self):
+        d, path, git, main_sha = self._repo()
+        with d:
+            big = "\n".join(f"line-{i}" for i in range(250)) + "\n"
+            (Path(path) / "doc.md").write_text(big, encoding="utf-8")
+            git("add", "-A")
+            git("commit", "-q", "-m", "add doc.md")
+            base2 = git("rev-parse", "HEAD").strip()
+            (Path(path) / "doc.md").write_text("", encoding="utf-8")
+            git("add", "-A")
+            git("commit", "-q", "-m", "cut doc.md")
+            sha = git("rev-parse", "HEAD").strip()
+            msg = land.refusal(path, sha, base2, False)
+            self.assertIsNotNone(msg)
+            self.assertIn("doc.md", msg)
+
+    def test_deletion_guard_honoured_by_trailer_is_not_refused(self):
+        d, path, git, main_sha = self._repo()
+        with d:
+            big = "\n".join(f"line-{i}" for i in range(250)) + "\n"
+            (Path(path) / "doc.md").write_text(big, encoding="utf-8")
+            git("add", "-A")
+            git("commit", "-q", "-m", "add doc.md")
+            base2 = git("rev-parse", "HEAD").strip()
+            (Path(path) / "doc.md").write_text("", encoding="utf-8")
+            git("add", "-A")
+            git("commit", "-q", "-m", "cut doc.md\n\nLarge-Deletion: doc.md - archived to history\n")
+            sha = git("rev-parse", "HEAD").strip()
+            self.assertIsNone(land.refusal(path, sha, base2, False))
 
 
 class ChangedPaths(unittest.TestCase):

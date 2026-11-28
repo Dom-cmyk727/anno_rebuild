@@ -119,6 +119,8 @@ PC.**
   check pass unless the packet scopes that edit.
 - **At most 2 fix rounds per packet.** After a second fix round that still does not pass review, the orchestrator
   re-scopes or splits the packet instead of sending a third.
+- **The owner gives the second review on the orchestrator's own board and docs commits** (harness item 11; owner,
+  2026-11-28, relayed by ORCH III: "me"). The orchestrator names those commits to the owner at landing.
 
 ## What moved out of this board (2026-11-10)
 
